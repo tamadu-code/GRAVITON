@@ -663,17 +663,20 @@ label {
     color: #64748b;
     width: 18px;
     height: 18px;
+    transition: color 0.3s ease;
 }
 
 .login-input {
     width: 100%;
     padding: 0.85rem 1rem 0.85rem 2.75rem;
     border-radius: 8px;
-    border: none;
+    border: 1px solid transparent;
     background: #ffffff;
     color: #0f172a;
     font-size: 0.95rem;
     outline: none;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 .login-input::placeholder {
@@ -681,7 +684,16 @@ label {
 }
 
 .login-input:focus {
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.3);
+    border-color: #6366f1;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+}
+
+.input-with-icon:focus-within i {
+    color: #6366f1;
+}
+
+.mb-1-5 {
+    margin-bottom: 1.5rem;
 }
 
 .forgot-link {
