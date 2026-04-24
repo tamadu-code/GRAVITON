@@ -623,6 +623,21 @@ label {
     font-size: 1.5rem;
 }
 
+@keyframes floatAndPulse {
+    0% {
+        transform: translateY(0px);
+        box-shadow: 0 0 20px rgba(79, 70, 229, 0.3);
+    }
+    50% {
+        transform: translateY(-6px);
+        box-shadow: 0 0 40px rgba(79, 70, 229, 0.7);
+    }
+    100% {
+        transform: translateY(0px);
+        box-shadow: 0 0 20px rgba(79, 70, 229, 0.3);
+    }
+}
+
 .login-logo-glow {
     width: 64px;
     height: 64px;
@@ -633,7 +648,8 @@ label {
     align-items: center;
     justify-content: center;
     color: white;
-    box-shadow: 0 0 30px rgba(79, 70, 229, 0.4); /* Glow effect */
+    box-shadow: 0 0 30px rgba(79, 70, 229, 0.4); /* Base glow */
+    animation: floatAndPulse 4s ease-in-out infinite;
 }
 
 .login-logo-glow i {
