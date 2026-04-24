@@ -166,7 +166,7 @@ navItems.forEach(item => {
     });
 });
 
-// Sidebar Toggle
+// Sidebar Toggle (Desktop)
 const sidebar = document.getElementById('sidebar');
 const toggle = document.getElementById('sidebar-toggle');
 if (toggle) {
@@ -181,6 +181,37 @@ if (toggle) {
         if (typeof lucide !== 'undefined') lucide.createIcons();
     });
 }
+
+// Mobile Sidebar Toggle
+const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+if (mobileMenuBtn && sidebar) {
+    // Create overlay if it doesn't exist
+    let overlay = document.querySelector('.sidebar-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'sidebar-overlay';
+        document.body.appendChild(overlay);
+    }
+
+    const toggleMobileMenu = () => {
+        sidebar.classList.toggle('mobile-open');
+        overlay.classList.toggle('active');
+    };
+
+    mobileMenuBtn.addEventListener('click', toggleMobileMenu);
+    overlay.addEventListener('click', toggleMobileMenu);
+
+    // Close sidebar when clicking a nav item on mobile
+    const navItemsList = document.querySelectorAll('.nav-item');
+    navItemsList.forEach(item => {
+        item.addEventListener('click', () => {
+            if (window.innerWidth <= 768 && sidebar.classList.contains('mobile-open')) {
+                toggleMobileMenu();
+            }
+        });
+    });
+}
+
 
 // Global Sync & Network Events
 window.addEventListener('sync-complete', (e) => {

@@ -725,9 +725,117 @@ label {
     text-decoration: none;
 }
 
-.create-account-link:hover {
-    text-decoration: underline;
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    /* Main Layout */
+    .app-container {
+        position: relative;
+        overflow-x: hidden;
+    }
+
+    /* Sidebar overlay on mobile */
+    .sidebar {
+        position: fixed;
+        left: -100%;
+        top: 0;
+        bottom: 0;
+        z-index: 1000;
+        width: 260px;
+        transition: left var(--transition-speed) ease;
+        box-shadow: none;
+    }
+    
+    .sidebar.mobile-open {
+        left: 0;
+        box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+    }
+    
+    /* Mobile Overlay */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999;
+        backdrop-filter: blur(2px);
+    }
+    
+    .sidebar-overlay.active {
+        display: block;
+    }
+    
+    /* Top Bar Mobile Adjustments */
+    .mobile-menu-btn {
+        display: flex !important;
+        background: none;
+        border: none;
+        color: var(--text-primary);
+        cursor: pointer;
+        padding: 0.25rem;
+        border-radius: 4px;
+    }
+    
+    .sidebar-toggle {
+        display: none; /* Hide desktop toggle */
+    }
+    
+    /* Dashboard and Cards */
+    .dashboard-grid .grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stat-card {
+        grid-column: span 1 !important; /* Override Teacher/Parent spans */
+    }
+    
+    .action-grid {
+        grid-template-columns: 1fr 1fr; /* 2 columns on mobile */
+    }
+    
+    /* Login Page Adjustments */
+    .login-card {
+        padding: 2rem 1.5rem;
+        margin: 1rem;
+        width: calc(100% - 2rem);
+    }
+    
+    /* Hide some text to save space in header */
+    .user-name, .user-role {
+        display: none;
+    }
+    
+    #logout-btn {
+        font-size: 0; /* Hide text */
+        padding: 0.4rem;
+        margin-right: 0.5rem;
+    }
+    
+    #logout-btn i {
+        font-size: 1rem;
+        margin-right: 0;
+    }
+    
+    /* Tables on Mobile */
+    .table-container {
+        overflow-x: auto;
+    }
 }
+
+/* Extra small devices */
+@media (max-width: 480px) {
+    .action-grid {
+        grid-template-columns: 1fr; /* 1 column on tiny screens */
+    }
+    
+    .login-header h2 {
+        font-size: 1.25rem;
+    }
+}
+
 
 .w-100 {
     width: 100%;
