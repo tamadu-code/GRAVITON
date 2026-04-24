@@ -61,9 +61,6 @@ document.querySelectorAll('.pw-toggle').forEach(button => {
     });
 });
 
-// ─── App elements ───
-const logoutBtn = document.getElementById('logout-btn');
-
 // ─── Screen Switching Helpers ───
 function showScreen(screen) {
     loginScreen.style.display = 'none';
