@@ -124,19 +124,32 @@ async function loadAuthenticatedApp(authUser) {
     }
 
     // Update UI State
+    const currentName = profile.full_name || authUser.email;
+    const currentRole = profile.role || 'Pending';
+
     UI.currentUser = {
         id: authUser.id,
         email: authUser.email,
-        role: profile.role || 'Pending',
-        name: profile.full_name || authUser.email,
+        role: currentRole,
+        name: currentName,
         assigned_id: profile.assigned_id || null
     };
 
-    // Update Topbar UI (use safe selectors)
+    // Update Topbar & Sidebar Footer UI
     const userNameEl = document.querySelector('.user-name');
     const userRoleEl = document.querySelector('.user-role');
-    if (userNameEl) userNameEl.textContent = userName;
-    if (userRoleEl) userRoleEl.textContent = userRole;
+    const footerNameEl = document.getElementById('footer-user-name');
+    const footerRoleEl = document.getElementById('footer-user-role');
+    const footerAvatarEl = document.querySelector('.user-avatar-small');
+
+    if (userNameEl) userNameEl.textContent = currentName;
+    if (userRoleEl) userRoleEl.textContent = currentRole;
+    if (footerNameEl) footerNameEl.textContent = currentName;
+    if (footerRoleEl) footerRoleEl.textContent = currentRole;
+    if (footerAvatarEl) footerAvatarEl.textContent = currentName.charAt(0).toUpperCase();
+
+    // Re-render icons for the main content
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 
     // Start Data Sync Loop
     startSyncLoop();
@@ -291,11 +304,41 @@ if (backToLoginFromResetLink) {
     });
 }
 
-// ─── Logout Button ───
+/**
+ * Update Sync Status UI
+ */
+function updateSyncStatus(title, subtitle, statusClass = 'live') {
+    const syncTitle = document.querySelector('.sync-title');
+    const syncSubtitle = document.querySelector('.sync-subtitle');
+    const syncIcon = document.querySelector('.sync-icon-container i');
+    
+    if (syncTitle) syncTitle.textContent = title;
+    if (syncSubtitle) syncSubtitle.textContent = subtitle;
+    
+    if (syncIcon) {
+        if (statusClass === 'syncing') {
+            syncIcon.classList.add('spin-animation');
+        } else {
+            syncIcon.classList.remove('spin-animation');
+        }
+    }
+}
+
+// Listen for sync events
+window.addEventListener('sync-complete', (e) => {
+    const { count } = e.detail;
+    updateSyncStatus('Sync Complete', `${count} items updated`, 'live');
+    setTimeout(() => updateSyncStatus('Cloud Live', 'Server Connected'), 3000);
+});
+
+// Logout Button Logic
+const logoutBtn = document.getElementById('logout-btn');
 if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
-        await logoutUser();
-        window.location.reload();
+        const { error } = await supabase.auth.signOut();
+        if (!error) {
+            window.location.reload();
+        }
     });
 }
 

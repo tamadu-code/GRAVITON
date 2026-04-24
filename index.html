@@ -191,55 +191,127 @@
         <!-- Sidebar -->
         <aside id="sidebar" class="sidebar">
             <div class="sidebar-header">
-                <div class="logo">
-                    <i data-lucide="atom" class="logo-icon"></i>
-                    <span>GRAVITON</span>
-                </div>
-                <button id="sidebar-toggle" class="sidebar-toggle">
-                    <i data-lucide="chevron-left"></i>
-                </button>
+                <div class="logo-box">S</div>
+                <div class="logo-text">SCHOOL MANAGEMENT<br>SYSTEM</div>
             </div>
             
             <nav class="sidebar-nav">
+                <div class="nav-section-header">MAIN NAVIGATION</div>
                 <a href="#dashboard" class="nav-item active" data-view="dashboard">
-                    <i data-lucide="layout-dashboard"></i>
+                    <i data-lucide="layout-grid"></i>
                     <span>Dashboard</span>
                 </a>
                 <a href="#students" class="nav-item" data-view="students">
                     <i data-lucide="users"></i>
-                    <span>Students</span>
+                    <span>Active Students</span>
                 </a>
-                <a href="#academic" class="nav-item" data-view="academic">
-                    <i data-lucide="book-open"></i>
-                    <span>Academic</span>
-                </a>
-                <a href="#grades" class="nav-item" data-view="grades">
+                <a href="#classes" class="nav-item" data-view="classes">
                     <i data-lucide="graduation-cap"></i>
-                    <span>Grades</span>
+                    <span>Classes</span>
+                </a>
+                <a href="#subjects" class="nav-item" data-view="subjects">
+                    <i data-lucide="book"></i>
+                    <span>Subjects</span>
                 </a>
                 <a href="#attendance" class="nav-item" data-view="attendance">
                     <i data-lucide="calendar-check"></i>
                     <span>Attendance</span>
                 </a>
+                <a href="#gradebook" class="nav-item" data-view="gradebook">
+                    <i data-lucide="clipboard-list"></i>
+                    <span>Gradebook</span>
+                </a>
+                <a href="#cbt" class="nav-item" data-view="cbt">
+                    <i data-lucide="monitor"></i>
+                    <span>CBT Hub</span>
+                </a>
+
+                <div class="nav-section-header">
+                    ADMINISTRATION
+                    <i data-lucide="chevron-down"></i>
+                </div>
+                <a href="#staff" class="nav-item" data-view="staff">
+                    <i data-lucide="user-circle"></i>
+                    <span>Staff Records</span>
+                </a>
+                <a href="#keys" class="nav-item" data-view="keys">
+                    <i data-lucide="shield"></i>
+                    <span>Student Keys</span>
+                </a>
+                <a href="#parents" class="nav-item" data-view="parents">
+                    <i data-lucide="users-2"></i>
+                    <span>Parent Link</span>
+                </a>
+                <a href="#lessons" class="nav-item" data-view="lessons">
+                    <i data-lucide="book-open"></i>
+                    <span>Lessons</span>
+                </a>
+                <a href="#roster" class="nav-item" data-view="roster">
+                    <i data-lucide="clipboard-check"></i>
+                    <span>Duty Roster</span>
+                </a>
+                <a href="#noticeboard" class="nav-item" data-view="noticeboard">
+                    <i data-lucide="megaphone"></i>
+                    <span>Notice Board</span>
+                </a>
+                <a href="#timetables" class="nav-item" data-view="timetables">
+                    <i data-lucide="calendar"></i>
+                    <span>Timetables</span>
+                </a>
+                <a href="#curriculum" class="nav-item" data-view="curriculum">
+                    <i data-lucide="graduation-cap"></i>
+                    <span>Curriculum</span>
+                </a>
+                <a href="#finances" class="nav-item" data-view="finances">
+                    <i data-lucide="credit-card"></i>
+                    <span>Finances</span>
+                </a>
                 <a href="#reports" class="nav-item" data-view="reports">
-                    <i data-lucide="file-text"></i>
-                    <span>Reports</span>
+                    <i data-lucide="bar-chart-3"></i>
+                    <span>Master Reports</span>
                 </a>
-                <a href="#promotion" class="nav-item" data-view="promotion">
-                    <i data-lucide="trending-up"></i>
-                    <span>Promotion</span>
+                <a href="#insights" class="nav-item" data-view="insights">
+                    <i data-lucide="activity"></i>
+                    <span>Score Insights</span>
                 </a>
-                <a href="#settings" class="nav-item" data-view="settings">
+                <a href="#bulk" class="nav-item" data-view="bulk">
+                    <i data-lucide="upload-cloud"></i>
+                    <span>Bulk Utility</span>
+                </a>
+                <a href="#security" class="nav-item" data-view="security">
+                    <i data-lucide="activity"></i>
+                    <span>Security Log</span>
+                </a>
+                <a href="#pins" class="nav-item" data-view="pins">
+                    <i data-lucide="key"></i>
+                    <span>Access Pins</span>
+                </a>
+                <a href="#config" class="nav-item" data-view="config">
                     <i data-lucide="settings"></i>
-                    <span>Settings</span>
+                    <span>System Config</span>
                 </a>
             </nav>
             
             <div class="sidebar-footer">
-                <div id="sync-status" class="sync-status">
-                    <div class="status-indicator live"></div>
-                    <span class="status-text">Cloud Live</span>
+                <div class="sync-status-box">
+                    <div class="sync-icon-container">
+                        <i data-lucide="refresh-cw"></i>
+                    </div>
+                    <div class="sync-info">
+                        <div class="sync-title">Connecting...</div>
+                        <div class="sync-subtitle">Check Server</div>
+                    </div>
                 </div>
+                
+                <div class="user-summary">
+                    <div class="user-avatar-small">A</div>
+                    <div class="user-details">
+                        <span class="user-name-small" id="footer-user-name">Administrator</span>
+                        <span class="user-role-small" id="footer-user-role">Administrator</span>
+                    </div>
+                </div>
+                
+                <button id="logout-btn" class="btn-signout">Sign Out</button>
             </div>
         </aside>
 
