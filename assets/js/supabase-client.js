@@ -11,10 +11,14 @@ const SB_CONFIG = {
     key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVycXlnamx0aW9udmF4dWFjZnpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzEzMDEsImV4cCI6MjA5MjYwNzMwMX0.Vpk7rifsfjMCVBSYpEdVzkHv3w324iKp8B7urlKc_e4'
 };
 
-let supabase = null;
+let sb = null;
 
 if (SB_CONFIG.url && SB_CONFIG.key) {
-    supabase = supabase.createClient(SB_CONFIG.url, SB_CONFIG.key);
+    try {
+        sb = window.supabase.createClient(SB_CONFIG.url, SB_CONFIG.key);
+    } catch (e) {
+        console.error('Failed to initialize Supabase:', e);
+    }
 }
 
 /**
@@ -23,12 +27,12 @@ if (SB_CONFIG.url && SB_CONFIG.key) {
 export function initSupabase(url, key) {
     localStorage.setItem('sb_url', url);
     localStorage.setItem('sb_key', key);
-    supabase = window.supabase.createClient(url, key);
-    return supabase;
+    sb = window.supabase.createClient(url, key);
+    return sb;
 }
 
 export function getSupabase() {
-    return supabase;
+    return sb;
 }
 
 /**
@@ -41,32 +45,34 @@ export async function syncToCloud() {
     let syncCount = 0;
 
     for (const table of tables) {
-        // Find records where is_synced is 0
-        const unsynced = await db[table].where('is_synced').equals(0).toArray();
-        
-        if (unsynced.length > 0) {
-            console.log(`Syncing ${unsynced.length} records for ${table}...`);
+        try {
+            // Find records where is_synced is 0
+            const unsynced = await db[table].where('is_synced').equals(0).toArray();
             
-            // Remove the is_synced flag before sending to Supabase
-            const dataToSync = unsynced.map(item => {
-                const { is_synced, ...rest } = item;
-                return rest;
-            });
-
-            const { error } = await supabase.from(table).upsert(dataToSync);
-
-            if (!error) {
-                // Mark as synced locally
-                const ids = unsynced.map(item => item.id || item.student_id);
-                const pk = table === 'students' ? 'student_id' : 'id';
+            if (unsynced.length > 0 && sb) {
+                console.log(`Syncing ${unsynced.length} records for ${table}...`);
                 
-                for (const item of unsynced) {
-                    await db[table].update(item[pk], { is_synced: 1 });
+                // Remove the is_synced flag before sending to Supabase
+                const dataToSync = unsynced.map(item => {
+                    const { is_synced, ...rest } = item;
+                    return rest;
+                });
+
+                const { error } = await sb.from(table).upsert(dataToSync);
+
+                if (!error) {
+                    // Mark as synced locally
+                    const pk = table === 'students' ? 'student_id' : 'id';
+                    for (const item of unsynced) {
+                        await db[table].update(item[pk], { is_synced: 1 });
+                    }
+                    syncCount += unsynced.length;
+                } else {
+                    console.error(`Sync error for ${table}:`, error);
                 }
-                syncCount += unsynced.length;
-            } else {
-                console.error(`Sync error for ${table}:`, error);
             }
+        } catch (e) {
+            console.error(`Local sync error for ${table}:`, e);
         }
     }
 
@@ -83,16 +89,20 @@ export async function syncFromCloud() {
     const lastSync = localStorage.getItem('last_sync_timestamp') || new Date(0).toISOString();
 
     for (const table of tables) {
-        const { data, error } = await supabase
-            .from(table)
-            .select('*')
-            .gt('updated_at', lastSync);
+        try {
+            const { data, error } = await sb
+                .from(table)
+                .select('*')
+                .gt('updated_at', lastSync);
 
-        if (!error && data) {
-            for (const item of data) {
-                const pk = table === 'students' ? 'student_id' : 'id';
-                await db[table].put({ ...item, is_synced: 1 });
+            if (!error && data) {
+                for (const item of data) {
+                    const pk = table === 'students' ? 'student_id' : 'id';
+                    await db[table].put({ ...item, is_synced: 1 });
+                }
             }
+        } catch (e) {
+            console.error(`Pull error for ${table}:`, e);
         }
     }
 
