@@ -24,6 +24,20 @@ document.addEventListener('DOMContentLoaded', () => {
         lucide.createIcons();
     });
 
+    // Role Selector
+    const roleSelector = document.getElementById('role-selector');
+    roleSelector.value = localStorage.getItem('user_role') || 'Admin';
+    roleSelector.addEventListener('change', (e) => {
+        const newRole = e.target.value;
+        localStorage.setItem('user_role', newRole);
+        UI.currentUser.role = newRole;
+        
+        // Refresh Current View
+        const hash = window.location.hash.substring(1) || 'dashboard';
+        UI.renderView(hash);
+        Notifications.show(`Switched to ${newRole} view`, 'info');
+    });
+
     // Navigation / Routing
     const navItems = document.querySelectorAll('.nav-item');
     navItems.forEach(item => {
@@ -53,7 +67,30 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Global event listeners
     window.addEventListener('sync-complete', (e) => {
-        console.log('Sync Complete:', e.detail);
-        // Refresh current view if needed
+        const statusEl = document.getElementById('sync-status');
+        const indicator = statusEl.querySelector('.status-indicator');
+        const text = statusEl.querySelector('.status-text');
+        
+        if (e.detail.count > 0) {
+            indicator.className = 'status-indicator syncing';
+            text.textContent = `Syncing ${e.detail.count} records...`;
+            setTimeout(() => {
+                indicator.className = 'status-indicator live';
+                text.textContent = 'Cloud Live';
+            }, 3000);
+        }
+    });
+
+    // Offline Detection
+    window.addEventListener('online', () => {
+        const indicator = document.querySelector('.status-indicator');
+        indicator.className = 'status-indicator live';
+        document.querySelector('.status-text').textContent = 'Cloud Live';
+    });
+
+    window.addEventListener('offline', () => {
+        const indicator = document.querySelector('.status-indicator');
+        indicator.className = 'status-indicator offline';
+        document.querySelector('.status-text').textContent = 'Local Storage';
     });
 });

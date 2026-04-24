@@ -9,6 +9,10 @@ import { ScoringEngine, Notifications, parseExcel, generateReportCard } from './
 export const UI = {
     contentArea: document.getElementById('content-area'),
     viewTitle: document.getElementById('view-title'),
+    currentUser: {
+        role: localStorage.getItem('user_role') || 'Admin',
+        name: 'Admin User'
+    },
 
     async renderView(viewName) {
         this.showLoader();
@@ -22,6 +26,8 @@ export const UI = {
             case 'students': await this.renderStudents(); break;
             case 'grades': await this.renderGrades(); break;
             case 'attendance': await this.renderAttendance(); break;
+            case 'reports': await this.renderReports(); break;
+            case 'promotion': await this.renderPromotionEngine(); break;
             case 'settings': await this.renderSettings(); break;
             default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
         }
@@ -67,7 +73,9 @@ export const UI = {
     },
 
     async renderStudents() {
-        const students = await db.students.toArray();
+        let students = await db.students.toArray();
+        
+        // Filter students if Teacher? (Maybe see all for now as Admin/Teacher)
         
         this.contentArea.innerHTML = `
             <div class="actions-bar mb-2">
@@ -106,6 +114,26 @@ export const UI = {
         `;
 
         // Add Listeners
+        // Search Logic
+        document.getElementById('search-students').addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = students.filter(s => 
+                s.name.toLowerCase().includes(term) || 
+                s.student_id.toLowerCase().includes(term) ||
+                s.class_name.toLowerCase().includes(term)
+            );
+            
+            document.getElementById('student-list-body').innerHTML = filtered.map(s => `
+                <tr>
+                    <td>${s.student_id}</td>
+                    <td>${s.name}</td>
+                    <td>${s.class_name}</td>
+                    <td>${s.gender}</td>
+                    <td><span class="badge ${s.status === 'Active' ? 'success' : 'warning'}">${s.status}</span></td>
+                </tr>
+            `).join('');
+        });
+
         document.getElementById('import-excel').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
@@ -123,10 +151,96 @@ export const UI = {
         });
     }
 
-    async renderGrades() {
-        const students = await db.students.toArray();
+    async renderAcademic() {
+        const classes = await db.classes.toArray();
         const subjects = await db.subjects.toArray();
+        const assignments = await db.subject_assignments.toArray();
         
+        this.contentArea.innerHTML = `
+            <div class="tabs mb-2">
+                <button class="tab-btn active" data-tab="classes">Classes</button>
+                <button class="tab-btn" data-tab="subjects">Subjects</button>
+                <button class="tab-btn" data-tab="assignments">Assignments</button>
+            </div>
+            
+            <div id="tab-content">
+                <!-- Tab content will be rendered here -->
+            </div>
+        `;
+
+        const renderTab = async (tab) => {
+            const container = document.getElementById('tab-content');
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+            
+            if (tab === 'classes') {
+                const list = await db.classes.toArray();
+                container.innerHTML = `
+                    <div class="actions-bar mb-2">
+                        <button id="add-class-btn" class="btn btn-primary">Add Class</button>
+                    </div>
+                    <div class="table-container card">
+                        <table class="data-table">
+                            <thead><tr><th>Name</th><th>Level</th><th>Action</th></tr></thead>
+                            <tbody>
+                                ${list.map(c => `<tr><td>${c.name}</td><td>${c.level}</td><td><button class="btn btn-secondary btn-sm delete-class" data-id="${c.id}">Delete</button></td></tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (tab === 'subjects') {
+                const list = await db.subjects.toArray();
+                container.innerHTML = `
+                    <div class="actions-bar mb-2">
+                        <button id="add-subject-btn" class="btn btn-primary">Add Subject</button>
+                    </div>
+                    <div class="table-container card">
+                        <table class="data-table">
+                            <thead><tr><th>Name</th><th>Type</th><th>Credits</th></tr></thead>
+                            <tbody>
+                                ${list.map(s => `<tr><td>${s.name}</td><td>${s.type}</td><td>${s.credits}</td></tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (tab === 'assignments') {
+                container.innerHTML = `
+                    <div class="actions-bar mb-2">
+                        <button id="add-assignment-btn" class="btn btn-primary">Assign Teacher</button>
+                    </div>
+                    <div class="table-container card">
+                        <table class="data-table">
+                            <thead><tr><th>Teacher</th><th>Subject</th><th>Class</th></tr></thead>
+                            <tbody id="assignments-list">
+                                <!-- Assignments listed here -->
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        };
+
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => renderTab(btn.dataset.tab));
+        });
+
+        renderTab('classes');
+    },
+
+    async renderGrades() {
+        const role = this.currentUser.role;
+        let students = await db.students.toArray();
+        let subjects = await db.subjects.toArray();
+        
+        // Filter based on "Subject Teacher Rights"
+        if (role === 'Teacher') {
+            const assignments = await db.subject_assignments.toArray(); // In reality, filter by teacher_id
+            // For demo: restrict to first subject found if any
+            if (assignments.length > 0) {
+                subjects = subjects.filter(s => assignments.some(a => a.subject_id === s.id));
+            }
+        }
+
         this.contentArea.innerHTML = `
             <div class="actions-bar mb-2">
                 <select id="subject-filter" class="input">
@@ -225,8 +339,17 @@ export const UI = {
     },
 
     async renderAttendance() {
-        const students = await db.students.toArray();
+        const role = this.currentUser.role;
+        let students = await db.students.toArray();
         const today = new Date().toISOString().split('T')[0];
+
+        // Filter based on "Form Master Rights"
+        if (role === 'Teacher') {
+            const formClasses = await db.form_teachers.toArray(); // In reality, filter by teacher_id
+            if (formClasses.length > 0) {
+                students = students.filter(s => formClasses.some(f => f.class_name === s.class_name));
+            }
+        }
         
         this.contentArea.innerHTML = `
             <div class="actions-bar mb-2">
@@ -291,6 +414,102 @@ export const UI = {
             }
             
             Notifications.show(`Attendance saved for ${date}`, 'success');
+        });
+    },
+
+    async renderReports() {
+        const students = await db.students.toArray();
+        
+        this.contentArea.innerHTML = `
+            <div class="actions-bar mb-2">
+                <input type="text" id="report-search" placeholder="Search student for report..." class="input">
+            </div>
+            
+            <div class="grid" id="report-list">
+                ${students.map(s => `
+                    <div class="card student-report-card">
+                        <h3>${s.name}</h3>
+                        <p class="text-secondary">${s.student_id} | ${s.class_name}</p>
+                        <button class="btn btn-primary mt-2 generate-pdf" data-id="${s.student_id}">
+                            <i data-lucide="file-down"></i> Generate Report Card
+                        </button>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        document.querySelectorAll('.generate-pdf').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.dataset.id;
+                const student = await db.students.get(id);
+                const scores = await db.scores.where('student_id').equals(id).toArray();
+                
+                // Fetch subject names for scores
+                for (const score of scores) {
+                    const sub = await db.subjects.get(score.subject_id);
+                    score.subject_name = sub ? sub.name : 'Unknown Subject';
+                }
+
+                Notifications.show(`Generating report for ${student.name}...`, 'info');
+                await generateReportCard(student, scores, { name: 'GRAVITON ACADEMY', address: 'Academic Excellence Through Logic' });
+            });
+        });
+    },
+
+    async renderPromotionEngine() {
+        const classes = await db.classes.toArray();
+        
+        this.contentArea.innerHTML = `
+            <div class="card" style="max-width: 600px;">
+                <h3>Promotion Engine</h3>
+                <p class="text-secondary mb-2">Promote all students from one class to another.</p>
+                
+                <div class="form-group mb-2">
+                    <label>From Class</label>
+                    <select id="promo-from" class="input w-100">
+                        ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                    </select>
+                </div>
+                
+                <div class="form-group mb-2">
+                    <label>To Class</label>
+                    <select id="promo-to" class="input w-100">
+                        ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                        <option value="Graduated">Graduated</option>
+                    </select>
+                </div>
+                
+                <button id="run-promotion" class="btn btn-warning">Run Batch Promotion</button>
+            </div>
+        `;
+
+        document.getElementById('run-promotion').addEventListener('click', async () => {
+            const from = document.getElementById('promo-from').value;
+            const to = document.getElementById('promo-to').value;
+            
+            if (from === to) {
+                Notifications.show('Source and destination classes must be different', 'error');
+                return;
+            }
+
+            const students = await db.students.where('class_name').equals(from).toArray();
+            
+            if (students.length === 0) {
+                Notifications.show(`No students found in ${from}`, 'error');
+                return;
+            }
+
+            if (confirm(`Are you sure you want to promote ${students.length} students from ${from} to ${to}?`)) {
+                for (const s of students) {
+                    await db.students.update(s.student_id, {
+                        class_name: to,
+                        is_synced: 0,
+                        updated_at: new Date().toISOString()
+                    });
+                }
+                Notifications.show(`Successfully promoted ${students.length} students`, 'success');
+                this.renderPromotionEngine();
+            }
         });
     },
 
