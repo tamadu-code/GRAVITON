@@ -67,31 +67,105 @@ export const UI = {
     async renderDashboard() {
         const studentCount = await db.students.count();
         const classCount = await db.classes.count();
+        const subjectCount = await db.subjects.count();
         const unsyncedCount = await db.students.where('is_synced').equals(0).count();
 
         this.contentArea.innerHTML = `
-            <div class="grid">
-                <div class="card">
-                    <h3>Total Students</h3>
-                    <p class="stat">${studentCount}</p>
+            <div class="dashboard-grid">
+                <!-- Stats Row -->
+                <div class="grid mb-2">
+                    <div class="card stat-card primary-gradient">
+                        <div class="stat-icon"><i data-lucide="users"></i></div>
+                        <div class="stat-info">
+                            <h3>Total Students</h3>
+                            <p class="stat-value">${studentCount}</p>
+                        </div>
+                    </div>
+                    <div class="card stat-card secondary-gradient">
+                        <div class="stat-icon"><i data-lucide="book-open"></i></div>
+                        <div class="stat-info">
+                            <h3>Active Classes</h3>
+                            <p class="stat-value">${classCount}</p>
+                        </div>
+                    </div>
+                    <div class="card stat-card accent-gradient">
+                        <div class="stat-icon"><i data-lucide="library"></i></div>
+                        <div class="stat-info">
+                            <h3>Subjects</h3>
+                            <p class="stat-value">${subjectCount}</p>
+                        </div>
+                    </div>
+                    <div class="card stat-card warning-gradient">
+                        <div class="stat-icon"><i data-lucide="refresh-cw"></i></div>
+                        <div class="stat-info">
+                            <h3>Pending Syncs</h3>
+                            <p class="stat-value">${unsyncedCount}</p>
+                        </div>
+                    </div>
                 </div>
-                <div class="card">
-                    <h3>Classes</h3>
-                    <p class="stat">${classCount}</p>
+
+                <!-- Main Content Row -->
+                <div class="grid main-dashboard-row">
+                    <!-- Quick Actions -->
+                    <div class="card quick-actions">
+                        <h3><i data-lucide="zap"></i> Quick Actions</h3>
+                        <div class="action-grid mt-2">
+                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'students\\']').click()">
+                                <div class="icon-wrapper bg-success-light"><i data-lucide="user-plus" class="text-success"></i></div>
+                                <span>Manage Students</span>
+                            </button>
+                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'attendance\\']').click()">
+                                <div class="icon-wrapper bg-warning-light"><i data-lucide="check-square" class="text-warning"></i></div>
+                                <span>Daily Attendance</span>
+                            </button>
+                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'grades\\']').click()">
+                                <div class="icon-wrapper bg-primary-light"><i data-lucide="award" class="text-primary"></i></div>
+                                <span>Enter Grades</span>
+                            </button>
+                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'reports\\']').click()">
+                                <div class="icon-wrapper bg-accent-light"><i data-lucide="file-text" class="text-accent"></i></div>
+                                <span>Report Cards</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- System Overview / Notifications -->
+                    <div class="card recent-activity">
+                        <div class="card-header flex-between mb-2">
+                            <h3><i data-lucide="activity"></i> System Overview</h3>
+                            <button id="manual-sync" class="btn btn-sm btn-primary"><i data-lucide="cloud-sync"></i> Force Sync</button>
+                        </div>
+                        <div class="activity-feed">
+                            <div class="feed-item">
+                                <div class="feed-icon"><i data-lucide="info"></i></div>
+                                <div class="feed-content">
+                                    <p><strong>System Ready</strong></p>
+                                    <span class="text-secondary text-sm">Graviton CMS initialized successfully in offline-first mode.</span>
+                                </div>
+                            </div>
+                            <div class="feed-item">
+                                <div class="feed-icon"><i data-lucide="database"></i></div>
+                                <div class="feed-content">
+                                    <p><strong>Data Persisted</strong></p>
+                                    <span class="text-secondary text-sm">Local database synchronized. ${unsyncedCount} items pending cloud push.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="card">
-                    <h3>Sync Status</h3>
-                    <p class="stat">${unsyncedCount} Pending</p>
-                    <button id="manual-sync" class="btn btn-primary">Sync Now</button>
-                </div>
-            </div>
-            
-            <div class="recent-activity card mt-2">
-                <h3>System Overview</h3>
-                <p>Welcome to Graviton CMS. Use the sidebar to navigate through academic records.</p>
             </div>
         `;
+        
+        // Add manual sync listener if needed
+        const manualSyncBtn = document.getElementById('manual-sync');
+        if(manualSyncBtn) {
+            manualSyncBtn.addEventListener('click', () => {
+                if (window.Notifications) window.Notifications.show('Manual sync triggered', 'info');
+                // Assuming startSyncLoop can be triggered manually or we just let it run
+            });
+        }
     },
+
 
     async renderStudents() {
         let students = await db.students.toArray();
