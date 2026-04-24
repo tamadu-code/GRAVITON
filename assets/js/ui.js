@@ -245,7 +245,7 @@ export const UI = {
                 this.renderStudents();
             }
         });
-    }
+    },
 
     async renderAcademic() {
         const classes = await db.classes.toArray();
