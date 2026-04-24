@@ -7,29 +7,50 @@ import db from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard } from './utils.js';
 
 export const UI = {
-    contentArea: document.getElementById('content-area'),
-    viewTitle: document.getElementById('view-title'),
+    get contentArea() { return document.getElementById('content-area'); },
+    get viewTitle() { return document.getElementById('view-title'); },
     currentUser: {
         role: localStorage.getItem('user_role') || 'Admin',
         name: 'Admin User'
     },
 
     async renderView(viewName) {
-        this.showLoader();
-        
-        // Update Title
-        this.viewTitle.textContent = viewName.charAt(0).toUpperCase() + viewName.slice(1);
-        
-        // Render specific view
-        switch(viewName) {
-            case 'dashboard': await this.renderDashboard(); break;
-            case 'students': await this.renderStudents(); break;
-            case 'grades': await this.renderGrades(); break;
-            case 'attendance': await this.renderAttendance(); break;
-            case 'reports': await this.renderReports(); break;
-            case 'promotion': await this.renderPromotionEngine(); break;
-            case 'settings': await this.renderSettings(); break;
-            default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
+        try {
+            if (!this.contentArea) {
+                console.error('Content area not found');
+                return;
+            }
+
+            this.showLoader();
+            
+            // Update Title
+            if (this.viewTitle) {
+                this.viewTitle.textContent = viewName.charAt(0).toUpperCase() + viewName.slice(1);
+            }
+            
+            // Render specific view
+            switch(viewName) {
+                case 'dashboard': await this.renderDashboard(); break;
+                case 'students': await this.renderStudents(); break;
+                case 'academic': await this.renderAcademic(); break;
+                case 'grades': await this.renderGrades(); break;
+                case 'attendance': await this.renderAttendance(); break;
+                case 'reports': await this.renderReports(); break;
+                case 'promotion': await this.renderPromotionEngine(); break;
+                case 'settings': await this.renderSettings(); break;
+                default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
+            }
+        } catch (error) {
+            console.error(`Error rendering ${viewName}:`, error);
+            if (this.contentArea) {
+                this.contentArea.innerHTML = `
+                    <div class="card error-card" style="border-color: var(--accent-danger);">
+                        <h3 style="color: var(--accent-danger);"><i data-lucide="alert-triangle"></i> Error Loading View</h3>
+                        <p class="text-secondary mt-2">${error.message}</p>
+                        <button class="btn btn-secondary mt-2" onclick="location.reload()">Reload Page</button>
+                    </div>
+                `;
+            }
         }
         
         lucide.createIcons();
