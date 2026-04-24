@@ -335,8 +335,8 @@ window.addEventListener('sync-complete', (e) => {
 const logoutBtn = document.getElementById('logout-btn');
 if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
-        const { error } = await supabase.auth.signOut();
-        if (!error) {
+        const success = await logoutUser();
+        if (success) {
             window.location.reload();
         }
     });
