@@ -194,7 +194,6 @@ export async function registerUser(email, password, fullName, role) {
             id: data.user.id,
             full_name: fullName,
             role: role,
-            email: email,
             updated_at: new Date().toISOString()
         };
 

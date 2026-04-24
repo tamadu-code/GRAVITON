@@ -110,7 +110,6 @@ async function loadAuthenticatedApp(authUser) {
             id: authUser.id,
             full_name: full_name || authUser.email.split('@')[0],
             role: role || 'Pending',
-            email: authUser.email,
             updated_at: new Date().toISOString()
         };
 
