@@ -224,6 +224,76 @@ export const UI = {
         });
     },
 
+    async renderAttendance() {
+        const students = await db.students.toArray();
+        const today = new Date().toISOString().split('T')[0];
+        
+        this.contentArea.innerHTML = `
+            <div class="actions-bar mb-2">
+                <input type="date" id="attendance-date" class="input" value="${today}">
+                <button id="save-attendance" class="btn btn-success">Save All</button>
+            </div>
+            
+            <div class="table-container card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Student ID</th>
+                            <th>Name</th>
+                            <th>Class</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attendance-body">
+                        ${students.map(s => `
+                            <tr data-student-id="${s.student_id}">
+                                <td>${s.student_id}</td>
+                                <td>${s.name}</td>
+                                <td>${s.class_name}</td>
+                                <td>
+                                    <div class="attendance-options">
+                                        <label class="radio-label">
+                                            <input type="radio" name="status-${s.student_id}" value="Present" checked> Present
+                                        </label>
+                                        <label class="radio-label">
+                                            <input type="radio" name="status-${s.student_id}" value="Absent"> Absent
+                                        </label>
+                                        <label class="radio-label">
+                                            <input type="radio" name="status-${s.student_id}" value="Late"> Late
+                                        </label>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        document.getElementById('save-attendance').addEventListener('click', async () => {
+            const date = document.getElementById('attendance-date').value;
+            const rows = document.querySelectorAll('#attendance-body tr');
+            
+            for (const row of rows) {
+                const studentId = row.getAttribute('data-student-id');
+                const status = row.querySelector(`input[name="status-${studentId}"]:checked`).value;
+                
+                const attendanceData = {
+                    id: `${studentId}_${date}`,
+                    student_id: studentId,
+                    date: date,
+                    status: status,
+                    is_synced: 0,
+                    updated_at: new Date().toISOString()
+                };
+                
+                await db.attendance.put(attendanceData);
+            }
+            
+            Notifications.show(`Attendance saved for ${date}`, 'success');
+        });
+    },
+
     async renderSettings() {
         const url = localStorage.getItem('sb_url') || '';
         const key = localStorage.getItem('sb_key') || '';
