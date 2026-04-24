@@ -98,21 +98,39 @@ async function loadAuthenticatedApp(authUser) {
     forgotPasswordScreen.style.display = 'none';
     appContainer.style.display = 'flex';
 
-    // Fetch user profile to get role and assigned_id
-    const profile = await getUserProfile(authUser.id);
+    // Fetch user profile
+    let profile = await getUserProfile(authUser.id);
 
-    // Fallback if profile doesn't exist yet
-    const userRole = profile ? profile.role : 'Admin';
-    const userName = profile ? profile.full_name : authUser.email;
-    const assignedId = profile ? profile.assigned_id : null;
+    // Safety net: If profile is missing (e.g. signup insert failed), create it now
+    if (!profile) {
+        console.log("Profile missing, creating from metadata...");
+        const { full_name, role } = authUser.user_metadata || {};
+        
+        const newProfile = {
+            id: authUser.id,
+            full_name: full_name || authUser.email.split('@')[0],
+            role: role || 'Pending',
+            email: authUser.email,
+            updated_at: new Date().toISOString()
+        };
+
+        const sb = await import('./supabase-client.js').then(m => m.getSupabase());
+        if (sb) {
+            const { data, error } = await sb.from('profiles').upsert(newProfile).select().single();
+            if (!error) profile = data;
+        }
+        
+        // If still no profile (insert failed), use the local object
+        if (!profile) profile = newProfile;
+    }
 
     // Update UI State
     UI.currentUser = {
         id: authUser.id,
         email: authUser.email,
-        role: userRole,
-        name: userName,
-        assigned_id: assignedId
+        role: profile.role || 'Pending',
+        name: profile.full_name || authUser.email,
+        assigned_id: profile.assigned_id || null
     };
 
     // Update Topbar UI (use safe selectors)
