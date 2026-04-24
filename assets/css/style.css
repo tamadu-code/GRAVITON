@@ -804,6 +804,36 @@ label {
     padding-right: 2.5rem;
 }
 
+/* Password input with extra room for toggle */
+.login-input-pw {
+    padding-right: 3rem;
+}
+
+/* Password show/hide toggle button */
+.pw-toggle {
+    position: absolute;
+    right: 0.75rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #94a3b8;
+    padding: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3;
+    transition: color 0.2s;
+}
+
+.pw-toggle:hover {
+    color: #6366f1;
+}
+
+.pw-toggle i {
+    width: 18px;
+    height: 18px;
+}
+
 .login-input::placeholder {
     color: #94a3b8;
 }

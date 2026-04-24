@@ -41,7 +41,27 @@ const backToLoginLink = document.getElementById('back-to-login');
 const forgotPasswordLink = document.getElementById('forgot-password-link');
 const backToLoginFromResetLink = document.getElementById('back-to-login-from-reset');
 
-// App elements
+// ─── Password Visibility Toggle ───
+document.querySelectorAll('.pw-toggle').forEach(button => {
+    button.addEventListener('click', () => {
+        const targetId = button.getAttribute('data-target');
+        const input = document.getElementById(targetId);
+        const icon = button.querySelector('i');
+        
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.setAttribute('data-lucide', 'eye');
+        } else {
+            input.type = 'password';
+            icon.setAttribute('data-lucide', 'eye-off');
+        }
+        
+        // Refresh icons
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+});
+
+// ─── App elements ───
 const logoutBtn = document.getElementById('logout-btn');
 
 // ─── Screen Switching Helpers ───
