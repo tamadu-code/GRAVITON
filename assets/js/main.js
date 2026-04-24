@@ -7,8 +7,12 @@ import { startSyncLoop } from './supabase-client.js';
 
 // Module scripts are deferred by default, so the DOM is already ready here.
 
-// Initialize Lucide Icons
-lucide.createIcons();
+// Initialize Lucide Icons safely
+if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+} else {
+    console.warn('Lucide icons failed to load from CDN.');
+}
 
 // Sidebar Toggle
 const sidebar = document.getElementById('sidebar');

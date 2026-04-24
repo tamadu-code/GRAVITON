@@ -52,8 +52,9 @@ export const UI = {
                 `;
             }
         }
-        
-        lucide.createIcons();
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
     },
 
     showLoader() {
@@ -312,7 +313,9 @@ export const UI = {
                     </div>
                 `;
             }
-            lucide.createIcons();
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
         };
 
         document.querySelectorAll('.tab-btn').forEach(btn => {
