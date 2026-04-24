@@ -3,9 +3,7 @@
  */
 
 import { UI } from './ui.js';
-import { startSyncLoop } from './supabase-client.js';
-
-// Module scripts are deferred by default, so the DOM is already ready here.
+import { loginUser, logoutUser, getCurrentSession, getUserProfile, registerUser, resetPassword, startSyncLoop } from './supabase-client.js';
 
 // Initialize Lucide Icons safely
 if (typeof lucide !== 'undefined') {
@@ -14,66 +12,80 @@ if (typeof lucide !== 'undefined') {
     console.warn('Lucide icons failed to load from CDN.');
 }
 
-// Sidebar Toggle
-const sidebar = document.getElementById('sidebar');
-const toggle = document.getElementById('sidebar-toggle');
-
-toggle.addEventListener('click', () => {
-    sidebar.classList.toggle('collapsed');
-    const icon = toggle.querySelector('i');
-    if (sidebar.classList.contains('collapsed')) {
-        icon.setAttribute('data-lucide', 'chevron-right');
-    } else {
-        icon.setAttribute('data-lucide', 'chevron-left');
-    }
-    lucide.createIcons();
-});
-
-// Auth Imports
-import { loginUser, logoutUser, getCurrentSession, getUserProfile, startSyncLoop } from './supabase-client.js';
-
-// DOM Elements
+// ─── DOM Elements ───
 const loginScreen = document.getElementById('login-screen');
-const appContainer = document.getElementById('app-container');
+const createAccountScreen = document.getElementById('create-account-screen');
+const forgotPasswordScreen = document.getElementById('forgot-password-screen');
+const appContainer = document.getElementById('app');
+
+// Login form
 const loginForm = document.getElementById('login-form');
 const loginBtn = document.getElementById('login-submit-btn');
 const loginError = document.getElementById('login-error');
+
+// Create account form
+const createAccountForm = document.getElementById('create-account-form');
+const createAccountBtn = document.getElementById('create-account-btn');
+const registerError = document.getElementById('register-error');
+const registerSuccess = document.getElementById('register-success');
+
+// Forgot password form
+const forgotPasswordForm = document.getElementById('forgot-password-form');
+const resetSubmitBtn = document.getElementById('reset-submit-btn');
+const resetError = document.getElementById('reset-error');
+const resetSuccess = document.getElementById('reset-success');
+
+// Navigation links between auth screens
+const showCreateAccountLink = document.getElementById('show-create-account');
+const backToLoginLink = document.getElementById('back-to-login');
+const forgotPasswordLink = document.getElementById('forgot-password-link');
+const backToLoginFromResetLink = document.getElementById('back-to-login-from-reset');
+
+// App elements
 const logoutBtn = document.getElementById('logout-btn');
 
-/**
- * App Initialization Flow
- */
+// ─── Screen Switching Helpers ───
+function showScreen(screen) {
+    loginScreen.style.display = 'none';
+    createAccountScreen.style.display = 'none';
+    forgotPasswordScreen.style.display = 'none';
+    appContainer.style.display = 'none';
+    screen.style.display = 'flex';
+
+    // Re-render icons for the newly visible screen
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function showLoginScreen() {
+    showScreen(loginScreen);
+}
+
+// ─── App Initialization ───
 async function initApp() {
-    // 1. Check Session
     const session = await getCurrentSession();
-    
+
     if (session) {
-        // User is logged in
         await loadAuthenticatedApp(session.user);
     } else {
-        // Show Login
         showLoginScreen();
     }
 }
 
-function showLoginScreen() {
-    loginScreen.style.display = 'flex';
-    appContainer.style.display = 'none';
-}
-
 async function loadAuthenticatedApp(authUser) {
-    // Hide login, show app
+    // Hide all auth screens, show app
     loginScreen.style.display = 'none';
+    createAccountScreen.style.display = 'none';
+    forgotPasswordScreen.style.display = 'none';
     appContainer.style.display = 'flex';
-    
+
     // Fetch user profile to get role and assigned_id
     const profile = await getUserProfile(authUser.id);
-    
-    // Fallback if profile doesn't exist yet (for testing)
+
+    // Fallback if profile doesn't exist yet
     const userRole = profile ? profile.role : 'Admin';
     const userName = profile ? profile.full_name : authUser.email;
     const assignedId = profile ? profile.assigned_id : null;
-    
+
     // Update UI State
     UI.currentUser = {
         id: authUser.id,
@@ -82,91 +94,202 @@ async function loadAuthenticatedApp(authUser) {
         name: userName,
         assigned_id: assignedId
     };
-    
-    // Update Topbar UI
-    document.getElementById('display-user-name').textContent = userName;
-    document.getElementById('display-user-role').textContent = userRole;
-    
+
+    // Update Topbar UI (use safe selectors)
+    const userNameEl = document.querySelector('.user-name');
+    const userRoleEl = document.querySelector('.user-role');
+    if (userNameEl) userNameEl.textContent = userName;
+    if (userRoleEl) userRoleEl.textContent = userRole;
+
     // Start Data Sync Loop
     startSyncLoop();
-    
+
     // Handle initial route
     const hash = window.location.hash.substring(1) || 'dashboard';
     const activeNav = document.querySelector(`.nav-item[data-view="${hash}"]`);
     if (activeNav) {
         activeNav.click();
     } else {
-        UI.renderView('dashboard'); // Fallback
+        UI.renderView('dashboard');
     }
 }
 
-/**
- * Event Listeners
- */
-
-// Login Form Submit
+// ─── Login Form Submit ───
 if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
-        const email = document.getElementById('login-email').value;
+
+        const email = document.getElementById('login-email').value.trim();
         const password = document.getElementById('login-password').value;
-        
+
         loginBtn.disabled = true;
         loginBtn.innerHTML = '<div class="loader" style="width:16px; height:16px; border-width:2px;"></div>';
         loginError.style.display = 'none';
-        
+
         const { data, error } = await loginUser(email, password);
-        
+
         if (error) {
-            loginError.textContent = error.message;
+            loginError.textContent = error.message || 'Invalid email or password.';
             loginError.style.display = 'block';
             loginBtn.disabled = false;
-            loginBtn.innerHTML = '<i data-lucide="log-in"></i> Sign In';
+            loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
             if (typeof lucide !== 'undefined') lucide.createIcons();
         } else if (data && data.session) {
-            // Success
             await loadAuthenticatedApp(data.session.user);
         }
     });
 }
 
-// Logout Button
-if (logoutBtn) {
-    logoutBtn.addEventListener('click', async () => {
-        await logoutUser();
-        window.location.reload(); // Reload to clear all state
+// ─── Create Account Form Submit ───
+if (createAccountForm) {
+    createAccountForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const fullName = document.getElementById('register-name').value.trim();
+        const email = document.getElementById('register-email').value.trim();
+        const password = document.getElementById('register-password').value;
+        const confirmPassword = document.getElementById('register-confirm-password').value;
+
+        // Hide previous messages
+        registerError.style.display = 'none';
+        registerSuccess.style.display = 'none';
+
+        // Validation
+        if (password !== confirmPassword) {
+            registerError.textContent = 'Passwords do not match.';
+            registerError.style.display = 'block';
+            return;
+        }
+
+        if (password.length < 6) {
+            registerError.textContent = 'Password must be at least 6 characters.';
+            registerError.style.display = 'block';
+            return;
+        }
+
+        createAccountBtn.disabled = true;
+        createAccountBtn.innerHTML = '<div class="loader" style="width:16px; height:16px; border-width:2px;"></div>';
+
+        const { data, error } = await registerUser(email, password, fullName, 'Pending');
+
+        if (error) {
+            registerError.textContent = error.message || 'Failed to create account.';
+            registerError.style.display = 'block';
+            createAccountBtn.disabled = false;
+            createAccountBtn.innerHTML = '<span>Create Account</span><i data-lucide="arrow-right"></i>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        } else {
+            registerSuccess.textContent = 'Account created! Verify your email, then an admin will assign your role.';
+            registerSuccess.style.display = 'block';
+            createAccountForm.reset();
+            createAccountBtn.disabled = false;
+            createAccountBtn.innerHTML = '<span>Create Account</span><i data-lucide="arrow-right"></i>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            // Auto-redirect to login after a delay
+            setTimeout(() => {
+                showLoginScreen();
+                registerSuccess.style.display = 'none';
+            }, 4000);
+        }
     });
 }
 
-// Navigation / Routing
+// ─── Forgot Password Form Submit ───
+if (forgotPasswordForm) {
+    forgotPasswordForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const email = document.getElementById('reset-email').value.trim();
+
+        resetError.style.display = 'none';
+        resetSuccess.style.display = 'none';
+
+        resetSubmitBtn.disabled = true;
+        resetSubmitBtn.innerHTML = '<div class="loader" style="width:16px; height:16px; border-width:2px;"></div>';
+
+        const { error } = await resetPassword(email);
+
+        if (error) {
+            resetError.textContent = error.message || 'Failed to send reset link.';
+            resetError.style.display = 'block';
+        } else {
+            resetSuccess.textContent = 'Reset link sent! Check your email inbox.';
+            resetSuccess.style.display = 'block';
+            forgotPasswordForm.reset();
+        }
+
+        resetSubmitBtn.disabled = false;
+        resetSubmitBtn.innerHTML = '<span>Send Reset Link</span><i data-lucide="send"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+}
+
+// ─── Auth Screen Navigation ───
+if (showCreateAccountLink) {
+    showCreateAccountLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        showScreen(createAccountScreen);
+    });
+}
+
+if (backToLoginLink) {
+    backToLoginLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        showScreen(loginScreen);
+    });
+}
+
+if (forgotPasswordLink) {
+    forgotPasswordLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        showScreen(forgotPasswordScreen);
+    });
+}
+
+if (backToLoginFromResetLink) {
+    backToLoginFromResetLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        showScreen(loginScreen);
+    });
+}
+
+// ─── Logout Button ───
+if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+        await logoutUser();
+        window.location.reload();
+    });
+}
+
+// ─── Navigation / Routing ───
 const navItems = document.querySelectorAll('.nav-item');
 navItems.forEach(item => {
     item.addEventListener('click', (e) => {
         e.preventDefault();
-        
+
         const view = item.getAttribute('data-view');
-        
+
         // Strict Role-Based Protection
-        const role = UI.currentUser.role;
+        const role = UI.currentUser?.role;
         if (role === 'Parent' && ['academic', 'promotion', 'settings', 'students'].includes(view)) {
             if (window.Notifications) Notifications.show('Access Denied', 'error');
             return;
         }
-        
+
         // UI State
         navItems.forEach(ni => ni.classList.remove('active'));
         item.classList.add('active');
-        
+
         // Render View
         UI.renderView(view);
-        
+
         // Update URL hash without jumping
         history.pushState(null, null, `#${view}`);
     });
 });
 
-// Sidebar Toggle (Desktop)
+// ─── Sidebar Toggle (Desktop) ───
 const sidebar = document.getElementById('sidebar');
 const toggle = document.getElementById('sidebar-toggle');
 if (toggle) {
@@ -182,10 +305,9 @@ if (toggle) {
     });
 }
 
-// Mobile Sidebar Toggle
+// ─── Mobile Sidebar Toggle ───
 const mobileMenuBtn = document.getElementById('mobile-menu-btn');
 if (mobileMenuBtn && sidebar) {
-    // Create overlay if it doesn't exist
     let overlay = document.querySelector('.sidebar-overlay');
     if (!overlay) {
         overlay = document.createElement('div');
@@ -202,8 +324,7 @@ if (mobileMenuBtn && sidebar) {
     overlay.addEventListener('click', toggleMobileMenu);
 
     // Close sidebar when clicking a nav item on mobile
-    const navItemsList = document.querySelectorAll('.nav-item');
-    navItemsList.forEach(item => {
+    navItems.forEach(item => {
         item.addEventListener('click', () => {
             if (window.innerWidth <= 768 && sidebar.classList.contains('mobile-open')) {
                 toggleMobileMenu();
@@ -212,8 +333,7 @@ if (mobileMenuBtn && sidebar) {
     });
 }
 
-
-// Global Sync & Network Events
+// ─── Global Sync & Network Events ───
 window.addEventListener('sync-complete', (e) => {
     const statusEl = document.getElementById('sync-status');
     if (!statusEl) return;
@@ -247,6 +367,5 @@ window.addEventListener('offline', () => {
     }
 });
 
-// Start the App
+// ─── Start the App ───
 initApp();
-

@@ -23,12 +23,21 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-    <!-- Auth Screen -->
+    <!-- Auth Screen: Login -->
     <div id="login-screen" class="login-screen">
         <div class="login-card">
             <div class="login-header text-center">
-                <div class="login-logo-glow">
-                    <i data-lucide="school"></i>
+                <!-- Orbital Animation -->
+                <div class="login-orbit-container">
+                    <div class="orbit-ring orbit-ring-1"></div>
+                    <div class="orbit-ring orbit-ring-2"></div>
+                    <div class="orbit-ring orbit-ring-3"></div>
+                    <div class="orbit-dot orbit-dot-1"></div>
+                    <div class="orbit-dot orbit-dot-2"></div>
+                    <div class="orbit-dot orbit-dot-3"></div>
+                    <div class="login-logo-glow">
+                        <i data-lucide="school"></i>
+                    </div>
                 </div>
                 <h2>Portal Sign In</h2>
                 <p class="text-secondary text-sm mt-1">Enter your credentials to access your<br>dashboard</p>
@@ -48,7 +57,7 @@
                         <input type="password" id="login-password" class="login-input" required placeholder="••••••••">
                     </div>
                     <div class="text-right mt-0-5" style="text-align: right; margin-top: 0.5rem;">
-                        <a href="#" class="forgot-link">Forgot Password?</a>
+                        <a href="#" id="forgot-password-link" class="forgot-link">Forgot Password?</a>
                     </div>
                 </div>
                 <button type="submit" class="btn-login w-100 mt-2" id="login-submit-btn">
@@ -57,8 +66,112 @@
                 </button>
                 <div id="login-error" class="login-error mt-1 text-center" style="display: none; color: #f87171; font-size: 0.85rem;"></div>
                 
-                <div class="text-center" style="margin-top: 2rem;">
-                    <a href="#" class="create-account-link">New Faculty Member? Create Account</a>
+                <div class="text-center create-account-section">
+                    <a href="#" id="show-create-account" class="create-account-link">New Faculty Member? Create Account</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Auth Screen: Create Account -->
+    <div id="create-account-screen" class="login-screen" style="display: none;">
+        <div class="login-card">
+            <div class="login-header text-center">
+                <!-- Orbital Animation -->
+                <div class="login-orbit-container">
+                    <div class="orbit-ring orbit-ring-1"></div>
+                    <div class="orbit-ring orbit-ring-2"></div>
+                    <div class="orbit-ring orbit-ring-3"></div>
+                    <div class="orbit-dot orbit-dot-1"></div>
+                    <div class="orbit-dot orbit-dot-2"></div>
+                    <div class="orbit-dot orbit-dot-3"></div>
+                    <div class="login-logo-glow">
+                        <i data-lucide="user-plus"></i>
+                    </div>
+                </div>
+                <h2>Create Account</h2>
+                <p class="text-secondary text-sm mt-1">Register your account. An admin will<br>assign your role.</p>
+            </div>
+            <form id="create-account-form" class="login-form mt-2">
+                <div class="form-group mb-1-5">
+                    <label class="login-label" for="register-name">FULL NAME</label>
+                    <div class="input-with-icon">
+                        <i data-lucide="user"></i>
+                        <input type="text" id="register-name" class="login-input" required placeholder="e.g. John Doe">
+                    </div>
+                </div>
+                <div class="form-group mb-1-5">
+                    <label class="login-label" for="register-email">EMAIL ADDRESS</label>
+                    <div class="input-with-icon">
+                        <i data-lucide="mail"></i>
+                        <input type="email" id="register-email" class="login-input" required placeholder="your.email@school.edu">
+                    </div>
+                </div>
+
+                <div class="form-group mb-1-5">
+                    <label class="login-label" for="register-password">PASSWORD</label>
+                    <div class="input-with-icon">
+                        <i data-lucide="lock"></i>
+                        <input type="password" id="register-password" class="login-input" required placeholder="Min 6 characters" minlength="6">
+                    </div>
+                </div>
+                <div class="form-group mb-2">
+                    <label class="login-label" for="register-confirm-password">CONFIRM PASSWORD</label>
+                    <div class="input-with-icon">
+                        <i data-lucide="shield-check"></i>
+                        <input type="password" id="register-confirm-password" class="login-input" required placeholder="Re-enter your password" minlength="6">
+                    </div>
+                </div>
+                <button type="submit" class="btn-login w-100" id="create-account-btn">
+                    <span>Create Account</span>
+                    <i data-lucide="arrow-right"></i>
+                </button>
+                <div id="register-error" class="login-error mt-1 text-center" style="display: none; color: #f87171; font-size: 0.85rem;"></div>
+                <div id="register-success" class="login-success mt-1 text-center" style="display: none;"></div>
+
+                <div class="text-center create-account-section">
+                    <a href="#" id="back-to-login" class="create-account-link">Already have an account? Sign In</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Auth Screen: Forgot Password -->
+    <div id="forgot-password-screen" class="login-screen" style="display: none;">
+        <div class="login-card">
+            <div class="login-header text-center">
+                <!-- Orbital Animation -->
+                <div class="login-orbit-container">
+                    <div class="orbit-ring orbit-ring-1"></div>
+                    <div class="orbit-ring orbit-ring-2"></div>
+                    <div class="orbit-ring orbit-ring-3"></div>
+                    <div class="orbit-dot orbit-dot-1"></div>
+                    <div class="orbit-dot orbit-dot-2"></div>
+                    <div class="orbit-dot orbit-dot-3"></div>
+                    <div class="login-logo-glow">
+                        <i data-lucide="key-round"></i>
+                    </div>
+                </div>
+                <h2>Reset Password</h2>
+                <p class="text-secondary text-sm mt-1">Enter your email and we'll send you<br>a reset link</p>
+            </div>
+            <form id="forgot-password-form" class="login-form mt-2">
+                <div class="form-group mb-2">
+                    <label class="login-label" for="reset-email">EMAIL ADDRESS</label>
+                    <div class="input-with-icon">
+                        <i data-lucide="mail"></i>
+                        <input type="email" id="reset-email" class="login-input" required placeholder="your.email@school.edu">
+                    </div>
+                </div>
+                <button type="submit" class="btn-login w-100" id="reset-submit-btn">
+                    <span>Send Reset Link</span>
+                    <i data-lucide="send"></i>
+                </button>
+                <div id="reset-error" class="login-error mt-1 text-center" style="display: none; color: #f87171; font-size: 0.85rem;"></div>
+                <div id="reset-success" class="login-success mt-1 text-center" style="display: none;"></div>
+
+                <div class="text-center create-account-section">
+                    <a href="#" id="back-to-login-from-reset" class="create-account-link">Back to Sign In</a>
                 </div>
             </form>
         </div>
@@ -157,6 +270,6 @@
     <div id="notification-container" class="notification-container"></div>
 
     <!-- Scripts -->
-    <script type="module" src="assets/js/main.js?v=4"></script>
+    <script type="module" src="assets/js/main.js?v=5"></script>
 </body>
 </html>

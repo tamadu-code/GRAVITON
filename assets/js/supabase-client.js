@@ -97,7 +97,6 @@ export async function syncFromCloud() {
 
             if (!error && data) {
                 for (const item of data) {
-                    const pk = table === 'students' ? 'student_id' : 'id';
                     await db[table].put({ ...item, is_synced: 1 });
                 }
             }
@@ -121,22 +120,33 @@ export function startSyncLoop(intervalMs = 60000) {
         if (status.count > 0) {
             window.dispatchEvent(new CustomEvent('sync-complete', { detail: status }));
         }
+    }, intervalMs);
 }
 
+// ─────────────────────────────────────────
+// Authentication Methods
+// ─────────────────────────────────────────
+
 /**
- * Authentication Methods
+ * Sign in with email and password
  */
 export async function loginUser(email, password) {
-    if (!sb) return { error: 'Supabase not initialized' };
+    if (!sb) return { data: null, error: { message: 'Supabase not initialized' } };
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
     return { data, error };
 }
 
+/**
+ * Sign out
+ */
 export async function logoutUser() {
     if (!sb) return;
     await sb.auth.signOut();
 }
 
+/**
+ * Get current session
+ */
 export async function getCurrentSession() {
     if (!sb) return null;
     const { data, error } = await sb.auth.getSession();
@@ -144,6 +154,9 @@ export async function getCurrentSession() {
     return data.session;
 }
 
+/**
+ * Get user profile from the profiles table
+ */
 export async function getUserProfile(userId) {
     if (!sb) return null;
     const { data, error } = await sb.from('profiles').select('*').eq('id', userId).single();
@@ -154,3 +167,55 @@ export async function getUserProfile(userId) {
     return data;
 }
 
+/**
+ * Register a new user account
+ * Creates auth user and inserts profile row
+ */
+export async function registerUser(email, password, fullName, role) {
+    if (!sb) return { data: null, error: { message: 'Supabase not initialized' } };
+
+    // 1. Create auth user
+    const { data, error } = await sb.auth.signUp({
+        email,
+        password,
+        options: {
+            data: {
+                full_name: fullName,
+                role: role
+            }
+        }
+    });
+
+    if (error) return { data: null, error };
+
+    // 2. Insert profile row (Supabase trigger may also do this, but this is a safety net)
+    if (data.user) {
+        const profileData = {
+            id: data.user.id,
+            full_name: fullName,
+            role: role,
+            email: email,
+            updated_at: new Date().toISOString()
+        };
+
+        const { error: profileError } = await sb.from('profiles').upsert(profileData);
+        if (profileError) {
+            console.warn('Profile insert warning (may already exist via trigger):', profileError.message);
+        }
+    }
+
+    return { data, error: null };
+}
+
+/**
+ * Send password reset email
+ */
+export async function resetPassword(email) {
+    if (!sb) return { error: { message: 'Supabase not initialized' } };
+
+    const { data, error } = await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin
+    });
+
+    return { data, error };
+}
