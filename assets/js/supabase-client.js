@@ -39,7 +39,7 @@ export function getSupabase() {
  * Sync Engine - Push local changes to cloud
  */
 export async function syncToCloud() {
-    if (!supabase) return { success: false, message: 'Supabase not configured' };
+    if (!sb) return { success: false, message: 'Supabase not configured' };
 
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance'];
     let syncCount = 0;
@@ -83,7 +83,7 @@ export async function syncToCloud() {
  * Sync Engine - Pull cloud changes to local
  */
 export async function syncFromCloud() {
-    if (!supabase) return;
+    if (!sb) return;
 
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance'];
     const lastSync = localStorage.getItem('last_sync_timestamp') || new Date(0).toISOString();
