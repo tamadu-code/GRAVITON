@@ -23,7 +23,33 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-    <div id="app" class="app-container">
+    <!-- Auth Screen -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-card card primary-gradient-border">
+            <div class="login-header text-center">
+                <div class="logo-icon mx-auto mb-1"><i data-lucide="atom"></i></div>
+                <h2>Graviton CMS</h2>
+                <p class="text-secondary text-sm">Sign in to your account</p>
+            </div>
+            <form id="login-form" class="login-form mt-2">
+                <div class="form-group mb-1">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" class="input" required placeholder="admin@school.edu">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" class="input" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary w-100" id="login-submit-btn">
+                    <i data-lucide="log-in"></i> Sign In
+                </button>
+                <div id="login-error" class="login-error mt-1 text-center" style="display: none; color: var(--accent-danger); font-size: 0.85rem;"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="app-container" style="display: none;">
         <!-- Sidebar -->
         <aside id="sidebar" class="sidebar">
             <div class="sidebar-header">
@@ -86,11 +112,9 @@
                     <h1 id="view-title">Dashboard</h1>
                 </div>
                 <div class="user-profile">
-                    <select id="role-selector" class="input role-selector">
-                        <option value="Admin">Admin View</option>
-                        <option value="Teacher">Teacher View</option>
-                        <option value="Student">Student View</option>
-                    </select>
+                    <button id="logout-btn" class="btn btn-sm btn-secondary mr-2">
+                        <i data-lucide="log-out"></i> Logout
+                    </button>
                     <div class="user-info">
                         <span class="user-name">Admin User</span>
                         <span class="user-role">Administrator</span>

@@ -121,5 +121,36 @@ export function startSyncLoop(intervalMs = 60000) {
         if (status.count > 0) {
             window.dispatchEvent(new CustomEvent('sync-complete', { detail: status }));
         }
-    }, intervalMs);
 }
+
+/**
+ * Authentication Methods
+ */
+export async function loginUser(email, password) {
+    if (!sb) return { error: 'Supabase not initialized' };
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    return { data, error };
+}
+
+export async function logoutUser() {
+    if (!sb) return;
+    await sb.auth.signOut();
+}
+
+export async function getCurrentSession() {
+    if (!sb) return null;
+    const { data, error } = await sb.auth.getSession();
+    if (error) return null;
+    return data.session;
+}
+
+export async function getUserProfile(userId) {
+    if (!sb) return null;
+    const { data, error } = await sb.from('profiles').select('*').eq('id', userId).single();
+    if (error) {
+        console.error("Error fetching profile:", error);
+        return null;
+    }
+    return data;
+}
+

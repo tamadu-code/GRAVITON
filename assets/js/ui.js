@@ -66,6 +66,17 @@ export const UI = {
     },
 
     async renderDashboard() {
+        const role = this.currentUser.role;
+        if (role === 'Admin') {
+            await this.renderAdminDashboard();
+        } else if (role === 'Teacher') {
+            await this.renderTeacherDashboard();
+        } else {
+            await this.renderParentDashboard();
+        }
+    },
+
+    async renderAdminDashboard() {
         const studentCount = await db.students.count();
         const classCount = await db.classes.count();
         const subjectCount = await db.subjects.count();
@@ -141,14 +152,14 @@ export const UI = {
                                 <div class="feed-icon"><i data-lucide="info"></i></div>
                                 <div class="feed-content">
                                     <p><strong>System Ready</strong></p>
-                                    <span class="text-secondary text-sm">Graviton CMS initialized successfully in offline-first mode.</span>
+                                    <span class="text-secondary text-sm">Graviton CMS initialized successfully.</span>
                                 </div>
                             </div>
                             <div class="feed-item">
-                                <div class="feed-icon"><i data-lucide="database"></i></div>
+                                <div class="feed-icon"><i data-lucide="shield"></i></div>
                                 <div class="feed-content">
-                                    <p><strong>Data Persisted</strong></p>
-                                    <span class="text-secondary text-sm">Local database synchronized. ${unsyncedCount} items pending cloud push.</span>
+                                    <p><strong>Admin Access Granted</strong></p>
+                                    <span class="text-secondary text-sm">Full read/write privileges active.</span>
                                 </div>
                             </div>
                         </div>
@@ -157,14 +168,83 @@ export const UI = {
             </div>
         `;
         
-        // Add manual sync listener if needed
         const manualSyncBtn = document.getElementById('manual-sync');
         if(manualSyncBtn) {
             manualSyncBtn.addEventListener('click', () => {
                 if (window.Notifications) window.Notifications.show('Manual sync triggered', 'info');
-                // Assuming startSyncLoop can be triggered manually or we just let it run
             });
         }
+    },
+
+    async renderTeacherDashboard() {
+        this.contentArea.innerHTML = `
+            <div class="dashboard-grid">
+                <div class="grid mb-2">
+                    <div class="card stat-card secondary-gradient" style="grid-column: span 2;">
+                        <div class="stat-icon"><i data-lucide="user"></i></div>
+                        <div class="stat-info">
+                            <h3>Welcome Back,</h3>
+                            <p class="stat-value" style="font-size: 1.4rem;">${this.currentUser.name}</p>
+                        </div>
+                    </div>
+                    <div class="card stat-card accent-gradient" style="grid-column: span 2;">
+                        <div class="stat-icon"><i data-lucide="calendar"></i></div>
+                        <div class="stat-info">
+                            <h3>Today is</h3>
+                            <p class="stat-value" style="font-size: 1.2rem;">${new Date().toLocaleDateString()}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid main-dashboard-row">
+                    <div class="card quick-actions">
+                        <h3><i data-lucide="zap"></i> Teacher Actions</h3>
+                        <div class="action-grid mt-2">
+                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'attendance\\']').click()">
+                                <div class="icon-wrapper bg-warning-light"><i data-lucide="check-square" class="text-warning"></i></div>
+                                <span>Mark Attendance</span>
+                            </button>
+                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'grades\\']').click()">
+                                <div class="icon-wrapper bg-primary-light"><i data-lucide="award" class="text-primary"></i></div>
+                                <span>Enter Grades</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    async renderParentDashboard() {
+        this.contentArea.innerHTML = `
+            <div class="dashboard-grid">
+                <div class="grid mb-2">
+                    <div class="card stat-card primary-gradient" style="grid-column: span 4;">
+                        <div class="stat-icon"><i data-lucide="graduation-cap"></i></div>
+                        <div class="stat-info">
+                            <h3>Student Portal</h3>
+                            <p class="stat-value" style="font-size: 1.4rem;">Viewing records for ${this.currentUser.name}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid main-dashboard-row">
+                    <div class="card quick-actions">
+                        <h3><i data-lucide="file-text"></i> Academic Records</h3>
+                        <div class="action-grid mt-2">
+                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'attendance\\']').click()">
+                                <div class="icon-wrapper bg-warning-light"><i data-lucide="calendar" class="text-warning"></i></div>
+                                <span>View Attendance</span>
+                            </button>
+                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'grades\\']').click()">
+                                <div class="icon-wrapper bg-success-light"><i data-lucide="bar-chart-2" class="text-success"></i></div>
+                                <span>View Grades</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     },
 
 
