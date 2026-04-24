@@ -79,6 +79,9 @@ function showLoginScreen() {
 
 // ─── App Initialization ───
 async function initApp() {
+    // Run icon creation first
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    
     const session = await getCurrentSession();
 
     if (session) {
@@ -145,7 +148,7 @@ async function loadAuthenticatedApp(authUser) {
     if (footerRoleEl) footerRoleEl.textContent = currentRole;
     if (footerAvatarEl) footerAvatarEl.textContent = currentName.charAt(0).toUpperCase();
 
-    // Re-render icons for the main content
+    // Re-render icons
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     // Start Data Sync Loop

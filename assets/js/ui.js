@@ -80,100 +80,150 @@ export const UI = {
         const studentCount = await db.students.count();
         const classCount = await db.classes.count();
         const subjectCount = await db.subjects.count();
-        const unsyncedCount = await db.students.where('is_synced').equals(0).count();
+        const teacherCount = await db.staff ? await db.staff.where('role').equals('Teacher').count() : 0;
 
         this.contentArea.innerHTML = `
-            <div class="dashboard-grid">
-                <!-- Stats Row -->
-                <div class="grid mb-2">
-                    <div class="card stat-card primary-gradient">
-                        <div class="stat-icon"><i data-lucide="users"></i></div>
-                        <div class="stat-info">
-                            <h3>Total Students</h3>
-                            <p class="stat-value">${studentCount}</p>
+            <div class="dashboard-container">
+                <header class="dashboard-header mb-3">
+                    <h1 class="dashboard-title">Dashboard Summary</h1>
+                    <p class="dashboard-subtitle">Welcome back, <span class="user-highlight">${this.currentUser.name}</span>.</p>
+                </header>
+
+                <!-- Top Stats Grid -->
+                <div class="stats-grid mb-4">
+                    <div class="stat-card-premium">
+                        <div class="stat-header">
+                            <span class="stat-label">TOTAL STUDENTS</span>
                         </div>
+                        <div class="stat-body">
+                            <span class="stat-number">${studentCount}</span>
+                            <span class="stat-trend trend-up"><i data-lucide="trending-up"></i> +2.5%</span>
+                        </div>
+                        <div class="stat-icon-bg icon-blue"><i data-lucide="users"></i></div>
                     </div>
-                    <div class="card stat-card secondary-gradient">
-                        <div class="stat-icon"><i data-lucide="book-open"></i></div>
-                        <div class="stat-info">
-                            <h3>Active Classes</h3>
-                            <p class="stat-value">${classCount}</p>
+
+                    <div class="stat-card-premium">
+                        <div class="stat-header">
+                            <span class="stat-label">TOTAL TEACHERS</span>
                         </div>
+                        <div class="stat-body">
+                            <span class="stat-number">${teacherCount}</span>
+                            <span class="stat-trend trend-stable">Stable</span>
+                        </div>
+                        <div class="stat-icon-bg icon-green"><i data-lucide="user-check"></i></div>
                     </div>
-                    <div class="card stat-card accent-gradient">
-                        <div class="stat-icon"><i data-lucide="library"></i></div>
-                        <div class="stat-info">
-                            <h3>Subjects</h3>
-                            <p class="stat-value">${subjectCount}</p>
+
+                    <div class="stat-card-premium">
+                        <div class="stat-header">
+                            <span class="stat-label">ACADEMIC CLASSES</span>
                         </div>
+                        <div class="stat-body">
+                            <span class="stat-number">${classCount}</span>
+                            <span class="stat-trend trend-up"><i data-lucide="trending-up"></i> +1 new</span>
+                        </div>
+                        <div class="stat-icon-bg icon-orange"><i data-lucide="layout"></i></div>
                     </div>
-                    <div class="card stat-card warning-gradient">
-                        <div class="stat-icon"><i data-lucide="refresh-cw"></i></div>
-                        <div class="stat-info">
-                            <h3>Pending Syncs</h3>
-                            <p class="stat-value">${unsyncedCount}</p>
+
+                    <div class="stat-card-premium">
+                        <div class="stat-header">
+                            <span class="stat-label">OFFERED SUBJECTS</span>
                         </div>
+                        <div class="stat-body">
+                            <span class="stat-number">${subjectCount}</span>
+                            <span class="stat-trend trend-neutral">LTS</span>
+                        </div>
+                        <div class="stat-icon-bg icon-purple"><i data-lucide="book-open"></i></div>
                     </div>
                 </div>
 
-                <!-- Main Content Row -->
-                <div class="grid main-dashboard-row">
-                    <!-- Quick Actions -->
-                    <div class="card quick-actions">
-                        <h3><i data-lucide="zap"></i> Quick Actions</h3>
-                        <div class="action-grid mt-2">
-                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'students\\']').click()">
-                                <div class="icon-wrapper bg-success-light"><i data-lucide="user-plus" class="text-success"></i></div>
-                                <span>Manage Students</span>
-                            </button>
-                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'attendance\\']').click()">
-                                <div class="icon-wrapper bg-warning-light"><i data-lucide="check-square" class="text-warning"></i></div>
-                                <span>Daily Attendance</span>
-                            </button>
-                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'grades\\']').click()">
-                                <div class="icon-wrapper bg-primary-light"><i data-lucide="award" class="text-primary"></i></div>
-                                <span>Enter Grades</span>
-                            </button>
-                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'reports\\']').click()">
-                                <div class="icon-wrapper bg-accent-light"><i data-lucide="file-text" class="text-accent"></i></div>
-                                <span>Report Cards</span>
-                            </button>
+                <!-- Main Grid -->
+                <div class="dashboard-main-grid">
+                    <!-- Left Column: Attendance Analysis -->
+                    <div class="dashboard-col-left">
+                        <div class="card analysis-card">
+                            <div class="card-header-fancy">
+                                <div class="header-icon"><i data-lucide="bar-chart-3"></i></div>
+                                <div class="header-text">
+                                    <h3>Attendance Analysis</h3>
+                                    <p>Real-time student participation tracking</p>
+                                </div>
+                            </div>
+                            
+                            <div class="analysis-subgrid">
+                                <div class="sub-card">
+                                    <h4><i data-lucide="layout"></i> Performance by Class</h4>
+                                    <div class="empty-state-simple">
+                                        <p>No attendance data logged for today yet.</p>
+                                    </div>
+                                </div>
+                                <div class="sub-card">
+                                    <h4><i data-lucide="book"></i> Engagement by Subject</h4>
+                                    <div class="empty-state-simple">
+                                        <p>No subject attendance records for today.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card ratio-card mt-3">
+                            <h3><i data-lucide="pie-chart"></i> Gender Ratio</h3>
+                            <div class="empty-state-chart"></div>
+                        </div>
+
+                        <div class="card ratio-card mt-3">
+                            <h3><i data-lucide="trending-up"></i> Class Distribution</h3>
+                            <div class="empty-state-chart"></div>
                         </div>
                     </div>
 
-                    <!-- System Overview / Notifications -->
-                    <div class="card recent-activity">
-                        <div class="card-header flex-between mb-2">
-                            <h3><i data-lucide="activity"></i> System Overview</h3>
-                            <button id="manual-sync" class="btn btn-sm btn-primary"><i data-lucide="cloud-sync"></i> Force Sync</button>
-                        </div>
-                        <div class="activity-feed">
-                            <div class="feed-item">
-                                <div class="feed-icon"><i data-lucide="info"></i></div>
-                                <div class="feed-content">
-                                    <p><strong>System Ready</strong></p>
-                                    <span class="text-secondary text-sm">Graviton CMS initialized successfully.</span>
+                    <!-- Right Column: Turnout & Actions -->
+                    <div class="dashboard-col-right">
+                        <div class="card turnout-card mb-3">
+                            <div class="card-header-simple">
+                                <span class="text-secondary text-xs font-bold">WEEKLY OVERVIEW</span>
+                            </div>
+                            <div class="turnout-content text-center py-3">
+                                <p class="text-secondary text-xs mb-1">TODAY'S TURNOUT</p>
+                                <h2 class="turnout-percentage">0%</h2>
+                                <p class="text-success text-xs">0 students present</p>
+                            </div>
+                            <div class="turnout-list">
+                                <div class="turnout-item">
+                                    <span class="text-secondary">Present</span>
+                                    <span class="font-bold">0</span>
+                                </div>
+                                <div class="turnout-item">
+                                    <span class="text-secondary">Late</span>
+                                    <span class="font-bold">0</span>
+                                </div>
+                                <div class="turnout-item">
+                                    <span class="text-secondary">Absent</span>
+                                    <span class="font-bold">0</span>
                                 </div>
                             </div>
-                            <div class="feed-item">
-                                <div class="feed-icon"><i data-lucide="shield"></i></div>
-                                <div class="feed-content">
-                                    <p><strong>Admin Access Granted</strong></p>
-                                    <span class="text-secondary text-sm">Full read/write privileges active.</span>
-                                </div>
+                        </div>
+
+                        <div class="card admin-actions-card">
+                            <h3><i data-lucide="plus"></i> Quick Administration</h3>
+                            <div class="admin-action-links mt-2">
+                                <button class="admin-link-btn" onclick="UI.renderView('students')">
+                                    <i data-lucide="users"></i> Manage Students
+                                </button>
+                                <button class="admin-link-btn" onclick="UI.renderView('academic')">
+                                    <i data-lucide="layout"></i> Manage Classes
+                                </button>
+                                <button class="admin-link-btn" onclick="UI.renderView('attendance')">
+                                    <i data-lucide="check-square"></i> Daily Attendance
+                                </button>
+                                <button class="admin-link-btn" onclick="UI.renderView('reports')">
+                                    <i data-lucide="file-text"></i> Generate Reports
+                                </button>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         `;
-        
-        const manualSyncBtn = document.getElementById('manual-sync');
-        if(manualSyncBtn) {
-            manualSyncBtn.addEventListener('click', () => {
-                if (window.Notifications) window.Notifications.show('Manual sync triggered', 'info');
-            });
-        }
     },
 
     async renderTeacherDashboard() {
