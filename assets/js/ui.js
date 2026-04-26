@@ -1286,10 +1286,10 @@ export const UI = {
         const avgScore = scores.length > 0 ? Math.round(scores.reduce((acc, s) => acc + (s.total || 0), 0) / scores.length) : 0;
 
         detailView.innerHTML = `
-            <div style="padding: 3rem;">
-                <div class="profile-header" style="margin-bottom: 3rem;">
-                    <div class="profile-avatar-big" style="width: 160px; height: 160px; background: #f8fafc; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-radius: 40px; display: flex; align-items: center; justify-content: center; position: relative;">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}" style="width: 120px; height: 120px;" alt="${student.name}">
+            <div style="padding: 1.5rem;">
+                <div class="profile-header" style="margin-bottom: 1.5rem;">
+                    <div class="profile-avatar-big" style="width: 120px; height: 120px; background: #f8fafc; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-radius: 30px; display: flex; align-items: center; justify-content: center; position: relative;">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}" style="width: 90px; height: 90px;" alt="${student.name}">
                         <div style="position: absolute; bottom: -10px; right: -10px; width: 44px; height: 44px; background: #2563eb; color: white; border-radius: 14px; display: flex; align-items: center; justify-content: center; border: 4px solid white;">
                             <i data-lucide="camera" style="width: 18px;"></i>
                         </div>
@@ -1297,9 +1297,9 @@ export const UI = {
                     <div class="profile-title-info" style="flex: 1;">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                             <div>
-                                <span class="badge" style="background: #eff6ff; color: #2563eb; font-weight: 800; border-radius: 12px; padding: 0.5rem 1rem; margin-bottom: 1rem; display: inline-block;">ACADEMIC ID: ${student.student_id}</span>
-                                <h1 style="font-size: 3rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em; line-height: 1.1;">${student.name}</h1>
-                                <p style="font-size: 1.25rem; color: #64748b; margin-top: 0.5rem;">${student.class_name} • Junior Secondary Stream</p>
+                                <span class="badge" style="background: #eff6ff; color: #2563eb; font-weight: 800; border-radius: 12px; padding: 0.4rem 0.8rem; margin-bottom: 0.5rem; display: inline-block;">ACADEMIC ID: ${student.student_id}</span>
+                                <h1 style="font-size: 2rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em; line-height: 1.1;">${student.name}</h1>
+                                <p style="font-size: 1.1rem; color: #64748b; margin-top: 0.25rem;">${student.class_name} • Junior Secondary Stream</p>
                             </div>
                              <div style="display: flex; gap: 1rem;">
                                  <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
@@ -1309,26 +1309,26 @@ export const UI = {
                     </div>
                 </div>
 
-                <div class="profile-stats">
-                    <div style="background: #f8fafc; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9;">
-                        <span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Cumulative Avg</span>
-                        <div style="display: flex; align-items: baseline; gap: 0.75rem; margin-top: 0.5rem;">
-                            <span style="font-size: 2.5rem; font-weight: 800; color: #1e293b;">${avgScore}%</span>
-                            <span style="color: #10b981; font-weight: 700; font-size: 0.9rem;">+2.4%</span>
+                <div class="profile-stats" style="margin-bottom: 2rem;">
+                    <div style="background: #f8fafc; padding: 1.25rem; border-radius: 20px; border: 1px solid #f1f5f9;">
+                        <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Cumulative Avg</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.25rem;">
+                            <span style="font-size: 1.75rem; font-weight: 800; color: #1e293b;">${avgScore}%</span>
+                            <span style="color: #10b981; font-weight: 700; font-size: 0.8rem;">+2.4%</span>
                         </div>
                     </div>
-                    <div style="background: #f8fafc; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9;">
-                        <span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Attendance Rate</span>
-                        <div style="display: flex; align-items: baseline; gap: 0.75rem; margin-top: 0.5rem;">
-                            <span style="font-size: 2.5rem; font-weight: 800; color: #1e293b;">94%</span>
-                            <span style="color: #ef4444; font-weight: 700; font-size: 0.9rem;">-0.5%</span>
+                    <div style="background: #f8fafc; padding: 1.25rem; border-radius: 20px; border: 1px solid #f1f5f9;">
+                        <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Attendance Rate</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.25rem;">
+                            <span style="font-size: 1.75rem; font-weight: 800; color: #1e293b;">94%</span>
+                            <span style="color: #ef4444; font-weight: 700; font-size: 0.8rem;">-0.5%</span>
                         </div>
                     </div>
-                    <div style="background: #f8fafc; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9;">
-                        <span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Active Subjects</span>
-                        <div style="display: flex; align-items: baseline; gap: 0.75rem; margin-top: 0.5rem;">
-                            <span style="font-size: 2.5rem; font-weight: 800; color: #1e293b;">${scores.length}</span>
-                            <span style="color: #64748b; font-weight: 700; font-size: 0.9rem;">Assigned</span>
+                    <div style="background: #f8fafc; padding: 1.25rem; border-radius: 20px; border: 1px solid #f1f5f9;">
+                        <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Active Subjects</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.25rem;">
+                            <span style="font-size: 1.75rem; font-weight: 800; color: #1e293b;">${scores.length}</span>
+                            <span style="color: #64748b; font-weight: 700; font-size: 0.8rem;">Assigned</span>
                         </div>
                     </div>
                 </div>

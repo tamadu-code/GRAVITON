@@ -24,7 +24,7 @@
     
     --sidebar-width: 260px;
     --sidebar-collapsed-width: 80px;
-    --header-height: 70px;
+    --header-height: 60px;
     
     --transition-speed: 0.3s;
 }
@@ -122,6 +122,19 @@ h1, h2, h3, .logo {
 .sidebar-toggle:hover {
     background-color: var(--bg-card-hover);
     color: var(--text-primary);
+}
+
+.view-container {
+    padding: 1rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    overflow-y: auto;
+}
+
+.dashboard-section {
+    margin-bottom: 2rem;
 }
 
 .sidebar-nav {
@@ -353,7 +366,7 @@ h1, h2, h3, .logo {
 
 .top-bar {
     height: var(--header-height);
-    padding: 0 2rem;
+    padding: 0 1.5rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -405,7 +418,7 @@ h1, h2, h3, .logo {
 
 .content-area {
     flex: 1;
-    padding: 2rem;
+    padding: 1.25rem;
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: var(--border-color) transparent;
@@ -1442,8 +1455,9 @@ label {
 .directory-container {
     display: grid;
     grid-template-columns: 350px 1fr;
-    gap: 2rem;
-    height: calc(100vh - 250px);
+    gap: 1.5rem;
+    height: calc(100vh - 180px); /* Tighter fit */
+    overflow: hidden;
 }
 
 .directory-sidebar {
@@ -1509,9 +1523,9 @@ label {
     border-radius: 20px;
     border: 1px solid #e2e8f0;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 3rem;
+    flex-direction: column;
+    overflow-y: auto; /* Internal scroll only */
+    padding: 2rem;
 }
 
 .empty-state {
@@ -1895,15 +1909,16 @@ label {
 
 /* ─── Page Banners (Premium Glassmorphism) ───────────────────────── */
 .page-banner {
-    background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
-    color: white;
-    padding: 3rem;
-    border-radius: 28px;
-    margin-bottom: 0;
+    padding: 1rem 1.5rem;
+    min-height: 80px;
+    height: 90px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 25px 50px -12px rgba(37, 99, 235, 0.25);
+    border-radius: 16px;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
+    color: white;
     position: relative;
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1922,16 +1937,26 @@ label {
 }
 
 .banner-title {
-    font-size: 2.5rem;
+    font-size: 1.5rem;
     font-weight: 800;
-    margin-bottom: 0.75rem;
-    letter-spacing: -0.03em;
+    margin-bottom: 0.15rem;
+    letter-spacing: -0.02em;
     display: flex;
     align-items: center;
-    gap: 1.25rem;
+    gap: 1rem;
     font-family: 'Outfit', sans-serif;
 }
 
+.banner-stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(255,255,255,0.1);
+    padding: 0.5rem 1.25rem;
+    border-radius: 16px;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
 .banner-subtitle {
     font-size: 1.15rem;
     opacity: 0.85;
@@ -2302,7 +2327,7 @@ label {
 .info-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 3rem;
+    gap: 1.5rem;
 }
 
 /* Screen Size Adjustments */
@@ -2354,9 +2379,60 @@ label {
 
 @media (max-width: 768px) {
     .sidebar {
-        display: none !important; /* Hide sidebar on mobile unless toggled */
+        display: none !important;
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 1000;
+        width: 280px;
+        background-color: var(--bg-sidebar);
+        border-right: 1px solid var(--border-color);
+        box-shadow: 0 0 40px rgba(0,0,0,0.5);
+    }
+
+    .sidebar.mobile-open {
+        display: flex !important;
+        animation: slideInLeft 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .sidebar-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        backdrop-filter: blur(4px);
+        z-index: 999;
+        display: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .sidebar-overlay.active {
+        display: block;
+        opacity: 1;
+    }
+
+    @keyframes slideInLeft {
+        from { transform: translateX(-100%); }
+        to { transform: translateX(0); }
     }
     
+    .mobile-menu-btn {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        width: 44px;
+        height: 44px;
+        color: var(--text-primary);
+        cursor: pointer;
+    }
+
     .main-content {
         margin-left: 0 !important;
         width: 100vw !important;
@@ -2393,8 +2469,8 @@ label {
     .page-banner {
         flex-direction: column !important;
         align-items: flex-start !important;
-        gap: 1.5rem !important;
-        padding: 1.5rem !important;
+        gap: 1rem !important;
+        padding: 1rem !important;
     }
     
     .banner-stats {
