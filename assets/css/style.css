@@ -2018,3 +2018,118 @@ label {
     opacity: 1;
     visibility: visible;
 }
+
+/* ─── Comprehensive Responsive Adjustments ────────────────────────── */
+
+/* Tablet & Half-Desktop Layout (max-width: 1024px) */
+@media (max-width: 1024px) {
+    /* Dashboard main columns */
+    .dashboard-main-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .dashboard-col-left, .dashboard-col-right {
+        width: 100%;
+    }
+    
+    /* Student directory view */
+    .directory-container {
+        flex-direction: column;
+        height: auto !important;
+    }
+    
+    .directory-sidebar {
+        width: 100%;
+        max-height: 400px;
+        overflow-y: auto;
+        margin-bottom: 1.5rem;
+    }
+    
+    .directory-main {
+        width: 100%;
+    }
+
+    /* Wrap banner stats */
+    .banner-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .banner-stats {
+        flex-wrap: wrap;
+        gap: 1.5rem;
+    }
+}
+
+/* Mobile Layout (max-width: 768px) */
+@media (max-width: 768px) {
+    /* Collapse Stats Grid */
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Collapse analysis subgrid */
+    .analysis-subgrid {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Adjust view container padding */
+    .view-container {
+        padding: 1rem;
+    }
+    
+    .dashboard-container {
+        padding: 1rem;
+    }
+    
+    /* Fix typography size for mobile */
+    .dashboard-header h1 {
+        font-size: 2rem !important;
+    }
+    
+    .banner-title {
+        font-size: 1.8rem;
+    }
+    
+    .stat-number {
+        font-size: 2rem !important;
+    }
+    
+    /* Ensure tables can scroll horizontally */
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .data-table {
+        min-width: 600px; /* Force table width so it scrolls instead of squishing */
+    }
+    
+    /* Profile details adjust */
+    .profile-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .profile-title-info > div > div:first-child {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .info-grid {
+        grid-template-columns: 1fr !important;
+    }
+    
+    /* Hide specific non-critical buttons to save space */
+    .profile-title-info .btn-secondary {
+        padding: 0.5rem;
+    }
+    
+    .profile-tabs {
+        flex-wrap: wrap;
+        gap: 1rem !important;
+    }
+}
