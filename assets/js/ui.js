@@ -66,15 +66,17 @@ export const UI = {
     },
 
     async renderDashboard() {
-        const role = this.currentUser.role;
-        if (role === 'Admin') {
-            await this.renderAdminDashboard();
-        } else if (role === 'Teacher') {
+        const role = (this.currentUser.role || '').toLowerCase();
+        if (role === 'teacher') {
             await this.renderTeacherDashboard();
-        } else {
+        } else if (role === 'parent' || role === 'student') {
             await this.renderParentDashboard();
+        } else {
+            // Admin, Pending, or any unrecognised role → Admin dashboard
+            await this.renderAdminDashboard();
         }
     },
+
 
     async renderAdminDashboard() {
         // ── Core counts ──────────────────────────────────────────────────
