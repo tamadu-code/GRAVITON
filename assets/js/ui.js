@@ -166,62 +166,62 @@ export const UI = {
 
         this.contentArea.innerHTML = `
             <div class="view-container">
-                <header class="dashboard-header mb-2">
-                    <h1 class="text-4xl font-extrabold tracking-tight" style="font-family: 'Outfit', sans-serif;">Dashboard Overview</h1>
-                    <p class="text-secondary text-lg">Welcome back, <span class="font-bold text-primary">${this.currentUser.name}</span>. Here is what's happening today.</p>
+                <header class="view-header" style="margin-bottom: 0.75rem;">
+                    <h1 class="text-2xl font-extrabold tracking-tight" style="font-family: 'Outfit', sans-serif;">Dashboard Overview</h1>
+                    <p class="text-secondary" style="font-size: 0.85rem;">Welcome back, <span class="font-bold text-primary">${this.currentUser.name}</span>. Here is what's happening today.</p>
                 </header>
 
-                <div class="live-notices" style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 16px; margin-bottom: 2rem; overflow: hidden; display: flex; align-items: center;">
-                    <div style="background: #2563eb; color: white; padding: 0.75rem 1.5rem; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; z-index: 1;">LIVE NOTICES</div>
+                <div class="live-notices" style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; margin-bottom: 1rem; overflow: hidden; display: flex; align-items: center;">
+                    <div style="background: #2563eb; color: white; padding: 0.5rem 1rem; font-weight: 800; font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; z-index: 1;">LIVE NOTICES</div>
                     <div style="flex: 1; overflow: hidden; position: relative;">
-                        <marquee behavior="scroll" direction="left" scrollamount="6" style="padding: 0.75rem 0; color: #1e3a8a; font-weight: 500;">
+                        <marquee behavior="scroll" direction="left" scrollamount="6" style="padding: 0.5rem 0; color: #1e3a8a; font-weight: 500; font-size: 0.85rem;">
                             ${noticeHTML}
                         </marquee>
                     </div>
                 </div>
 
-                <div class="stats-grid mb-2">
-                    <div class="stat-card-premium" style="border-radius: 24px; padding: 2rem;">
-                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.1em; color: #64748b;">ACTIVE STUDENTS</span>
-                        <div class="stat-body" style="margin-top: 1rem; display: flex; align-items: baseline; gap: 1rem;">
-                            <span class="stat-number" style="font-size: 3rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${studentCount}</span>
-                            <span class="stat-trend trend-up" style="background: #ecfdf5; color: #10b981; padding: 4px 10px; border-radius: 99px; font-size: 0.8rem; font-weight: 700;">+12% <i data-lucide="trending-up" style="width:14px;"></i></span>
+                <div class="stats-grid mb-1">
+                    <div class="stat-card-premium" style="border-radius: 16px; padding: 1.25rem;">
+                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.05em; color: #64748b; font-size: 0.7rem;">ACTIVE STUDENTS</span>
+                        <div class="stat-body" style="margin-top: 0.5rem; display: flex; align-items: baseline; gap: 0.75rem;">
+                            <span class="stat-number" style="font-size: 1.75rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${studentCount}</span>
+                            <span class="stat-trend trend-up" style="background: #ecfdf5; color: #10b981; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: 700;">+12%</span>
                         </div>
-                        <div class="stat-icon-bg" style="position: absolute; right: 2rem; top: 2rem; width: 64px; height: 64px; background: #eff6ff; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #2563eb;">
-                            <i data-lucide="users" style="width: 32px; height: 32px;"></i>
-                        </div>
-                    </div>
-
-                    <div class="stat-card-premium" style="border-radius: 24px; padding: 2rem;">
-                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.1em; color: #64748b;">FACULTY STAFF</span>
-                        <div class="stat-body" style="margin-top: 1rem; display: flex; align-items: baseline; gap: 1rem;">
-                            <span class="stat-number" style="font-size: 3rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${teacherCount}</span>
-                            <span class="stat-trend" style="background: #f8fafc; color: #64748b; padding: 4px 10px; border-radius: 99px; font-size: 0.8rem; font-weight: 700;">Stable</span>
-                        </div>
-                        <div class="stat-icon-bg" style="position: absolute; right: 2rem; top: 2rem; width: 64px; height: 64px; background: #f0fdf4; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #16a34a;">
-                            <i data-lucide="user-check" style="width: 32px; height: 32px;"></i>
+                        <div class="stat-icon-bg" style="position: absolute; right: 1.25rem; top: 1.25rem; width: 44px; height: 44px; background: #eff6ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #2563eb;">
+                            <i data-lucide="users" style="width: 20px; height: 20px;"></i>
                         </div>
                     </div>
 
-                    <div class="stat-card-premium" style="border-radius: 24px; padding: 2rem;">
-                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.1em; color: #64748b;">TOTAL STREAMS</span>
-                        <div class="stat-body" style="margin-top: 1rem; display: flex; align-items: baseline; gap: 1rem;">
-                            <span class="stat-number" style="font-size: 3rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${classCount}</span>
-                            <span class="stat-trend trend-up" style="background: #fff7ed; color: #ea580c; padding: 4px 10px; border-radius: 99px; font-size: 0.8rem; font-weight: 700;">+2 <i data-lucide="trending-up" style="width:14px;"></i></span>
+                    <div class="stat-card-premium" style="border-radius: 16px; padding: 1.25rem;">
+                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.05em; color: #64748b; font-size: 0.7rem;">FACULTY STAFF</span>
+                        <div class="stat-body" style="margin-top: 0.5rem; display: flex; align-items: baseline; gap: 0.75rem;">
+                            <span class="stat-number" style="font-size: 1.75rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${teacherCount}</span>
+                            <span class="stat-trend" style="background: #f8fafc; color: #64748b; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: 700;">Stable</span>
                         </div>
-                        <div class="stat-icon-bg" style="position: absolute; right: 2rem; top: 2rem; width: 64px; height: 64px; background: #fff7ed; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #f97316;">
-                            <i data-lucide="layers" style="width: 32px; height: 32px;"></i>
+                        <div class="stat-icon-bg" style="position: absolute; right: 1.25rem; top: 1.25rem; width: 44px; height: 44px; background: #f0fdf4; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #16a34a;">
+                            <i data-lucide="user-check" style="width: 20px; height: 20px;"></i>
                         </div>
                     </div>
 
-                    <div class="stat-card-premium" style="border-radius: 24px; padding: 2rem;">
-                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.1em; color: #64748b;">OFFERED COURSES</span>
-                        <div class="stat-body" style="margin-top: 1rem; display: flex; align-items: baseline; gap: 1rem;">
-                            <span class="stat-number" style="font-size: 3rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${subjectCount}</span>
-                            <span class="stat-trend" style="background: #f5f3ff; color: #7c3aed; padding: 4px 10px; border-radius: 99px; font-size: 0.8rem; font-weight: 700;">Active</span>
+                    <div class="stat-card-premium" style="border-radius: 16px; padding: 1.25rem;">
+                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.05em; color: #64748b; font-size: 0.7rem;">TOTAL STREAMS</span>
+                        <div class="stat-body" style="margin-top: 0.5rem; display: flex; align-items: baseline; gap: 0.75rem;">
+                            <span class="stat-number" style="font-size: 1.75rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${classCount}</span>
+                            <span class="stat-trend trend-up" style="background: #fff7ed; color: #ea580c; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: 700;">+2</span>
                         </div>
-                        <div class="stat-icon-bg" style="position: absolute; right: 2rem; top: 2rem; width: 64px; height: 64px; background: #f5f3ff; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #8b5cf6;">
-                            <i data-lucide="book-open" style="width: 32px; height: 32px;"></i>
+                        <div class="stat-icon-bg" style="position: absolute; right: 1.25rem; top: 1.25rem; width: 44px; height: 44px; background: #fff7ed; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #f97316;">
+                            <i data-lucide="layers" style="width: 20px; height: 20px;"></i>
+                        </div>
+                    </div>
+
+                    <div class="stat-card-premium" style="border-radius: 16px; padding: 1.25rem;">
+                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.05em; color: #64748b; font-size: 0.7rem;">OFFERED COURSES</span>
+                        <div class="stat-body" style="margin-top: 0.5rem; display: flex; align-items: baseline; gap: 0.75rem;">
+                            <span class="stat-number" style="font-size: 1.75rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${subjectCount}</span>
+                            <span class="stat-trend" style="background: #f5f3ff; color: #7c3aed; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: 700;">Active</span>
+                        </div>
+                        <div class="stat-icon-bg" style="position: absolute; right: 1.25rem; top: 1.25rem; width: 44px; height: 44px; background: #f5f3ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #8b5cf6;">
+                            <i data-lucide="book-open" style="width: 20px; height: 20px;"></i>
                         </div>
                     </div>
                 </div>
@@ -822,18 +822,19 @@ export const UI = {
             } else {
                 consolidated.push({
                     name: s.name,
-                    type: s.type,
-                    credits: s.credits,
-                    classes: [s.class_name],
-                    ids: [s.id]
-                });
-            }
-        });
-        
-        this.contentArea.innerHTML = `
-            <div class="view-container">
-                <div class="page-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
-                    <div class="banner-content">
+                        <div class="page-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+                        <div class="banner-content">
+                            <h1 class="banner-title"><i data-lucide="check-circle"></i> Daily Attendance</h1>
+                            <p class="banner-subtitle">Track and manage daily presence across all academic levels.</p>
+                        </div>
+                        <div style="display: flex; gap: 0.75rem;">
+                            <button id="btn-export-attendance" class="btn btn-secondary" style="border-radius: 10px; padding: 0.5rem 1rem; font-size: 0.85rem; color: white;">
+                                <i data-lucide="download" style="width: 14px;"></i> Export
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card" style="border-radius: 12px; padding: 1rem;">
                         <h1 class="banner-title"><i data-lucide="book-open"></i> Subject Registry</h1>
                         <p class="banner-subtitle">Manage courses, credit units, and instructional assignments across all school levels.</p>
                     </div>
@@ -1068,24 +1069,24 @@ export const UI = {
                             <span class="stat-label">Active Classes</span>
                         </div>
                     </div>
-                    <div style="display: flex; gap: 1rem;">
-                        <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.1); color: white; border: none;">
-                            <i data-lucide="printer"></i> Credentials
+                    <div style="display: flex; gap: 0.75rem;">
+                        <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 10px; padding: 0.6rem 1.25rem; display: flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.1); color: white; border: none; font-size: 0.85rem;">
+                            <i data-lucide="printer" style="width: 16px;"></i> Credentials
                         </button>
-                        <button id="btn-add-student" class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; font-weight: 700;">
-                            <i data-lucide="user-plus"></i> New Enrollment
+                        <button id="btn-add-student" class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 10px; padding: 0.6rem 1.25rem; display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 0.85rem;">
+                            <i data-lucide="user-plus" style="width: 16px;"></i> New Enrollment
                         </button>
                     </div>
                 </div>
 
                 <div class="directory-container">
-                    <div class="directory-sidebar" style="border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
-                        <div class="sidebar-search-wrap" style="padding: 2rem; background: #f8fafc; border-bottom: 2px solid #f1f5f9;">
-                            <div style="position: relative; margin-bottom: 1.5rem;">
-                                <i data-lucide="search" style="position: absolute; left: 1.25rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px;"></i>
-                                <input type="text" id="directory-search" placeholder="Search by name or serial..." class="input" style="padding-left: 3.5rem; border-radius: 14px; border: 1px solid #e2e8f0; height: 52px; background: white;">
+                    <div class="directory-sidebar" style="border-radius: 16px; background: white; border: 1px solid #e2e8f0;">
+                        <div class="sidebar-search-wrap" style="padding: 1.25rem; background: #f8fafc; border-bottom: 2px solid #f1f5f9;">
+                            <div style="position: relative; margin-bottom: 1rem;">
+                                <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 16px;"></i>
+                                <input type="text" id="directory-search" placeholder="Search by name or serial..." class="input" style="padding-left: 2.75rem; border-radius: 10px; border: 1px solid #e2e8f0; height: 44px; background: white;">
                             </div>
-                            <select id="class-filter" class="input" style="border-radius: 14px; height: 52px; border: 1px solid #e2e8f0; background: white; font-weight: 600; color: #475569;">
+                            <select id="class-filter" class="input" style="border-radius: 10px; height: 44px; border: 1px solid #e2e8f0; background: white; font-weight: 600; color: #475569;">
                                 <option value="">All Academic Streams</option>
                                 ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                             </select>
@@ -1095,7 +1096,7 @@ export const UI = {
                         </div>
                     </div>
 
-                    <div class="directory-main" id="student-detail-view" style="border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); min-height: 400px;">
+                    <div class="directory-main" id="student-detail-view" style="border-radius: 16px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); min-height: 350px;">
                         <div class="empty-state">
                             <div class="empty-icon" style="width: 100px; height: 100px; background: #f8fafc; border-radius: 50%; color: #cbd5e1; display: flex; align-items: center; justify-content: center; margin: 0 auto 2rem;">
                                 <i data-lucide="user-search" style="width: 48px; height: 48px;"></i>
@@ -1453,20 +1454,62 @@ export const UI = {
         `).join('');
     },
 
+    async renderAttendance() {
+        const students = await db.students.toArray();
+        const classes = await db.classes.toArray();
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container">
+                <div class="page-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+                    <div class="banner-content">
+                        <h1 class="banner-title"><i data-lucide="check-circle"></i> Daily Attendance</h1>
+                        <p class="banner-subtitle">Track and manage daily presence across all academic levels.</p>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem;">
+                        <button id="btn-export-attendance" class="btn btn-secondary" style="border-radius: 10px; padding: 0.5rem 1rem; font-size: 0.85rem; color: white;">
+                            <i data-lucide="download" style="width: 14px;"></i> Export
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card" style="border-radius: 12px; padding: 1rem;">
+                    <div class="actions-bar mb-1" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <select id="attendance-class-filter" class="input" style="height: 40px;">
+                            <option value="">Select Class</option>
+                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                        </select>
+                        <input type="date" id="attendance-date" class="input" value="${new Date().toISOString().split('T')[0]}" style="height: 40px;">
+                        <button id="btn-save-attendance" class="btn btn-primary" style="height: 40px; border-radius: 10px;">Save Attendance</button>
+                    </div>
+                    
+                    <div class="table-container" style="max-height: calc(100vh - 350px); overflow-y: auto;">
+                        <table class="data-table">
+                            <thead><tr><th>ID</th><th>Student Name</th><th>Status</th></tr></thead>
+                            <tbody id="attendance-list-body">
+                                <tr><td colspan="3" class="text-center p-4">Select a class to start tracking</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
     async renderAcademic() {
         const classes = await db.classes.toArray();
         const subjects = await db.subjects.toArray();
-        const assignments = await db.subject_assignments.toArray();
         
         this.contentArea.innerHTML = `
-            <div class="tabs mb-2">
-                <button class="tab-btn active" data-tab="classes">Classes</button>
-                <button class="tab-btn" data-tab="subjects">Subjects</button>
-                <button class="tab-btn" data-tab="assignments">Assignments</button>
-            </div>
-            
-            <div id="tab-content">
-                <!-- Tab content will be rendered here -->
+            <div class="view-container">
+                <div class="tabs mb-2" style="display: flex; gap: 0.5rem;">
+                    <button class="tab-btn active" data-tab="classes" style="padding: 0.5rem 1rem; border-radius: 8px;">Classes</button>
+                    <button class="tab-btn" data-tab="subjects" style="padding: 0.5rem 1rem; border-radius: 8px;">Subjects</button>
+                    <button class="tab-btn" data-tab="assignments" style="padding: 0.5rem 1rem; border-radius: 8px;">Assignments</button>
+                </div>
+                
+                <div id="tab-content" class="card" style="border-radius: 12px; padding: 1rem; flex: 1; overflow-y: auto;">
+                    <!-- Tab content will be rendered here -->
+                </div>
             </div>
         `;
 
@@ -1475,59 +1518,26 @@ export const UI = {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
             
             if (tab === 'classes') {
-                const list = await db.classes.toArray();
                 container.innerHTML = `
-                    <div class="actions-bar mb-2">
-                        <button id="add-class-btn" class="btn btn-primary">Add Class</button>
-                    </div>
-                    <div class="table-container card">
-                        <table class="data-table">
-                            <thead><tr><th>Name</th><th>Level</th><th>Action</th></tr></thead>
-                            <tbody>
-                                ${list.map(c => `<tr><td>${c.name}</td><td>${c.level}</td><td><button class="btn btn-secondary btn-sm delete-class" data-id="${c.id}">Delete</button></td></tr>`).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                    <div class="actions-bar mb-1"><button id="add-class-btn" class="btn btn-primary btn-sm">Add Class</button></div>
+                    <table class="data-table">
+                        <thead><tr><th>Name</th><th>Level</th><th>Action</th></tr></thead>
+                        <tbody>${classes.map(c => `<tr><td>${c.name}</td><td>${c.level}</td><td><i data-lucide="trash-2" class="delete-class" data-id="${c.id}" style="color:#ef4444; cursor:pointer; width:16px;"></i></td></tr>`).join('')}</tbody>
+                    </table>
                 `;
             } else if (tab === 'subjects') {
-                const list = await db.subjects.toArray();
                 container.innerHTML = `
-                    <div class="actions-bar mb-2">
-                        <button id="add-subject-btn" class="btn btn-primary">Add Subject</button>
-                    </div>
-                    <div class="table-container card">
-                        <table class="data-table">
-                            <thead><tr><th>Name</th><th>Type</th><th>Credits</th></tr></thead>
-                            <tbody>
-                                ${list.map(s => `<tr><td>${s.name}</td><td>${s.type}</td><td>${s.credits}</td></tr>`).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-            } else if (tab === 'assignments') {
-                container.innerHTML = `
-                    <div class="actions-bar mb-2">
-                        <button id="add-assignment-btn" class="btn btn-primary">Assign Teacher</button>
-                    </div>
-                    <div class="table-container card">
-                        <table class="data-table">
-                            <thead><tr><th>Teacher</th><th>Subject</th><th>Class</th></tr></thead>
-                            <tbody id="assignments-list">
-                                <!-- Assignments listed here -->
-                            </tbody>
-                        </table>
-                    </div>
+                    <div class="actions-bar mb-1"><button id="add-subject-btn" class="btn btn-primary btn-sm">Add Subject</button></div>
+                    <table class="data-table">
+                        <thead><tr><th>Name</th><th>Type</th><th>Credits</th><th>Action</th></tr></thead>
+                        <tbody>${subjects.map(s => `<tr><td>${s.name}</td><td>${s.type}</td><td>${s.credits}</td><td><i data-lucide="trash-2" class="delete-sub" data-id="${s.id}" style="color:#ef4444; cursor:pointer; width:16px;"></i></td></tr>`).join('')}</tbody>
+                    </table>
                 `;
             }
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         };
 
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => renderTab(btn.dataset.tab));
-        });
-
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.onclick = () => renderTab(btn.dataset.tab));
         renderTab('classes');
     },
 
@@ -1536,27 +1546,32 @@ export const UI = {
         let students = await db.students.toArray();
         let subjects = await db.subjects.toArray();
         
-        // Filter based on "Subject Teacher Rights"
-        if (role === 'Teacher') {
-            const assignments = await db.subject_assignments.toArray(); // In reality, filter by teacher_id
-            // For demo: restrict to first subject found if any
-            if (assignments.length > 0) {
-                subjects = subjects.filter(s => assignments.some(a => a.subject_id === s.id));
-            }
-        }
-
         this.contentArea.innerHTML = `
-            <div class="actions-bar mb-2">
-                <select id="subject-filter" class="input">
-                    <option value="">Select Subject</option>
-                    ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-                </select>
-                <select id="term-filter" class="input">
-                    <option value="First Term">First Term</option>
-                    <option value="Second Term">Second Term</option>
-                    <option value="Third Term">Third Term</option>
-                </select>
-            </div>
+            <div class="view-container">
+                <div class="page-banner" style="background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);">
+                    <div class="banner-content">
+                        <h1 class="banner-title"><i data-lucide="bar-chart"></i> Academic Gradebook</h1>
+                        <p class="banner-subtitle">Manage assessment scores and performance analytics.</p>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem;">
+                        <button id="btn-print-report-cards" class="btn btn-secondary" style="border-radius: 10px; padding: 0.5rem 1rem; font-size: 0.85rem; color: white;">
+                            <i data-lucide="printer" style="width: 14px;"></i> Report Cards
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card" style="border-radius: 12px; padding: 1rem;">
+                    <div class="actions-bar mb-1" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <select id="subject-filter" class="input" style="height: 40px; font-size: 0.9rem;">
+                            <option value="">Select Subject</option>
+                            ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                        </select>
+                        <select id="term-filter" class="input" style="height: 40px; font-size: 0.9rem;">
+                            <option value="First Term">First Term</option>
+                            <option value="Second Term">Second Term</option>
+                            <option value="Third Term">Third Term</option>
+                        </select>
+                    </div>
             
             <div class="table-container card">
                 <table class="data-table">
