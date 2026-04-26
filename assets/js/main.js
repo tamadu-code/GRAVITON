@@ -167,23 +167,32 @@ if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        const email = document.getElementById('login-email').value.trim();
-        const password = document.getElementById('login-password').value;
+        try {
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
 
-        loginBtn.disabled = true;
-        loginBtn.innerHTML = '<div class="loader" style="width:16px; height:16px; border-width:2px;"></div>';
-        loginError.style.display = 'none';
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<div class="loader" style="width:16px; height:16px; border-width:2px;"></div>';
+            loginError.style.display = 'none';
 
-        const { data, error } = await loginUser(email, password);
+            const { data, error } = await loginUser(email, password);
 
-        if (error) {
-            loginError.textContent = error.message || 'Invalid email or password.';
+            if (error) {
+                loginError.textContent = error.message || 'Invalid email or password.';
+                loginError.style.display = 'block';
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            } else if (data && data.session) {
+                await loadAuthenticatedApp(data.session.user);
+            }
+        } catch (err) {
+            console.error('Login error:', err);
+            loginError.textContent = err.message || 'An unexpected error occurred during login.';
             loginError.style.display = 'block';
             loginBtn.disabled = false;
             loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
             if (typeof lucide !== 'undefined') lucide.createIcons();
-        } else if (data && data.session) {
-            await loadAuthenticatedApp(data.session.user);
         }
     });
 }
