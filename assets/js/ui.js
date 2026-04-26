@@ -822,19 +822,18 @@ export const UI = {
             } else {
                 consolidated.push({
                     name: s.name,
-                        <div class="page-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
-                        <div class="banner-content">
-                            <h1 class="banner-title"><i data-lucide="check-circle"></i> Daily Attendance</h1>
-                            <p class="banner-subtitle">Track and manage daily presence across all academic levels.</p>
-                        </div>
-                        <div style="display: flex; gap: 0.75rem;">
-                            <button id="btn-export-attendance" class="btn btn-secondary" style="border-radius: 10px; padding: 0.5rem 1rem; font-size: 0.85rem; color: white;">
-                                <i data-lucide="download" style="width: 14px;"></i> Export
-                            </button>
-                        </div>
-                    </div>
+                    classes: [s.class_name],
+                    ids: [s.id],
+                    credits: s.credits,
+                    type: s.type
+                });
+            }
+        });
 
-                    <div class="card" style="border-radius: 12px; padding: 1rem;">
+        this.contentArea.innerHTML = `
+            <div class="view-container">
+                <div class="page-banner" style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%);">
+                    <div class="banner-content">
                         <h1 class="banner-title"><i data-lucide="book-open"></i> Subject Registry</h1>
                         <p class="banner-subtitle">Manage courses, credit units, and instructional assignments across all school levels.</p>
                     </div>
@@ -843,75 +842,52 @@ export const UI = {
                             <span class="stat-value">${consolidated.length}</span>
                             <span class="stat-label">Unique Courses</span>
                         </div>
-                        <div class="banner-stat-item">
-                            <span class="stat-value">${subjects.length}</span>
-                            <span class="stat-label">Stream Instances</span>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem;">
+                        <button id="btn-register-course" class="btn btn-primary" style="background: white; color: #0f172a; border: none; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem;">
+                            <i data-lucide="plus-circle" style="width: 16px;"></i> Register Course
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card" style="border-radius: 12px; padding: 1rem;">
+                    <div class="actions-bar mb-1" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <div style="position: relative; flex: 1;">
+                            <i data-lucide="search" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 14px;"></i>
+                            <input type="text" placeholder="Search courses..." class="input" style="padding-left: 2.25rem; border-radius: 10px; height: 40px;">
                         </div>
                     </div>
-                    <div style="display: flex; gap: 1rem;">
-                        <button class="btn btn-secondary" style="border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.05); color: white; border-color: rgba(255,255,255,0.1);">
-                            <i data-lucide="database"></i> Consolidate
-                        </button>
-                        <button id="btn-register-course" class="btn" style="background: white; color: #0f172a; border: none; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; font-weight: 700;">
-                            <i data-lucide="plus-circle"></i> Register Course
-                        </button>
-                    </div>
-                </div>
 
-                <div class="actions-bar" style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0;">
-                    <div style="position: relative; flex: 1; max-width: 500px;">
-                        <i data-lucide="search" style="position: absolute; left: 1.5rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 22px;"></i>
-                        <input type="text" placeholder="Search courses, faculty, or stream codes..." class="input" style="padding-left: 4rem; border-radius: 16px; border: 1px solid #f1f5f9; background: #f8fafc; height: 56px; font-size: 1.05rem;">
-                    </div>
-                </div>
-
-                <div class="table-container card" style="padding: 0; border-radius: 24px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
-                    <table class="data-table">
-                        <thead style="background: #f8fafc; border-bottom: 2px solid #f1f5f9;">
-                            <tr>
-                                <th style="padding: 1.5rem 2rem; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">COURSE TITLE</th>
-                                <th style="color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">LEVELS & STREAMS</th>
-                                <th style="color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">FACULTY ASSIGNED</th>
-                                <th style="color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">UNITS</th>
-                                <th style="color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">CATEGORY</th>
-                                <th style="color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; text-align: right; padding-right: 2rem;">ACTIONS</th>
-                            </tr>
-                        </thead>
-                        <tbody style="background: white;">
-                            ${consolidated.length === 0 ? `<tr><td colspan="6" class="text-center p-4 text-slate-400">No courses registered yet.</td></tr>` : consolidated.map(s => {
-                                const details = getSubjectDetails(s.ids, s.classes);
-                                return `
-                                <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.2s;">
-                                    <td style="padding: 1.5rem 2rem; font-weight: 700; color: #1e293b;">
-                                        <div style="display: flex; align-items: center; gap: 1.25rem;">
-                                            <div style="width: 44px; height: 44px; background: #fff7ed; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #f97316;">
-                                                <i data-lucide="book-marked" style="width: 22px;"></i>
-                                            </div>
-                                            <div style="display: flex; flex-direction: column;">
-                                                <span>${s.name}</span>
-                                                <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 400;">CURRICULUM UNIT</span>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>${details.linkedString}</td>
-                                    <td>
-                                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.9rem;">
-                                            <span style="width: 10px; height: 10px; background: ${details.facultyColor}; border-radius: 50%;"></span>
-                                            ${details.facultyString}
-                                        </div>
-                                    </td>
-                                    <td style="font-weight: 800; color: #1e40af; font-size: 1.1rem;">${s.credits || 1}</td>
-                                    <td><span class="badge" style="background: ${s.type === 'Elective' ? '#f3e8ff' : '#ffedd5'}; color: ${s.type === 'Elective' ? '#7e22ce' : '#9a3412'}; border: 1px solid ${s.type === 'Elective' ? '#e9d5ff' : '#fed7aa'}; border-radius: 10px; font-weight: 700; font-size: 0.75rem; padding: 0.4rem 0.8rem;">${s.type || 'Core'}</span></td>
-                                    <td style="text-align: right; padding-right: 2rem;">
-                                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                                            <button class="btn btn-secondary btn-sm" style="width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0;"><i data-lucide="edit-3" style="width: 18px;"></i></button>
-                                            <button class="btn btn-secondary btn-sm delete-subject-btn" data-ids="${s.ids.join(',')}" data-name="${s.name}" style="width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2" style="width: 18px;"></i></button>
-                                        </div>
-                                    </td>
+                    <div class="table-container" style="max-height: calc(100vh - 350px); overflow-y: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>COURSE TITLE</th>
+                                    <th>STREAMS</th>
+                                    <th>FACULTY</th>
+                                    <th>UNITS</th>
+                                    <th style="text-align: right;">ACTIONS</th>
                                 </tr>
-                            `;}).join('')}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                ${consolidated.length === 0 ? `<tr><td colspan="5" class="text-center p-4">No courses registered yet.</td></tr>` : consolidated.map(s => {
+                                    const details = getSubjectDetails(s.ids, s.classes);
+                                    return `
+                                    <tr>
+                                        <td style="font-weight: 700;">${s.name}</td>
+                                        <td>${details.linkedString}</td>
+                                        <td style="font-size: 0.85rem; color: #64748b;">${details.facultyString}</td>
+                                        <td style="font-weight: 800; color: #1e40af;">${s.credits || 1}</td>
+                                        <td style="text-align: right;">
+                                            <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                                <button class="btn btn-secondary btn-sm delete-subject-btn" data-ids="${s.ids.join(',')}" data-name="${s.name}" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 14px;"></i></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `;}).join('')}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         `;
@@ -1454,45 +1430,101 @@ export const UI = {
         `).join('');
     },
 
-    async renderAttendance() {
+    async renderGrades() {
         const students = await db.students.toArray();
-        const classes = await db.classes.toArray();
+        const subjects = await db.subjects.toArray();
         
         this.contentArea.innerHTML = `
             <div class="view-container">
-                <div class="page-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+                <div class="page-banner" style="background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);">
                     <div class="banner-content">
-                        <h1 class="banner-title"><i data-lucide="check-circle"></i> Daily Attendance</h1>
-                        <p class="banner-subtitle">Track and manage daily presence across all academic levels.</p>
+                        <h1 class="banner-title"><i data-lucide="bar-chart"></i> Academic Gradebook</h1>
+                        <p class="banner-subtitle">Manage assessment scores and performance analytics.</p>
                     </div>
                     <div style="display: flex; gap: 0.75rem;">
-                        <button id="btn-export-attendance" class="btn btn-secondary" style="border-radius: 10px; padding: 0.5rem 1rem; font-size: 0.85rem; color: white;">
-                            <i data-lucide="download" style="width: 14px;"></i> Export
+                        <button id="btn-print-report-cards" class="btn btn-secondary" style="border-radius: 10px; padding: 0.5rem 1rem; font-size: 0.85rem; color: white;">
+                            <i data-lucide="printer" style="width: 14px;"></i> Report Cards
                         </button>
                     </div>
                 </div>
 
                 <div class="card" style="border-radius: 12px; padding: 1rem;">
                     <div class="actions-bar mb-1" style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                        <select id="attendance-class-filter" class="input" style="height: 40px;">
-                            <option value="">Select Class</option>
-                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                        <select id="subject-filter" class="input" style="height: 40px;">
+                            <option value="">Select Subject</option>
+                            ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
                         </select>
-                        <input type="date" id="attendance-date" class="input" value="${new Date().toISOString().split('T')[0]}" style="height: 40px;">
-                        <button id="btn-save-attendance" class="btn btn-primary" style="height: 40px; border-radius: 10px;">Save Attendance</button>
+                        <select id="term-filter" class="input" style="height: 40px;">
+                            <option value="1st Term">1st Term</option>
+                            <option value="2nd Term">2nd Term</option>
+                            <option value="3rd Term">3rd Term</option>
+                        </select>
                     </div>
                     
                     <div class="table-container" style="max-height: calc(100vh - 350px); overflow-y: auto;">
                         <table class="data-table">
-                            <thead><tr><th>ID</th><th>Student Name</th><th>Status</th></tr></thead>
-                            <tbody id="attendance-list-body">
-                                <tr><td colspan="3" class="text-center p-4">Select a class to start tracking</td></tr>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Student</th>
+                                    <th>CA (40)</th>
+                                    <th>Exam (60)</th>
+                                    <th>Total</th>
+                                    <th>Grade</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="score-entry-body">
+                                ${students.map(s => `
+                                    <tr data-student-id="${s.student_id}">
+                                        <td>${s.student_id}</td>
+                                        <td>${s.name}</td>
+                                        <td><input type="number" class="input score-input" data-field="ca" max="40" style="width: 60px; height: 32px; padding: 0 4px;"></td>
+                                        <td><input type="number" class="input score-input" data-field="exam" max="60" style="width: 60px; height: 32px; padding: 0 4px;"></td>
+                                        <td class="total-cell">-</td>
+                                        <td class="grade-cell">-</td>
+                                        <td><button class="btn btn-primary btn-sm save-score">Save</button></td>
+                                    </tr>
+                                `).join('')}
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
         `;
+
+        // Logic for calculations and saving...
+        document.querySelectorAll('.score-input').forEach(input => {
+            input.addEventListener('input', (e) => {
+                const row = e.target.closest('tr');
+                const ca = parseFloat(row.querySelector('[data-field="ca"]').value) || 0;
+                const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
+                const total = ca + exam;
+                row.querySelector('.total-cell').textContent = total;
+                row.querySelector('.grade-cell').textContent = ScoringEngine.getGrade(total);
+            });
+        });
+
+        document.querySelectorAll('.save-score').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const row = e.target.closest('tr');
+                const studentId = row.dataset.studentId;
+                const subjectId = document.getElementById('subject-filter').value;
+                if (!subjectId) return Notifications.show('Select subject', 'error');
+
+                const ca = parseFloat(row.querySelector('[data-field="ca"]').value) || 0;
+                const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
+                
+                await db.scores.put({
+                    id: `${studentId}_${subjectId}`,
+                    student_id: studentId,
+                    subject_id: subjectId,
+                    ca, exam, total: ca + exam,
+                    updated_at: new Date().toISOString()
+                });
+                Notifications.show('Saved', 'success');
+            });
+        });
     },
 
     async renderAcademic() {
@@ -1541,200 +1573,48 @@ export const UI = {
         renderTab('classes');
     },
 
-    async renderGrades() {
-        const role = this.currentUser.role;
-        let students = await db.students.toArray();
-        let subjects = await db.subjects.toArray();
+    async renderAttendance() {
+        const students = await db.students.toArray();
+        const classes = await db.classes.toArray();
         
         this.contentArea.innerHTML = `
             <div class="view-container">
-                <div class="page-banner" style="background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);">
+                <div class="page-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
                     <div class="banner-content">
-                        <h1 class="banner-title"><i data-lucide="bar-chart"></i> Academic Gradebook</h1>
-                        <p class="banner-subtitle">Manage assessment scores and performance analytics.</p>
+                        <h1 class="banner-title"><i data-lucide="check-circle"></i> Daily Attendance</h1>
+                        <p class="banner-subtitle">Track and manage daily presence across all academic levels.</p>
                     </div>
                     <div style="display: flex; gap: 0.75rem;">
-                        <button id="btn-print-report-cards" class="btn btn-secondary" style="border-radius: 10px; padding: 0.5rem 1rem; font-size: 0.85rem; color: white;">
-                            <i data-lucide="printer" style="width: 14px;"></i> Report Cards
+                        <button id="btn-export-attendance" class="btn btn-secondary" style="border-radius: 10px; padding: 0.5rem 1rem; font-size: 0.85rem; color: white;">
+                            <i data-lucide="download" style="width: 14px;"></i> Export
                         </button>
                     </div>
                 </div>
 
                 <div class="card" style="border-radius: 12px; padding: 1rem;">
                     <div class="actions-bar mb-1" style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                        <select id="subject-filter" class="input" style="height: 40px; font-size: 0.9rem;">
-                            <option value="">Select Subject</option>
-                            ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                        <select id="attendance-class-filter" class="input" style="height: 40px;">
+                            <option value="">Select Class</option>
+                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                         </select>
-                        <select id="term-filter" class="input" style="height: 40px; font-size: 0.9rem;">
-                            <option value="First Term">First Term</option>
-                            <option value="Second Term">Second Term</option>
-                            <option value="Third Term">Third Term</option>
-                        </select>
+                        <input type="date" id="attendance-date" class="input" value="${new Date().toISOString().split('T')[0]}" style="height: 40px;">
+                        <button id="btn-save-attendance" class="btn btn-primary" style="height: 40px; border-radius: 10px;">Save Attendance</button>
                     </div>
-            
-            <div class="table-container card">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Student ID</th>
-                            <th>Name</th>
-                            <th>CA1 (20)</th>
-                            <th>CA2 (20)</th>
-                            <th>Exam (60)</th>
-                            <th>Total</th>
-                            <th>Grade</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="score-entry-body">
-                        ${students.map(s => `
-                            <tr data-student-id="${s.student_id}">
-                                <td>${s.student_id}</td>
-                                <td>${s.name}</td>
-                                <td><input type="number" class="input score-input" data-field="ca1" max="20" min="0"></td>
-                                <td><input type="number" class="input score-input" data-field="ca2" max="20" min="0"></td>
-                                <td><input type="number" class="input score-input" data-field="exam" max="60" min="0"></td>
-                                <td class="total-cell">0</td>
-                                <td class="grade-cell">-</td>
-                                <td><button class="btn btn-primary save-score">Save</button></td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+                    
+                    <div class="table-container" style="max-height: calc(100vh - 350px); overflow-y: auto;">
+                        <table class="data-table">
+                            <thead><tr><th>ID</th><th>Student Name</th><th>Status</th></tr></thead>
+                            <tbody id="attendance-list-body">
+                                <tr><td colspan="3" class="text-center p-4">Select a class to start tracking</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         `;
-
-        // Real-time calculation listeners
-        const inputs = document.querySelectorAll('.score-input');
-        inputs.forEach(input => {
-            input.addEventListener('input', (e) => {
-                const row = e.target.closest('tr');
-                const ca1 = row.querySelector('[data-field="ca1"]').value;
-                const ca2 = row.querySelector('[data-field="ca2"]').value;
-                const exam = row.querySelector('[data-field="exam"]').value;
-                
-                const result = ScoringEngine.processScore(ca1, ca2, exam);
-                row.querySelector('.total-cell').textContent = result.total;
-                row.querySelector('.grade-cell').textContent = result.grade;
-            });
-        });
-
-        // Save individual score
-        const saveBtns = document.querySelectorAll('.save-score');
-        saveBtns.forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const row = e.target.closest('tr');
-                const studentId = row.getAttribute('data-student-id');
-                const subjectId = document.getElementById('subject-filter').value;
-                
-                if (!subjectId) {
-                    Notifications.show('Please select a subject first', 'error');
-                    return;
-                }
-
-                const ca1 = row.querySelector('[data-field="ca1"]').value;
-                const ca2 = row.querySelector('[data-field="ca2"]').value;
-                const exam = row.querySelector('[data-field="exam"]').value;
-                
-                const scoreData = {
-                    id: `${studentId}_${subjectId}_${new Date().getFullYear()}`,
-                    student_id: studentId,
-                    subject_id: subjectId,
-                    ca1: parseFloat(ca1) || 0,
-                    ca2: parseFloat(ca2) || 0,
-                    exam: parseFloat(exam) || 0,
-                    ...ScoringEngine.processScore(ca1, ca2, exam),
-                    term: document.getElementById('term-filter').value,
-                    session: new Date().getFullYear().toString(),
-                    is_synced: 0,
-                    updated_at: new Date().toISOString()
-                };
-
-                await db.scores.put(scoreData);
-                Notifications.show(`Score saved for ${studentId}`, 'success');
-            });
-        });
     },
 
-    async renderAttendance() {
-        const role = this.currentUser.role;
-        let students = await db.students.toArray();
-        const today = new Date().toISOString().split('T')[0];
 
-        // Filter based on "Form Master Rights"
-        if (role === 'Teacher') {
-            const formClasses = await db.form_teachers.toArray(); // In reality, filter by teacher_id
-            if (formClasses.length > 0) {
-                students = students.filter(s => formClasses.some(f => f.class_name === s.class_name));
-            }
-        }
-        
-        this.contentArea.innerHTML = `
-            <div class="actions-bar mb-2">
-                <input type="date" id="attendance-date" class="input" value="${today}">
-                <button id="save-attendance" class="btn btn-success">Save All</button>
-            </div>
-            
-            <div class="table-container card">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Student ID</th>
-                            <th>Name</th>
-                            <th>Class</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="attendance-body">
-                        ${students.map(s => `
-                            <tr data-student-id="${s.student_id}">
-                                <td>${s.student_id}</td>
-                                <td>${s.name}</td>
-                                <td>${s.class_name}</td>
-                                <td>
-                                    <div class="attendance-options">
-                                        <label class="radio-label">
-                                            <input type="radio" name="status-${s.student_id}" value="Present" checked> Present
-                                        </label>
-                                        <label class="radio-label">
-                                            <input type="radio" name="status-${s.student_id}" value="Absent"> Absent
-                                        </label>
-                                        <label class="radio-label">
-                                            <input type="radio" name="status-${s.student_id}" value="Late"> Late
-                                        </label>
-                                    </div>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-
-        document.getElementById('save-attendance').addEventListener('click', async () => {
-            const date = document.getElementById('attendance-date').value;
-            const rows = document.querySelectorAll('#attendance-body tr');
-            
-            for (const row of rows) {
-                const studentId = row.getAttribute('data-student-id');
-                const status = row.querySelector(`input[name="status-${studentId}"]:checked`).value;
-                
-                const attendanceData = {
-                    id: `${studentId}_${date}`,
-                    student_id: studentId,
-                    date: date,
-                    status: status,
-                    is_synced: 0,
-                    updated_at: new Date().toISOString()
-                };
-                
-                await db.attendance.put(attendanceData);
-            }
-            
-            Notifications.show(`Attendance saved for ${date}`, 'success');
-        });
-    },
 
     async renderReports() {
         const students = await db.students.toArray();
