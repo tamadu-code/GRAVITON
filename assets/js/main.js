@@ -401,10 +401,10 @@ if (mobileMenuBtn && sidebar) {
     mobileMenuBtn.addEventListener('click', toggleMobileMenu);
     overlay.addEventListener('click', toggleMobileMenu);
 
-    // Close sidebar when clicking a nav item on mobile
+    // Close sidebar when clicking a nav item on mobile/half-desktop
     navItems.forEach(item => {
         item.addEventListener('click', () => {
-            if (window.innerWidth <= 768 && sidebar.classList.contains('mobile-open')) {
+            if (window.innerWidth <= 1024 && sidebar.classList.contains('mobile-open')) {
                 toggleMobileMenu();
             }
         });

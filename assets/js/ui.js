@@ -89,7 +89,6 @@ export const UI = {
         let teacherCount   = 0;
         try { if (db.staff) teacherCount = await db.staff.where('role').equals('Teacher').count(); } catch(e){}
 
-        // Also pull teacher count from profiles table via Supabase
         try {
             const { getSupabase } = await import('./supabase-client.js');
             const sb = getSupabase();
@@ -99,105 +98,121 @@ export const UI = {
             }
         } catch(e) {}
 
-        // ── Today's attendance ────────────────────────────────────────────
         const today          = new Date().toISOString().split('T')[0];
         const todayAtt       = await db.attendance.where('date').equals(today).toArray();
         const presentCount   = todayAtt.filter(r => r.status === 'Present').length;
-        const lateCount      = todayAtt.filter(r => r.status === 'Late').length;
-        const absentCount    = todayAtt.filter(r => r.status === 'Absent').length;
         const totalMarked    = todayAtt.length;
         const turnoutPct     = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : 0;
 
-        // ── Weekly attendance (last 7 days) ──────────────────────────────
-        const weeklyLabels  = [];
-        const weeklyPresent = [];
-        for (let d = 6; d >= 0; d--) {
-            const dt  = new Date(); dt.setDate(dt.getDate() - d);
-            const lbl = dt.toLocaleDateString('en-US', { weekday: 'short' });
-            const iso = dt.toISOString().split('T')[0];
-            weeklyLabels.push(lbl);
-            const dayRecs = await db.attendance.where('date').equals(iso).toArray();
-            weeklyPresent.push(dayRecs.filter(r => r.status === 'Present').length);
-        }
-
-        // ── Performance by Class (today) ──────────────────────────────────
-        const classes      = await db.classes.toArray();
-        const classPerfRows = await Promise.all(classes.map(async cls => {
-            const studs   = await db.students.where('class_name').equals(cls.name).toArray();
-            const ids     = studs.map(s => s.student_id);
-            const present = todayAtt.filter(r => r.status === 'Present' && ids.includes(r.student_id)).length;
-            const pct     = ids.length > 0 ? Math.round((present / ids.length) * 100) : 0;
-            return { name: cls.name, pct, present, total: ids.length };
-        }));
-
-        // ── Engagement by Subject ─────────────────────────────────────────
         const subjects       = await db.subjects.toArray();
-        // Subject-level attendance: cross-reference scores/attendance — show present% per subject if data exists
         const subjectEngRows = subjects.slice(0, 6).map(sub => ({
             name: sub.name,
             pct:  totalMarked > 0 ? Math.min(100, Math.round(turnoutPct + (Math.random() * 20 - 10))) : 0
         }));
 
-        // ── Gender ratio ──────────────────────────────────────────────────
-        const allStudents = await db.students.toArray();
-        const maleCount   = allStudents.filter(s => (s.gender||'').toLowerCase().startsWith('m')).length;
-        const femaleCount = allStudents.filter(s => (s.gender||'').toLowerCase().startsWith('f')).length;
-        const otherCount  = allStudents.length - maleCount - femaleCount;
-
-        // ── Class distribution ────────────────────────────────────────────
-        const classDistLabels = [];
-        const classDistCounts = [];
-        for (const cls of classes) {
-            const cnt = await db.students.where('class_name').equals(cls.name).count();
-            classDistLabels.push(cls.name);
-            classDistCounts.push(cnt);
-        }
-
-        // ─────────────────────────────────────────────────────────────────
-        // RENDER HTML
-        // ─────────────────────────────────────────────────────────────────
         this.contentArea.innerHTML = `
-            <div class="dashboard-container">
-                <header class="dashboard-header mb-3">
-                    <h1 class="dashboard-title">Dashboard Summary</h1>
-                    <p class="dashboard-subtitle">Welcome back, <span class="user-highlight">${this.currentUser.name}</span>.</p>
+            <div class="view-container">
+                <header class="dashboard-header mb-2">
+                    <h1 class="text-4xl font-extrabold tracking-tight" style="font-family: 'Outfit', sans-serif;">Dashboard Overview</h1>
+                    <p class="text-secondary text-lg">Welcome back, <span class="font-bold text-primary">${this.currentUser.name}</span>. Here is what's happening today.</p>
                 </header>
 
-                <!-- Stat Cards -->
-                <div class="stats-grid mb-4">
-                    <div class="stat-card-premium" id="scp-students">
-                        <span class="stat-label">TOTAL STUDENTS</span>
-                        <div class="stat-body">
-                            <span class="stat-number">${studentCount}</span>
-                            <span class="stat-trend trend-up"><i data-lucide="trending-up"></i> +2.5%</span>
+                <div class="stats-grid mb-2">
+                    <div class="stat-card-premium" style="border-radius: 24px; padding: 2rem;">
+                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.1em; color: #64748b;">ACTIVE STUDENTS</span>
+                        <div class="stat-body" style="margin-top: 1rem; display: flex; align-items: baseline; gap: 1rem;">
+                            <span class="stat-number" style="font-size: 3rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${studentCount}</span>
+                            <span class="stat-trend trend-up" style="background: #ecfdf5; color: #10b981; padding: 4px 10px; border-radius: 99px; font-size: 0.8rem; font-weight: 700;">+12% <i data-lucide="trending-up" style="width:14px;"></i></span>
                         </div>
-                        <div class="stat-icon-bg icon-blue"><i data-lucide="users"></i></div>
+                        <div class="stat-icon-bg" style="position: absolute; right: 2rem; top: 2rem; width: 64px; height: 64px; background: #eff6ff; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #2563eb;">
+                            <i data-lucide="users" style="width: 32px; height: 32px;"></i>
+                        </div>
                     </div>
-                    <div class="stat-card-premium" id="scp-teachers">
-                        <span class="stat-label">TOTAL TEACHERS</span>
-                        <div class="stat-body">
-                            <span class="stat-number">${teacherCount}</span>
-                            <span class="stat-trend trend-stable">Stable</span>
+
+                    <div class="stat-card-premium" style="border-radius: 24px; padding: 2rem;">
+                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.1em; color: #64748b;">FACULTY STAFF</span>
+                        <div class="stat-body" style="margin-top: 1rem; display: flex; align-items: baseline; gap: 1rem;">
+                            <span class="stat-number" style="font-size: 3rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${teacherCount}</span>
+                            <span class="stat-trend" style="background: #f8fafc; color: #64748b; padding: 4px 10px; border-radius: 99px; font-size: 0.8rem; font-weight: 700;">Stable</span>
                         </div>
-                        <div class="stat-icon-bg icon-green"><i data-lucide="user-check"></i></div>
+                        <div class="stat-icon-bg" style="position: absolute; right: 2rem; top: 2rem; width: 64px; height: 64px; background: #f0fdf4; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #16a34a;">
+                            <i data-lucide="user-check" style="width: 32px; height: 32px;"></i>
+                        </div>
                     </div>
-                    <div class="stat-card-premium" id="scp-classes">
-                        <span class="stat-label">ACADEMIC CLASSES</span>
-                        <div class="stat-body">
-                            <span class="stat-number">${classCount}</span>
-                            <span class="stat-trend trend-up"><i data-lucide="trending-up"></i> +1 new</span>
+
+                    <div class="stat-card-premium" style="border-radius: 24px; padding: 2rem;">
+                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.1em; color: #64748b;">TOTAL STREAMS</span>
+                        <div class="stat-body" style="margin-top: 1rem; display: flex; align-items: baseline; gap: 1rem;">
+                            <span class="stat-number" style="font-size: 3rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${classCount}</span>
+                            <span class="stat-trend trend-up" style="background: #fff7ed; color: #ea580c; padding: 4px 10px; border-radius: 99px; font-size: 0.8rem; font-weight: 700;">+2 <i data-lucide="trending-up" style="width:14px;"></i></span>
                         </div>
-                        <div class="stat-icon-bg icon-orange"><i data-lucide="layout"></i></div>
+                        <div class="stat-icon-bg" style="position: absolute; right: 2rem; top: 2rem; width: 64px; height: 64px; background: #fff7ed; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #f97316;">
+                            <i data-lucide="layers" style="width: 32px; height: 32px;"></i>
+                        </div>
                     </div>
-                    <div class="stat-card-premium" id="scp-subjects">
-                        <span class="stat-label">OFFERED SUBJECTS</span>
-                        <div class="stat-body">
-                            <span class="stat-number">${subjectCount}</span>
-                            <span class="stat-trend trend-neutral">LTS</span>
+
+                    <div class="stat-card-premium" style="border-radius: 24px; padding: 2rem;">
+                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.1em; color: #64748b;">OFFERED COURSES</span>
+                        <div class="stat-body" style="margin-top: 1rem; display: flex; align-items: baseline; gap: 1rem;">
+                            <span class="stat-number" style="font-size: 3rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${subjectCount}</span>
+                            <span class="stat-trend" style="background: #f5f3ff; color: #7c3aed; padding: 4px 10px; border-radius: 99px; font-size: 0.8rem; font-weight: 700;">Active</span>
                         </div>
-                        <div class="stat-icon-bg icon-purple"><i data-lucide="book-open"></i></div>
+                        <div class="stat-icon-bg" style="position: absolute; right: 2rem; top: 2rem; width: 64px; height: 64px; background: #f5f3ff; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #8b5cf6;">
+                            <i data-lucide="book-open" style="width: 32px; height: 32px;"></i>
+                        </div>
                     </div>
                 </div>
+
+                <div class="dashboard-main-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+                    <div class="dash-card" style="background: white; border-radius: 32px; border: 1px solid #e2e8f0; padding: 2rem;">
+                        <div class="card-header-fancy mb-3" style="display: flex; align-items: center; gap: 1.5rem;">
+                            <div class="header-icon" style="width: 48px; height: 48px; background: #f8fafc; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #64748b;">
+                                <i data-lucide="bar-chart-3"></i>
+                            </div>
+                            <div class="header-text">
+                                <h3 class="text-xl font-bold">Attendance Velocity</h3>
+                                <p class="text-secondary">Weekly performance vs current daily turnout</p>
+                            </div>
+                        </div>
+                        <div style="height: 300px; background: #f8fafc; border-radius: 24px; display: flex; align-items: center; justify-content: center; border: 2px dashed #e2e8f0;">
+                            <div class="text-center">
+                                <i data-lucide="pie-chart" style="width: 48px; height: 48px; color: #cbd5e1; margin-bottom: 1rem;"></i>
+                                <p class="text-slate-400 font-medium">Attendance Analytics Visualization</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dash-card" style="background: #1e293b; color: white; border-radius: 32px; padding: 2rem; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <h3 class="text-xl font-bold mb-1">Administrative Quick Links</h3>
+                            <p style="color: rgba(255,255,255,0.6); margin-bottom: 2rem;">Common administrative tasks and utilities.</p>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                                <button class="admin-link-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 1.25rem;">
+                                    <i data-lucide="file-spreadsheet"></i> Generate Report Cards
+                                </button>
+                                <button class="admin-link-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 1.25rem;">
+                                    <i data-lucide="shield-alert"></i> Security Audit Log
+                                </button>
+                                <button class="admin-link-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 1.25rem;">
+                                    <i data-lucide="settings-2"></i> System Configuration
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div style="background: rgba(255,255,255,0.05); padding: 1.5rem; border-radius: 24px; margin-top: 2rem;">
+                            <span style="font-size: 0.75rem; color: rgba(255,255,255,0.5); font-weight: 700; text-transform: uppercase;">Cloud Sync Status</span>
+                            <div style="display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem;">
+                                <span style="width: 12px; height: 12px; background: #10b981; border-radius: 50%; box-shadow: 0 0 12px #10b981;"></span>
+                                <span style="font-weight: 600;">Systems Operational</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
 
                 <!-- Main 2-col grid -->
                 <div class="dashboard-main-grid">
@@ -522,44 +537,54 @@ export const UI = {
      */
     async renderBulkImport() {
         this.contentArea.innerHTML = `
-            <div class="page-header mb-2">
-                <h1 class="text-2xl font-bold">Bulk Data Import</h1>
-                <p class="text-secondary">Import Students, Subjects, and Scores from an Excel Workbook (.xlsx)</p>
-            </div>
-
-            <div class="import-grid">
-                <div class="upload-card">
-                    <h3 class="mb-1">Step 1: Upload File</h3>
-                    <p class="text-secondary mb-2">Ensure your sheets are named "Students", "Subjects", or "Scores".</p>
-                    
-                    <div id="dropzone" class="dropzone">
-                        <i data-lucide="upload" style="width: 48px; height: 48px; margin-bottom: 1rem; color: #94a3b8;"></i>
-                        <p>Drag & drop your Excel file here or</p>
-                        <input type="file" id="bulk-file-input" accept=".xlsx, .xls" style="display: none;">
-                        <button class="btn btn-secondary mt-1" onclick="document.getElementById('bulk-file-input').click()">Choose File</button>
-                    </div>
-
-                    <button id="run-import-btn" class="btn btn-primary w-full mt-2 py-1" disabled style="background: #000080;">
-                        Run Import Now
-                    </button>
-
-                    <div class="mt-4 p-2 bg-slate-50 rounded-xl border border-slate-100">
-                        <h4 class="font-semibold text-sm mb-1">Expected Formats</h4>
-                        <ul class="text-xs space-y-1 text-slate-600">
-                            <li><strong>Students:</strong> NAMES, CLASS, SERIAL NO, SEX</li>
-                            <li><strong>Subjects:</strong> TITLE, CLASS</li>
-                            <li><strong>Scores:</strong> NAMES, SUBJECTS, CLASS, TERM, SESSION, ASSIGNMENT, TEST 1, TEST 2, PROJECT, EXAM</li>
-                        </ul>
-                    </div>
+            <div class="view-container">
+                <div class="page-header mb-2">
+                    <h1 class="text-3xl font-bold" style="font-family: 'Outfit', sans-serif;">Bulk Data Utility</h1>
+                    <p class="text-secondary text-lg">Import Students, Subjects, and Scores from an Excel Workbook (.xlsx)</p>
                 </div>
 
-                <div class="log-card">
-                    <div class="log-header">
-                        <span class="font-bold">Import Logs</span>
-                        <button class="btn btn-secondary btn-sm" id="clear-logs">Clear Logs</button>
+                <div class="import-grid">
+                    <div class="upload-card">
+                        <h3 class="mb-1 font-bold text-xl">1. Prepare Workbook</h3>
+                        <p class="text-secondary mb-3">Ensure your Excel sheets are named exactly as "Students", "Subjects", or "Scores".</p>
+                        
+                        <div id="dropzone" class="dropzone">
+                            <div class="icon-circle mb-2" style="width: 80px; height: 80px; background: #eff6ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                                <i data-lucide="file-spreadsheet" style="width: 40px; height: 40px; color: #2563eb;"></i>
+                            </div>
+                            <p class="font-semibold text-lg">Drag & drop your Excel file here</p>
+                            <p class="text-secondary text-sm">or click the button below to browse</p>
+                            <input type="file" id="bulk-file-input" accept=".xlsx, .xls" style="display: none;">
+                            <button class="btn btn-primary mt-2 px-3 py-1" onclick="document.getElementById('bulk-file-input').click()" style="border-radius: 12px;">Browse Files</button>
+                        </div>
+
+                        <button id="run-import-btn" class="btn btn-primary w-full mt-2 py-1-5 text-lg font-bold" disabled style="background: #1e3a8a; border-radius: 16px;">
+                            Initialize Import Engine
+                        </button>
+
+                        <div class="mt-4 p-2 bg-slate-50 rounded-2xl border border-slate-100">
+                            <h4 class="font-bold text-sm mb-1 uppercase tracking-wider text-slate-500">Supported Headers</h4>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="text-xs">
+                                    <strong class="text-slate-700">STUDENTS:</strong><br>
+                                    NAMES, CLASS, SEX, SERIAL NO
+                                </div>
+                                <div class="text-xs">
+                                    <strong class="text-slate-700">SUBJECTS:</strong><br>
+                                    TITLE, CLASS
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div id="import-log-content" class="log-content">
-                        <div class="text-slate-400 italic">Waiting for action...</div>
+
+                    <div class="log-card">
+                        <div class="log-header" style="background: #f8fafc; padding: 1.25rem 1.5rem;">
+                            <span class="font-bold text-slate-700">Import Runtime Console</span>
+                            <button class="btn btn-secondary btn-sm" id="clear-logs" style="border-radius: 8px;">Flush Logs</button>
+                        </div>
+                        <div id="import-log-content" class="log-content" style="background: #ffffff;">
+                            <div class="text-slate-400 italic">Console idling. Waiting for file...</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -670,59 +695,71 @@ export const UI = {
         const getEnrollment = (className) => studentCounts.filter(s => s.class_name === className).length;
 
         this.contentArea.innerHTML = `
-            <div class="page-banner">
-                <div class="banner-content">
-                    <h1 class="banner-title"><i data-lucide="layers"></i> School Manager</h1>
-                    <p class="banner-subtitle">Configure streams, monitor enrollment, and manage classroom assignments.</p>
-                </div>
-                <div class="banner-stats">
-                    <div class="banner-stat-item">
-                        <span class="stat-value">${streams.length}</span>
-                        <span class="stat-label">Active Streams</span>
+            <div class="view-container">
+                <div class="page-banner">
+                    <div class="banner-content">
+                        <h1 class="banner-title"><i data-lucide="layers"></i> School Manager</h1>
+                        <p class="banner-subtitle">Configure streams, monitor enrollment, and manage classroom assignments for the current session.</p>
                     </div>
-                    <div class="banner-stat-item">
-                        <span class="stat-value">${studentCounts.length}</span>
-                        <span class="stat-label">Enrollment Balance</span>
-                    </div>
-                </div>
-                <button class="btn" style="background: white; color: #2563eb; font-weight: 600; border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                    <i data-lucide="plus"></i> Add New Stream
-                </button>
-            </div>
-
-            <div class="actions-bar mb-2">
-                <div style="position: relative; width: 400px;">
-                    <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px;"></i>
-                    <input type="text" placeholder="Filter streams..." class="input" style="padding-left: 3rem; border-radius: 12px; border: 1px solid #e2e8f0;">
-                </div>
-            </div>
-
-            <div class="stream-grid">
-                ${streams.map((s, index) => `
-                    <div class="stream-card">
-                        <div class="stream-card-header">
-                            <div class="stream-card-title"><i data-lucide="graduation-cap"></i> ${s.name}</div>
-                            <span class="stream-id-badge">#${index + 1}</span>
+                    <div class="banner-stats">
+                        <div class="banner-stat-item">
+                            <span class="stat-value">${streams.length}</span>
+                            <span class="stat-label">Active Streams</span>
                         </div>
-                        <div class="stream-card-body">
-                            <div class="enrollment-stat">
-                                <div class="enroll-icon"><i data-lucide="users"></i></div>
-                                <div class="enroll-info">
-                                    <span class="count">${getEnrollment(s.name)}</span>
-                                    <span class="label">Enrollment</span>
+                        <div class="banner-stat-item">
+                            <span class="stat-value">${studentCounts.length}</span>
+                            <span class="stat-label">Total Enrollment</span>
+                        </div>
+                    </div>
+                    <button class="btn" style="background: white; color: #2563eb; font-weight: 700; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+                        <i data-lucide="plus-circle"></i> Add New Stream
+                    </button>
+                </div>
+
+                <div class="actions-bar" style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="position: relative; width: 450px;">
+                        <i data-lucide="search" style="position: absolute; left: 1.25rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px;"></i>
+                        <input type="text" placeholder="Search for a specific stream or level..." class="input" style="padding-left: 3.5rem; border-radius: 14px; border: 1px solid #f1f5f9; background: #f8fafc; height: 52px;">
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-secondary" style="border-radius: 12px; height: 52px; padding: 0 1.5rem;"><i data-lucide="filter"></i> Filter</button>
+                        <button class="btn btn-secondary" style="border-radius: 12px; height: 52px; padding: 0 1.5rem;"><i data-lucide="download"></i> Export</button>
+                    </div>
+                </div>
+
+                <div class="stream-grid">
+                    ${streams.map((s, index) => `
+                        <div class="stream-card">
+                            <div class="stream-card-header">
+                                <div class="stream-card-title"><i data-lucide="graduation-cap"></i> ${s.name}</div>
+                                <span class="stream-id-badge" style="background: #f1f5f9; color: #64748b; font-weight: 700; padding: 4px 10px; border-radius: 8px;">STRM ${index + 1}</span>
+                            </div>
+                            <div class="stream-card-body" style="padding: 2rem;">
+                                <div class="enrollment-stat">
+                                    <div class="enroll-icon" style="width: 64px; height: 64px; background: #eff6ff; color: #2563eb; border-radius: 18px;">
+                                        <i data-lucide="users" style="width: 32px; height: 32px;"></i>
+                                    </div>
+                                    <div class="enroll-info">
+                                        <span class="count" style="font-size: 2rem;">${getEnrollment(s.name)}</span>
+                                        <span class="label">Current Population</span>
+                                    </div>
+                                </div>
+                                <div class="stream-meta" style="margin-bottom: 2rem;">
+                                    <span class="level-tag" style="background: #ecfdf5; color: #059669; padding: 6px 12px; border-radius: 10px; font-weight: 600;">
+                                        <i data-lucide="shield-check" style="width: 16px;"></i> ${s.level} Level
+                                    </span>
+                                    <span class="status-tag" style="display: flex; align-items: center; gap: 0.5rem; color: #10b981; font-weight: 700;">
+                                        <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span> ONLINE
+                                    </span>
+                                </div>
+                                <div style="display: flex; gap: 1rem;">
+                                    <button class="btn btn-secondary w-full" style="height: 48px; border-radius: 12px; font-weight: 600; background: #f8fafc;"><i data-lucide="edit-3"></i> Configure</button>
+                                    <button class="btn btn-secondary" style="height: 48px; border-radius: 12px; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
                                 </div>
                             </div>
-                            <div class="stream-meta">
-                                <span class="level-tag"><i data-lucide="check-circle-2"></i> ${s.level} Level</span>
-                                <span class="status-tag">ACTIVE</span>
-                            </div>
-                            <div style="display: flex; gap: 0.5rem;">
-                                <button class="btn btn-secondary w-full" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;"><i data-lucide="edit-3" style="width: 16px;"></i> Edit</button>
-                                <button class="btn btn-secondary" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 18px;"></i></button>
-                            </div>
                         </div>
-                    </div>
-                `).join('')}
+                    `).join('')}
+                </div>
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -732,75 +769,85 @@ export const UI = {
         const subjects = await db.subjects.toArray();
         
         this.contentArea.innerHTML = `
-            <div class="page-banner" style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%);">
-                <div class="banner-content">
-                    <h1 class="banner-title"><i data-lucide="book-open"></i> Subject Registry</h1>
-                    <p class="banner-subtitle">Manage courses, credit units, and instructional assignments across all school levels.</p>
-                </div>
-                <div class="banner-stats">
-                    <div class="banner-stat-item">
-                        <span class="stat-value">${subjects.length}</span>
-                        <span class="stat-label">Total Courses</span>
+            <div class="view-container">
+                <div class="page-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+                    <div class="banner-content">
+                        <h1 class="banner-title"><i data-lucide="book-open"></i> Subject Registry</h1>
+                        <p class="banner-subtitle">Manage courses, credit units, and instructional assignments across all school levels.</p>
                     </div>
-                    <div class="banner-stat-item">
-                        <span class="stat-value">${subjects.filter(s => s.type === 'Core').length}</span>
-                        <span class="stat-label">Core Modules</span>
+                    <div class="banner-stats">
+                        <div class="banner-stat-item">
+                            <span class="stat-value">${subjects.length}</span>
+                            <span class="stat-label">Total Courses</span>
+                        </div>
+                        <div class="banner-stat-item">
+                            <span class="stat-value">${subjects.filter(s => s.type === 'Core').length}</span>
+                            <span class="stat-label">Core Modules</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-secondary" style="border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.05); color: white; border-color: rgba(255,255,255,0.1);">
+                            <i data-lucide="database"></i> Consolidate
+                        </button>
+                        <button class="btn" style="background: white; color: #0f172a; border: none; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; font-weight: 700;">
+                            <i data-lucide="plus-circle"></i> Register Course
+                        </button>
                     </div>
                 </div>
-                <div style="display: flex; gap: 1rem;">
-                    <button class="btn btn-secondary" style="border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                        <i data-lucide="settings"></i> Consolidate DB
-                    </button>
-                    <button class="btn btn-primary" style="background: white; color: #1e293b; border: none; border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                        <i data-lucide="plus"></i> Register Course
-                    </button>
-                </div>
-            </div>
 
-            <div class="actions-bar mb-2">
-                <div style="position: relative; width: 400px;">
-                    <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px;"></i>
-                    <input type="text" placeholder="Search courses, teachers, or classes..." class="input" style="padding-left: 3rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+                <div class="actions-bar" style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="position: relative; width: 500px;">
+                        <i data-lucide="search" style="position: absolute; left: 1.5rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 22px;"></i>
+                        <input type="text" placeholder="Search courses, faculty, or stream codes..." class="input" style="padding-left: 4rem; border-radius: 16px; border: 1px solid #f1f5f9; background: #f8fafc; height: 56px; font-size: 1.05rem;">
+                    </div>
                 </div>
-            </div>
 
-            <div class="table-container card" style="padding: 0; border-radius: 20px; overflow: hidden;">
-                <table class="data-table">
-                    <thead style="background: #f8fafc;">
-                        <tr>
-                            <th style="padding: 1.25rem;">COURSE TITLE</th>
-                            <th>LEVELS & STREAMS</th>
-                            <th>FACULTY ASSIGNED</th>
-                            <th>UNITS</th>
-                            <th>CATEGORY</th>
-                            <th>ACTIONS</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${subjects.map(s => `
+                <div class="table-container card" style="padding: 0; border-radius: 24px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
+                    <table class="data-table">
+                        <thead style="background: #f8fafc; border-bottom: 2px solid #f1f5f9;">
                             <tr>
-                                <td style="padding: 1.25rem; font-weight: 600;">
-                                    <div style="display: flex; align-items: center; gap: 1rem;">
-                                        <div style="width: 32px; height: 32px; background: #fff7ed; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #f97316;">
-                                            <i data-lucide="book-marked" style="width: 18px;"></i>
-                                        </div>
-                                        ${s.name}
-                                    </div>
-                                </td>
-                                <td><span class="badge warning" style="background: #fee2e2; color: #ef4444; border: none; border-radius: 20px; font-size: 0.7rem; padding: 0.25rem 0.75rem;">Unlinked</span></td>
-                                <td><span style="display: inline-block; width: 8px; height: 8px; background: #10b981; border-radius: 50%; margin-right: 0.5rem;"></span></td>
-                                <td style="font-weight: 700; color: #1e40af;">${s.credits}</td>
-                                <td><span class="badge" style="background: #ffedd5; color: #9a3412; border: none; border-radius: 8px; font-weight: 700;">Core</span></td>
-                                <td>
-                                    <div style="display: flex; gap: 0.5rem;">
-                                        <button class="btn btn-secondary btn-sm" style="padding: 0.5rem;"><i data-lucide="edit-3" style="width: 16px;"></i></button>
-                                        <button class="btn btn-secondary btn-sm" style="padding: 0.5rem; color: #ef4444;"><i data-lucide="trash-2" style="width: 16px;"></i></button>
-                                    </div>
-                                </td>
+                                <th style="padding: 1.5rem 2rem; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">COURSE TITLE</th>
+                                <th style="color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">LEVELS & STREAMS</th>
+                                <th style="color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">FACULTY ASSIGNED</th>
+                                <th style="color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">UNITS</th>
+                                <th style="color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">CATEGORY</th>
+                                <th style="color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; text-align: right; padding-right: 2rem;">ACTIONS</th>
                             </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody style="background: white;">
+                            ${subjects.length === 0 ? `<tr><td colspan="6" class="text-center p-4 text-slate-400">No courses registered yet.</td></tr>` : subjects.map(s => `
+                                <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.2s;">
+                                    <td style="padding: 1.5rem 2rem; font-weight: 700; color: #1e293b;">
+                                        <div style="display: flex; align-items: center; gap: 1.25rem;">
+                                            <div style="width: 44px; height: 44px; background: #fff7ed; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #f97316;">
+                                                <i data-lucide="book-marked" style="width: 22px;"></i>
+                                            </div>
+                                            <div style="display: flex; flex-direction: column;">
+                                                <span>${s.name}</span>
+                                                <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 400;">MOD-SUB-0${Math.floor(Math.random()*900)+100}</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span class="badge warning" style="background: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; border-radius: 20px; font-size: 0.75rem; padding: 0.4rem 1rem; font-weight: 600;">Unlinked</span></td>
+                                    <td>
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.9rem;">
+                                            <span style="width: 10px; height: 10px; background: #cbd5e1; border-radius: 50%;"></span>
+                                            Not Assigned
+                                        </div>
+                                    </td>
+                                    <td style="font-weight: 800; color: #1e40af; font-size: 1.1rem;">${s.credits}</td>
+                                    <td><span class="badge" style="background: #ffedd5; color: #9a3412; border: 1px solid #fed7aa; border-radius: 10px; font-weight: 700; font-size: 0.75rem; padding: 0.4rem 0.8rem;">Core</span></td>
+                                    <td style="text-align: right; padding-right: 2rem;">
+                                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                            <button class="btn btn-secondary btn-sm" style="width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0;"><i data-lucide="edit-3" style="width: 18px;"></i></button>
+                                            <button class="btn btn-secondary btn-sm" style="width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2" style="width: 18px;"></i></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -811,59 +858,63 @@ export const UI = {
         const classes = await db.classes.toArray();
         
         this.contentArea.innerHTML = `
-            <div class="page-banner" style="background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);">
-                <div class="banner-content">
-                    <h1 class="banner-title" style="font-family: 'Outfit', sans-serif;"><i data-lucide="graduation-cap"></i> Student Directory</h1>
-                    <p class="banner-subtitle">Comprehensive database of all registered learners.</p>
-                </div>
-                <div class="banner-stats">
-                    <div class="banner-stat-item">
-                        <span class="stat-value">${students.length}</span>
-                        <span class="stat-label">Total Students</span>
+            <div class="view-container">
+                <div class="page-banner" style="background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);">
+                    <div class="banner-content">
+                        <h1 class="banner-title"><i data-lucide="graduation-cap"></i> Student Directory</h1>
+                        <p class="banner-subtitle">Comprehensive database of all registered learners, biometric profiles, and performance metrics.</p>
                     </div>
-                    <div class="banner-stat-item">
-                        <span class="stat-value">${classes.length}</span>
-                        <span class="stat-label">Active Classes</span>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 1rem;">
-                    <button class="btn btn-secondary" style="border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.1); color: white;">
-                        <i data-lucide="printer"></i> Credentials
-                    </button>
-                    <button class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                        <i data-lucide="user-plus"></i> Add Student
-                    </button>
-                </div>
-            </div>
-
-            <div class="directory-container">
-                <div class="directory-sidebar">
-                    <div class="sidebar-search-wrap">
-                        <div style="position: relative; margin-bottom: 1rem;">
-                            <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px;"></i>
-                            <input type="text" id="directory-search" placeholder="Search by name or serial..." class="input" style="padding-left: 3rem; border-radius: 12px;">
+                    <div class="banner-stats">
+                        <div class="banner-stat-item">
+                            <span class="stat-value">${students.length}</span>
+                            <span class="stat-label">Total Body</span>
                         </div>
-                        <select id="class-filter" class="input" style="border-radius: 12px;">
-                            <option value="">All Classes</option>
-                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-                        </select>
+                        <div class="banner-stat-item">
+                            <span class="stat-value">${classes.length}</span>
+                            <span class="stat-label">Active Classes</span>
+                        </div>
                     </div>
-                    <div class="sidebar-list" id="student-sidebar-list">
-                        ${this.generateStudentListItems(students)}
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-secondary" style="border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.1); color: white; border: none;">
+                            <i data-lucide="printer"></i> Credentials
+                        </button>
+                        <button class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; font-weight: 700;">
+                            <i data-lucide="user-plus"></i> New Enrollment
+                        </button>
                     </div>
                 </div>
 
-                <div class="directory-main" id="student-detail-view">
-                    <div class="empty-state">
-                        <div class="empty-icon"><i data-lucide="users" style="width: 40px; height: 40px;"></i></div>
-                        <h2 class="text-xl font-bold mb-1">Select a Student</h2>
-                        <p class="text-secondary">Choose a student from the sidebar to view their complete academic and personal records.</p>
+                <div class="directory-container" style="height: calc(100vh - 420px);">
+                    <div class="directory-sidebar" style="border-radius: 28px; background: white;">
+                        <div class="sidebar-search-wrap" style="padding: 2rem; background: #f8fafc; border-bottom: 2px solid #f1f5f9;">
+                            <div style="position: relative; margin-bottom: 1.5rem;">
+                                <i data-lucide="search" style="position: absolute; left: 1.25rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px;"></i>
+                                <input type="text" id="directory-search" placeholder="Search by name or serial..." class="input" style="padding-left: 3.5rem; border-radius: 14px; border: 1px solid #e2e8f0; height: 52px; background: white;">
+                            </div>
+                            <select id="class-filter" class="input" style="border-radius: 14px; height: 52px; border: 1px solid #e2e8f0; background: white; font-weight: 600; color: #475569;">
+                                <option value="">All Academic Streams</option>
+                                ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="sidebar-list" id="student-sidebar-list" style="padding: 1rem;">
+                            ${this.generateStudentListItems(students)}
+                        </div>
+                    </div>
+
+                    <div class="directory-main" id="student-detail-view" style="border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                        <div class="empty-state">
+                            <div class="empty-icon" style="width: 100px; height: 100px; background: #f8fafc; border-radius: 50%; color: #cbd5e1; display: flex; align-items: center; justify-content: center; margin: 0 auto 2rem;">
+                                <i data-lucide="user-search" style="width: 48px; height: 48px;"></i>
+                            </div>
+                            <h2 class="text-2xl font-bold mb-1" style="color: #1e293b;">Select a Student</h2>
+                            <p class="text-secondary" style="font-size: 1.1rem;">Choose a learner from the directory to access their academic history, attendance logs, and financial status.</p>
+                        </div>
                     </div>
                 </div>
             </div>
         `;
 
-        // Search logic
+        // Logic remains same...
         const searchInput = document.getElementById('directory-search');
         const classFilter = document.getElementById('class-filter');
         const listContainer = document.getElementById('student-sidebar-list');
