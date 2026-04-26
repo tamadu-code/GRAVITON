@@ -933,6 +933,106 @@ export const UI = {
         searchInput.addEventListener('input', updateList);
         classFilter.addEventListener('change', updateList);
 
+        // Selection Logic
+        listContainer.addEventListener('click', async (e) => {
+            const item = e.target.closest('.student-item');
+            if (!item) return;
+
+            document.querySelectorAll('.student-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+
+            const id = item.dataset.id;
+            await this.renderStudentDetail(id);
+        });
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async renderStudentDetail(studentId) {
+        const student = await db.students.get(studentId);
+        const detailView = document.getElementById('student-detail-view');
+        if (!student || !detailView) return;
+
+        const scores = await db.scores.where('student_id').equals(studentId).toArray();
+        const avgScore = scores.length > 0 ? Math.round(scores.reduce((acc, s) => acc + (s.total || 0), 0) / scores.length) : 0;
+
+        detailView.innerHTML = `
+            <div style="padding: 3rem;">
+                <div class="profile-header" style="display: flex; gap: 3rem; align-items: flex-start; margin-bottom: 3rem;">
+                    <div class="profile-avatar-big" style="width: 160px; height: 160px; background: #f8fafc; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-radius: 40px; display: flex; align-items: center; justify-content: center; position: relative;">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}" style="width: 120px; height: 120px;" alt="${student.name}">
+                        <div style="position: absolute; bottom: -10px; right: -10px; width: 44px; height: 44px; background: #2563eb; color: white; border-radius: 14px; display: flex; align-items: center; justify-content: center; border: 4px solid white;">
+                            <i data-lucide="camera" style="width: 18px;"></i>
+                        </div>
+                    </div>
+                    <div class="profile-title-info" style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <span class="badge" style="background: #eff6ff; color: #2563eb; font-weight: 800; border-radius: 12px; padding: 0.5rem 1rem; margin-bottom: 1rem; display: inline-block;">ACADEMIC ID: ${student.student_id}</span>
+                                <h1 style="font-size: 3rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em; line-height: 1.1;">${student.name}</h1>
+                                <p style="font-size: 1.25rem; color: #64748b; margin-top: 0.5rem;">${student.class_name} • Junior Secondary Stream</p>
+                            </div>
+                            <div style="display: flex; gap: 1rem;">
+                                <button class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
+                                <button class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; margin-bottom: 3rem;">
+                    <div style="background: #f8fafc; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9;">
+                        <span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Cumulative Avg</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.75rem; margin-top: 0.5rem;">
+                            <span style="font-size: 2.5rem; font-weight: 800; color: #1e293b;">${avgScore}%</span>
+                            <span style="color: #10b981; font-weight: 700; font-size: 0.9rem;">+2.4%</span>
+                        </div>
+                    </div>
+                    <div style="background: #f8fafc; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9;">
+                        <span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Attendance Rate</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.75rem; margin-top: 0.5rem;">
+                            <span style="font-size: 2.5rem; font-weight: 800; color: #1e293b;">94%</span>
+                            <span style="color: #ef4444; font-weight: 700; font-size: 0.9rem;">-0.5%</span>
+                        </div>
+                    </div>
+                    <div style="background: #f8fafc; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9;">
+                        <span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Active Subjects</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.75rem; margin-top: 0.5rem;">
+                            <span style="font-size: 2.5rem; font-weight: 800; color: #1e293b;">${scores.length}</span>
+                            <span style="color: #64748b; font-weight: 700; font-size: 0.9rem;">Assigned</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="profile-tabs" style="border-bottom: 2px solid #f1f5f9; display: flex; gap: 3rem; margin-bottom: 2rem;">
+                    <button style="background: none; border: none; border-bottom: 2px solid #2563eb; padding: 1rem 0; font-weight: 800; color: #1e293b; cursor: pointer;">General Profile</button>
+                    <button style="background: none; border: none; padding: 1rem 0; font-weight: 600; color: #64748b; cursor: pointer;">Academic Records</button>
+                    <button style="background: none; border: none; padding: 1rem 0; font-weight: 600; color: #64748b; cursor: pointer;">Attendance Logs</button>
+                </div>
+
+                <div class="info-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;">
+                    <div class="info-section">
+                        <h4 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                            <i data-lucide="info" style="width: 18px; color: #2563eb;"></i> Bio-Data
+                        </h4>
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                <span style="color: #94a3b8; font-weight: 600;">Gender</span>
+                                <span style="font-weight: 700; color: #475569;">${student.gender || 'Not Specified'}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                <span style="color: #94a3b8; font-weight: 600;">Serial No</span>
+                                <span style="font-weight: 700; color: #475569;">${student.serial_no || 'N/A'}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                <span style="color: #94a3b8; font-weight: 600;">Admission Date</span>
+                                <span style="font-weight: 700; color: #475569;">Sept 12, 2023</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
