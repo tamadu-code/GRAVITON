@@ -13,8 +13,12 @@ db.version(1).stores({
     subjects: 'id, name, type, credits, updated_at, is_synced',
     subject_assignments: 'id, teacher_id, subject_id, class_name, updated_at, is_synced',
     form_teachers: 'id, teacher_id, class_name, updated_at, is_synced',
-    scores: 'id, student_id, subject_id, term, session, updated_at, is_synced', // Composite search via multi-indexes if needed
+    scores: 'id, student_id, subject_id, term, session, updated_at, is_synced',
     attendance: 'id, student_id, date, status, updated_at, is_synced'
+});
+
+db.version(2).stores({
+    notices: 'id, title, is_active, updated_at, is_synced'
 });
 
 /**

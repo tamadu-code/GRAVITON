@@ -4,7 +4,7 @@
  */
 
 import db from './db.js';
-import { ScoringEngine, Notifications, parseExcel, generateReportCard } from './utils.js';
+import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF } from './utils.js';
 
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
@@ -86,17 +86,21 @@ export const UI = {
         const studentCount = await db.students.count();
         const classCount   = await db.classes.count();
         const subjectCount = await db.subjects.count();
-        let teacherCount   = 0;
-        try { if (db.staff) teacherCount = await db.staff.where('role').equals('Teacher').count(); } catch(e){}
-
+        
+        let teacherCount = 0;
         try {
-            const { getSupabase } = await import('./supabase-client.js');
-            const sb = getSupabase();
-            if (sb) {
-                const { count } = await sb.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'Teacher');
-                if (count !== null) teacherCount = count;
+            const profiles = await db.profiles.toArray();
+            teacherCount = profiles.filter(p => p.role === 'Teacher').length;
+            if (teacherCount === 0) {
+                // Fallback to Supabase if local DB is empty
+                const { getSupabase } = await import('./supabase-client.js');
+                const sb = getSupabase();
+                if (sb) {
+                    const { count } = await sb.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'Teacher');
+                    if (count !== null) teacherCount = count;
+                }
             }
-        } catch(e) {}
+        } catch(e) { console.error('Error fetching teacher count', e); }
 
         const today          = new Date().toISOString().split('T')[0];
         const todayAtt       = await db.attendance.where('date').equals(today).toArray();
@@ -110,12 +114,27 @@ export const UI = {
             pct:  totalMarked > 0 ? Math.min(100, Math.round(turnoutPct + (Math.random() * 20 - 10))) : 0
         }));
 
+        // Fetch Live Notices
+        const notices = await db.notices.where('is_active').equals(1).toArray().catch(() => []);
+        const noticeHTML = notices.length > 0 
+            ? notices.map(n => `<span style="margin-right: 3rem;">🔔 <strong>${n.title}</strong>: ${n.content || ''}</span>`).join('')
+            : '<span style="margin-right: 3rem;">Welcome to Graviton CMS! All systems operational.</span>';
+
         this.contentArea.innerHTML = `
             <div class="view-container">
                 <header class="dashboard-header mb-2">
                     <h1 class="text-4xl font-extrabold tracking-tight" style="font-family: 'Outfit', sans-serif;">Dashboard Overview</h1>
                     <p class="text-secondary text-lg">Welcome back, <span class="font-bold text-primary">${this.currentUser.name}</span>. Here is what's happening today.</p>
                 </header>
+
+                <div class="live-notices" style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 16px; margin-bottom: 2rem; overflow: hidden; display: flex; align-items: center;">
+                    <div style="background: #2563eb; color: white; padding: 0.75rem 1.5rem; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; z-index: 1;">LIVE NOTICES</div>
+                    <div style="flex: 1; overflow: hidden; position: relative;">
+                        <marquee behavior="scroll" direction="left" scrollamount="6" style="padding: 0.75rem 0; color: #1e3a8a; font-weight: 500;">
+                            ${noticeHTML}
+                        </marquee>
+                    </div>
+                </div>
 
                 <div class="stats-grid mb-2">
                     <div class="stat-card-premium" style="border-radius: 24px; padding: 2rem;">
@@ -372,37 +391,73 @@ export const UI = {
             addLog('Starting import process...', 'info');
 
             try {
-                const workbook = await this.readExcel(selectedFile);
+                // Use the shared parseExcel utility
+                const workbook = await parseExcel(selectedFile);
                 
                 // Process Students
                 if (workbook.Students) {
                     addLog(`Processing ${workbook.Students.length} student records...`, 'info');
-                    const students = workbook.Students.map(s => ({
-                        student_id: s['SERIAL NO'] || `S${Math.random().toString(36).substr(2, 6)}`,
-                        name: s['NAMES'],
-                        class_name: s['CLASS'],
-                        gender: s['SEX'],
-                        status: 'Active',
-                        is_synced: 0,
-                        updated_at: new Date().toISOString()
-                    }));
+                    const students = [];
+                    const classesToCreate = new Set();
+                    
+                    for (const s of workbook.Students) {
+                        if (!s['NAMES']) continue;
+                        const className = s['CLASS'] || 'Unassigned';
+                        classesToCreate.add(className);
+                        
+                        students.push({
+                            student_id: s['SERIAL NO'] || `S${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+                            name: s['NAMES'],
+                            class_name: className,
+                            gender: s['SEX'] || 'Not Specified',
+                            status: 'Active',
+                            is_synced: 0,
+                            updated_at: new Date().toISOString()
+                        });
+                    }
+                    
+                    // Smart Class Creation
+                    const existingClasses = await db.classes.toArray();
+                    const existingClassNames = new Set(existingClasses.map(c => c.name));
+                    const newClasses = [];
+                    for (const c of classesToCreate) {
+                        if (!existingClassNames.has(c)) {
+                            newClasses.push({
+                                id: `C${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+                                name: c,
+                                level: 'Unspecified',
+                                is_synced: 0,
+                                updated_at: new Date().toISOString()
+                            });
+                        }
+                    }
+                    
+                    if (newClasses.length > 0) {
+                        await db.classes.bulkPut(newClasses);
+                        addLog(`Smart Creation: Generated ${newClasses.length} missing classes automatically.`, 'success');
+                    }
+                    
+                    // Upsert handles both inserts and updates natively in Dexie
                     await db.students.bulkPut(students);
-                    addLog(`Successfully imported ${students.length} students.`, 'success');
+                    addLog(`Successfully upserted ${students.length} students.`, 'success');
+                } else {
+                    addLog('No "Students" sheet found.', 'warning');
                 }
 
                 // Process Subjects
                 if (workbook.Subjects) {
                     addLog(`Processing ${workbook.Subjects.length} subject records...`, 'info');
                     const subjects = workbook.Subjects.map(s => ({
+                        id: `SUB${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
                         name: s['TITLE'],
-                        class_name: s['CLASS'],
-                        type: 'Core',
-                        credits: 1,
+                        class_name: s['CLASS'] || 'All',
+                        type: s['TYPE'] || 'Core',
+                        credits: s['UNITS'] || 1,
                         is_synced: 0,
                         updated_at: new Date().toISOString()
                     }));
                     await db.subjects.bulkPut(subjects);
-                    addLog(`Successfully imported ${subjects.length} subjects.`, 'success');
+                    addLog(`Successfully upserted ${subjects.length} subjects.`, 'success');
                 }
 
                 Notifications.show('Bulk import completed successfully', 'success');
@@ -422,30 +477,22 @@ export const UI = {
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
-    readExcel(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const result = {};
-                    workbook.SheetNames.forEach(sheetName => {
-                        result[sheetName] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-                    });
-                    resolve(result);
-                } catch (err) { reject(err); }
-            };
-            reader.onerror = reject;
-            reader.readAsArrayBuffer(file);
-        });
-    },
+
 
     async renderClasses() {
         const streams = await db.classes.toArray();
         const studentCounts = await db.students.toArray();
+        const formTeachers = await db.form_teachers.toArray().catch(() => []);
+        const profiles = await db.profiles.toArray().catch(() => []);
         
         const getEnrollment = (className) => studentCounts.filter(s => s.class_name === className).length;
+        
+        const getFormMasterName = (className) => {
+            const ft = formTeachers.find(f => f.class_name === className);
+            if (!ft) return 'Unassigned';
+            const profile = profiles.find(p => p.id === ft.teacher_id || p.full_name === ft.teacher_id);
+            return profile ? profile.full_name : ft.teacher_id;
+        };
 
         this.contentArea.innerHTML = `
             <div class="view-container">
@@ -488,26 +535,38 @@ export const UI = {
                                 <span class="stream-id-badge" style="background: #f1f5f9; color: #64748b; font-weight: 700; padding: 4px 10px; border-radius: 8px;">STRM ${index + 1}</span>
                             </div>
                             <div class="stream-card-body" style="padding: 2rem;">
-                                <div class="enrollment-stat">
+                                <div class="enrollment-stat" style="margin-bottom: 1.5rem;">
                                     <div class="enroll-icon" style="width: 64px; height: 64px; background: #eff6ff; color: #2563eb; border-radius: 18px;">
                                         <i data-lucide="users" style="width: 32px; height: 32px;"></i>
                                     </div>
-                                    <div class="enroll-info">
-                                        <span class="count" style="font-size: 2rem;">${getEnrollment(s.name)}</span>
-                                        <span class="label">Current Population</span>
+                                    <div class="enroll-info" style="flex: 1;">
+                                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                                            <span class="count" style="font-size: 2rem;">${getEnrollment(s.name)}</span>
+                                            <span style="color: #94a3b8; font-weight: 600; font-size: 0.8rem;">/ 40 Capacity</span>
+                                        </div>
+                                        <div style="width: 100%; background: #f1f5f9; height: 6px; border-radius: 3px; margin-top: 0.5rem; overflow: hidden;">
+                                            <div style="height: 100%; width: ${Math.min(100, (getEnrollment(s.name)/40)*100)}%; background: ${(getEnrollment(s.name) >= 40) ? '#ef4444' : '#2563eb'}; border-radius: 3px;"></div>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="stream-meta" style="margin-bottom: 2rem;">
-                                    <span class="level-tag" style="background: #ecfdf5; color: #059669; padding: 6px 12px; border-radius: 10px; font-weight: 600;">
-                                        <i data-lucide="shield-check" style="width: 16px;"></i> ${s.level} Level
-                                    </span>
-                                    <span class="status-tag" style="display: flex; align-items: center; gap: 0.5rem; color: #10b981; font-weight: 700;">
-                                        <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span> ONLINE
-                                    </span>
+                                <div class="stream-meta" style="margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span class="level-tag" style="background: #ecfdf5; color: #059669; padding: 6px 12px; border-radius: 10px; font-weight: 600; font-size: 0.8rem;">
+                                            <i data-lucide="shield-check" style="width: 14px;"></i> ${s.level} Level
+                                        </span>
+                                        <span class="status-tag" style="display: flex; align-items: center; gap: 0.5rem; color: #10b981; font-weight: 700; font-size: 0.8rem;">
+                                            <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span> ONLINE
+                                        </span>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #475569; background: #f8fafc; padding: 0.75rem; border-radius: 12px; border: 1px solid #f1f5f9;">
+                                        <i data-lucide="user" style="width: 16px; color: #94a3b8;"></i> 
+                                        <span style="font-weight: 600; color: #94a3b8;">Form Master:</span> 
+                                        <span style="font-weight: 700;">${getFormMasterName(s.name)}</span>
+                                    </div>
                                 </div>
                                 <div style="display: flex; gap: 1rem;">
                                     <button class="btn btn-secondary w-full" style="height: 48px; border-radius: 12px; font-weight: 600; background: #f8fafc;"><i data-lucide="edit-3"></i> Configure</button>
-                                    <button class="btn btn-secondary" style="height: 48px; border-radius: 12px; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
+                                    <button class="btn btn-secondary delete-class-btn" data-id="${s.id}" data-name="${s.name}" data-count="${getEnrollment(s.name)}" style="height: 48px; border-radius: 12px; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -515,11 +574,57 @@ export const UI = {
                 </div>
             </div>
         `;
+
+        // Safety Guard: Prevent Deletion
+        document.querySelectorAll('.delete-class-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const count = parseInt(btn.dataset.count);
+                const className = btn.dataset.name;
+                const id = btn.dataset.id;
+                
+                if (count > 0) {
+                    Notifications.show(`Cannot delete "${className}". It currently has ${count} active students. Please reassign them first.`, 'error');
+                } else {
+                    if (confirm(`Are you sure you want to delete the empty stream "${className}"?`)) {
+                        await db.classes.delete(id);
+                        Notifications.show(`Stream "${className}" deleted successfully.`, 'success');
+                        this.renderClasses();
+                    }
+                }
+            });
+        });
+
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     async renderSubjects() {
         const subjects = await db.subjects.toArray();
+        const assignments = await db.subject_assignments.toArray().catch(() => []);
+        const profiles = await db.profiles.toArray().catch(() => []);
+        
+        const getSubjectDetails = (subjectId, defaultClass) => {
+            const subjectAssignments = assignments.filter(a => a.subject_id === subjectId || a.subject_id === defaultClass);
+            
+            // Faculty
+            const teacherIds = [...new Set(subjectAssignments.map(a => a.teacher_id))];
+            const teacherNames = teacherIds.map(tid => {
+                const profile = profiles.find(p => p.id === tid || p.full_name === tid);
+                return profile ? profile.full_name : tid;
+            });
+            const facultyString = teacherNames.length > 0 ? teacherNames.join(', ') : 'Not Assigned';
+            const facultyColor = teacherNames.length > 0 ? '#10b981' : '#cbd5e1';
+            
+            // Classes (Streams)
+            const classNames = [...new Set(subjectAssignments.map(a => a.class_name))];
+            let linkedString = `<span class="badge warning" style="background: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; border-radius: 20px; font-size: 0.75rem; padding: 0.4rem 1rem; font-weight: 600;">Unlinked</span>`;
+            if (defaultClass && defaultClass !== 'All') {
+                 linkedString = `<span class="badge" style="background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; border-radius: 20px; font-size: 0.75rem; padding: 0.4rem 1rem; font-weight: 600;">${defaultClass}</span>`;
+            } else if (classNames.length > 0) {
+                 linkedString = `<span class="badge" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 20px; font-size: 0.75rem; padding: 0.4rem 1rem; font-weight: 600;">${classNames.length} Streams</span>`;
+            }
+
+            return { facultyString, facultyColor, linkedString };
+        };
         
         this.contentArea.innerHTML = `
             <div class="view-container">
@@ -581,15 +686,15 @@ export const UI = {
                                             </div>
                                         </div>
                                     </td>
-                                    <td><span class="badge warning" style="background: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; border-radius: 20px; font-size: 0.75rem; padding: 0.4rem 1rem; font-weight: 600;">Unlinked</span></td>
+                                    <td>${getSubjectDetails(s.id, s.class_name).linkedString}</td>
                                     <td>
                                         <div style="display: flex; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.9rem;">
-                                            <span style="width: 10px; height: 10px; background: #cbd5e1; border-radius: 50%;"></span>
-                                            Not Assigned
+                                            <span style="width: 10px; height: 10px; background: ${getSubjectDetails(s.id, s.class_name).facultyColor}; border-radius: 50%;"></span>
+                                            ${getSubjectDetails(s.id, s.class_name).facultyString}
                                         </div>
                                     </td>
-                                    <td style="font-weight: 800; color: #1e40af; font-size: 1.1rem;">${s.credits}</td>
-                                    <td><span class="badge" style="background: #ffedd5; color: #9a3412; border: 1px solid #fed7aa; border-radius: 10px; font-weight: 700; font-size: 0.75rem; padding: 0.4rem 0.8rem;">Core</span></td>
+                                    <td style="font-weight: 800; color: #1e40af; font-size: 1.1rem;">${s.credits || 1}</td>
+                                    <td><span class="badge" style="background: ${s.type === 'Elective' ? '#f3e8ff' : '#ffedd5'}; color: ${s.type === 'Elective' ? '#7e22ce' : '#9a3412'}; border: 1px solid ${s.type === 'Elective' ? '#e9d5ff' : '#fed7aa'}; border-radius: 10px; font-weight: 700; font-size: 0.75rem; padding: 0.4rem 0.8rem;">${s.type || 'Core'}</span></td>
                                     <td style="text-align: right; padding-right: 2rem;">
                                         <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
                                             <button class="btn btn-secondary btn-sm" style="width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0;"><i data-lucide="edit-3" style="width: 18px;"></i></button>
@@ -628,7 +733,7 @@ export const UI = {
                         </div>
                     </div>
                     <div style="display: flex; gap: 1rem;">
-                        <button class="btn btn-secondary" style="border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.1); color: white; border: none;">
+                        <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.1); color: white; border: none;">
                             <i data-lucide="printer"></i> Credentials
                         </button>
                         <button class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; font-weight: 700;">
@@ -697,6 +802,27 @@ export const UI = {
             const id = item.dataset.id;
             await this.renderStudentDetail(id);
         });
+
+        const printBtn = document.getElementById('btn-print-credentials');
+        if (printBtn) {
+            printBtn.addEventListener('click', async () => {
+                try {
+                    const allStudents = await db.students.toArray();
+                    if (allStudents.length === 0) {
+                        Notifications.show('No students to generate credentials for.', 'warning');
+                        return;
+                    }
+                    printBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Generating...';
+                    await generateCredentialsPDF(allStudents, { name: 'GRAVITON ACADEMY' });
+                    Notifications.show('Credentials generated successfully.', 'success');
+                } catch (e) {
+                    Notifications.show('Failed to generate credentials.', 'error');
+                } finally {
+                    printBtn.innerHTML = '<i data-lucide="printer"></i> Credentials';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            });
+        }
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
@@ -774,12 +900,36 @@ export const UI = {
                                 <span style="font-weight: 700; color: #475569;">${student.gender || 'Not Specified'}</span>
                             </div>
                             <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600;">Serial No</span>
-                                <span style="font-weight: 700; color: #475569;">${student.serial_no || 'N/A'}</span>
+                                <span style="color: #94a3b8; font-weight: 600;">Status</span>
+                                <span class="badge" style="background: #ecfdf5; color: #10b981; font-weight: 700; border-radius: 8px; padding: 2px 8px;">${student.status || 'Active'}</span>
                             </div>
                             <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600;">Admission Date</span>
-                                <span style="font-weight: 700; color: #475569;">Sept 12, 2023</span>
+                                <span style="color: #94a3b8; font-weight: 600;">Blood Group</span>
+                                <span style="font-weight: 700; color: #475569;">${student.blood_group || 'N/A'}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                <span style="color: #94a3b8; font-weight: 600;">Genotype</span>
+                                <span style="font-weight: 700; color: #475569;">${student.genotype || 'N/A'}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="info-section">
+                        <h4 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                            <i data-lucide="map-pin" style="width: 18px; color: #2563eb;"></i> Contact & Guardians
+                        </h4>
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                            <div style="display: flex; flex-direction: column; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                <span style="color: #94a3b8; font-weight: 600; font-size: 0.8rem; margin-bottom: 4px;">Residential Address</span>
+                                <span style="font-weight: 700; color: #475569;">${student.address || 'No address provided'}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                <span style="color: #94a3b8; font-weight: 600;">Parent/Guardian Name</span>
+                                <span style="font-weight: 700; color: #475569;">${student.parent_name || 'N/A'}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                <span style="color: #94a3b8; font-weight: 600;">Emergency Contact</span>
+                                <span style="font-weight: 700; color: #475569;">${student.parent_phone || 'N/A'}</span>
                             </div>
                         </div>
                     </div>

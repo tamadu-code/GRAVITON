@@ -97,14 +97,72 @@ export async function parseExcel(file) {
         reader.onload = (e) => {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            const json = XLSX.utils.sheet_to_json(worksheet);
-            resolve(json);
+            const result = {};
+            workbook.SheetNames.forEach(sheetName => {
+                const worksheet = workbook.Sheets[sheetName];
+                result[sheetName] = XLSX.utils.sheet_to_json(worksheet);
+            });
+            resolve(result);
         };
         reader.onerror = reject;
         reader.readAsArrayBuffer(file);
     });
+}
+
+/**
+ * Generate Student Credentials PDF (Access Cards)
+ */
+export async function generateCredentialsPDF(students, schoolInfo = {}) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(31, 111, 235);
+    doc.text(schoolInfo.name || 'GRAVITON ACADEMY', 105, 20, { align: 'center' });
+    doc.setFontSize(12);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Student Access Credentials', 105, 28, { align: 'center' });
+    
+    doc.setDrawColor(226, 232, 240);
+    doc.line(20, 35, 190, 35);
+    
+    // Cards
+    let y = 45;
+    students.forEach((student, index) => {
+        if (y > 250) {
+            doc.addPage();
+            y = 20;
+        }
+        
+        // Draw Card Box
+        doc.setDrawColor(226, 232, 240);
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(20, y, 170, 45, 3, 3, 'FD');
+        
+        // Student Name
+        doc.setFontSize(14);
+        doc.setTextColor(15, 23, 42);
+        doc.setFont('helvetica', 'bold');
+        doc.text(student.name, 25, y + 12);
+        
+        // Class
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Class: ${student.class_name}`, 25, y + 20);
+        
+        // Credentials
+        doc.setFontSize(11);
+        doc.setTextColor(15, 23, 42);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Portal ID: ${student.student_id}`, 25, y + 32);
+        doc.text(`Password: Password123`, 100, y + 32);
+        
+        y += 55;
+    });
+    
+    doc.save(`Student_Credentials_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
 /**
