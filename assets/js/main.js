@@ -306,19 +306,16 @@ if (backToLoginFromResetLink) {
  * Update Sync Status UI
  */
 function updateSyncStatus(title, subtitle, statusClass = 'live') {
+    const syncBox = document.querySelector('.sync-status-box');
     const syncTitle = document.querySelector('.sync-title');
     const syncSubtitle = document.querySelector('.sync-subtitle');
-    const syncIcon = document.querySelector('.sync-icon-container i');
     
     if (syncTitle) syncTitle.textContent = title;
     if (syncSubtitle) syncSubtitle.textContent = subtitle;
     
-    if (syncIcon) {
-        if (statusClass === 'syncing') {
-            syncIcon.classList.add('spin-animation');
-        } else {
-            syncIcon.classList.remove('spin-animation');
-        }
+    if (syncBox) {
+        syncBox.classList.remove('live', 'offline', 'syncing');
+        syncBox.classList.add(statusClass);
     }
 }
 
