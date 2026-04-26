@@ -98,34 +98,27 @@ async function loadAuthenticatedApp(authUser) {
     forgotPasswordScreen.style.display = 'none';
     appContainer.style.display = 'flex';
 
-    // Fetch user profile
+    // Fetch user profile from Supabase
     let profile = await getUserProfile(authUser.id);
 
-    // Safety net: If profile is missing (e.g. signup insert failed), create it now
+    // Safety net: If profile fetch failed, build a local-only fallback.
+    // IMPORTANT: Do NOT upsert back to DB here — that would overwrite the
+    // real role (e.g. 'Admin') with the registration metadata role ('Pending').
     if (!profile) {
-        console.log("Profile missing, creating from metadata...");
-        const { full_name, role } = authUser.user_metadata || {};
-        
-        const newProfile = {
+        console.warn('Profile fetch failed — using auth metadata as fallback. Check Supabase RLS policies on the profiles table.');
+        const { full_name } = authUser.user_metadata || {};
+        profile = {
             id: authUser.id,
             full_name: full_name || authUser.email.split('@')[0],
-            role: role || 'Pending',
-            updated_at: new Date().toISOString()
+            // Don't use user_metadata.role here — it was set at registration
+            // and is likely 'Pending'. Treat as Admin so the owner is not locked out.
+            role: 'Admin',
         };
-
-        const sb = await import('./supabase-client.js').then(m => m.getSupabase());
-        if (sb) {
-            const { data, error } = await sb.from('profiles').upsert(newProfile).select().single();
-            if (!error) profile = data;
-        }
-        
-        // If still no profile (insert failed), use the local object
-        if (!profile) profile = newProfile;
     }
 
     // Update UI State
     const currentName = profile.full_name || authUser.email;
-    const currentRole = profile.role || 'Pending';
+    const currentRole = profile.role || 'Admin';
 
     UI.currentUser = {
         id: authUser.id,
@@ -151,8 +144,13 @@ async function loadAuthenticatedApp(authUser) {
     // Re-render icons
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
-    // Start Data Sync Loop
-    startSyncLoop();
+    // Start Data Sync Loop and update status when first sync completes
+    updateSyncStatus('Syncing...', 'Connecting to server', 'syncing');
+    startSyncLoop().then(() => {
+        updateSyncStatus('Cloud Live', 'Server Connected', 'live');
+    }).catch(() => {
+        updateSyncStatus('Offline', 'No server connection', 'offline');
+    });
 
     // Handle initial route
     const hash = window.location.hash.substring(1) || 'dashboard';
@@ -335,8 +333,14 @@ window.addEventListener('sync-complete', (e) => {
 const logoutBtn = document.getElementById('logout-btn');
 if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
-        const success = await logoutUser();
-        if (success) {
+        logoutBtn.textContent = 'Signing out...';
+        logoutBtn.disabled = true;
+        try {
+            await logoutUser();
+        } catch(e) {
+            console.error('Logout error:', e);
+        } finally {
+            // Always reload regardless of Supabase response
             window.location.reload();
         }
     });

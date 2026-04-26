@@ -111,9 +111,13 @@ export async function syncFromCloud() {
 /**
  * Start Background Sync Loop
  */
+/**
+ * Start Background Sync Loop
+ * Returns the initial sync promise so callers can await first completion.
+ */
 export function startSyncLoop(intervalMs = 60000) {
-    // Initial sync
-    syncFromCloud().then(() => syncToCloud());
+    // Initial sync — return the promise so UI can update on completion
+    const initialSync = syncFromCloud().then(() => syncToCloud());
 
     setInterval(async () => {
         const status = await syncToCloud();
@@ -121,6 +125,8 @@ export function startSyncLoop(intervalMs = 60000) {
             window.dispatchEvent(new CustomEvent('sync-complete', { detail: status }));
         }
     }, intervalMs);
+
+    return initialSync;
 }
 
 // ─────────────────────────────────────────
@@ -140,8 +146,13 @@ export async function loginUser(email, password) {
  * Sign out
  */
 export async function logoutUser() {
-    if (!sb) return;
-    await sb.auth.signOut();
+    if (!sb) return true; // No Supabase — just let the caller reload
+    try {
+        await sb.auth.signOut();
+    } catch(e) {
+        console.error('Sign out error:', e);
+    }
+    return true;
 }
 
 /**

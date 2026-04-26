@@ -1160,14 +1160,8 @@ label {
     }
     
     #logout-btn {
-        font-size: 0; /* Hide text */
-        padding: 0.4rem;
-        margin-right: 0.5rem;
-    }
-    
-    #logout-btn i {
-        font-size: 1rem;
-        margin-right: 0;
+        font-size: 0.85rem;
+        padding: 0.65rem 1rem;
     }
     
     /* Tables on Mobile */
