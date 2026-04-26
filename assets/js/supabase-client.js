@@ -86,7 +86,9 @@ export async function syncFromCloud() {
     if (!sb) return;
 
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance'];
-    const lastSync = localStorage.getItem('last_sync_timestamp') || new Date(0).toISOString();
+    // Look back slightly (5 minutes) to account for clock skew and transit time
+    const lastSyncTime = localStorage.getItem('last_sync_timestamp');
+    const lastSync = lastSyncTime ? new Date(new Date(lastSyncTime).getTime() - 300000).toISOString() : new Date(0).toISOString();
 
     for (const table of tables) {
         try {
@@ -95,7 +97,7 @@ export async function syncFromCloud() {
                 .select('*')
                 .gt('updated_at', lastSync);
 
-            if (!error && data) {
+            if (!error && data && data.length > 0) {
                 for (const item of data) {
                     await db[table].put({ ...item, is_synced: 1 });
                 }
