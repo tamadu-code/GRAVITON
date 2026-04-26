@@ -145,11 +145,11 @@ async function loadAuthenticatedApp(authUser) {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     // Start Data Sync Loop and update status when first sync completes
-    updateSyncStatus('Syncing...', 'Connecting to server', 'syncing');
+    updateSyncStatus('Syncing', 'syncing');
     startSyncLoop().then(() => {
-        updateSyncStatus('Cloud Live', 'Server Connected', 'live');
+        updateSyncStatus('Online', 'live');
     }).catch(() => {
-        updateSyncStatus('Offline', 'No server connection', 'offline');
+        updateSyncStatus('Offline', 'offline');
     });
 
     // Handle initial route
@@ -305,13 +305,11 @@ if (backToLoginFromResetLink) {
 /**
  * Update Sync Status UI
  */
-function updateSyncStatus(title, subtitle, statusClass = 'live') {
+function updateSyncStatus(title, statusClass = 'live') {
     const syncBox = document.querySelector('.sync-status-box');
     const syncTitle = document.querySelector('.sync-title');
-    const syncSubtitle = document.querySelector('.sync-subtitle');
     
     if (syncTitle) syncTitle.textContent = title;
-    if (syncSubtitle) syncSubtitle.textContent = subtitle;
     
     if (syncBox) {
         syncBox.classList.remove('live', 'offline', 'syncing');
@@ -321,9 +319,8 @@ function updateSyncStatus(title, subtitle, statusClass = 'live') {
 
 // Listen for sync events
 window.addEventListener('sync-complete', (e) => {
-    const { count } = e.detail;
-    updateSyncStatus('Sync Complete', `${count} items updated`, 'live');
-    setTimeout(() => updateSyncStatus('Cloud Live', 'Server Connected'), 3000);
+    updateSyncStatus('Syncing', 'syncing');
+    setTimeout(() => updateSyncStatus('Online', 'live'), 2000);
 });
 
 // Logout Button Logic
