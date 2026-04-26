@@ -120,9 +120,18 @@ export function startSyncLoop(intervalMs = 60000) {
     const initialSync = syncFromCloud().then(() => syncToCloud());
 
     setInterval(async () => {
-        const status = await syncToCloud();
-        if (status.count > 0) {
-            window.dispatchEvent(new CustomEvent('sync-complete', { detail: status }));
+        try {
+            // 1. Pull changes from cloud
+            await syncFromCloud();
+            
+            // 2. Push local changes to cloud
+            const status = await syncToCloud();
+            
+            if (status.count > 0) {
+                window.dispatchEvent(new CustomEvent('sync-complete', { detail: status }));
+            }
+        } catch (err) {
+            console.error('Background sync failed:', err);
         }
     }, intervalMs);
 

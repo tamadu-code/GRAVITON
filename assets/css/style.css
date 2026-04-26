@@ -242,9 +242,32 @@ h1, h2, h3, .logo {
     color: white;
 }
 
-.sync-subtitle {
-    font-size: 0.7rem;
-    color: #6b7280;
+.manual-sync-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    margin-left: auto;
+}
+
+.manual-sync-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--accent-primary);
+}
+
+.manual-sync-btn i {
+    width: 16px;
+    height: 16px;
+}
+
+.manual-sync-btn.spinning i {
+    animation: spin 1s linear infinite;
 }
 
 .user-summary {

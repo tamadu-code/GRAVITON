@@ -3,7 +3,7 @@
  */
 
 import { UI } from './ui.js';
-import { loginUser, logoutUser, getCurrentSession, getUserProfile, registerUser, resetPassword, startSyncLoop } from './supabase-client.js';
+import { loginUser, logoutUser, getCurrentSession, getUserProfile, registerUser, resetPassword, startSyncLoop, syncToCloud, syncFromCloud } from './supabase-client.js';
 
 // Initialize Lucide Icons safely
 if (typeof lucide !== 'undefined') {
@@ -417,6 +417,26 @@ if (mobileMenuBtn && sidebar) {
                 toggleMobileMenu();
             }
         });
+    });
+}
+// ─── Manual Sync Button ───
+const manualSyncBtn = document.getElementById('manual-sync-btn');
+if (manualSyncBtn) {
+    manualSyncBtn.addEventListener('click', async () => {
+        manualSyncBtn.classList.add('spinning');
+        updateSyncStatus('Syncing', 'syncing');
+        
+        try {
+            await syncFromCloud();
+            await syncToCloud();
+            updateSyncStatus('Online', 'live');
+            UI.renderView(window.location.hash.substring(1) || 'dashboard');
+        } catch (err) {
+            console.error('Manual sync failed:', err);
+            updateSyncStatus('Sync Error', 'offline');
+        } finally {
+            manualSyncBtn.classList.remove('spinning');
+        }
     });
 }
 
