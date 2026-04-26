@@ -68,6 +68,50 @@ export const UI = {
         `;
     },
 
+    showModal(title, contentHtml, onConfirm, confirmText = 'Register', confirmIcon = 'save') {
+        // Remove existing if any
+        const existing = document.getElementById('ui-modal');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'ui-modal';
+        overlay.className = 'modal-overlay active';
+        overlay.innerHTML = `
+            <div class="modal-container">
+                <div class="modal-header">
+                    <div class="modal-title">${title}</div>
+                    <button class="modal-close" onclick="document.getElementById('ui-modal').remove()"><i data-lucide="x"></i></button>
+                </div>
+                <div class="modal-body">
+                    ${contentHtml}
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="document.getElementById('ui-modal').remove()" style="background: rgba(255,255,255,0.1); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 12px;">Cancel</button>
+                    <button id="modal-confirm-btn" class="btn" style="background: white; color: #1e293b; border: none; font-weight: 700; padding: 0.75rem 1.5rem; border-radius: 12px; display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="${confirmIcon}"></i> ${confirmText}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        document.getElementById('modal-confirm-btn').addEventListener('click', async () => {
+            if (onConfirm) {
+                const btn = document.getElementById('modal-confirm-btn');
+                btn.disabled = true;
+                btn.innerHTML = '<i data-lucide="loader" class="spin"></i> Processing...';
+                try {
+                    await onConfirm();
+                    overlay.remove();
+                } catch (e) {
+                    btn.disabled = false;
+                    btn.innerHTML = `<i data-lucide="${confirmIcon}"></i> ${confirmText}`;
+                }
+            } else {
+                overlay.remove();
+            }
+        });
+    },
+
     async renderDashboard() {
         const role = (this.currentUser.role || '').toLowerCase();
         if (role === 'teacher') {
@@ -339,11 +383,15 @@ export const UI = {
                             <div class="grid grid-cols-2 gap-2">
                                 <div class="text-xs">
                                     <strong class="text-slate-700">STUDENTS:</strong><br>
-                                    NAMES, CLASS, SEX, SERIAL NO
+                                    NAMES, CLASS, SERIAL NO, SEX
                                 </div>
                                 <div class="text-xs">
                                     <strong class="text-slate-700">SUBJECTS:</strong><br>
                                     TITLE, CLASS
+                                </div>
+                                <div class="text-xs" style="grid-column: span 2; margin-top: 0.5rem;">
+                                    <strong class="text-slate-700">SCORES:</strong><br>
+                                    NAMES, SUBJECTS, CLASS, TERM, SESSION, ASSIGNMENT, TEST 1, TEST 2, PROJECT, EXAM
                                 </div>
                             </div>
                         </div>
@@ -460,6 +508,65 @@ export const UI = {
                     addLog(`Successfully upserted ${subjects.length} subjects.`, 'success');
                 }
 
+                // Process Scores
+                if (workbook.Scores) {
+                    addLog(`Processing ${workbook.Scores.length} score records...`, 'info');
+                    const allStudents = await db.students.toArray();
+                    const allSubjects = await db.subjects.toArray();
+                    let matched = 0, skipped = 0;
+
+                    for (const row of workbook.Scores) {
+                        const studentName = (row['NAMES'] || '').trim();
+                        const subjectName = (row['SUBJECTS'] || '').trim();
+                        const className = (row['CLASS'] || '').trim();
+
+                        if (!studentName || !subjectName) { skipped++; continue; }
+
+                        // Try to match the student
+                        const student = allStudents.find(s => 
+                            s.name.toLowerCase() === studentName.toLowerCase() && 
+                            (!className || s.class_name === className)
+                        );
+                        const subject = allSubjects.find(s => 
+                            s.name.toLowerCase() === subjectName.toLowerCase()
+                        );
+
+                        if (!student) { 
+                            addLog(`Skipped score: Student "${studentName}" not found.`, 'warning'); 
+                            skipped++; continue; 
+                        }
+
+                        const assignment = parseFloat(row['ASSIGNMENT']) || 0;
+                        const test1 = parseFloat(row['TEST 1']) || 0;
+                        const test2 = parseFloat(row['TEST 2']) || 0;
+                        const project = parseFloat(row['PROJECT']) || 0;
+                        const exam = parseFloat(row['EXAM']) || 0;
+                        const ca = assignment + test1 + test2 + project;
+                        const total = ca + exam;
+
+                        await db.scores.put({
+                            id: `SCR_${student.student_id}_${(subject ? subject.id : subjectName.replace(/\s/g, ''))}_${(row['TERM'] || '1st').replace(/\s/g, '')}`,
+                            student_id: student.student_id,
+                            subject_id: subject ? subject.id : subjectName,
+                            class_name: className || student.class_name,
+                            term: row['TERM'] || '1st',
+                            session: row['SESSION'] || '',
+                            assignment: assignment,
+                            test1: test1,
+                            test2: test2,
+                            project: project,
+                            exam: exam,
+                            ca: ca,
+                            total: total,
+                            is_synced: 0,
+                            updated_at: new Date().toISOString()
+                        });
+                        matched++;
+                    }
+
+                    addLog(`Scores processed: ${matched} matched, ${skipped} skipped.`, matched > 0 ? 'success' : 'warning');
+                }
+
                 Notifications.show('Bulk import completed successfully', 'success');
             } catch (err) {
                 addLog(`Import Error: ${err.message}`, 'error');
@@ -511,7 +618,7 @@ export const UI = {
                             <span class="stat-label">Total Enrollment</span>
                         </div>
                     </div>
-                    <button class="btn" style="background: white; color: #2563eb; font-weight: 700; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+                    <button id="btn-add-stream" class="btn" style="background: white; color: #2563eb; font-weight: 700; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
                         <i data-lucide="plus-circle"></i> Add New Stream
                     </button>
                 </div>
@@ -594,6 +701,51 @@ export const UI = {
             });
         });
 
+        // Add Stream Modal
+        const btnAddStream = document.getElementById('btn-add-stream');
+        if (btnAddStream) {
+            btnAddStream.addEventListener('click', () => {
+                const modalHtml = `
+                    <div style="margin-bottom: 1rem;">
+                        <label>Stream Designation</label>
+                        <div style="position: relative;">
+                            <i data-lucide="layout" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #64748b; width: 16px;"></i>
+                            <input type="text" id="stream-name-input" class="input" placeholder="e.g. SSS 2 Science" style="padding-left: 2.5rem; width: 100%; box-sizing: border-box; background: white; color: #1e293b; border: 1px solid #cbd5e1;">
+                        </div>
+                    </div>
+                `;
+                this.showModal('New Stream Entry', modalHtml, async () => {
+                    const nameInput = document.getElementById('stream-name-input').value.trim();
+                    if (!nameInput) {
+                        Notifications.show('Stream designation is required', 'error');
+                        throw new Error('Validation failed');
+                    }
+                    
+                    const existing = await db.classes.where('name').equalsIgnoreCase(nameInput).first();
+                    if (existing) {
+                        Notifications.show('A stream with this designation already exists', 'warning');
+                        throw new Error('Duplicate');
+                    }
+                    
+                    // Determine level
+                    let level = 'Junior';
+                    if (nameInput.toLowerCase().includes('ss') || nameInput.toLowerCase().includes('senior')) level = 'Senior';
+                    if (nameInput.toLowerCase().includes('primary')) level = 'Primary';
+                    
+                    await db.classes.add({
+                        id: `C${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+                        name: nameInput,
+                        level: level,
+                        is_synced: 0,
+                        updated_at: new Date().toISOString()
+                    });
+                    
+                    Notifications.show(`Stream "${nameInput}" registered successfully.`, 'success');
+                    this.renderClasses();
+                }, 'Register', 'save');
+            });
+        }
+
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
@@ -647,7 +799,7 @@ export const UI = {
                         <button class="btn btn-secondary" style="border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.05); color: white; border-color: rgba(255,255,255,0.1);">
                             <i data-lucide="database"></i> Consolidate
                         </button>
-                        <button class="btn" style="background: white; color: #0f172a; border: none; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; font-weight: 700;">
+                        <button id="btn-register-course" class="btn" style="background: white; color: #0f172a; border: none; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; font-weight: 700;">
                             <i data-lucide="plus-circle"></i> Register Course
                         </button>
                     </div>
@@ -708,6 +860,123 @@ export const UI = {
                 </div>
             </div>
         `;
+
+        // Register Course Modal
+        const btnRegCourse = document.getElementById('btn-register-course');
+        if (btnRegCourse) {
+            btnRegCourse.addEventListener('click', async () => {
+                const allClasses = await db.classes.toArray();
+                const classCheckboxes = allClasses.map(c => `
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #334155; cursor: pointer;">
+                        <input type="checkbox" class="stream-checkbox" value="${c.name}" style="accent-color: #2563eb;"> ${c.name}
+                    </label>
+                `).join('');
+
+                const modalHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        <div>
+                            <label style="color: #334155;">Course Title</label>
+                            <div style="position: relative;">
+                                <i data-lucide="bookmark" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 16px;"></i>
+                                <input type="text" id="course-title" class="input" placeholder="e.g. Mathematics" style="width: 100%; box-sizing: border-box; padding-left: 2.25rem; background: white; color: #1e293b; border: 1px solid #cbd5e1;">
+                            </div>
+                        </div>
+                        <div>
+                            <label style="color: #334155;">Credit Load</label>
+                            <input type="number" id="course-credits" class="input" value="3" min="1" max="10" style="width: 100%; box-sizing: border-box; background: white; color: #1e293b; border: 1px solid #cbd5e1;">
+                        </div>
+                        <div>
+                            <label style="color: #334155;">Module Type</label>
+                            <select id="course-type" class="input" style="width: 100%; box-sizing: border-box; background: white; color: #1e293b; border: 1px solid #cbd5e1;">
+                                <option value="Core">Core</option>
+                                <option value="Elective">Elective</option>
+                            </select>
+                        </div>
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <label style="color: #334155; margin-bottom: 0;">Apply to Stream Architecture</label>
+                                <span id="stream-count-label" style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">0 STREAMS SELECTED</span>
+                            </div>
+                            <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; max-height: 160px; overflow-y: auto; background: white;">
+                                ${classCheckboxes}
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                                <button type="button" id="enroll-global" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.4rem 0.75rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;">Enroll Global (All Classes)</button>
+                                <button type="button" id="clear-selection" style="background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.4rem 0.75rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;">Clear Selection</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                this.showModal('<i data-lucide="check-square" style="width:20px;"></i> Master Curriculum Entry', modalHtml, async () => {
+                    const title = document.getElementById('course-title').value.trim();
+                    const credits = parseInt(document.getElementById('course-credits').value) || 3;
+                    const type = document.getElementById('course-type').value;
+                    const selectedStreams = [...document.querySelectorAll('.stream-checkbox:checked')].map(cb => cb.value);
+
+                    if (!title) {
+                        Notifications.show('Course title is required', 'error');
+                        throw new Error('Validation failed');
+                    }
+
+                    const subjectId = `SUB${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+
+                    // If streams selected, create one subject per stream. Else create a global subject.
+                    if (selectedStreams.length > 0) {
+                        for (const className of selectedStreams) {
+                            await db.subjects.put({
+                                id: `${subjectId}_${className.replace(/\s/g, '')}`,
+                                name: title,
+                                class_name: className,
+                                credits: credits,
+                                type: type,
+                                is_synced: 0,
+                                updated_at: new Date().toISOString()
+                            });
+                        }
+                    } else {
+                        await db.subjects.put({
+                            id: subjectId,
+                            name: title,
+                            class_name: 'All',
+                            credits: credits,
+                            type: type,
+                            is_synced: 0,
+                            updated_at: new Date().toISOString()
+                        });
+                    }
+
+                    Notifications.show(`Course "${title}" committed to curriculum (${selectedStreams.length || 'All'} streams).`, 'success');
+                    this.renderSubjects();
+                }, 'Commit to Curriculum', 'save');
+
+                // Wire up Enroll Global / Clear Selection after modal is rendered
+                setTimeout(() => {
+                    const enrollBtn = document.getElementById('enroll-global');
+                    const clearBtn = document.getElementById('clear-selection');
+                    const countLabel = document.getElementById('stream-count-label');
+
+                    const updateCount = () => {
+                        const checked = document.querySelectorAll('.stream-checkbox:checked').length;
+                        if (countLabel) countLabel.textContent = `${checked} STREAMS SELECTED`;
+                    };
+
+                    document.querySelectorAll('.stream-checkbox').forEach(cb => cb.addEventListener('change', updateCount));
+
+                    if (enrollBtn) enrollBtn.addEventListener('click', () => {
+                        document.querySelectorAll('.stream-checkbox').forEach(cb => cb.checked = true);
+                        updateCount();
+                    });
+                    if (clearBtn) clearBtn.addEventListener('click', () => {
+                        document.querySelectorAll('.stream-checkbox').forEach(cb => cb.checked = false);
+                        updateCount();
+                    });
+
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }, 50);
+            });
+        }
+
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
@@ -736,7 +1005,7 @@ export const UI = {
                         <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.1); color: white; border: none;">
                             <i data-lucide="printer"></i> Credentials
                         </button>
-                        <button class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; font-weight: 700;">
+                        <button id="btn-add-student" class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; font-weight: 700;">
                             <i data-lucide="user-plus"></i> New Enrollment
                         </button>
                     </div>
@@ -821,6 +1090,120 @@ export const UI = {
                     printBtn.innerHTML = '<i data-lucide="printer"></i> Credentials';
                     if (typeof lucide !== 'undefined') lucide.createIcons();
                 }
+            });
+        }
+
+        // Add Student Modal
+        const btnAddStudent = document.getElementById('btn-add-student');
+        if (btnAddStudent) {
+            btnAddStudent.addEventListener('click', () => {
+                const classOptions = classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+                const modalHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div>
+                            <label>Full Student Name</label>
+                            <input type="text" id="std-name" class="input" placeholder="e.g. Samuel Adekunle" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label>Class Assignment</label>
+                            <select id="std-class" class="input" style="width: 100%; box-sizing: border-box;">
+                                ${classOptions}
+                            </select>
+                        </div>
+                        <div>
+                            <label>Gender Identity</label>
+                            <select id="std-gender" class="input" style="width: 100%; box-sizing: border-box;">
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>System ID / Serial (Optional)</label>
+                            <input type="text" id="std-serial" class="input" placeholder="Auto-generated if left blank" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label>Parent Email / Username</label>
+                            <input type="text" id="std-parent-email" class="input" placeholder="e.g. parent@example.com" style="width: 100%; box-sizing: border-box;">
+                            <span style="font-size: 0.7rem; color: #94a3b8; display: block; margin-top: 4px;">Matches the parent's login email or username to link accounts.</span>
+                        </div>
+                        <div>
+                            <label>Date of Birth</label>
+                            <input type="date" id="std-dob" class="input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label>Phone Number</label>
+                            <input type="text" id="std-phone" class="input" placeholder="e.g. 08012345678" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label>Residential Address</label>
+                            <textarea id="std-address" class="input" style="width: 100%; box-sizing: border-box; resize: vertical; min-height: 80px;"></textarea>
+                        </div>
+                        <div>
+                            <label>Parent/Guardian Name</label>
+                            <input type="text" id="std-parent-name" class="input" placeholder="e.g. Mr. Adekunle" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label>Parent Phone</label>
+                            <input type="text" id="std-parent-phone" class="input" placeholder="e.g. 08087654321" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div>
+                                <label>Blood Group</label>
+                                <select id="std-blood" class="input" style="width: 100%; box-sizing: border-box;">
+                                    <option value="">Select...</option>
+                                    <option value="A+">A+</option><option value="O+">O+</option><option value="B+">B+</option><option value="AB+">AB+</option>
+                                    <option value="A-">A-</option><option value="O-">O-</option><option value="B-">B-</option><option value="AB-">AB-</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>Genotype</label>
+                                <select id="std-geno" class="input" style="width: 100%; box-sizing: border-box;">
+                                    <option value="">Select...</option>
+                                    <option value="AA">AA</option><option value="AS">AS</option><option value="SS">SS</option><option value="SC">SC</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label>Class Timetable (JSON/Text)</label>
+                            <textarea id="std-timetable" class="input" placeholder='e.g. {"Monday": ["Math", "English"], ...}' style="width: 100%; box-sizing: border-box; resize: vertical; min-height: 80px;"></textarea>
+                        </div>
+                    </div>
+                `;
+
+                this.showModal('New Student Entry', modalHtml, async () => {
+                    const name = document.getElementById('std-name').value.trim();
+                    const className = document.getElementById('std-class').value;
+                    const gender = document.getElementById('std-gender').value;
+                    const serial = document.getElementById('std-serial').value.trim() || `S${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+                    
+                    if (!name || !className) {
+                        Notifications.show('Name and Class are required', 'error');
+                        throw new Error('Validation failed');
+                    }
+
+                    const newStudent = {
+                        student_id: serial,
+                        name: name,
+                        class_name: className,
+                        gender: gender,
+                        status: 'Active',
+                        parent_email: document.getElementById('std-parent-email').value.trim(),
+                        dob: document.getElementById('std-dob').value,
+                        phone: document.getElementById('std-phone').value.trim(),
+                        address: document.getElementById('std-address').value.trim(),
+                        parent_name: document.getElementById('std-parent-name').value.trim(),
+                        parent_phone: document.getElementById('std-parent-phone').value.trim(),
+                        blood_group: document.getElementById('std-blood').value,
+                        genotype: document.getElementById('std-geno').value,
+                        timetable: document.getElementById('std-timetable').value.trim(),
+                        is_synced: 0,
+                        updated_at: new Date().toISOString()
+                    };
+
+                    await db.students.add(newStudent);
+                    Notifications.show(`Student ${name} registered successfully.`, 'success');
+                    this.renderStudents();
+                }, 'Finalize Registration', 'save');
             });
         }
 
