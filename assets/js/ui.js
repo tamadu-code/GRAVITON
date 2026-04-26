@@ -32,7 +32,10 @@ export const UI = {
             switch(viewName) {
                 case 'dashboard': await this.renderDashboard(); break;
                 case 'students': await this.renderStudents(); break;
+                case 'classes': await this.renderClasses(); break;
+                case 'subjects': await this.renderSubjects(); break;
                 case 'academic': await this.renderAcademic(); break;
+                case 'bulkimport': await this.renderBulkImport(); break;
                 case 'grades': await this.renderGrades(); break;
                 case 'attendance': await this.renderAttendance(); break;
                 case 'reports': await this.renderReports(); break;
@@ -514,84 +517,389 @@ export const UI = {
         `;
     },
 
+    /**
+     * Bulk Data Import View
+     */
+    async renderBulkImport() {
+        this.contentArea.innerHTML = `
+            <div class="page-header mb-2">
+                <h1 class="text-2xl font-bold">Bulk Data Import</h1>
+                <p class="text-secondary">Import Students, Subjects, and Scores from an Excel Workbook (.xlsx)</p>
+            </div>
 
-    async renderStudents() {
-        let students = await db.students.toArray();
+            <div class="import-grid">
+                <div class="upload-card">
+                    <h3 class="mb-1">Step 1: Upload File</h3>
+                    <p class="text-secondary mb-2">Ensure your sheets are named "Students", "Subjects", or "Scores".</p>
+                    
+                    <div id="dropzone" class="dropzone">
+                        <i data-lucide="upload" style="width: 48px; height: 48px; margin-bottom: 1rem; color: #94a3b8;"></i>
+                        <p>Drag & drop your Excel file here or</p>
+                        <input type="file" id="bulk-file-input" accept=".xlsx, .xls" style="display: none;">
+                        <button class="btn btn-secondary mt-1" onclick="document.getElementById('bulk-file-input').click()">Choose File</button>
+                    </div>
+
+                    <button id="run-import-btn" class="btn btn-primary w-full mt-2 py-1" disabled style="background: #000080;">
+                        Run Import Now
+                    </button>
+
+                    <div class="mt-4 p-2 bg-slate-50 rounded-xl border border-slate-100">
+                        <h4 class="font-semibold text-sm mb-1">Expected Formats</h4>
+                        <ul class="text-xs space-y-1 text-slate-600">
+                            <li><strong>Students:</strong> NAMES, CLASS, SERIAL NO, SEX</li>
+                            <li><strong>Subjects:</strong> TITLE, CLASS</li>
+                            <li><strong>Scores:</strong> NAMES, SUBJECTS, CLASS, TERM, SESSION, ASSIGNMENT, TEST 1, TEST 2, PROJECT, EXAM</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="log-card">
+                    <div class="log-header">
+                        <span class="font-bold">Import Logs</span>
+                        <button class="btn btn-secondary btn-sm" id="clear-logs">Clear Logs</button>
+                    </div>
+                    <div id="import-log-content" class="log-content">
+                        <div class="text-slate-400 italic">Waiting for action...</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const logContent = document.getElementById('import-log-content');
+        const fileInput = document.getElementById('bulk-file-input');
+        const runBtn = document.getElementById('run-import-btn');
+        let selectedFile = null;
+
+        const addLog = (msg, type = 'info') => {
+            if (logContent.querySelector('.italic')) logContent.innerHTML = '';
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logContent.appendChild(entry);
+            logContent.scrollTop = logContent.scrollHeight;
+        };
+
+        fileInput.addEventListener('change', (e) => {
+            selectedFile = e.target.files[0];
+            if (selectedFile) {
+                addLog(`File selected: ${selectedFile.name}`, 'info');
+                runBtn.disabled = false;
+            }
+        });
+
+        runBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            runBtn.disabled = true;
+            runBtn.textContent = 'Processing...';
+            addLog('Starting import process...', 'info');
+
+            try {
+                const workbook = await this.readExcel(selectedFile);
+                
+                // Process Students
+                if (workbook.Students) {
+                    addLog(`Processing ${workbook.Students.length} student records...`, 'info');
+                    const students = workbook.Students.map(s => ({
+                        student_id: s['SERIAL NO'] || `S${Math.random().toString(36).substr(2, 6)}`,
+                        name: s['NAMES'],
+                        class_name: s['CLASS'],
+                        gender: s['SEX'],
+                        status: 'Active',
+                        is_synced: 0,
+                        updated_at: new Date().toISOString()
+                    }));
+                    await db.students.bulkPut(students);
+                    addLog(`Successfully imported ${students.length} students.`, 'success');
+                }
+
+                // Process Subjects
+                if (workbook.Subjects) {
+                    addLog(`Processing ${workbook.Subjects.length} subject records...`, 'info');
+                    const subjects = workbook.Subjects.map(s => ({
+                        name: s['TITLE'],
+                        class_name: s['CLASS'],
+                        type: 'Core',
+                        credits: 1,
+                        is_synced: 0,
+                        updated_at: new Date().toISOString()
+                    }));
+                    await db.subjects.bulkPut(subjects);
+                    addLog(`Successfully imported ${subjects.length} subjects.`, 'success');
+                }
+
+                Notifications.show('Bulk import completed successfully', 'success');
+            } catch (err) {
+                addLog(`Import Error: ${err.message}`, 'error');
+                Notifications.show('Import failed: ' + err.message, 'error');
+            } finally {
+                runBtn.disabled = false;
+                runBtn.textContent = 'Run Import Now';
+            }
+        });
+
+        document.getElementById('clear-logs').onclick = () => {
+            logContent.innerHTML = '<div class="text-slate-400 italic">Waiting for action...</div>';
+        };
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    readExcel(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const result = {};
+                    workbook.SheetNames.forEach(sheetName => {
+                        result[sheetName] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+                    });
+                    resolve(result);
+                } catch (err) { reject(err); }
+            };
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+    },
+
+    async renderClasses() {
+        const streams = await db.classes.toArray();
+        const studentCounts = await db.students.toArray();
         
-        // Filter students if Teacher? (Maybe see all for now as Admin/Teacher)
+        const getEnrollment = (className) => studentCounts.filter(s => s.class_name === className).length;
+
+        this.contentArea.innerHTML = `
+            <div class="page-banner">
+                <div class="banner-content">
+                    <h1 class="banner-title"><i data-lucide="layers"></i> School Manager</h1>
+                    <p class="banner-subtitle">Configure streams, monitor enrollment, and manage classroom assignments.</p>
+                </div>
+                <div class="banner-stats">
+                    <div class="banner-stat-item">
+                        <span class="stat-value">${streams.length}</span>
+                        <span class="stat-label">Active Streams</span>
+                    </div>
+                    <div class="banner-stat-item">
+                        <span class="stat-value">${studentCounts.length}</span>
+                        <span class="stat-label">Enrollment Balance</span>
+                    </div>
+                </div>
+                <button class="btn" style="background: white; color: #2563eb; font-weight: 600; border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i data-lucide="plus"></i> Add New Stream
+                </button>
+            </div>
+
+            <div class="actions-bar mb-2">
+                <div style="position: relative; width: 400px;">
+                    <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px;"></i>
+                    <input type="text" placeholder="Filter streams..." class="input" style="padding-left: 3rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+                </div>
+            </div>
+
+            <div class="stream-grid">
+                ${streams.map((s, index) => `
+                    <div class="stream-card">
+                        <div class="stream-card-header">
+                            <div class="stream-card-title"><i data-lucide="graduation-cap"></i> ${s.name}</div>
+                            <span class="stream-id-badge">#${index + 1}</span>
+                        </div>
+                        <div class="stream-card-body">
+                            <div class="enrollment-stat">
+                                <div class="enroll-icon"><i data-lucide="users"></i></div>
+                                <div class="enroll-info">
+                                    <span class="count">${getEnrollment(s.name)}</span>
+                                    <span class="label">Enrollment</span>
+                                </div>
+                            </div>
+                            <div class="stream-meta">
+                                <span class="level-tag"><i data-lucide="check-circle-2"></i> ${s.level} Level</span>
+                                <span class="status-tag">ACTIVE</span>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-secondary w-full" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;"><i data-lucide="edit-3" style="width: 16px;"></i> Edit</button>
+                                <button class="btn btn-secondary" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 18px;"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async renderSubjects() {
+        const subjects = await db.subjects.toArray();
         
         this.contentArea.innerHTML = `
-            <div class="actions-bar mb-2">
-                <button id="add-student-btn" class="btn btn-success">Add Student</button>
-                <label for="import-excel" class="btn btn-secondary">
-                    Import Excel
-                    <input type="file" id="import-excel" accept=".xlsx, .xls" style="display:none">
-                </label>
-                <input type="text" id="search-students" placeholder="Search students..." class="input">
+            <div class="page-banner" style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%);">
+                <div class="banner-content">
+                    <h1 class="banner-title"><i data-lucide="book-open"></i> Subject Registry</h1>
+                    <p class="banner-subtitle">Manage courses, credit units, and instructional assignments across all school levels.</p>
+                </div>
+                <div class="banner-stats">
+                    <div class="banner-stat-item">
+                        <span class="stat-value">${subjects.length}</span>
+                        <span class="stat-label">Total Courses</span>
+                    </div>
+                    <div class="banner-stat-item">
+                        <span class="stat-value">${subjects.filter(s => s.type === 'Core').length}</span>
+                        <span class="stat-label">Core Modules</span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <button class="btn btn-secondary" style="border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="settings"></i> Consolidate DB
+                    </button>
+                    <button class="btn btn-primary" style="background: white; color: #1e293b; border: none; border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="plus"></i> Register Course
+                    </button>
+                </div>
             </div>
-            
-            <div class="table-container card">
+
+            <div class="actions-bar mb-2">
+                <div style="position: relative; width: 400px;">
+                    <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px;"></i>
+                    <input type="text" placeholder="Search courses, teachers, or classes..." class="input" style="padding-left: 3rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+                </div>
+            </div>
+
+            <div class="table-container card" style="padding: 0; border-radius: 20px; overflow: hidden;">
                 <table class="data-table">
-                    <thead>
+                    <thead style="background: #f8fafc;">
                         <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Class</th>
-                            <th>Gender</th>
-                            <th>Status</th>
+                            <th style="padding: 1.25rem;">COURSE TITLE</th>
+                            <th>LEVELS & STREAMS</th>
+                            <th>FACULTY ASSIGNED</th>
+                            <th>UNITS</th>
+                            <th>CATEGORY</th>
+                            <th>ACTIONS</th>
                         </tr>
                     </thead>
-                    <tbody id="student-list-body">
-                        ${students.map(s => `
+                    <tbody>
+                        ${subjects.map(s => `
                             <tr>
-                                <td>${s.student_id}</td>
-                                <td>${s.name}</td>
-                                <td>${s.class_name}</td>
-                                <td>${s.gender}</td>
-                                <td><span class="badge ${s.status === 'Active' ? 'success' : 'warning'}">${s.status}</span></td>
+                                <td style="padding: 1.25rem; font-weight: 600;">
+                                    <div style="display: flex; align-items: center; gap: 1rem;">
+                                        <div style="width: 32px; height: 32px; background: #fff7ed; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #f97316;">
+                                            <i data-lucide="book-marked" style="width: 18px;"></i>
+                                        </div>
+                                        ${s.name}
+                                    </div>
+                                </td>
+                                <td><span class="badge warning" style="background: #fee2e2; color: #ef4444; border: none; border-radius: 20px; font-size: 0.7rem; padding: 0.25rem 0.75rem;">Unlinked</span></td>
+                                <td><span style="display: inline-block; width: 8px; height: 8px; background: #10b981; border-radius: 50%; margin-right: 0.5rem;"></span></td>
+                                <td style="font-weight: 700; color: #1e40af;">${s.credits}</td>
+                                <td><span class="badge" style="background: #ffedd5; color: #9a3412; border: none; border-radius: 8px; font-weight: 700;">Core</span></td>
+                                <td>
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <button class="btn btn-secondary btn-sm" style="padding: 0.5rem;"><i data-lucide="edit-3" style="width: 16px;"></i></button>
+                                        <button class="btn btn-secondary btn-sm" style="padding: 0.5rem; color: #ef4444;"><i data-lucide="trash-2" style="width: 16px;"></i></button>
+                                    </div>
+                                </td>
                             </tr>
                         `).join('')}
                     </tbody>
                 </table>
             </div>
         `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
 
-        // Add Listeners
-        // Search Logic
-        document.getElementById('search-students').addEventListener('input', (e) => {
-            const term = e.target.value.toLowerCase();
+    async renderStudents() {
+        const students = await db.students.toArray();
+        const classes = await db.classes.toArray();
+        
+        this.contentArea.innerHTML = `
+            <div class="page-banner" style="background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);">
+                <div class="banner-content">
+                    <h1 class="banner-title" style="font-family: 'Outfit', sans-serif;"><i data-lucide="graduation-cap"></i> Student Directory</h1>
+                    <p class="banner-subtitle">Comprehensive database of all registered learners.</p>
+                </div>
+                <div class="banner-stats">
+                    <div class="banner-stat-item">
+                        <span class="stat-value">${students.length}</span>
+                        <span class="stat-label">Total Students</span>
+                    </div>
+                    <div class="banner-stat-item">
+                        <span class="stat-value">${classes.length}</span>
+                        <span class="stat-label">Active Classes</span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <button class="btn btn-secondary" style="border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.1); color: white;">
+                        <i data-lucide="printer"></i> Credentials
+                    </button>
+                    <button class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="user-plus"></i> Add Student
+                    </button>
+                </div>
+            </div>
+
+            <div class="directory-container">
+                <div class="directory-sidebar">
+                    <div class="sidebar-search-wrap">
+                        <div style="position: relative; margin-bottom: 1rem;">
+                            <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px;"></i>
+                            <input type="text" id="directory-search" placeholder="Search by name or serial..." class="input" style="padding-left: 3rem; border-radius: 12px;">
+                        </div>
+                        <select id="class-filter" class="input" style="border-radius: 12px;">
+                            <option value="">All Classes</option>
+                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="sidebar-list" id="student-sidebar-list">
+                        ${this.generateStudentListItems(students)}
+                    </div>
+                </div>
+
+                <div class="directory-main" id="student-detail-view">
+                    <div class="empty-state">
+                        <div class="empty-icon"><i data-lucide="users" style="width: 40px; height: 40px;"></i></div>
+                        <h2 class="text-xl font-bold mb-1">Select a Student</h2>
+                        <p class="text-secondary">Choose a student from the sidebar to view their complete academic and personal records.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Search logic
+        const searchInput = document.getElementById('directory-search');
+        const classFilter = document.getElementById('class-filter');
+        const listContainer = document.getElementById('student-sidebar-list');
+
+        const updateList = () => {
+            const term = searchInput.value.toLowerCase();
+            const filterClass = classFilter.value;
             const filtered = students.filter(s => 
-                s.name.toLowerCase().includes(term) || 
-                s.student_id.toLowerCase().includes(term) ||
-                s.class_name.toLowerCase().includes(term)
+                (s.name.toLowerCase().includes(term) || s.student_id.toLowerCase().includes(term)) &&
+                (!filterClass || s.class_name === filterClass)
             );
-            
-            document.getElementById('student-list-body').innerHTML = filtered.map(s => `
-                <tr>
-                    <td>${s.student_id}</td>
-                    <td>${s.name}</td>
-                    <td>${s.class_name}</td>
-                    <td>${s.gender}</td>
-                    <td><span class="badge ${s.status === 'Active' ? 'success' : 'warning'}">${s.status}</span></td>
-                </tr>
-            `).join('');
-        });
+            listContainer.innerHTML = this.generateStudentListItems(filtered);
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        };
 
-        document.getElementById('import-excel').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const data = await parseExcel(file);
-                // Simple bulk put
-                const studentsWithSync = data.map(s => ({
-                    ...s,
-                    is_synced: 0,
-                    updated_at: new Date().toISOString()
-                }));
-                await db.students.bulkPut(studentsWithSync);
-                Notifications.show(`Imported ${data.length} students`, 'success');
-                this.renderStudents();
-            }
-        });
+        searchInput.addEventListener('input', updateList);
+        classFilter.addEventListener('change', updateList);
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    generateStudentListItems(students) {
+        if (students.length === 0) return `<div class="p-2 text-center text-slate-400 text-sm">No students found</div>`;
+        return students.map(s => `
+            <div class="student-item" data-id="${s.student_id}">
+                <div class="student-item-info">
+                    <span class="student-item-name">${s.name}</span>
+                    <span class="student-item-meta">${s.student_id} • ${s.class_name}</span>
+                </div>
+                <div style="display: flex; gap: 0.5rem; opacity: 0.6;">
+                    <i data-lucide="edit-3" style="width: 14px; cursor: pointer;"></i>
+                    <i data-lucide="trash-2" style="width: 14px; cursor: pointer; color: #ef4444;"></i>
+                    <i data-lucide="chevron-right" style="width: 14px;"></i>
+                </div>
+            </div>
+        `).join('');
     },
 
     async renderAcademic() {
