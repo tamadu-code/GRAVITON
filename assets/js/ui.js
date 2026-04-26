@@ -226,7 +226,7 @@ export const UI = {
                     </div>
                 </div>
 
-                <div class="dashboard-main-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+                <div class="dashboard-main-grid">
                     <div class="dash-card" style="background: white; border-radius: 32px; border: 1px solid #e2e8f0; padding: 2rem;">
                         <div class="card-header-fancy mb-3" style="display: flex; align-items: center; gap: 1.5rem;">
                             <div class="header-icon" style="width: 48px; height: 48px; background: #f8fafc; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #64748b;">
@@ -280,7 +280,7 @@ export const UI = {
     async renderTeacherDashboard() {
         this.contentArea.innerHTML = `
             <div class="dashboard-grid">
-                <div class="grid mb-2">
+                <div class="stats-grid mb-2">
                     <div class="card stat-card secondary-gradient" style="grid-column: span 2;">
                         <div class="stat-icon"><i data-lucide="user"></i></div>
                         <div class="stat-info">
@@ -297,7 +297,7 @@ export const UI = {
                     </div>
                 </div>
 
-                <div class="grid main-dashboard-row">
+                <div class="dashboard-grid main-dashboard-row">
                     <div class="card quick-actions">
                         <h3><i data-lucide="zap"></i> Teacher Actions</h3>
                         <div class="action-grid mt-2">
@@ -449,15 +449,23 @@ export const UI = {
                     const classesToCreate = new Set();
                     
                     for (const s of workbook.Students) {
-                        if (!s['NAMES']) continue;
-                        const className = s['CLASS'] || 'Unassigned';
+                        const getVal = (keys) => {
+                            const foundKey = Object.keys(s).find(k => keys.includes(k.toUpperCase().replace(/\s/g, '')));
+                            return foundKey ? s[foundKey] : null;
+                        };
+
+                        // Specific matches for the user's requested format: NAMES, CLASS, SERIAL NO, SEX
+                        const name = getVal(['NAMES', 'NAME', 'FULLNAME', 'STUDENTNAME']);
+                        if (!name) continue;
+
+                        const className = getVal(['CLASS', 'STREAM', 'LEVEL', 'STREAMS']) || 'Unassigned';
                         classesToCreate.add(className);
                         
                         students.push({
-                            student_id: s['SERIAL NO'] || `S${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-                            name: s['NAMES'],
+                            student_id: getVal(['SERIALNO', 'SERIAL', 'ID', 'ADMISSIONNO', 'SN']) || `S${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+                            name: name,
                             class_name: className,
-                            gender: s['SEX'] || 'Not Specified',
+                            gender: getVal(['SEX', 'GENDER', 'GENDERIDENTITY']) || 'Not Specified',
                             status: 'Active',
                             is_synced: 0,
                             updated_at: new Date().toISOString()
@@ -495,15 +503,21 @@ export const UI = {
                 // Process Subjects
                 if (workbook.Subjects) {
                     addLog(`Processing ${workbook.Subjects.length} subject records...`, 'info');
-                    const subjects = workbook.Subjects.map(s => ({
-                        id: `SUB${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-                        name: s['TITLE'],
-                        class_name: s['CLASS'] || 'All',
-                        type: s['TYPE'] || 'Core',
-                        credits: s['UNITS'] || 1,
-                        is_synced: 0,
-                        updated_at: new Date().toISOString()
-                    }));
+                    const subjects = workbook.Subjects.map(s => {
+                        const getVal = (keys) => {
+                            const foundKey = Object.keys(s).find(k => keys.includes(k.toUpperCase().replace(/\s/g, '')));
+                            return foundKey ? s[foundKey] : null;
+                        };
+                        return {
+                            id: `SUB${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+                            name: getVal(['TITLE', 'NAME', 'SUBJECT', 'COURSETITLE']),
+                            class_name: getVal(['CLASS', 'STREAM', 'LEVEL', 'STREAMS']) || 'All',
+                            type: getVal(['TYPE', 'CATEGORY', 'MODULETYPE']) || 'Core',
+                            credits: getVal(['UNITS', 'CREDITS', 'LOAD', 'CREDITLOAD']) || 1,
+                            is_synced: 0,
+                            updated_at: new Date().toISOString()
+                        };
+                    }).filter(s => s.name);
                     await db.subjects.bulkPut(subjects);
                     addLog(`Successfully upserted ${subjects.length} subjects.`, 'success');
                 }
@@ -623,8 +637,8 @@ export const UI = {
                     </button>
                 </div>
 
-                <div class="actions-bar" style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between;">
-                    <div style="position: relative; width: 450px;">
+                <div class="actions-bar" style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0;">
+                    <div style="position: relative; flex: 1; max-width: 500px;">
                         <i data-lucide="search" style="position: absolute; left: 1.25rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px;"></i>
                         <input type="text" placeholder="Search for a specific stream or level..." class="input" style="padding-left: 3.5rem; border-radius: 14px; border: 1px solid #f1f5f9; background: #f8fafc; height: 52px;">
                     </div>
@@ -671,10 +685,10 @@ export const UI = {
                                         <span style="font-weight: 700;">${getFormMasterName(s.name)}</span>
                                     </div>
                                 </div>
-                                <div style="display: flex; gap: 1rem;">
-                                    <button class="btn btn-secondary w-full" style="height: 48px; border-radius: 12px; font-weight: 600; background: #f8fafc;"><i data-lucide="edit-3"></i> Configure</button>
-                                    <button class="btn btn-secondary delete-class-btn" data-id="${s.id}" data-name="${s.name}" data-count="${getEnrollment(s.name)}" style="height: 48px; border-radius: 12px; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
-                                </div>
+                                 <div style="display: flex; gap: 1rem;">
+                                     <button class="btn btn-secondary w-full rename-class-btn" data-id="${s.id}" data-name="${s.name}" style="height: 48px; border-radius: 12px; font-weight: 600; background: #f8fafc;"><i data-lucide="edit-3"></i> Rename</button>
+                                     <button class="btn btn-secondary delete-class-btn" data-id="${s.id}" data-name="${s.name}" data-count="${getEnrollment(s.name)}" style="height: 48px; border-radius: 12px; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
+                                 </div>
                             </div>
                         </div>
                     `).join('')}
@@ -697,6 +711,25 @@ export const UI = {
                         Notifications.show(`Stream "${className}" deleted successfully.`, 'success');
                         this.renderClasses();
                     }
+                }
+            });
+        });
+
+        // Rename Class Logic
+        document.querySelectorAll('.rename-class-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const oldName = btn.dataset.name;
+                const id = btn.dataset.id;
+                const newName = prompt(`Rename stream "${oldName}" to:`, oldName);
+                if (newName && newName !== oldName) {
+                    await db.classes.update(id, { name: newName });
+                    // Update all students in this class too? Yes, to maintain consistency.
+                    const students = await db.students.where('class_name').equals(oldName).toArray();
+                    for (const std of students) {
+                        await db.students.update(std.student_id, { class_name: newName });
+                    }
+                    Notifications.show(`Stream renamed to "${newName}". ${students.length} students updated.`, 'success');
+                    this.renderClasses();
                 }
             });
         });
@@ -754,8 +787,8 @@ export const UI = {
         const assignments = await db.subject_assignments.toArray().catch(() => []);
         const profiles = await db.profiles.toArray().catch(() => []);
         
-        const getSubjectDetails = (subjectId, defaultClass) => {
-            const subjectAssignments = assignments.filter(a => a.subject_id === subjectId || a.subject_id === defaultClass);
+        const getSubjectDetails = (subjectIds, defaultClasses) => {
+            const subjectAssignments = assignments.filter(a => subjectIds.includes(a.subject_id));
             
             // Faculty
             const teacherIds = [...new Set(subjectAssignments.map(a => a.teacher_id))];
@@ -767,16 +800,35 @@ export const UI = {
             const facultyColor = teacherNames.length > 0 ? '#10b981' : '#cbd5e1';
             
             // Classes (Streams)
-            const classNames = [...new Set(subjectAssignments.map(a => a.class_name))];
+            const classNames = [...new Set([...defaultClasses, ...subjectAssignments.map(a => a.class_name)])].filter(c => c && c !== 'All');
             let linkedString = `<span class="badge warning" style="background: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; border-radius: 20px; font-size: 0.75rem; padding: 0.4rem 1rem; font-weight: 600;">Unlinked</span>`;
-            if (defaultClass && defaultClass !== 'All') {
-                 linkedString = `<span class="badge" style="background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; border-radius: 20px; font-size: 0.75rem; padding: 0.4rem 1rem; font-weight: 600;">${defaultClass}</span>`;
+            
+            if (defaultClasses.includes('All')) {
+                 linkedString = `<span class="badge" style="background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; border-radius: 20px; font-size: 0.75rem; padding: 0.4rem 1rem; font-weight: 600;">Global (All)</span>`;
             } else if (classNames.length > 0) {
-                 linkedString = `<span class="badge" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 20px; font-size: 0.75rem; padding: 0.4rem 1rem; font-weight: 600;">${classNames.length} Streams</span>`;
+                 linkedString = `<div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">${classNames.map(c => `<span class="badge" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 12px; font-size: 0.7rem; padding: 0.2rem 0.6rem; font-weight: 700;">${c}</span>`).join('')}</div>`;
             }
 
             return { facultyString, facultyColor, linkedString };
         };
+
+        // Group subjects by name for unified management
+        const consolidated = [];
+        subjects.forEach(s => {
+            const existing = consolidated.find(us => us.name === s.name);
+            if (existing) {
+                if (!existing.classes.includes(s.class_name)) existing.classes.push(s.class_name);
+                existing.ids.push(s.id);
+            } else {
+                consolidated.push({
+                    name: s.name,
+                    type: s.type,
+                    credits: s.credits,
+                    classes: [s.class_name],
+                    ids: [s.id]
+                });
+            }
+        });
         
         this.contentArea.innerHTML = `
             <div class="view-container">
@@ -787,12 +839,12 @@ export const UI = {
                     </div>
                     <div class="banner-stats">
                         <div class="banner-stat-item">
-                            <span class="stat-value">${subjects.length}</span>
-                            <span class="stat-label">Total Courses</span>
+                            <span class="stat-value">${consolidated.length}</span>
+                            <span class="stat-label">Unique Courses</span>
                         </div>
                         <div class="banner-stat-item">
-                            <span class="stat-value">${subjects.filter(s => s.type === 'Core').length}</span>
-                            <span class="stat-label">Core Modules</span>
+                            <span class="stat-value">${subjects.length}</span>
+                            <span class="stat-label">Stream Instances</span>
                         </div>
                     </div>
                     <div style="display: flex; gap: 1rem;">
@@ -805,8 +857,8 @@ export const UI = {
                     </div>
                 </div>
 
-                <div class="actions-bar" style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between;">
-                    <div style="position: relative; width: 500px;">
+                <div class="actions-bar" style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0;">
+                    <div style="position: relative; flex: 1; max-width: 500px;">
                         <i data-lucide="search" style="position: absolute; left: 1.5rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 22px;"></i>
                         <input type="text" placeholder="Search courses, faculty, or stream codes..." class="input" style="padding-left: 4rem; border-radius: 16px; border: 1px solid #f1f5f9; background: #f8fafc; height: 56px; font-size: 1.05rem;">
                     </div>
@@ -825,7 +877,9 @@ export const UI = {
                             </tr>
                         </thead>
                         <tbody style="background: white;">
-                            ${subjects.length === 0 ? `<tr><td colspan="6" class="text-center p-4 text-slate-400">No courses registered yet.</td></tr>` : subjects.map(s => `
+                            ${consolidated.length === 0 ? `<tr><td colspan="6" class="text-center p-4 text-slate-400">No courses registered yet.</td></tr>` : consolidated.map(s => {
+                                const details = getSubjectDetails(s.ids, s.classes);
+                                return `
                                 <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.2s;">
                                     <td style="padding: 1.5rem 2rem; font-weight: 700; color: #1e293b;">
                                         <div style="display: flex; align-items: center; gap: 1.25rem;">
@@ -834,15 +888,15 @@ export const UI = {
                                             </div>
                                             <div style="display: flex; flex-direction: column;">
                                                 <span>${s.name}</span>
-                                                <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 400;">MOD-SUB-0${Math.floor(Math.random()*900)+100}</span>
+                                                <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 400;">CURRICULUM UNIT</span>
                                             </div>
                                         </div>
                                     </td>
-                                    <td>${getSubjectDetails(s.id, s.class_name).linkedString}</td>
+                                    <td>${details.linkedString}</td>
                                     <td>
                                         <div style="display: flex; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.9rem;">
-                                            <span style="width: 10px; height: 10px; background: ${getSubjectDetails(s.id, s.class_name).facultyColor}; border-radius: 50%;"></span>
-                                            ${getSubjectDetails(s.id, s.class_name).facultyString}
+                                            <span style="width: 10px; height: 10px; background: ${details.facultyColor}; border-radius: 50%;"></span>
+                                            ${details.facultyString}
                                         </div>
                                     </td>
                                     <td style="font-weight: 800; color: #1e40af; font-size: 1.1rem;">${s.credits || 1}</td>
@@ -850,11 +904,11 @@ export const UI = {
                                     <td style="text-align: right; padding-right: 2rem;">
                                         <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
                                             <button class="btn btn-secondary btn-sm" style="width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0;"><i data-lucide="edit-3" style="width: 18px;"></i></button>
-                                            <button class="btn btn-secondary btn-sm" style="width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2" style="width: 18px;"></i></button>
+                                            <button class="btn btn-secondary btn-sm delete-subject-btn" data-ids="${s.ids.join(',')}" data-name="${s.name}" style="width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2" style="width: 18px;"></i></button>
                                         </div>
                                     </td>
                                 </tr>
-                            `).join('')}
+                            `;}).join('')}
                         </tbody>
                     </table>
                 </div>
@@ -978,6 +1032,19 @@ export const UI = {
         }
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // CRUD: Delete Subjects
+        document.querySelectorAll('.delete-subject-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const name = btn.dataset.name;
+                const ids = btn.dataset.ids.split(',');
+                if (confirm(`Are you sure you want to remove "${name}" from the curriculum? This will delete all ${ids.length} stream instances.`)) {
+                    await Promise.all(ids.map(id => db.subjects.delete(id)));
+                    Notifications.show(`Course "${name}" removed.`, 'success');
+                    this.renderSubjects();
+                }
+            });
+        });
     },
 
     async renderStudents() {
@@ -1011,8 +1078,8 @@ export const UI = {
                     </div>
                 </div>
 
-                <div class="directory-container" style="height: calc(100vh - 420px);">
-                    <div class="directory-sidebar" style="border-radius: 28px; background: white;">
+                <div class="directory-container">
+                    <div class="directory-sidebar" style="border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
                         <div class="sidebar-search-wrap" style="padding: 2rem; background: #f8fafc; border-bottom: 2px solid #f1f5f9;">
                             <div style="position: relative; margin-bottom: 1.5rem;">
                                 <i data-lucide="search" style="position: absolute; left: 1.25rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px;"></i>
@@ -1028,7 +1095,7 @@ export const UI = {
                         </div>
                     </div>
 
-                    <div class="directory-main" id="student-detail-view" style="border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                    <div class="directory-main" id="student-detail-view" style="border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); min-height: 400px;">
                         <div class="empty-state">
                             <div class="empty-icon" style="width: 100px; height: 100px; background: #f8fafc; border-radius: 50%; color: #cbd5e1; display: flex; align-items: center; justify-content: center; margin: 0 auto 2rem;">
                                 <i data-lucide="user-search" style="width: 48px; height: 48px;"></i>
@@ -1146,7 +1213,7 @@ export const UI = {
                             <label>Parent Phone</label>
                             <input type="text" id="std-parent-phone" class="input" placeholder="e.g. 08087654321" style="width: 100%; box-sizing: border-box;">
                         </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="modal-grid">
                             <div>
                                 <label>Blood Group</label>
                                 <select id="std-blood" class="input" style="width: 100%; box-sizing: border-box;">
@@ -1220,7 +1287,7 @@ export const UI = {
 
         detailView.innerHTML = `
             <div style="padding: 3rem;">
-                <div class="profile-header" style="display: flex; gap: 3rem; align-items: flex-start; margin-bottom: 3rem;">
+                <div class="profile-header" style="margin-bottom: 3rem;">
                     <div class="profile-avatar-big" style="width: 160px; height: 160px; background: #f8fafc; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-radius: 40px; display: flex; align-items: center; justify-content: center; position: relative;">
                         <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}" style="width: 120px; height: 120px;" alt="${student.name}">
                         <div style="position: absolute; bottom: -10px; right: -10px; width: 44px; height: 44px; background: #2563eb; color: white; border-radius: 14px; display: flex; align-items: center; justify-content: center; border: 4px solid white;">
@@ -1234,15 +1301,15 @@ export const UI = {
                                 <h1 style="font-size: 3rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em; line-height: 1.1;">${student.name}</h1>
                                 <p style="font-size: 1.25rem; color: #64748b; margin-top: 0.5rem;">${student.class_name} • Junior Secondary Stream</p>
                             </div>
-                            <div style="display: flex; gap: 1rem;">
-                                <button class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
-                                <button class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
-                            </div>
+                             <div style="display: flex; gap: 1rem;">
+                                 <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
+                                 <button id="btn-delete-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
+                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; margin-bottom: 3rem;">
+                <div class="profile-stats">
                     <div style="background: #f8fafc; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9;">
                         <span style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Cumulative Avg</span>
                         <div style="display: flex; align-items: baseline; gap: 0.75rem; margin-top: 0.5rem;">
@@ -1272,7 +1339,7 @@ export const UI = {
                     <button style="background: none; border: none; padding: 1rem 0; font-weight: 600; color: #64748b; cursor: pointer;">Attendance Logs</button>
                 </div>
 
-                <div class="info-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;">
+                <div class="info-grid">
                     <div class="info-section">
                         <h4 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
                             <i data-lucide="info" style="width: 18px; color: #2563eb;"></i> Bio-Data
@@ -1320,6 +1387,53 @@ export const UI = {
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // CRUD: Delete Student
+        const deleteBtn = document.getElementById('btn-delete-student');
+        if (deleteBtn) {
+            deleteBtn.onclick = async () => {
+                if (confirm(`Are you sure you want to delete ${student.name}'s entire profile? This action is irreversible.`)) {
+                    await db.students.delete(studentId);
+                    Notifications.show(`${student.name} has been removed from the directory.`, 'success');
+                    this.renderStudents();
+                }
+            };
+        }
+
+        // CRUD: Modify Student (Full Modal Edit)
+        const modifyBtn = document.getElementById('btn-modify-student');
+        if (modifyBtn) {
+            modifyBtn.onclick = async () => {
+                const classes = await db.classes.toArray();
+                const classOptions = classes.map(c => `<option value="${c.name}" ${c.name === student.class_name ? 'selected' : ''}>${c.name}</option>`).join('');
+                
+                const modalHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div><label>Full Name</label><input type="text" id="edit-std-name" class="input" value="${student.name}" style="width:100%;"></div>
+                        <div><label>Class</label><select id="edit-std-class" class="input" style="width:100%;">${classOptions}</select></div>
+                        <div><label>Gender</label><select id="edit-std-gender" class="input" style="width:100%;"><option value="Male" ${student.gender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${student.gender === 'Female' ? 'selected' : ''}>Female</option></select></div>
+                        <div><label>Parent Email</label><input type="text" id="edit-std-parent-email" class="input" value="${student.parent_email || ''}" style="width:100%;"></div>
+                        <div><label>Phone</label><input type="text" id="edit-std-phone" class="input" value="${student.phone || ''}" style="width:100%;"></div>
+                        <div><label>Address</label><textarea id="edit-std-address" class="input" style="width:100%; min-height:80px;">${student.address || ''}</textarea></div>
+                    </div>
+                `;
+
+                this.showModal('<i data-lucide="edit-3"></i> Modify Student Bio-Data', modalHtml, async () => {
+                    const updates = {
+                        name: document.getElementById('edit-std-name').value,
+                        class_name: document.getElementById('edit-std-class').value,
+                        gender: document.getElementById('edit-std-gender').value,
+                        parent_email: document.getElementById('edit-std-parent-email').value,
+                        phone: document.getElementById('edit-std-phone').value,
+                        address: document.getElementById('edit-std-address').value,
+                        updated_at: new Date().toISOString()
+                    };
+                    await db.students.update(studentId, updates);
+                    Notifications.show('Profile updated successfully.', 'success');
+                    this.renderStudentDetail(studentId);
+                }, 'Update Profile', 'save');
+            };
+        }
     },
 
     generateStudentListItems(students) {
