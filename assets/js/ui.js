@@ -1648,22 +1648,37 @@ export const UI = {
             </div>
         `;
 
-        const renderTab = async (tab) => {
-            const container = document.getElementById('tab-content');
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-            
             if (tab === 'classes') {
                 container.innerHTML = `
                     <table class="data-table">
                         <thead><tr><th>Stream Name</th><th>Level</th><th>Action</th></tr></thead>
-                        <tbody>${classes.map(c => `<tr><td>${c.name}</td><td>${c.level}</td><td><i data-lucide="trash-2" class="delete-class" data-id="${c.id}" style="color:#ef4444; cursor:pointer; width:16px;"></i></td></tr>`).join('')}</tbody>
+                        <tbody>${classes.map(c => `<tr>
+                            <td style="font-weight:700; color:var(--text-primary);">${c.name}</td>
+                            <td>${c.level}</td>
+                            <td>
+                                <div style="display:flex; gap:1rem;">
+                                    <i data-lucide="edit-2" class="edit-class" data-id="${c.id}" style="color:var(--accent-primary); cursor:pointer; width:18px;"></i>
+                                    <i data-lucide="trash-2" class="delete-class" data-id="${c.id}" style="color:var(--accent-danger); cursor:pointer; width:18px;"></i>
+                                </div>
+                            </td>
+                        </tr>`).join('')}</tbody>
                     </table>
                 `;
             } else if (tab === 'subjects') {
                 container.innerHTML = `
                     <table class="data-table">
                         <thead><tr><th>Course Name</th><th>Type</th><th>Credits</th><th>Action</th></tr></thead>
-                        <tbody>${subjects.map(s => `<tr><td>${s.name}</td><td>${s.type}</td><td>${s.credits}</td><td><i data-lucide="trash-2" class="delete-sub" data-id="${s.id}" style="color:#ef4444; cursor:pointer; width:16px;"></i></td></tr>`).join('')}</tbody>
+                        <tbody>${subjects.map(s => `<tr>
+                            <td style="font-weight:700; color:var(--text-primary); font-size:1rem;">${s.name}</td>
+                            <td style="color:var(--text-secondary);">${s.type}</td>
+                            <td>${s.credits}</td>
+                            <td>
+                                <div style="display:flex; gap:1rem;">
+                                    <i data-lucide="edit-2" class="edit-subject" data-id="${s.id}" style="color:var(--accent-primary); cursor:pointer; width:18px;"></i>
+                                    <i data-lucide="trash-2" class="delete-sub" data-id="${s.id}" style="color:var(--accent-danger); cursor:pointer; width:18px;"></i>
+                                </div>
+                            </td>
+                        </tr>`).join('')}</tbody>
                     </table>
                 `;
             } else if (tab === 'assignments') {
@@ -1675,16 +1690,27 @@ export const UI = {
                             const sub = subjects.find(s => s.id === a.subject_id);
                             const teacher = profiles.find(p => p.id === a.teacher_id);
                             return `<tr>
-                                <td>${a.class_name}</td>
+                                <td style="font-weight:700;">${a.class_name}</td>
                                 <td>${sub ? sub.name : 'Unknown'}</td>
                                 <td>${teacher ? teacher.full_name : 'Unassigned'}</td>
-                                <td><i data-lucide="trash-2" class="delete-assignment" data-id="${a.id}" style="color:#ef4444; cursor:pointer; width:16px;"></i></td>
+                                <td><i data-lucide="trash-2" class="delete-assignment" data-id="${a.id}" style="color:var(--accent-danger); cursor:pointer; width:18px;"></i></td>
                             </tr>`;
                         }).join('')}</tbody>
                     </table>
                 `;
             }
+            
+            // Add FAB for Mobile
+            const fab = document.createElement('div');
+            fab.className = 'fab-container';
+            fab.innerHTML = `
+                <button class="fab" onclick="document.getElementById('add-class-btn').click()"><i data-lucide="plus"></i></button>
+                <button class="fab" style="background:#4338ca;" onclick="document.getElementById('add-subject-btn').click()"><i data-lucide="book"></i></button>
+            `;
+            container.appendChild(fab);
+            
             if (typeof lucide !== 'undefined') lucide.createIcons();
+            this.attachAcademicListeners();
         };
 
         // Re-attach Banner Button Listeners
@@ -1745,6 +1771,69 @@ export const UI = {
 
         document.querySelectorAll('.tab-btn').forEach(btn => btn.onclick = () => renderTab(btn.dataset.tab));
         renderTab('classes');
+    },
+
+    attachAcademicListeners() {
+        document.querySelectorAll('.edit-subject').forEach(icon => {
+            icon.onclick = async (e) => {
+                const id = e.target.closest('i').dataset.id;
+                const sub = await db.subjects.get(id);
+                if (!sub) return;
+
+                const modalHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div>
+                            <label style="font-weight:700; color:var(--text-primary);">Course Title</label>
+                            <input type="text" id="edit-sub-name" class="input" style="width: 100%;" value="${sub.name}">
+                        </div>
+                        <div>
+                            <label style="font-weight:700; color:var(--text-primary);">Course Type</label>
+                            <select id="edit-sub-type" class="input" style="width: 100%;">
+                                <option value="Core" ${sub.type === 'Core' ? 'selected' : ''}>Core</option>
+                                <option value="Elective" ${sub.type === 'Elective' ? 'selected' : ''}>Elective</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+                this.showModal('Modify Course', modalHtml, async () => {
+                    const name = document.getElementById('edit-sub-name').value.trim();
+                    const type = document.getElementById('edit-sub-type').value;
+                    if (!name) return;
+                    await db.subjects.update(id, prepareForSync({ name, type }));
+                    syncToCloud();
+                    this.renderAcademic();
+                }, 'Update Course');
+            };
+        });
+
+        document.querySelectorAll('.edit-class').forEach(icon => {
+            icon.onclick = async (e) => {
+                const id = e.target.closest('i').dataset.id;
+                const cls = await db.classes.get(id);
+                if (!cls) return;
+
+                const modalHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div>
+                            <label style="font-weight:700; color:var(--text-primary);">Stream Name</label>
+                            <input type="text" id="edit-cls-name" class="input" style="width: 100%;" value="${cls.name}">
+                        </div>
+                        <div>
+                            <label style="font-weight:700; color:var(--text-primary);">Level/Category</label>
+                            <input type="text" id="edit-cls-level" class="input" style="width: 100%;" value="${cls.level}">
+                        </div>
+                    </div>
+                `;
+                this.showModal('Modify Stream', modalHtml, async () => {
+                    const name = document.getElementById('edit-cls-name').value.trim();
+                    const level = document.getElementById('edit-cls-level').value.trim();
+                    if (!name) return;
+                    await db.classes.update(id, prepareForSync({ name, level }));
+                    syncToCloud();
+                    this.renderAcademic();
+                }, 'Update Stream');
+            };
+        });
     },
 
     async renderAttendance() {
