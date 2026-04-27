@@ -6,7 +6,7 @@ console.log('UI Module Loading...');
 
 import db, { prepareForSync } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF } from './utils.js';
-import { syncToCloud } from './supabase-client.js';
+import { syncToCloud, syncFromCloud } from './supabase-client.js';
 
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
