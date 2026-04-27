@@ -2527,6 +2527,128 @@ label {
     box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.05);
 }
 
+.spinning { 
+    animation: spin 1s linear infinite; 
+} 
+@keyframes spin { 
+    from { transform: rotate(0deg); } 
+    to { transform: rotate(360deg); } 
+}  
+
+/* Mobile Responsive Scoring */
+@media (max-width: 768px) {
+    .desktop-only { display: none !important; }
+    .mobile-only { display: block !important; }
+    
+    .score-card {
+        background: white;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        margin-bottom: 1rem;
+        box-shadow: var(--shadow-sm);
+        transition: all 0.3s ease;
+    }
+    
+    .score-card.collapsed .score-card-content {
+        display: none;
+    }
+    
+    .score-card-header {
+        padding: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        background: #f8fafc;
+    }
+    
+    .score-card-title {
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: var(--text-primary);
+    }
+    
+    .score-card-content {
+        padding: 1.25rem;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1.25rem;
+        border-top: 1px solid var(--border-color);
+    }
+    
+    .score-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+    
+    .score-field label {
+        font-size: 0.6rem;
+        font-weight: 800;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .score-field input {
+        width: 100%;
+        padding: 0.6rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 1rem;
+        text-align: center;
+    }
+
+    .action-bar-mobile {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        padding: 1rem;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+        display: flex;
+        gap: 1rem;
+        z-index: 1000;
+    }
+    
+    /* Ensure action bar buttons are visible */
+    .action-bar-mobile .btn {
+        flex: 1;
+        justify-content: center;
+    }
+}
+
+@media (min-width: 769px) {
+    .desktop-only { display: table-row-group !important; }
+    .mobile-only { display: none !important; }
+    .action-bar-mobile { display: none !important; }
+}
+
+/* Data Table Styling Refinement */
+.data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.data-table th {
+    background: #f8fafc;
+    padding: 1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #64748b;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.data-table td {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+
  . s p i n n i n g   { 
          a n i m a t i o n :   s p i n   1 s   l i n e a r   i n f i n i t e ; 
  } 

@@ -1502,13 +1502,6 @@ export const UI = {
                         </div>
                     </div>
 
-                    <div style="display: flex; gap: 0.75rem;">
-                        <button id="btn-print-empty" class="btn" style="background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 0.6rem 1.25rem; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
-                            <i data-lucide="printer" style="width: 16px;"></i> Empty Sheet
-                        </button>
-                        <button id="btn-commit-grades" class="btn" style="background: white; color: #1e40af; border: none; border-radius: 8px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                            <i data-lucide="save" style="width: 16px;"></i> Commit Grades
-                        </button>
                     </div>
                 </div>
 
@@ -1544,9 +1537,24 @@ export const UI = {
                         </select>
                     </div>
                 </div>
+                
+                <!-- Dedicated Action Bar -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding: 0.5rem 0;">
+                    <div style="display: flex; align-items: center; gap: 0.75rem; color: #64748b; font-size: 0.85rem; font-weight: 600;">
+                        <i data-lucide="info" style="width:16px;"></i> <span>Draft scores are saved locally until committed.</span>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button id="btn-print-empty" class="btn" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <i data-lucide="printer" style="width: 16px;"></i> Print Empty Sheet
+                        </button>
+                        <button id="btn-commit-grades" class="btn" style="background: #2563eb; color: white; border: none; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 12px rgba(37,99,235,0.25); cursor: pointer;">
+                            <i data-lucide="save" style="width: 16px;"></i> Commit Grades
+                        </button>
+                    </div>
+                </div>
 
-                <!-- Score Entry Table -->
-                <div class="card mt-2" style="border-radius: 16px; padding: 0.5rem; overflow: hidden; box-shadow: var(--shadow-md);">
+                <!-- Score Entry Table (Desktop) -->
+                <div class="card mt-2 desktop-only" style="border-radius: 16px; padding: 0.5rem; overflow: hidden; box-shadow: var(--shadow-md);">
                     <div class="table-container" style="max-height: calc(100vh - 450px); overflow-y: auto;">
                         <table class="data-table" style="width:100%; font-size:0.85rem;">
                             <thead>
@@ -1569,6 +1577,18 @@ export const UI = {
                         </table>
                     </div>
                 </div>
+
+                <!-- Mobile Score Cards -->
+                <div id="mobile-score-entry" class="mobile-only" style="margin-top: 1.5rem; padding-bottom: 80px;">
+                    <!-- Populated via loadAcademicLedger -->
+                </div>
+
+                <!-- Mobile Action Bar (Fixed at bottom) -->
+                <div class="action-bar-mobile mobile-only">
+                    <button id="mobile-btn-print" class="btn" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; border-radius:12px;"><i data-lucide="printer"></i></button>
+                    <button id="mobile-btn-commit" class="btn" style="background:#2563eb; color:white; flex:1; border-radius:12px; font-weight:800;">Commit All Grades</button>
+                </div>
+            </div>
             </div>
         `;
 
@@ -1595,21 +1615,55 @@ export const UI = {
             document.getElementById('active-subject-name').textContent = activeSub.name + ' in ' + cls;
 
             const targetStudents = students.filter(s => s.class_name === cls);
-            const allScores = await db.scores.where('subject_id').equals(subId).toArray();
-            const filteredScores = allScores.filter(s => s.term === term && s.session === session);
+            
+            // Comprehensive Score Retrieval Strategy
+            let allScores = await db.scores.where('subject_id').equals(subId).toArray();
+            
+            // Fallback 1: Numeric ID mismatch
+            if (allScores.length === 0 && !isNaN(subId)) {
+                allScores = await db.scores.where('subject_id').equals(parseInt(subId)).toArray();
+            }
+            if (allScores.length === 0) {
+                allScores = await db.scores.where('subject_id').equals(subId.toString()).toArray();
+            }
+            
+            // Fallback 2: Subject Name matching (for legacy or imported data)
+            if (allScores.length === 0 && activeSub) {
+                allScores = await db.scores.where('subject_id').equals(activeSub.name).toArray();
+            }
+            
+            // Resilient filtering for term and session
+            const filteredScores = allScores.filter(s => {
+                if (!s.term || !s.session) return false;
+                const dbTerm = String(s.term).toLowerCase();
+                const filterTerm = term.toLowerCase();
+                const termMatch = (dbTerm === filterTerm) || filterTerm.startsWith(dbTerm) || dbTerm.startsWith(filterTerm);
+                return termMatch && String(s.session) === String(session);
+            });
 
-            // Calculate Stats
-            const totalScores = filteredScores.map(sc => sc.total || 0);
-            const avg = totalScores.length > 0 ? (totalScores.reduce((a, b) => a + b, 0) / totalScores.length).toFixed(1) : 0;
-            const peak = totalScores.length > 0 ? Math.max(...totalScores) : 0;
-            const fails = filteredScores.filter(sc => (sc.total || 0) < 40).length;
+            // Update Statistics
+            const updateStatsUI = (scores) => {
+                const totalScores = scores.map(sc => parseFloat(sc.total) || 0).filter(v => v > 0);
+                const avg = totalScores.length > 0 ? (totalScores.reduce((a, b) => a + b, 0) / totalScores.length).toFixed(1) : 0;
+                const peak = totalScores.length > 0 ? Math.max(...totalScores) : 0;
+                const fails = scores.filter(sc => (parseFloat(sc.total) || 0) < 40).length;
 
-            document.getElementById('stat-class-avg').textContent = avg + '%';
-            document.getElementById('stat-peak-perf').textContent = peak;
-            document.getElementById('stat-fail-count').textContent = fails;
+                document.getElementById('stat-class-avg').textContent = avg + '%';
+                document.getElementById('stat-peak-perf').textContent = peak;
+                document.getElementById('stat-fail-count').textContent = fails;
+            };
 
+            updateStatsUI(filteredScores);
+
+            if (filteredScores.length === 0 && allScores.length > 0) {
+                console.warn('Scores found for subject but filtered out by term/session:', { term, session });
+            } else if (allScores.length === 0) {
+                console.log('No scores found for this subject in the local database.');
+            }
+
+            // Update Desktop Table
             gradeBody.innerHTML = targetStudents.map(s => {
-                const score = filteredScores.find(sc => sc.student_id === s.student_id);
+                const score = filteredScores.find(sc => sc.student_id == s.student_id);
                 const ca = (score?.assignment || 0) + (score?.test1 || 0) + (score?.test2 || 0) + (score?.project || 0);
                 const total = ca + (score?.exam || 0);
                 
@@ -1629,38 +1683,83 @@ export const UI = {
                 `;
             }).join('');
 
+            // Update Mobile Cards
+            const mobileContainer = document.getElementById('mobile-score-entry');
+            if (mobileContainer) {
+                mobileContainer.innerHTML = targetStudents.map(s => {
+                    const score = filteredScores.find(sc => sc.student_id == s.student_id);
+                    const ca = (score?.assignment || 0) + (score?.test1 || 0) + (score?.test2 || 0) + (score?.project || 0);
+                    const total = ca + (score?.exam || 0);
+                    
+                    return `
+                        <div class="score-card collapsed" data-student-id="${s.student_id}">
+                            <div class="score-card-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                                <div class="score-card-title">${s.name}</div>
+                                <div style="display:flex; align-items:center; gap:0.5rem;">
+                                    <span class="badge" style="background:#f0fdf4; color:#15803d; font-weight:800; border-radius:6px; padding:2px 8px;">${total || '-'}</span>
+                                    <i data-lucide="chevron-down" style="width:16px;"></i>
+                                </div>
+                            </div>
+                            <div class="score-card-content">
+                                <div class="score-field"><label>Assignment</label><input type="number" class="score-input" data-field="assignment" value="${score?.assignment || ''}" placeholder="0"></div>
+                                <div class="score-field"><label>Test 1</label><input type="number" class="score-input" data-field="test1" value="${score?.test1 || ''}" placeholder="0"></div>
+                                <div class="score-field"><label>Test 2</label><input type="number" class="score-input" data-field="test2" value="${score?.test2 || ''}" placeholder="0"></div>
+                                <div class="score-field"><label>Project</label><input type="number" class="score-input" data-field="project" value="${score?.project || ''}" placeholder="0"></div>
+                                <div class="score-field"><label>Exam (60)</label><input type="number" class="score-input" data-field="exam" value="${score?.exam || ''}" placeholder="0" style="border-color:#2563eb; background:#eff6ff;"></div>
+                                <div class="score-field"><label>CA Score</label><div class="ca-cell" style="font-weight:700; color:#2563eb; padding:0.6rem;">${ca || '-'}</div></div>
+                                <div class="score-field"><label>Grand Total</label><div class="total-cell" style="font-weight:800; color:#15803d; background:#f0fdf4; padding:0.6rem; border-radius:8px;">${total || '-'}</div></div>
+                                <div class="score-field"><label>Letter Grade</label><div class="grade-cell" style="font-weight:700; padding:0.6rem;">${total ? ScoringEngine.getGrade(total) : '-'}</div></div>
+                                <div class="score-field"><label>Class Rank</label><div class="rnk-cell" style="font-weight:700; color:#64748b; padding:0.6rem;">${score?.rank || '-'}</div></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
             // Add Input Listeners for real-time calc
             document.querySelectorAll('.score-input').forEach(input => {
                 input.addEventListener('input', (e) => {
-                    const row = e.target.closest('tr');
-                    const assignment = parseFloat(row.querySelector('[data-field="assignment"]').value) || 0;
-                    const test1 = parseFloat(row.querySelector('[data-field="test1"]').value) || 0;
-                    const test2 = parseFloat(row.querySelector('[data-field="test2"]').value) || 0;
-                    const project = parseFloat(row.querySelector('[data-field="project"]').value) || 0;
-                    const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
+                    const container = e.target.closest('[data-student-id]');
+                    const studentId = container.dataset.studentId;
+                    
+                    const val = parseFloat(e.target.value) || 0;
+                    if (e.target.dataset.field === 'exam' && val > 60) e.target.value = 60;
+                    else if (e.target.dataset.field !== 'exam' && val > 10) e.target.value = 10;
 
-                    // Validation
-                    if (e.target.dataset.field === 'exam' && exam > 60) e.target.value = 60;
-                    else if (e.target.dataset.field !== 'exam' && parseFloat(e.target.value) > 10) e.target.value = 10;
+                    const getVal = (c, field) => parseFloat(c.querySelector(`[data-field="${field}"]`).value) || 0;
+                    const ca = getVal(container, 'assignment') + getVal(container, 'test1') + getVal(container, 'test2') + getVal(container, 'project');
+                    const total = ca + getVal(container, 'exam');
 
-                    const ca = assignment + test1 + test2 + project;
-                    const total = ca + exam;
+                    // Update ALL views (Desktop and Mobile) for this student
+                    document.querySelectorAll(`[data-student-id="${studentId}"]`).forEach(node => {
+                        const caEl = node.querySelector('.ca-cell');
+                        const totalEl = node.querySelector('.total-cell');
+                        const gradeEl = node.querySelector('.grade-cell');
+                        const badgeEl = node.querySelector('.score-card-header .badge');
+                        
+                        if (caEl) caEl.textContent = ca;
+                        if (totalEl) totalEl.textContent = total;
+                        if (gradeEl) gradeEl.textContent = ScoringEngine.getGrade(total);
+                        if (badgeEl) badgeEl.textContent = total || '-';
+                        
+                        // Sync input value if different
+                        const fieldInput = node.querySelector(`[data-field="${e.target.dataset.field}"]`);
+                        if (fieldInput && fieldInput !== e.target) fieldInput.value = e.target.value;
+                    });
 
-                    row.querySelector('.ca-cell').textContent = ca;
-                    row.querySelector('.total-cell').textContent = total;
-                    row.querySelector('.grade-cell').textContent = ScoringEngine.getGrade(total);
-
-                    // Update Global Stats
-                    const allTotals = Array.from(document.querySelectorAll('.total-cell')).map(el => parseFloat(el.textContent) || 0).filter(v => v > 0);
-                    const newAvg = allTotals.length > 0 ? (allTotals.reduce((a,b) => a+b, 0) / allTotals.length).toFixed(1) : 0;
-                    const newPeak = allTotals.length > 0 ? Math.max(...allTotals) : 0;
-                    const newFails = allTotals.filter(v => v < 40).length;
-
-                    document.getElementById('stat-class-avg').textContent = newAvg + '%';
-                    document.getElementById('stat-peak-perf').textContent = newPeak;
-                    document.getElementById('stat-fail-count').textContent = newFails;
+                    // Update Stats
+                    const allTotals = Array.from(document.querySelectorAll('.desktop-only .total-cell')).map(el => parseFloat(el.textContent) || 0).filter(v => v > 0);
+                    updateStatsUI(allTotals.map(t => ({ total: t })));
                 });
             });
+
+            // Mobile Action Listeners
+            const mobileCommit = document.getElementById('mobile-btn-commit');
+            const mobilePrint = document.getElementById('mobile-btn-print');
+            if (mobileCommit) mobileCommit.onclick = () => document.getElementById('btn-commit-grades').click();
+            if (mobilePrint) mobilePrint.onclick = () => document.getElementById('btn-print-empty').click();
         };
 
         classFilter.addEventListener('change', async (e) => {
