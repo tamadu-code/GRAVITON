@@ -119,9 +119,12 @@ export async function syncFromCloud() {
                 .gt('updated_at', lastSync);
 
             if (!error && data && data.length > 0) {
-                for (const item of data) {
-                    await db[table].put({ ...item, is_synced: 1 });
-                }
+                // Use bulkPut for massive performance boost over individual awaits
+                await db[table].bulkPut(data.map(item => ({ 
+                    ...item, 
+                    is_synced: 1 
+                })));
+                console.log(`Synced ${data.length} records for ${table}...`);
             }
         } catch (e) {
             console.error(`Pull error for ${table}:`, e);
