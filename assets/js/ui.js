@@ -37,7 +37,7 @@ export const UI = {
                 case 'subjects': await this.renderSubjects(); break;
                 case 'academic': await this.renderAcademic(); break;
                 case 'bulkimport': await this.renderBulkImport(); break;
-                case 'grades': await this.renderGrades(); break;
+                case 'gradebook': await this.renderGrades(); break;
                 case 'attendance': await this.renderAttendance(); break;
                 case 'reports': await this.renderReports(); break;
                 case 'promotion': await this.renderPromotionEngine(); break;
@@ -307,7 +307,7 @@ export const UI = {
                                 <div class="icon-wrapper bg-warning-light"><i data-lucide="check-square" class="text-warning"></i></div>
                                 <span>Mark Attendance</span>
                             </button>
-                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'grades\\']').click()">
+                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'gradebook\\']').click()">
                                 <div class="icon-wrapper bg-primary-light"><i data-lucide="award" class="text-primary"></i></div>
                                 <span>Enter Grades</span>
                             </button>
@@ -339,7 +339,7 @@ export const UI = {
                                 <div class="icon-wrapper bg-warning-light"><i data-lucide="calendar" class="text-warning"></i></div>
                                 <span>View Attendance</span>
                             </button>
-                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'grades\\']').click()">
+                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'gradebook\\']').click()">
                                 <div class="icon-wrapper bg-success-light"><i data-lucide="bar-chart-2" class="text-success"></i></div>
                                 <span>View Grades</span>
                             </button>
