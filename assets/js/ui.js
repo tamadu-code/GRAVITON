@@ -1638,6 +1638,12 @@ export const UI = {
                         mapped.teacher_id = 'unassigned';
                     }
                 }
+                // Smart Student ID resolution for scores
+                if (target === 'scores' && !mapped.student_id && mapped.name) {
+                    const studentMatch = result.students.find(s => s.name.toLowerCase().trim() === mapped.name.toLowerCase().trim());
+                    if (studentMatch) mapped.student_id = studentMatch.student_id;
+                }
+                
                 result[target].push(mapped);
             });
         }
@@ -1888,6 +1894,12 @@ export const UI = {
                 
                 return termMatch;
             });
+
+            console.log(`Gradebook Sync Check: 
+                - Total scores in DB: ${rawScores.length}
+                - Scores matching Subject/Session/Term: ${filteredScores.length}
+                - Students in Class: ${targetStudents.length}
+                - First Score in DB (Debug):`, rawScores[0]);
 
             // 4. Sort by updated_at Descending (Most recent first)
             filteredScores.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
