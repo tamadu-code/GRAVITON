@@ -375,7 +375,7 @@ navItems.forEach(item => {
 
         // Strict Role-Based Protection
         const role = UI.currentUser?.role;
-        if (role === 'Parent' && ['academic', 'promotion', 'settings', 'students'].includes(view)) {
+        if (role === 'Parent' && ['academic', 'promotion', 'config', 'students'].includes(view)) {
             if (window.Notifications) Notifications.show('Access Denied', 'error');
             return;
         }

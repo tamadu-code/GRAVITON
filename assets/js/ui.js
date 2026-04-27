@@ -41,7 +41,7 @@ export const UI = {
                 case 'attendance': await this.renderAttendance(); break;
                 case 'reports': await this.renderReports(); break;
                 case 'promotion': await this.renderPromotionEngine(); break;
-                case 'settings': await this.renderSettings(); break;
+                case 'config': await this.renderSettings(); break;
                 default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
             }
         } catch (error) {
