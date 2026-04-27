@@ -1760,7 +1760,9 @@ export const UI = {
                         </select>
                     </div>
                 </div>
-                
+                <!-- Status Indicator -->
+                <div id="gradebook-mismatch-warning" style="display:none;"></div>
+
                 <!-- Dedicated Action Bar -->
                 <div class="action-bar-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding: 0.75rem 1rem; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm);">
                     <div style="display: flex; align-items: center; gap: 0.75rem; color: #64748b; font-size: 0.85rem; font-weight: 600;">
@@ -1894,6 +1896,29 @@ export const UI = {
                 
                 return termMatch;
             });
+
+            // 3.5 Visual Warning for mismatched data
+            const mismatchWarning = document.getElementById('gradebook-mismatch-warning');
+            if (mismatchWarning) {
+                const subjectOnlyMatch = rawScores.filter(sc => 
+                    String(sc.subject_id || '').toLowerCase().trim() === String(subId).toLowerCase().trim() ||
+                    String(sc.subject_id || '').toLowerCase().trim() === (activeSub ? activeSub.name.toLowerCase().trim() : '')
+                );
+                
+                if (filteredScores.length === 0 && subjectOnlyMatch.length > 0) {
+                    const firstScore = subjectOnlyMatch[0];
+                    mismatchWarning.innerHTML = `
+                        <div style="background:#fff7ed; border:1px solid #ffedd5; color:#9a3412; padding:0.75rem; border-radius:8px; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem; font-size:0.85rem;">
+                            <i data-lucide="alert-triangle" style="width:16px;"></i>
+                            <span><strong>Note:</strong> Found ${subjectOnlyMatch.length} scores for this subject, but they match <strong>${firstScore.session || 'Unknown Session'}</strong> / <strong>${firstScore.term || 'Unknown Term'}</strong>. Please adjust your filters.</span>
+                        </div>
+                    `;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                    mismatchWarning.style.display = 'block';
+                } else {
+                    mismatchWarning.style.display = 'none';
+                }
+            }
 
             console.log(`Gradebook Sync Check: 
                 - Total scores in DB: ${rawScores.length}
