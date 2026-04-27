@@ -4,6 +4,7 @@
 
 import { UI } from './ui.js';
 import { loginUser, logoutUser, getCurrentSession, getUserProfile, registerUser, resetPassword, startSyncLoop, syncToCloud, syncFromCloud } from './supabase-client.js';
+import { Notifications } from './utils.js';
 
 // Initialize Lucide Icons safely
 if (typeof lucide !== 'undefined') {

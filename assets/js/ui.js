@@ -604,10 +604,10 @@ export const UI = {
                             class_name: className || student.class_name,
                             term: row['TERM'] || '1st',
                             session: row['SESSION'] || '',
-                            assignment: assignment,
-                            test1: test1,
-                            test2: test2,
-                            project: project,
+                            ass: assignment,
+                            t1: test1,
+                            t2: test2,
+                            prj: project,
                             exam: exam,
                             ca: ca,
                             total: total,
@@ -1524,8 +1524,7 @@ export const UI = {
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="book-open" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Course</span></div>
                         <select id="grade-subject-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
-                            <option value="">Select Course</option>
-                            ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                            <option value="">Select Stream First</option>
                         </select>
                     </div>
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
@@ -1691,7 +1690,29 @@ export const UI = {
             rankStudents();
         };
 
-        [classFilter, subjectFilter, termFilter, sessionFilter].forEach(f => f.addEventListener('change', loadAcademicLedger));
+        classFilter.addEventListener('change', async (e) => {
+            const cls = e.target.value;
+            if (!cls) {
+                subjectFilter.innerHTML = '<option value="">Select Stream First</option>';
+                gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">Please select a Stream and Course to begin grading</td></tr>`;
+                return;
+            }
+            
+            // Dynamically load subjects assigned to this specific class
+            const assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
+            const assignedIds = new Set(assignments.map(a => a.subject_id));
+            const availableSubjects = subjects.filter(s => assignedIds.has(s.id));
+            
+            if (availableSubjects.length > 0) {
+                subjectFilter.innerHTML = availableSubjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                loadAcademicLedger(); // Auto-load first subject
+            } else {
+                subjectFilter.innerHTML = '<option value="">No Courses Assigned</option>';
+                gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">No courses have been assigned to ${cls} yet</td></tr>`;
+            }
+        });
+
+        [subjectFilter, termFilter, sessionFilter].forEach(f => f.addEventListener('change', loadAcademicLedger));
 
         document.getElementById('btn-commit-grades').addEventListener('click', async () => {
             const rows = document.querySelectorAll('#grade-entry-body tr[data-student-id]');

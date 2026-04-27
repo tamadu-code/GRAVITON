@@ -46,6 +46,28 @@ export function getSupabase() {
 export async function syncToCloud() {
     if (!sb) return { success: false, message: 'Supabase not configured' };
 
+    // --- Data Migration for CA Components ---
+    try {
+        const brokenScores = await db.scores.toArray();
+        const toFix = brokenScores.filter(s => s.assignment !== undefined || s.test1 !== undefined);
+        if (toFix.length > 0) {
+            const fixed = toFix.map(s => {
+                s.ass = s.assignment || s.ass || 0;
+                s.t1 = s.test1 || s.t1 || 0;
+                s.t2 = s.test2 || s.t2 || 0;
+                s.prj = s.project || s.prj || 0;
+                delete s.assignment;
+                delete s.test1;
+                delete s.test2;
+                delete s.project;
+                return s;
+            });
+            await db.scores.bulkPut(fixed);
+            console.log(`Migrated ${fixed.length} score records to new CA structure.`);
+        }
+    } catch (e) { console.error('Migration error:', e); }
+    // ----------------------------------------
+
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance'];
     let syncCount = 0;
 
