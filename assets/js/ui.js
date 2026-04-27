@@ -130,7 +130,8 @@ export const UI = {
         // ── Core counts ──────────────────────────────────────────────────
         const studentCount = await db.students.count();
         const classCount   = await db.classes.count();
-        const subjectCount = await db.subjects.count();
+        const allSubjects  = await db.subjects.toArray();
+        const subjectCount = new Set(allSubjects.map(s => s.name.toLowerCase())).size;
         
         let teacherCount = 0;
         try {
@@ -501,26 +502,63 @@ export const UI = {
                     addLog('No "Students" sheet found.', 'warning');
                 }
 
-                // Process Subjects
+                // Process Subjects (Deduplicated)
                 if (workbook.Subjects) {
                     addLog(`Processing ${workbook.Subjects.length} subject records...`, 'info');
-                    const subjects = workbook.Subjects.map(s => {
+                    
+                    const uniqueSubjects = new Map();
+                    const assignments = [];
+                    
+                    for (const s of workbook.Subjects) {
                         const getVal = (keys) => {
                             const foundKey = Object.keys(s).find(k => keys.includes(k.toUpperCase().replace(/\s/g, '')));
                             return foundKey ? s[foundKey] : null;
                         };
-                        return {
-                            id: `SUB${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-                            name: getVal(['TITLE', 'NAME', 'SUBJECT', 'COURSETITLE']),
-                            class_name: getVal(['CLASS', 'STREAM', 'LEVEL', 'STREAMS']) || 'All',
-                            type: getVal(['TYPE', 'CATEGORY', 'MODULETYPE']) || 'Core',
-                            credits: getVal(['UNITS', 'CREDITS', 'LOAD', 'CREDITLOAD']) || 1,
+                        
+                        const name = getVal(['TITLE', 'NAME', 'SUBJECT', 'COURSETITLE']);
+                        if (!name) continue;
+                        
+                        const className = getVal(['CLASS', 'STREAM', 'LEVEL', 'STREAMS']) || 'All';
+                        
+                        let subjectId;
+                        const lowerName = name.toLowerCase();
+                        
+                        if (uniqueSubjects.has(lowerName)) {
+                            subjectId = uniqueSubjects.get(lowerName).id;
+                        } else {
+                            const existing = await db.subjects.where('name').equalsIgnoreCase(name).first();
+                            if (existing) {
+                                subjectId = existing.id;
+                            } else {
+                                subjectId = `SUB${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+                                uniqueSubjects.set(lowerName, {
+                                    id: subjectId,
+                                    name: name,
+                                    type: getVal(['TYPE', 'CATEGORY', 'MODULETYPE']) || 'Core',
+                                    credits: getVal(['UNITS', 'CREDITS', 'LOAD', 'CREDITLOAD']) || 1,
+                                    is_synced: 0,
+                                    updated_at: new Date().toISOString()
+                                });
+                            }
+                        }
+                        
+                        assignments.push({
+                            id: `ASG_${subjectId}_${className.replace(/\s/g, '')}`,
+                            subject_id: subjectId,
+                            class_name: className,
                             is_synced: 0,
                             updated_at: new Date().toISOString()
-                        };
-                    }).filter(s => s.name);
-                    await db.subjects.bulkPut(subjects);
-                    addLog(`Successfully upserted ${subjects.length} subjects.`, 'success');
+                        });
+                    }
+                    
+                    if (uniqueSubjects.size > 0) {
+                        await db.subjects.bulkPut(Array.from(uniqueSubjects.values()));
+                    }
+                    if (assignments.length > 0) {
+                        await db.subject_assignments.bulkPut(assignments);
+                    }
+                    
+                    addLog(`Smart Deduplication: Processed ${uniqueSubjects.size} unique school subjects across ${assignments.length} class assignments.`, 'success');
                 }
 
                 // Process Scores
@@ -1452,9 +1490,13 @@ export const UI = {
 
                 <div class="card" style="border-radius: 12px; padding: 1rem;">
                     <div class="actions-bar mb-1" style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                        <select id="subject-filter" class="input" style="height: 40px;">
+                        <select id="class-filter" class="input" style="height: 40px; min-width: 150px;">
+                            <option value="">All Classes</option>
+                            ${[...new Set(students.map(s => s.class_name))].sort().map(c => `<option value="${c}">${c}</option>`).join('')}
+                        </select>
+                        <select id="subject-filter" class="input" style="height: 40px; min-width: 150px;">
                             <option value="">Select Subject</option>
-                            ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                            ${subjects.sort((a,b) => a.name.localeCompare(b.name)).map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
                         </select>
                         <select id="term-filter" class="input" style="height: 40px;">
                             <option value="1st Term">1st Term</option>
@@ -1495,6 +1537,47 @@ export const UI = {
             </div>
         `;
 
+        // Load existing scores when filters change
+        const loadScores = async () => {
+            const subjectId = document.getElementById('subject-filter').value;
+            const classFilter = document.getElementById('class-filter').value;
+            
+            // Clear or Filter rows
+            document.querySelectorAll('#score-entry-body tr').forEach(row => {
+                const sId = row.dataset.studentId;
+                const student = students.find(s => s.student_id === sId);
+                
+                if (classFilter && student.class_name !== classFilter) {
+                    row.style.display = 'none';
+                } else {
+                    row.style.display = '';
+                }
+            });
+
+            if (!subjectId) return;
+
+            const scores = await db.scores.where('subject_id').equals(subjectId).toArray();
+            document.querySelectorAll('#score-entry-body tr').forEach(row => {
+                const sId = row.dataset.studentId;
+                const score = scores.find(s => s.student_id === sId);
+                if (score && row.style.display !== 'none') {
+                    row.querySelector('[data-field="ca"]').value = score.ca;
+                    row.querySelector('[data-field="exam"]').value = score.exam;
+                    const total = score.ca + score.exam;
+                    row.querySelector('.total-cell').textContent = total;
+                    row.querySelector('.grade-cell').textContent = ScoringEngine.getGrade(total);
+                } else if (row.style.display !== 'none') {
+                    row.querySelector('[data-field="ca"]').value = '';
+                    row.querySelector('[data-field="exam"]').value = '';
+                    row.querySelector('.total-cell').textContent = '-';
+                    row.querySelector('.grade-cell').textContent = '-';
+                }
+            });
+        };
+
+        document.getElementById('subject-filter').addEventListener('change', loadScores);
+        document.getElementById('class-filter').addEventListener('change', loadScores);
+
         // Logic for calculations and saving...
         document.querySelectorAll('.score-input').forEach(input => {
             input.addEventListener('input', (e) => {
@@ -1521,10 +1604,11 @@ export const UI = {
                     id: `${studentId}_${subjectId}`,
                     student_id: studentId,
                     subject_id: subjectId,
-                    ca, exam, total: ca + exam
+                    ca, exam, total: ca + exam,
+                    updated_at: new Date().toISOString()
                 }));
-                syncToCloud(); // Fire and forget sync
-                Notifications.show('Saved', 'success');
+                syncToCloud(); 
+                Notifications.show('Score saved and syncing...', 'success');
             });
         });
     },
