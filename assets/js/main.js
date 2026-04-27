@@ -82,12 +82,28 @@ async function initApp() {
     // Run icon creation first
     if (typeof lucide !== 'undefined') lucide.createIcons();
     
-    const session = await getCurrentSession();
+    // Show a small loader on login button if we are still checking session
+    if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.innerHTML = '<span>Verifying Session...</span><div class="loader" style="width:14px; height:14px;"></div>';
+    }
 
-    if (session) {
-        await loadAuthenticatedApp(session.user);
-    } else {
+    try {
+        const session = await getCurrentSession();
+        if (session) {
+            await loadAuthenticatedApp(session.user);
+        } else {
+            showLoginScreen();
+        }
+    } catch (e) {
+        console.error('Initialization error:', e);
         showLoginScreen();
+    } finally {
+        if (loginBtn && loginBtn.disabled && loginScreen.style.display !== 'none') {
+            loginBtn.disabled = false;
+            loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
     }
 }
 
@@ -352,15 +368,29 @@ window.addEventListener('sync-error', (e) => {
 const logoutBtn = document.getElementById('logout-btn');
 if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
-        logoutBtn.textContent = 'Signing out...';
+        // Optimistic UI: Hide app immediately
+        appContainer.style.display = 'none';
+        loginScreen.style.display = 'flex';
+        
+        logoutBtn.textContent = 'Clearing Session...';
         logoutBtn.disabled = true;
+
         try {
-            await logoutUser();
+            // Give Supabase 2 seconds to sign out, then force reload anyway
+            await Promise.race([
+                logoutUser(),
+                new Promise(resolve => setTimeout(resolve, 2000))
+            ]);
         } catch(e) {
             console.error('Logout error:', e);
         } finally {
-            // Always reload regardless of Supabase response
-            window.location.reload();
+            // Clear any lingering auth keys in localStorage
+            for (let key in localStorage) {
+                if (key.includes('supabase.auth.token') || key.includes('sb-')) {
+                    localStorage.removeItem(key);
+                }
+            }
+            window.location.href = window.location.origin + window.location.pathname;
         }
     });
 }
