@@ -1923,12 +1923,6 @@ export const UI = {
                 }
             }
 
-            console.log(`Gradebook Sync Check: 
-                - Total scores in DB: ${rawScores.length}
-                - Scores matching Subject/Session/Term: ${filteredScores.length}
-                - Students in Class: ${targetStudents.length}
-                - First Score in DB (Debug):`, rawScores[0]);
-
             // 4. Sort by updated_at Descending (Most recent first)
             filteredScores.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 
