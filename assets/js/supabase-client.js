@@ -151,39 +151,49 @@ export async function syncFromCloud(forceAll = false) {
     const lastSync = (lastSyncTime && !forceAll) ? new Date(new Date(lastSyncTime).getTime() - 300000).toISOString() : new Date(0).toISOString();
 
     for (const table of tables) {
-        let hasMore = true;
-        let offset = 0;
-        const BATCH_SIZE = 1000;
+        try {
+            let hasMore = true;
+            let offset = 0;
+            const BATCH_SIZE = 1000;
 
-        while (hasMore) {
-            let query = sb.from(table).select('*').range(offset, offset + BATCH_SIZE - 1);
-            
-            if (!forceAll) {
-                query = query.gt('updated_at', lastSync);
-            }
-
-            const { data, error } = await query;
-
-            if (error) {
-                console.error(`Pull error for ${table}:`, error);
-                throw error;
-            }
-
-            if (data && data.length > 0) {
-                await db[table].bulkPut(data.map(item => ({ 
-                    ...item, 
-                    is_synced: 1 
-                })));
-                console.log(`Synced ${data.length} records for ${table} (Offset: ${offset})...`);
+            while (hasMore) {
+                let query = sb.from(table).select('*').range(offset, offset + BATCH_SIZE - 1);
                 
-                if (data.length < BATCH_SIZE) {
-                    hasMore = false;
-                } else {
-                    offset += BATCH_SIZE;
+                if (!forceAll) {
+                    query = query.gt('updated_at', lastSync);
                 }
-            } else {
-                hasMore = false;
+
+                const { data, error } = await query;
+
+                if (error) {
+                    // If table doesn't exist, skip it instead of failing
+                    if (error.code === '42P01' || error.message.includes('not exist')) {
+                        console.warn(`Table ${table} not found in Supabase, skipping...`);
+                        hasMore = false;
+                        continue;
+                    }
+                    console.error(`Pull error for ${table}:`, error);
+                    throw error;
+                }
+
+                if (data && data.length > 0) {
+                    await db[table].bulkPut(data.map(item => ({ 
+                        ...item, 
+                        is_synced: 1 
+                    })));
+                    console.log(`Synced ${data.length} records for ${table} (Offset: ${offset})...`);
+                    
+                    if (data.length < BATCH_SIZE) {
+                        hasMore = false;
+                    } else {
+                        offset += BATCH_SIZE;
+                    }
+                } else {
+                    hasMore = false;
+                }
             }
+        } catch (e) {
+            console.error(`Skipping sync for ${table} due to error:`, e);
         }
     }
 
