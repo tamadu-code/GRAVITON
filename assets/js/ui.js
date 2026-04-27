@@ -1471,8 +1471,8 @@ export const UI = {
     },
 
     async renderGrades() {
-        const students = await db.students.toArray();
-        const subjects = await db.subjects.toArray();
+        const students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        const subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         
         this.contentArea.innerHTML = `
             <div class="view-container">
@@ -1614,15 +1614,25 @@ export const UI = {
     },
 
     async renderAcademic() {
-        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
-        const subjects = (await db.subjects.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        const classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        const subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        const assignments = await db.subject_assignments.toArray();
+        const profiles = await db.profiles.toArray();
         
         this.contentArea.innerHTML = `
             <div class="view-container" style="padding: 0.75rem;">
-                <div class="page-banner" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 1rem; min-height: auto; margin-bottom: 0.75rem;">
+                <div class="page-banner" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 1rem; min-height: auto; margin-bottom: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem;">
                     <div class="banner-content">
                         <h1 class="banner-title" style="font-size: 1.15rem; margin-bottom: 0.25rem;"><i data-lucide="settings-2"></i> Academic Setup</h1>
                         <p class="banner-subtitle" style="font-size: 0.75rem; opacity: 0.8;">Configure classes and subject curriculum.</p>
+                    </div>
+                    <div class="banner-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button id="add-class-btn" class="btn btn-primary" style="background: white; color: #1e293b; border: none; border-radius: 8px; padding: 0.5rem 1rem; font-weight: 700; font-size: 0.75rem; display: flex; align-items: center; gap: 0.4rem;">
+                            <i data-lucide="plus-circle" style="width: 14px;"></i> New Stream
+                        </button>
+                        <button id="add-subject-btn" class="btn btn-secondary" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 0.5rem 1rem; font-weight: 700; font-size: 0.75rem; display: flex; align-items: center; gap: 0.4rem;">
+                            <i data-lucide="book-plus" style="width: 14px;"></i> Register Course
+                        </button>
                     </div>
                 </div>
                 
@@ -1644,23 +1654,94 @@ export const UI = {
             
             if (tab === 'classes') {
                 container.innerHTML = `
-                    <div class="actions-bar mb-1"><button id="add-class-btn" class="btn btn-primary btn-sm" style="padding: 0.5rem 1rem; font-weight: 700;">Add New Stream</button></div>
                     <table class="data-table">
-                        <thead><tr><th>Name</th><th>Level</th><th>Action</th></tr></thead>
+                        <thead><tr><th>Stream Name</th><th>Level</th><th>Action</th></tr></thead>
                         <tbody>${classes.map(c => `<tr><td>${c.name}</td><td>${c.level}</td><td><i data-lucide="trash-2" class="delete-class" data-id="${c.id}" style="color:#ef4444; cursor:pointer; width:16px;"></i></td></tr>`).join('')}</tbody>
                     </table>
                 `;
             } else if (tab === 'subjects') {
                 container.innerHTML = `
-                    <div class="actions-bar mb-1"><button id="add-subject-btn" class="btn btn-primary btn-sm" style="padding: 0.5rem 1rem; font-weight: 700;">Register Course</button></div>
                     <table class="data-table">
-                        <thead><tr><th>Name</th><th>Type</th><th>Credits</th><th>Action</th></tr></thead>
+                        <thead><tr><th>Course Name</th><th>Type</th><th>Credits</th><th>Action</th></tr></thead>
                         <tbody>${subjects.map(s => `<tr><td>${s.name}</td><td>${s.type}</td><td>${s.credits}</td><td><i data-lucide="trash-2" class="delete-sub" data-id="${s.id}" style="color:#ef4444; cursor:pointer; width:16px;"></i></td></tr>`).join('')}</tbody>
+                    </table>
+                `;
+            } else if (tab === 'assignments') {
+                const sortedAssignments = [...assignments].sort((a,b) => (a.class_name || '').localeCompare(b.class_name || ''));
+                container.innerHTML = `
+                    <table class="data-table">
+                        <thead><tr><th>Stream</th><th>Course</th><th>Teacher</th><th>Action</th></tr></thead>
+                        <tbody>${sortedAssignments.map(a => {
+                            const sub = subjects.find(s => s.id === a.subject_id);
+                            const teacher = profiles.find(p => p.id === a.teacher_id);
+                            return `<tr>
+                                <td>${a.class_name}</td>
+                                <td>${sub ? sub.name : 'Unknown'}</td>
+                                <td>${teacher ? teacher.full_name : 'Unassigned'}</td>
+                                <td><i data-lucide="trash-2" class="delete-assignment" data-id="${a.id}" style="color:#ef4444; cursor:pointer; width:16px;"></i></td>
+                            </tr>`;
+                        }).join('')}</tbody>
                     </table>
                 `;
             }
             if (typeof lucide !== 'undefined') lucide.createIcons();
         };
+
+        // Re-attach Banner Button Listeners
+        const addClassBtn = document.getElementById('add-class-btn');
+        if (addClassBtn) {
+            addClassBtn.onclick = () => {
+                const modalHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div>
+                            <label>Stream Name (e.g. JSS 1A)</label>
+                            <input type="text" id="cls-name" class="input" style="width: 100%;">
+                        </div>
+                        <div>
+                            <label>Level/Category</label>
+                            <input type="text" id="cls-level" class="input" style="width: 100%;" placeholder="e.g. Junior Secondary">
+                        </div>
+                    </div>
+                `;
+                this.showModal('Add New Stream', modalHtml, async () => {
+                    const name = document.getElementById('cls-name').value.trim();
+                    const level = document.getElementById('cls-level').value.trim();
+                    if (!name) return;
+                    await db.classes.add(prepareForSync({ id: `CLS${Math.random().toString(36).substr(2,6).toUpperCase()}`, name, level }));
+                    syncToCloud();
+                    this.renderAcademic();
+                }, 'Add Stream');
+            };
+        }
+
+        const addSubBtn = document.getElementById('add-subject-btn');
+        if (addSubBtn) {
+            addSubBtn.onclick = () => {
+                const modalHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div>
+                            <label>Course Title</label>
+                            <input type="text" id="sub-name" class="input" style="width: 100%;">
+                        </div>
+                        <div>
+                            <label>Course Type</label>
+                            <select id="sub-type" class="input" style="width: 100%;">
+                                <option value="Core">Core</option>
+                                <option value="Elective">Elective</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+                this.showModal('Register Course', modalHtml, async () => {
+                    const name = document.getElementById('sub-name').value.trim();
+                    const type = document.getElementById('sub-type').value;
+                    if (!name) return;
+                    await db.subjects.add(prepareForSync({ id: `SUB${Math.random().toString(36).substr(2,6).toUpperCase()}`, name, type, credits: 1 }));
+                    syncToCloud();
+                    this.renderAcademic();
+                }, 'Register Course');
+            };
+        }
 
         document.querySelectorAll('.tab-btn').forEach(btn => btn.onclick = () => renderTab(btn.dataset.tab));
         renderTab('classes');
