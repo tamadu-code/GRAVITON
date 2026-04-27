@@ -29,6 +29,10 @@ export const UI = {
                 this.viewTitle.textContent = viewName.charAt(0).toUpperCase() + viewName.slice(1);
             }
             
+            // Clear dynamic header content
+            const extraHeader = document.getElementById('top-bar-extra');
+            if (extraHeader) extraHeader.innerHTML = '';
+
             // Render specific view
             switch(viewName) {
                 case 'dashboard': await this.renderDashboard(); break;
@@ -1477,31 +1481,34 @@ export const UI = {
         
         this.contentArea.innerHTML = `
             <div class="view-container" style="padding: 1.5rem; background: #f8fafc;">
-                <!-- Modern Banner with Stats Strip -->
-                <div class="page-banner" style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); border-radius: 16px; padding: 2rem; color: white; display: flex; flex-direction: column; gap: 1.5rem; box-shadow: var(--shadow-lg);">
+                <!-- Modern Banner (Title Moved to Top Bar) -->
+                <div class="page-banner" style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); border-radius: 16px; padding: 1.5rem; color: white; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-lg);">
                     <div class="banner-content">
                         <div style="display:flex; align-items:center; gap:0.75rem;">
-                            <div style="background:rgba(255,255,255,0.2); padding:0.5rem; border-radius:10px;"><i data-lucide="bar-chart-3" style="width:24px; height:24px;"></i></div>
-                            <h1 class="banner-title" style="font-size: 1.75rem; margin:0;">Grading Intelligence</h1>
+                            <div style="background:rgba(255,255,255,0.2); padding:0.5rem; border-radius:10px;"><i data-lucide="bar-chart-3" style="width:20px; height:20px;"></i></div>
+                            <h1 class="banner-title" style="font-size: 1.25rem; margin:0;">Grading Intelligence</h1>
                         </div>
-                        <p class="banner-subtitle" style="opacity:0.8; margin-top:0.5rem; font-size:0.95rem;">Academic performance tracking for <span id="active-subject-name" style="font-weight:700;">Select Course</span>.</p>
+                        <p class="banner-subtitle" style="opacity:0.8; margin-top:0.25rem; font-size:0.85rem;">Active Tracking: <span id="active-subject-name" style="font-weight:700;">Select Course</span></p>
                     </div>
-
-                    <div class="stats-strip" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem;">
-                        <div class="stat-mini-card" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 1rem; text-align: center;">
-                            <span id="stat-class-avg" style="display: block; font-size: 1.5rem; font-weight: 800;">0%</span>
-                            <span style="font-size: 0.65rem; text-transform: uppercase; font-weight: 700; opacity: 0.8;">Class Average</span>
+                </div>
+                
+                <!-- Statistics in Top Bar -->
+                <div id="top-bar-stats-inject" style="display:none;">
+                    <div class="stats-strip" style="display: flex; gap: 1rem; align-items: center;">
+                        <div class="stat-mini-card" style="background: #f0fdf4; border: 1px solid #dcfce7; border-radius: 8px; padding: 0.4rem 0.8rem; text-align: center; min-width: 100px;">
+                            <span id="stat-class-avg" style="display: block; font-size: 1.1rem; font-weight: 800; color: #15803d;">0%</span>
+                            <span style="font-size: 0.55rem; text-transform: uppercase; font-weight: 700; color: #166534;">Avg</span>
                         </div>
-                        <div class="stat-mini-card" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 1rem; text-align: center;">
-                            <span id="stat-peak-perf" style="display: block; font-size: 1.5rem; font-weight: 800;">0</span>
-                            <span style="font-size: 0.65rem; text-transform: uppercase; font-weight: 700; opacity: 0.8;">Peak Performance</span>
+                        <div class="stat-mini-card" style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 8px; padding: 0.4rem 0.8rem; text-align: center; min-width: 100px;">
+                            <span id="stat-peak-perf" style="display: block; font-size: 1.1rem; font-weight: 800; color: #1d4ed8;">0</span>
+                            <span style="font-size: 0.55rem; text-transform: uppercase; font-weight: 700; color: #1e40af;">Peak</span>
                         </div>
-                        <div class="stat-mini-card" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 1rem; text-align: center;">
-                            <span id="stat-fail-count" style="display: block; font-size: 1.5rem; font-weight: 800;">0</span>
-                            <span style="font-size: 0.65rem; text-transform: uppercase; font-weight: 700; opacity: 0.8;">Critical Reviews</span>
+                        <div class="stat-mini-card" style="background: #fff1f2; border: 1px solid #ffe4e6; border-radius: 8px; padding: 0.4rem 0.8rem; text-align: center; min-width: 100px;">
+                            <span id="stat-fail-count" style="display: block; font-size: 1.1rem; font-weight: 800; color: #be123c;">0</span>
+                            <span style="font-size: 0.55rem; text-transform: uppercase; font-weight: 700; color: #9f1239;">Fails</span>
                         </div>
                     </div>
-                </div> <!-- Correctly closing page-banner -->
+                </div>
 
                 <!-- Modern Filter Cards -->
                 <div class="filter-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
@@ -1726,7 +1733,12 @@ export const UI = {
 
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
-            // Statistics Update Logic (Accessible to both initial load and live updates)
+            // Inject Stats into Top Bar
+            const topBarExtra = document.getElementById('top-bar-extra');
+            const statsHtml = document.getElementById('top-bar-stats-inject').innerHTML;
+            if (topBarExtra) topBarExtra.innerHTML = statsHtml;
+
+            // Define stats update helper in this scope
             const updateStatsUI = (scores) => {
                 const totalScores = scores.map(sc => parseFloat(sc.total) || 0).filter(v => v > 0);
                 const avg = totalScores.length > 0 ? (totalScores.reduce((a, b) => a + b, 0) / totalScores.length).toFixed(1) : 0;
@@ -1742,56 +1754,62 @@ export const UI = {
                 if (failEl) failEl.textContent = fails;
             };
 
-            // Real-time Calculation & Synchronization
-            this.contentArea.addEventListener('input', (e) => {
+            // Global Real-time Listener (Attached ONCE to contentArea)
+            this.contentArea.oninput = (e) => {
                 if (!e.target.classList.contains('score-input')) return;
                 
                 const container = e.target.closest('[data-student-row-id]');
                 if (!container) return;
                 
                 const studentId = container.dataset.studentRowId;
-                if (!studentId || studentId === 'undefined') return;
+                if (!studentId) return;
 
-                // Validation & Limits
-                let val = parseFloat(e.target.value) || 0;
-                if (e.target.dataset.field === 'exam' && val > 60) { e.target.value = 60; val = 60; }
-                else if (e.target.dataset.field !== 'exam' && val > 10) { e.target.value = 10; val = 10; }
+                // 1. Force Limit Correction
+                let rawVal = e.target.value.trim();
+                let numVal = parseFloat(rawVal) || 0;
+                const field = e.target.dataset.field;
+                const limit = (field === 'exam') ? 60 : 10;
 
-                // Recalculate Student Totals
-                const getVal = (c, f) => parseFloat(c.querySelector(`[data-field="${f}"]`)?.value) || 0;
-                const ca = getVal(container, 'assignment') + getVal(container, 'test1') + getVal(container, 'test2') + getVal(container, 'project');
-                const total = ca + getVal(container, 'exam');
+                if (numVal > limit) {
+                    e.target.value = limit;
+                    numVal = limit;
+                }
+                if (numVal < 0) {
+                    e.target.value = 0;
+                    numVal = 0;
+                }
+
+                // 2. Recalculate Totals
+                const getScore = (c, f) => parseFloat(c.querySelector(`[data-field="${f}"]`)?.value) || 0;
+                const ca = getScore(container, 'assignment') + getScore(container, 'test1') + getScore(container, 'test2') + getScore(container, 'project');
+                const total = ca + getScore(container, 'exam');
                 const grade = ScoringEngine.getGrade(total);
 
-                // Update all views for this specific student
-                const studentNodes = document.querySelectorAll(`[data-student-row-id="${studentId}"]`);
-                studentNodes.forEach(node => {
-                    const caEl = node.querySelector('.ca-cell');
-                    const totalEl = node.querySelector('.total-cell');
-                    const gradeEl = node.querySelector('.grade-cell');
-                    const badgeEl = node.querySelector('.score-card-header .badge');
+                // 3. Sync All Views
+                const nodes = document.querySelectorAll(`[data-student-row-id="${studentId}"]`);
+                nodes.forEach(node => {
+                    const caCell = node.querySelector('.ca-cell');
+                    const totalCell = node.querySelector('.total-cell');
+                    const gradeCell = node.querySelector('.grade-cell');
+                    const badge = node.querySelector('.score-card-header .badge');
                     
-                    if (caEl) caEl.textContent = ca;
-                    if (totalEl) totalEl.textContent = total;
-                    if (gradeEl) gradeEl.textContent = grade;
-                    if (badgeEl) badgeEl.textContent = total || '-';
+                    if (caCell) caCell.textContent = ca;
+                    if (totalCell) totalCell.textContent = total;
+                    if (gradeCell) gradeCell.textContent = grade;
+                    if (badge) badge.textContent = total || '-';
                     
-                    // Sync the actual input value
-                    const fieldInput = node.querySelector(`[data-field="${e.target.dataset.field}"]`);
-                    if (fieldInput && fieldInput !== e.target) {
-                        fieldInput.value = e.target.value;
-                    }
+                    const fieldInput = node.querySelector(`[data-field="${field}"]`);
+                    if (fieldInput && fieldInput !== e.target) fieldInput.value = e.target.value;
                 });
 
-                // Update Class Stats
+                // 4. Update Header Stats
                 const allTotals = Array.from(document.querySelectorAll('.desktop-only .total-cell'))
                     .map(el => parseFloat(el.textContent) || 0)
                     .filter(v => v > 0);
-                
                 updateStatsUI(allTotals.map(t => ({ total: t })));
-            });
+            };
 
-            // Refresh statistics on initial load
+            // Refresh initial stats
             updateStatsUI(filteredScores);
 
             // Action Listeners
