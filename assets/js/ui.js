@@ -1537,10 +1537,8 @@ export const UI = {
                     </div>
                 </div>
                 
-                </div>
-                
                 <!-- Dedicated Action Bar -->
-                <div class="action-bar-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding: 0.75rem 1rem; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm);">
+                <div class="action-bar-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding: 0.75rem 1rem; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm);">
                     <div style="display: flex; align-items: center; gap: 0.75rem; color: #64748b; font-size: 0.85rem; font-weight: 600;">
                         <i data-lucide="info" style="width:16px;"></i> <span>Draft scores are saved locally until committed.</span>
                     </div>
