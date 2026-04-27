@@ -2132,9 +2132,15 @@ export const UI = {
             });
         }
 
-        // Mobile Refresh Action
+        // Mobile Action Mappings
         const mobileSync = document.getElementById('mobile-btn-sync');
         if (mobileSync) mobileSync.addEventListener('click', () => btnSync.click());
+
+        const mobilePrint = document.getElementById('mobile-btn-print');
+        if (mobilePrint) mobilePrint.addEventListener('click', () => document.getElementById('btn-print-empty').click());
+
+        const mobileCommit = document.getElementById('mobile-btn-commit');
+        if (mobileCommit) mobileCommit.addEventListener('click', () => document.getElementById('btn-commit-grades').click());
 
         // Initial Load Trigger
         if (classFilter.value) {
