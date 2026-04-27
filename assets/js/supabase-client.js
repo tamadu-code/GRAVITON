@@ -84,10 +84,26 @@ export async function syncToCloud() {
                 for (let i = 0; i < unsynced.length; i += CHUNK_SIZE) {
                     const chunk = unsynced.slice(i, i + CHUNK_SIZE);
                     
-                    // Remove the is_synced flag before sending to Supabase
+                    // Only send columns that are known to exist in the database
                     const dataToSync = chunk.map(item => {
-                        const { is_synced, ...rest } = item;
-                        return rest;
+                        const sanitized = {};
+                        const allowedColumns = {
+                            students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'passport_url', 'updated_at'],
+                            profiles: ['id', 'full_name', 'role', 'assigned_id', 'updated_at'],
+                            classes: ['id', 'name', 'level', 'updated_at'],
+                            subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
+                            subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'updated_at'],
+                            form_teachers: ['id', 'teacher_id', 'class_name', 'updated_at'],
+                            scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
+                            attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
+                            notices: ['id', 'title', 'is_active', 'updated_at']
+                        };
+
+                        const columns = allowedColumns[table] || Object.keys(item);
+                        columns.forEach(col => {
+                            if (item[col] !== undefined) sanitized[col] = item[col];
+                        });
+                        return sanitized;
                     });
 
                     const { error } = await sb.from(table).upsert(dataToSync);
@@ -135,26 +151,39 @@ export async function syncFromCloud(forceAll = false) {
     const lastSync = (lastSyncTime && !forceAll) ? new Date(new Date(lastSyncTime).getTime() - 300000).toISOString() : new Date(0).toISOString();
 
     for (const table of tables) {
-        let query = sb.from(table).select('*');
-        
-        // Only apply timestamp filter if not forcing a full sync
-        if (!forceAll) {
-            query = query.gt('updated_at', lastSync);
-        }
+        let hasMore = true;
+        let offset = 0;
+        const BATCH_SIZE = 1000;
 
-        const { data, error } = await query;
+        while (hasMore) {
+            let query = sb.from(table).select('*').range(offset, offset + BATCH_SIZE - 1);
+            
+            if (!forceAll) {
+                query = query.gt('updated_at', lastSync);
+            }
 
-        if (error) {
-            console.error(`Pull error for ${table}:`, error);
-            throw error; // Propagate to caller
-        }
+            const { data, error } = await query;
 
-        if (data && data.length > 0) {
-            await db[table].bulkPut(data.map(item => ({ 
-                ...item, 
-                is_synced: 1 
-            })));
-            console.log(`Synced ${data.length} records for ${table}...`);
+            if (error) {
+                console.error(`Pull error for ${table}:`, error);
+                throw error;
+            }
+
+            if (data && data.length > 0) {
+                await db[table].bulkPut(data.map(item => ({ 
+                    ...item, 
+                    is_synced: 1 
+                })));
+                console.log(`Synced ${data.length} records for ${table} (Offset: ${offset})...`);
+                
+                if (data.length < BATCH_SIZE) {
+                    hasMore = false;
+                } else {
+                    offset += BATCH_SIZE;
+                }
+            } else {
+                hasMore = false;
+            }
         }
     }
 

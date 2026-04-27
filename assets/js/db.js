@@ -9,7 +9,7 @@ window.db = db; // Expose to console for administration
 // Define Schema
 db.version(1).stores({
     profiles: 'id, full_name, role, assigned_id, updated_at, is_synced',
-    students: 'student_id, name, gender, class_name, status, updated_at, is_synced',
+    students: 'student_id, name, gender, address, class_name, status, updated_at, is_synced',
     classes: 'id, name, level, updated_at, is_synced',
     subjects: 'id, name, type, credits, updated_at, is_synced',
     subject_assignments: 'id, teacher_id, subject_id, class_name, updated_at, is_synced',

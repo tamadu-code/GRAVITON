@@ -1597,6 +1597,7 @@ export const UI = {
                         if (cleanKey.includes('id')) mapped.student_id = cleanVal;
                         if (cleanKey.includes('gender')) mapped.gender = cleanVal;
                         if (cleanKey.includes('class')) mapped.class_name = cleanVal;
+                        if (cleanKey.includes('address')) mapped.address = cleanVal;
                         if (cleanKey.includes('status')) mapped.status = cleanVal;
                         if (!mapped.status) mapped.status = 'Active';
                         if (!mapped.student_id) mapped.student_id = `TEMP/${Math.random().toString(36).substr(2,5).toUpperCase()}`;
@@ -1804,6 +1805,7 @@ export const UI = {
 
                 <!-- Mobile Action Bar (Fixed at bottom) -->
                 <div class="action-bar-mobile mobile-only">
+                    <button id="mobile-btn-sync" class="btn" style="background:#fff; color:#2563eb; border:1px solid #2563eb; border-radius:12px;"><i data-lucide="refresh-cw"></i></button>
                     <button id="mobile-btn-print" class="btn" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; border-radius:12px;"><i data-lucide="printer"></i></button>
                     <button id="mobile-btn-commit" class="btn" style="background:#2563eb; color:white; flex:1; border-radius:12px; font-weight:800;">Commit All Grades</button>
                 </div>
@@ -1857,7 +1859,6 @@ export const UI = {
 
             if (targetStudents.length === 0) {
                 gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">No students found in <strong>${cls}</strong>. Please check the Students module.</td></tr>`;
-                if (mobileContainer) mobileContainer.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-muted);">No students found in ${cls}</div>`;
                 return;
             }
             
@@ -1891,17 +1892,11 @@ export const UI = {
             // 4. Sort by updated_at Descending (Most recent first)
             filteredScores.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 
-            console.log(`Academic Ledger Fetch [${cls} | ${activeSub?.name}]:`, {
-                matchedScores: filteredScores.length,
-                newestDate: filteredScores[0]?.updated_at
-            });
-
             // Update Statistics
             updateStatsUI(filteredScores);
 
             // Update Desktop Table
             gradeBody.innerHTML = targetStudents.map(s => {
-                // Find score, prioritizing records that actually have data if duplicates exist
                 const score = filteredScores.find(sc => String(sc.student_id) === String(s.student_id) && (sc.total > 0 || sc.exam > 0)) 
                              || filteredScores.find(sc => String(sc.student_id) === String(s.student_id));
                 
@@ -1978,11 +1973,6 @@ export const UI = {
 
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
-            // Inject Stats into Top Bar
-            const topBarExtra = document.getElementById('top-bar-extra');
-            const statsHtml = document.getElementById('top-bar-stats-inject').innerHTML;
-            if (topBarExtra) topBarExtra.innerHTML = statsHtml;
-
             // Global Real-time Listener (Attached ONCE to contentArea)
             this.contentArea.oninput = (e) => {
                 if (!e.target.classList.contains('score-input')) return;
@@ -2053,12 +2043,6 @@ export const UI = {
 
             // Refresh initial stats
             updateStatsUI(filteredScores);
-
-            // Action Listeners
-            const mobileCommit = document.getElementById('mobile-btn-commit');
-            const mobilePrint = document.getElementById('mobile-btn-print');
-            if (mobileCommit) mobileCommit.onclick = () => document.getElementById('btn-commit-grades').click();
-            if (mobilePrint) mobilePrint.onclick = () => document.getElementById('btn-print-empty').click();
         };
 
         classFilter.addEventListener('change', async (e) => {
@@ -2103,6 +2087,10 @@ export const UI = {
                 }
             });
         }
+
+        // Mobile Refresh Action
+        const mobileSync = document.getElementById('mobile-btn-sync');
+        if (mobileSync) mobileSync.addEventListener('click', () => btnSync.click());
 
         // Initial Load Trigger
         if (classFilter.value) {
