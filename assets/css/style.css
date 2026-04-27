@@ -131,7 +131,7 @@ h1, h2, h3, .logo {
     flex-direction: column;
     gap: 1.5rem;
     overflow-y: auto;
-    padding-bottom: 100px;
+    
 }
 
 .dashboard-section {
@@ -542,18 +542,30 @@ h1, h2, h3, .logo {
 
 /* Student Directory Mobile Optimization */
 @media (max-width: 1024px) {
+    .view-container {
+        padding-bottom: 2rem !important;
+    }
     .directory-container {
         display: block !important;
+        height: auto !important;
+        min-height: auto !important;
     }
     .directory-sidebar {
         width: 100% !important;
         border: none !important;
+        max-height: none !important;
+        height: auto !important;
+    }
+    #student-sidebar-list {
+        max-height: none !important;
+        overflow: visible !important;
+        padding: 0.5rem !important;
     }
     .directory-main {
-        display: none !important; /* Hide the big card on mobile */
+        display: none !important;
     }
     .student-item-container {
-        margin-bottom: 0.75rem;
+        margin-bottom: 0.5rem !important;
     }
 }
 
