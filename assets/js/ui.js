@@ -1685,12 +1685,12 @@ export const UI = {
 
             // Update Desktop Table
             gradeBody.innerHTML = targetStudents.map(s => {
-                const score = filteredScores.find(sc => String(sc.student_id) === String(s.id));
+                const score = filteredScores.find(sc => String(sc.student_id) === String(s.student_id));
                 const ca = (parseFloat(score?.assignment) || 0) + (parseFloat(score?.test1) || 0) + (parseFloat(score?.test2) || 0) + (parseFloat(score?.project) || 0);
                 const total = ca + (parseFloat(score?.exam) || 0);
                 
                 return `
-                    <tr data-student-row-id="${s.id}">
+                    <tr data-student-id="${s.student_id}" data-student-row-id="${s.student_id}">
                         <td style="font-weight:600; padding:1rem;">${s.name}</td>
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="assignment" value="${score?.assignment || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="test1" value="${score?.test1 || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
@@ -1709,12 +1709,12 @@ export const UI = {
             const mobileContainer = document.getElementById('mobile-score-entry');
             if (mobileContainer) {
                 mobileContainer.innerHTML = targetStudents.map(s => {
-                    const score = filteredScores.find(sc => String(sc.student_id) === String(s.id));
+                    const score = filteredScores.find(sc => String(sc.student_id) === String(s.student_id));
                     const ca = (parseFloat(score?.assignment) || 0) + (parseFloat(score?.test1) || 0) + (parseFloat(score?.test2) || 0) + (parseFloat(score?.project) || 0);
                     const total = ca + (parseFloat(score?.exam) || 0);
                     
                     return `
-                        <div class="score-card collapsed" data-student-row-id="${s.id}">
+                        <div class="score-card collapsed" data-student-row-id="${s.student_id}">
                             <div class="score-card-header" onclick="this.parentElement.classList.toggle('collapsed')">
                                 <div class="score-card-title">${s.name}</div>
                                 <div style="display:flex; align-items:center; gap:0.5rem;">
