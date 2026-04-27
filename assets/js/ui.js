@@ -1950,76 +1950,100 @@ export const UI = {
             const schoolName = "TAMADU HIGH SCHOOL"; 
             const generatedDate = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
 
-            // 1. Chunking Logic (23 Students per Page)
-            const PAGESIZE = 23;
-            const pages = [];
-            for (let i = 0; i < Math.max(1, targetStudents.length); i += PAGESIZE) {
-                pages.push(targetStudents.slice(i, i + PAGESIZE));
-            }
-
             let printHTML = `
                 <html>
                 <head>
                     <title>CA Score Sheet - ${cls}</title>
                     <style>
-                        @page { size: landscape; margin: 0; }
-                        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; color: #000 !important; background: #fff !important; }
-                        .print-page {
-                            width: 297mm; height: 209.2mm; padding: 10mm; box-sizing: border-box;
-                            display: flex; flex-direction: column; page-break-after: always;
-                        }
-                        .header { text-align: center; margin-bottom: 10px; }
-                        .school-name { font-size: 1.4rem; font-weight: 800; text-transform: uppercase; }
-                        .doc-title { font-size: 1rem; font-weight: 700; border-bottom: 2px solid #000; padding-bottom: 2px; }
-                        .metadata-grid { 
-                            display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; 
-                            margin: 10px 0; font-size: 0.85rem; border: 1px solid #000; padding: 8px;
-                            background: #f1f5f9 !important; -webkit-print-color-adjust: exact;
-                        }
-                        .meta-val { font-weight: 800; border-bottom: 1px dotted #000; }
-                        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-                        th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
-                        th { background: #f8fafc !important; -webkit-print-color-adjust: exact; font-weight: 700; }
-                        .col-sn { width: 30px; text-align: center; }
-                        .col-name { width: 250px; }
-                        .footer { display: flex; justify-content: space-between; font-size: 0.7rem; margin-top: auto; padding-top: 5px; border-top: 1px solid #000; }
+                        @page { size: portrait; margin: 12mm; }
+                        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; color: #000 !important; background: #fff !important; line-height: 1.2; }
+                        .print-container { width: 100%; }
+                        .header-row { text-align: center; padding: 10px 0; }
+                        .school-name { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; margin-bottom: 2px; }
+                        .doc-title { font-size: 1.1rem; font-weight: 700; border-bottom: 2px solid #000; display: inline-block; padding-bottom: 2px; margin-bottom: 10px; }
+                        
+                        .metadata-table { width: 100%; border: 1px solid #000; margin-bottom: 10px; font-size: 0.9rem; border-collapse: collapse; }
+                        .metadata-table td { border: 1px solid #000; padding: 6px 10px; }
+                        .meta-label { font-weight: 600; color: #444; width: 15%; }
+                        .meta-val { font-weight: 800; }
+                        
+                        table.main-data { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+                        table.main-data th, table.main-data td { border: 1px solid #000; padding: 7px 10px; text-align: left; }
+                        table.main-data th { background: #f1f5f9 !important; -webkit-print-color-adjust: exact; font-weight: 800; text-transform: uppercase; font-size: 0.75rem; }
+                        
+                        tr { page-break-inside: avoid; }
+                        thead { display: table-header-group; }
+                        tfoot { display: table-footer-group; }
+                        
+                        .footer-info { display: flex; justify-content: space-between; font-size: 0.7rem; padding-top: 10px; margin-top: 10px; border-top: 1px dotted #000; }
+                        .col-sn { width: 40px; text-align: center !important; }
+                        .col-score { width: 60px; text-align: center !important; }
                     </style>
                 </head>
                 <body>
-            `;
-
-            pages.forEach((pageStudents, pageIdx) => {
-                const emptyRowsNeeded = PAGESIZE - pageStudents.length;
-                printHTML += `
-                    <div class="print-page">
-                        <div class="header">
-                            <div class="school-name">${schoolName}</div>
-                            <div class="doc-title">CONTINUOUS ASSESSMENT SCORE SHEET</div>
-                        </div>
-                        <div class="metadata-grid">
-                            <div>CLASS: <span class="meta-val">${cls}</span></div>
-                            <div>COURSE: <span class="meta-val">${activeSub.name}</span></div>
-                            <div>TEACHER: <span class="meta-val">____________________</span></div>
-                            <div>SESSION: <span class="meta-val">${session}</span></div>
-                            <div>TERM: <span class="meta-val">${term}</span></div>
-                            <div>PAGE: <span class="meta-val">${pageIdx + 1} OF ${pages.length}</span></div>
-                        </div>
-                        <table>
+                    <div class="print-container">
+                        <table class="main-data">
                             <thead>
-                                <tr><th>S/N</th><th>STUDENT NAME</th><th>ASS (10)</th><th>T1 (10)</th><th>T2 (10)</th><th>PRJ (10)</th><th>EXAM (60)</th></tr>
+                                <tr>
+                                    <th colspan="7" style="background:white !important; border:none; padding:0;">
+                                        <div class="header-row">
+                                            <div class="school-name">${schoolName}</div>
+                                            <div class="doc-title">CONTINUOUS ASSESSMENT SCORE SHEET</div>
+                                        </div>
+                                        <table class="metadata-table">
+                                            <tr>
+                                                <td class="meta-label">STREAM:</td><td class="meta-val">${cls}</td>
+                                                <td class="meta-label">COURSE:</td><td class="meta-val">${activeSub.name}</td>
+                                                <td class="meta-label">SESSION:</td><td class="meta-val">${session}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="meta-label">TERM:</td><td class="meta-val">${term}</td>
+                                                <td class="meta-label">TEACHER:</td><td class="meta-val" colspan="3">________________________________________</td>
+                                            </tr>
+                                        </table>
+                                    </th>
+                                </tr>
+                                <tr>
+                                    <th class="col-sn">S/N</th>
+                                    <th>STUDENT NAME</th>
+                                    <th class="col-score">ASS (10)</th>
+                                    <th class="col-score">TEST 1 (10)</th>
+                                    <th class="col-score">TEST 2 (10)</th>
+                                    <th class="col-score">PRJ (10)</th>
+                                    <th class="col-score">EXAM (60)</th>
+                                </tr>
                             </thead>
                             <tbody>
-                                ${pageStudents.map((s, idx) => `<tr><td>${(pageIdx * PAGESIZE) + idx + 1}</td><td>${s.name}</td><td></td><td></td><td></td><td></td><td></td></tr>`).join('')}
-                                ${Array(emptyRowsNeeded).fill(0).map((_, idx) => `<tr><td>${(pageIdx * PAGESIZE) + pageStudents.length + idx + 1}</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`).join('')}
+                                ${targetStudents.map((s, idx) => `
+                                    <tr>
+                                        <td class="col-sn">${idx + 1}</td>
+                                        <td style="font-weight:600;">${s.name}</td>
+                                        <td></td><td></td><td></td><td></td><td></td>
+                                    </tr>
+                                `).join('')}
+                                ${Array(10).fill(0).map((_, idx) => `
+                                    <tr>
+                                        <td class="col-sn">${targetStudents.length + idx + 1}</td>
+                                        <td></td><td></td><td></td><td></td><td></td><td></td>
+                                    </tr>
+                                `).join('')}
                             </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="7" style="border:none; padding:0;">
+                                        <div class="footer-info">
+                                            <div>Course: ${activeSub.name} | Printed from Graviton LMS</div>
+                                            <div>Date Generated: ${generatedDate}</div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tfoot>
                         </table>
-                        <div class="footer">
-                            <div>Subject: ${activeSub.name} | Page ${pageIdx + 1} of ${pages.length}</div>
-                            <div>Date Generated: ${generatedDate}</div>
-                        </div>
                     </div>
-                `;
-            });
+                </body>
+                </html>
+            `;
+
 
             printHTML += `</body></html>`;
             const win = window.open('', '_blank');
