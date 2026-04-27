@@ -969,7 +969,8 @@ export const UI = {
                         </div>
                     </div>
                 </div>
-        // Subject Accordion Trigger Logic
+            </div>
+        `;
         this.contentArea.querySelectorAll('.accordion-trigger').forEach(trigger => {
             trigger.addEventListener('click', () => {
                 const item = trigger.closest('.subject-accordion-item');
