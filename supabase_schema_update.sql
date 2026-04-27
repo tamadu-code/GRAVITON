@@ -15,12 +15,17 @@ ALTER TABLE scores ADD COLUMN IF NOT EXISTS project NUMERIC DEFAULT 0;
 -- 3. Add the CA subtotal field
 ALTER TABLE scores ADD COLUMN IF NOT EXISTS ca NUMERIC DEFAULT 0;
 
--- 4. Optionally drop the old ca1 and ca2 columns if they are no longer needed
--- Uncomment the following lines if you want to permanently delete ca1 and ca2:
--- ALTER TABLE scores DROP COLUMN IF EXISTS ca1;
--- ALTER TABLE scores DROP COLUMN IF EXISTS ca2;
+-- 4. Drop the OLD columns (CASCADE removes the computed 'total' that depends on ca1)
+ALTER TABLE scores DROP COLUMN IF EXISTS ca1 CASCADE;
+ALTER TABLE scores DROP COLUMN IF EXISTS ca2 CASCADE;
 
--- 5. If the updated_at column is missing, add it
+-- 5. Recreate 'total' as a plain numeric column (since CASCADE removed the old computed one)
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS total NUMERIC DEFAULT 0;
+
+-- 6. Recreate 'grade' in case it was also computed from ca1/ca2
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS grade TEXT;
+
+-- 7. If the updated_at column is missing, add it
 ALTER TABLE scores ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
 
 -- End of script
