@@ -1897,8 +1897,11 @@ export const UI = {
 
             // Update Desktop Table
             gradeBody.innerHTML = targetStudents.map(s => {
-                const score = filteredScores.find(sc => String(sc.student_id) === String(s.student_id) && (sc.total > 0 || sc.exam > 0)) 
-                             || filteredScores.find(sc => String(sc.student_id) === String(s.student_id));
+                const score = filteredScores.find(sc => {
+                    const scId = String(sc.student_id || '').trim().toLowerCase();
+                    const sId = String(s.student_id || '').trim().toLowerCase();
+                    return scId === sId || scId.includes(sId) || sId.includes(scId);
+                });
                 
                 // Helper to check if a value is effectively null/empty
                 const isN = (v) => v === null || v === undefined || v === '';
@@ -1972,6 +1975,13 @@ export const UI = {
             }
 
             if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            // Inject Stats into Top Bar
+            const topBarExtra = document.getElementById('top-bar-extra');
+            const statsInject = document.getElementById('top-bar-stats-inject');
+            if (topBarExtra && statsInject) {
+                topBarExtra.innerHTML = statsInject.innerHTML;
+            }
 
             // Global Real-time Listener (Attached ONCE to contentArea)
             this.contentArea.oninput = (e) => {
@@ -2315,7 +2325,26 @@ export const UI = {
                 </div>
                 
                 <div id="tab-content" class="card" style="border-radius: 12px; padding: 1rem; flex: 1; overflow-y: auto;">
-                    <!-- Tab content will be rendered here -->
+                    <!-- Stats Injector (Hidden but used by JS) -->
+            <div id="top-bar-stats-inject" style="display:none;">
+                <div style="display:flex; align-items:center; gap:2rem; background:rgba(37,99,235,0.05); padding:0.5rem 1.5rem; border-radius:100px; border:1px solid rgba(37,99,235,0.1);">
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <span style="font-size:0.75rem; font-weight:700; color:#64748b; text-transform:uppercase;">Class Average</span>
+                        <span id="stat-class-avg" style="font-size:1.1rem; font-weight:800; color:#2563eb;">0%</span>
+                    </div>
+                    <div style="width:1px; height:20px; background:#e2e8f0;"></div>
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <span style="font-size:0.75rem; font-weight:700; color:#64748b; text-transform:uppercase;">Peak Perf.</span>
+                        <span id="stat-peak-perf" style="font-size:1.1rem; font-weight:800; color:#15803d;">0</span>
+                    </div>
+                    <div style="width:1px; height:20px; background:#e2e8f0;"></div>
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <span style="font-size:0.75rem; font-weight:700; color:#64748b; text-transform:uppercase;">Below 40%</span>
+                        <span id="stat-fail-count" style="font-size:1.1rem; font-weight:800; color:#ef4444;">0</span>
+                    </div>
+                </div>
+            </div>
+<!-- Tab content will be rendered here -->
                 </div>
             </div>
         `;
