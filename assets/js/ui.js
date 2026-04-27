@@ -2081,7 +2081,7 @@ export const UI = {
                     await loadAcademicLedger();
                     Notifications.show('Scores refreshed!', 'success');
                 } catch (e) {
-                    Notifications.show('Sync failed', 'error');
+                    Notifications.show(`Sync failed: ${e.message || e}`, 'error');
                 } finally {
                     if (icon) icon.classList.remove('spinning');
                 }
