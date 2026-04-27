@@ -604,10 +604,10 @@ export const UI = {
                             class_name: className || student.class_name,
                             term: row['TERM'] || '1st',
                             session: row['SESSION'] || '',
-                            ass: assignment,
-                            t1: test1,
-                            t2: test2,
-                            prj: project,
+                            assignment: assignment,
+                            test1: test1,
+                            test2: test2,
+                            project: project,
                             exam: exam,
                             ca: ca,
                             total: total,
@@ -1552,10 +1552,10 @@ export const UI = {
                             <thead>
                                 <tr style="background: #f1f5f9;">
                                     <th style="padding: 1rem;">Scholar Name</th>
-                                    <th style="text-align:center;">ASS</th>
-                                    <th style="text-align:center;">T1</th>
-                                    <th style="text-align:center;">T2</th>
-                                    <th style="text-align:center;">PRJ</th>
+                                    <th style="text-align:center;">ASSIGN</th>
+                                    <th style="text-align:center;">TEST 1</th>
+                                    <th style="text-align:center;">TEST 2</th>
+                                    <th style="text-align:center;">PROJECT</th>
                                     <th style="text-align:center; background:#eff6ff; color:#2563eb;">CA</th>
                                     <th style="text-align:center; background:#eff6ff; color:#2563eb;">EXAM</th>
                                     <th style="text-align:center; background:#f0fdf4; color:#15803d; font-weight:800;">TOTAL</th>
@@ -1641,16 +1641,16 @@ export const UI = {
 
             gradeBody.innerHTML = targetStudents.map(s => {
                 const score = filteredScores.find(sc => sc.student_id === s.student_id);
-                const ca = (score?.ass || 0) + (score?.t1 || 0) + (score?.t2 || 0) + (score?.prj || 0);
+                const ca = (score?.assignment || 0) + (score?.test1 || 0) + (score?.test2 || 0) + (score?.project || 0);
                 const total = ca + (score?.exam || 0);
                 
                 return `
                     <tr data-student-id="${s.student_id}">
                         <td style="font-weight:600; padding:1rem;">${s.name}</td>
-                        <td style="text-align:center;"><input type="number" class="score-input" data-field="ass" value="${score?.ass || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
-                        <td style="text-align:center;"><input type="number" class="score-input" data-field="t1" value="${score?.t1 || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
-                        <td style="text-align:center;"><input type="number" class="score-input" data-field="t2" value="${score?.t2 || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
-                        <td style="text-align:center;"><input type="number" class="score-input" data-field="prj" value="${score?.prj || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                        <td style="text-align:center;"><input type="number" class="score-input" data-field="assignment" value="${score?.assignment || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                        <td style="text-align:center;"><input type="number" class="score-input" data-field="test1" value="${score?.test1 || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                        <td style="text-align:center;"><input type="number" class="score-input" data-field="test2" value="${score?.test2 || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                        <td style="text-align:center;"><input type="number" class="score-input" data-field="project" value="${score?.project || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
                         <td class="ca-cell" style="text-align:center; font-weight:700; color:#2563eb;">${ca || '-'}</td>
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="exam" value="${score?.exam || ''}" placeholder="0" style="width:50px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px; font-weight:700;"></td>
                         <td class="total-cell" style="text-align:center; font-weight:800; color:#15803d; background:#f0fdf4;">${total || '-'}</td>
@@ -1664,17 +1664,17 @@ export const UI = {
             document.querySelectorAll('.score-input').forEach(input => {
                 input.addEventListener('input', (e) => {
                     const row = e.target.closest('tr');
-                    const ass = parseFloat(row.querySelector('[data-field="ass"]').value) || 0;
-                    const t1 = parseFloat(row.querySelector('[data-field="t1"]').value) || 0;
-                    const t2 = parseFloat(row.querySelector('[data-field="t2"]').value) || 0;
-                    const prj = parseFloat(row.querySelector('[data-field="prj"]').value) || 0;
+                    const assignment = parseFloat(row.querySelector('[data-field="assignment"]').value) || 0;
+                    const test1 = parseFloat(row.querySelector('[data-field="test1"]').value) || 0;
+                    const test2 = parseFloat(row.querySelector('[data-field="test2"]').value) || 0;
+                    const project = parseFloat(row.querySelector('[data-field="project"]').value) || 0;
                     const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
 
                     // Validation
                     if (e.target.dataset.field === 'exam' && exam > 60) e.target.value = 60;
                     else if (e.target.dataset.field !== 'exam' && parseFloat(e.target.value) > 10) e.target.value = 10;
 
-                    const ca = ass + t1 + t2 + prj;
+                    const ca = assignment + test1 + test2 + project;
                     const total = ca + exam;
 
                     row.querySelector('.ca-cell').textContent = ca;
@@ -1726,13 +1726,13 @@ export const UI = {
             
             for (const row of rows) {
                 const studentId = row.dataset.studentId;
-                const ass = parseFloat(row.querySelector('[data-field="ass"]').value) || 0;
-                const t1 = parseFloat(row.querySelector('[data-field="t1"]').value) || 0;
-                const t2 = parseFloat(row.querySelector('[data-field="t2"]').value) || 0;
-                const prj = parseFloat(row.querySelector('[data-field="prj"]').value) || 0;
+                const assignment = parseFloat(row.querySelector('[data-field="assignment"]').value) || 0;
+                const test1 = parseFloat(row.querySelector('[data-field="test1"]').value) || 0;
+                const test2 = parseFloat(row.querySelector('[data-field="test2"]').value) || 0;
+                const project = parseFloat(row.querySelector('[data-field="project"]').value) || 0;
                 const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
 
-                const ca = ass + t1 + t2 + prj;
+                const ca = assignment + test1 + test2 + project;
                 const total = ca + exam;
 
                 await db.scores.put(prepareForSync({
@@ -1740,7 +1740,7 @@ export const UI = {
                     student_id: studentId,
                     subject_id: subId,
                     term, session,
-                    ass, t1, t2, prj, ca, exam, total,
+                    assignment, test1, test2, project, ca, exam, total,
                     grade: ScoringEngine.getGrade(total),
                     updated_at: new Date().toISOString()
                 }));

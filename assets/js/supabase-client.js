@@ -49,21 +49,21 @@ export async function syncToCloud() {
     // --- Data Migration for CA Components ---
     try {
         const brokenScores = await db.scores.toArray();
-        const toFix = brokenScores.filter(s => s.assignment !== undefined || s.test1 !== undefined);
+        const toFix = brokenScores.filter(s => s.ass !== undefined || s.t1 !== undefined);
         if (toFix.length > 0) {
             const fixed = toFix.map(s => {
-                s.ass = s.assignment || s.ass || 0;
-                s.t1 = s.test1 || s.t1 || 0;
-                s.t2 = s.test2 || s.t2 || 0;
-                s.prj = s.project || s.prj || 0;
-                delete s.assignment;
-                delete s.test1;
-                delete s.test2;
-                delete s.project;
+                s.assignment = s.ass !== undefined ? s.ass : (s.assignment || 0);
+                s.test1 = s.t1 !== undefined ? s.t1 : (s.test1 || 0);
+                s.test2 = s.t2 !== undefined ? s.t2 : (s.test2 || 0);
+                s.project = s.prj !== undefined ? s.prj : (s.project || 0);
+                delete s.ass;
+                delete s.t1;
+                delete s.t2;
+                delete s.prj;
                 return s;
             });
             await db.scores.bulkPut(fixed);
-            console.log(`Migrated ${fixed.length} score records to new CA structure.`);
+            console.log(`Migrated ${fixed.length} score records to use 'assignment', 'test1', 'test2', 'project'.`);
         }
     } catch (e) { console.error('Migration error:', e); }
     // ----------------------------------------
