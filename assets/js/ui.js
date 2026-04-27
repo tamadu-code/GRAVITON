@@ -1746,9 +1746,9 @@ export const UI = {
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="hash" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Term</span></div>
                         <select id="grade-term-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
-                            <option value="1st Term">1st Term</option>
-                            <option value="2nd Term">2nd Term</option>
-                            <option value="3rd Term">3rd Term</option>
+                            <option value="1st Term">1st Term / First Term</option>
+                            <option value="2nd Term">2nd Term / Second Term</option>
+                            <option value="3rd Term">3rd Term / Third Term</option>
                         </select>
                     </div>
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
@@ -1892,7 +1892,10 @@ export const UI = {
                 // Term Match (Resilient partial)
                 const dbTerm = String(sc.term || '').toLowerCase().trim();
                 const filterTerm = String(term).toLowerCase().trim();
-                const termMatch = dbTerm === filterTerm || dbTerm.includes(filterTerm) || filterTerm.includes(dbTerm);
+                
+                // Normalizing 1st -> first, removing spaces
+                const normalize = (t) => String(t || '').toLowerCase().replace(/\s+/g, '').replace('1st', 'first').replace('2nd', 'second').replace('3rd', 'third');
+                const termMatch = normalize(dbTerm) === normalize(filterTerm) || normalize(dbTerm).includes(normalize(filterTerm)) || normalize(filterTerm).includes(normalize(dbTerm));
                 
                 return termMatch;
             });
