@@ -1477,6 +1477,213 @@ export const UI = {
         `).join('');
     },
 
+    async renderBulkImport() {
+        this.contentArea.innerHTML = `
+            <div class="view-container">
+                <div class="page-banner" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);">
+                    <div class="banner-content">
+                        <h1 class="banner-title"><i data-lucide="database"></i> Smart Data Importer</h1>
+                        <p class="banner-subtitle">Drop your Excel/CSV files here. The system will automatically sort your data into the correct columns.</p>
+                    </div>
+                </div>
+
+                <div class="card" style="text-align: center; padding: 4rem 2rem; border: 2px dashed #e2e8f0; border-radius: 20px; background: #f8fafc;">
+                    <div id="drop-zone" style="cursor: pointer;">
+                        <i data-lucide="upload-cloud" style="width: 64px; height: 64px; color: #6366f1; margin-bottom: 1.5rem;"></i>
+                        <h2 style="color: #1e293b; margin-bottom: 0.5rem;">Click or Drag Files Here</h2>
+                        <p style="color: #64748b;">Supports .xlsx, .xls, and .csv files</p>
+                        <input type="file" id="file-input" style="display: none;" accept=".xlsx, .xls, .csv">
+                    </div>
+                </div>
+
+                <div id="import-preview" style="display: none; margin-top: 2rem;">
+                    <div class="card">
+                        <h3 style="margin-bottom: 1.5rem;">Import Summary</h3>
+                        <div id="summary-list" style="display: grid; gap: 1rem;"></div>
+                        <button id="btn-confirm-import" class="btn btn-primary mt-2" style="width: 100%; padding: 1rem; font-size: 1rem; border-radius: 12px;">Process and Save All Data</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const preview = document.getElementById('import-preview');
+        const summaryList = document.getElementById('summary-list');
+        const confirmBtn = document.getElementById('btn-confirm-import');
+
+        let pendingData = null;
+
+        dropZone.onclick = () => fileInput.click();
+        
+        fileInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            Notifications.show('Analyzing file structure...', 'info');
+            try {
+                const data = await parseExcel(file);
+                pendingData = this.processImportData(data);
+                this.renderImportSummary(pendingData, summaryList, preview);
+            } catch (err) {
+                Notifications.show('Failed to read file', 'error');
+                console.error(err);
+            }
+        };
+
+        confirmBtn.onclick = async () => {
+            if (!pendingData) return;
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<span>Processing...</span><div class="loader"></div>';
+
+            try {
+                let total = 0;
+                for (const [table, records] of Object.entries(pendingData)) {
+                    if (records.length > 0) {
+                        const pk = table === 'students' ? 'student_id' : 'id';
+                        await db[table].bulkPut(records.map(r => prepareForSync(r)));
+                        total += records.length;
+                    }
+                }
+                Notifications.show(`Successfully imported ${total} records!`, 'success');
+                syncToCloud();
+                this.renderView('dashboard');
+            } catch (err) {
+                Notifications.show('Import failed during saving', 'error');
+                console.error(err);
+                confirmBtn.disabled = false;
+                confirmBtn.innerText = 'Process and Save All Data';
+            }
+        };
+    },
+
+    processImportData(data) {
+        const result = {
+            students: [],
+            scores: [],
+            subjects: [],
+            classes: [],
+            subject_assignments: []
+        };
+
+        for (const [sheetName, rows] of Object.entries(data)) {
+            if (!rows || rows.length === 0) continue;
+
+            // Analyze first row to guess table
+            const headers = Object.keys(rows[0]).map(h => h.toLowerCase().trim());
+            
+            // 1. Guess Table
+            let target = null;
+            if (headers.includes('gender') || headers.includes('student_id')) target = 'students';
+            else if (headers.includes('exam') || headers.includes('assignment')) target = 'scores';
+            else if (headers.includes('credits') || headers.includes('course type')) target = 'subjects';
+            else if (headers.includes('level') || (headers.includes('class') && headers.length < 3)) target = 'classes';
+            else if (headers.includes('subject') && headers.includes('class')) target = 'subject_assignments';
+
+            if (!target) continue;
+
+            // 2. Map Columns to DB Schema
+            rows.forEach(row => {
+                const mapped = {};
+                for (let [key, val] of Object.entries(row)) {
+                    const cleanKey = key.toLowerCase().trim();
+                    const cleanVal = String(val || '').trim();
+
+                    // Smart Field Mapping
+                    if (target === 'students') {
+                        if (cleanKey.includes('name')) mapped.name = cleanVal;
+                        if (cleanKey.includes('id')) mapped.student_id = cleanVal;
+                        if (cleanKey.includes('gender')) mapped.gender = cleanVal;
+                        if (cleanKey.includes('class')) mapped.class_name = cleanVal;
+                        if (cleanKey.includes('status')) mapped.status = cleanVal;
+                        if (!mapped.status) mapped.status = 'Active';
+                        if (!mapped.student_id) mapped.student_id = `TEMP/${Math.random().toString(36).substr(2,5).toUpperCase()}`;
+                    }
+                    else if (target === 'scores') {
+                        if (cleanKey.includes('id')) mapped.student_id = cleanVal;
+                        if (cleanKey.includes('subject') || cleanKey.includes('course')) mapped.subject_id = cleanVal;
+                        if (cleanKey.includes('term')) mapped.term = cleanVal;
+                        if (cleanKey.includes('session')) mapped.session = cleanVal;
+                        if (cleanKey.includes('assignment') || cleanKey === 'ass') mapped.assignment = parseFloat(cleanVal) || 0;
+                        if (cleanKey.includes('test1') || cleanKey === 't1') mapped.test1 = parseFloat(cleanVal) || 0;
+                        if (cleanKey.includes('test2') || cleanKey === 't2') mapped.test2 = parseFloat(cleanVal) || 0;
+                        if (cleanKey.includes('project') || cleanKey === 'prj') mapped.project = parseFloat(cleanVal) || 0;
+                        if (cleanKey.includes('exam')) mapped.exam = parseFloat(cleanVal) || 0;
+                        
+                        // ID is a composite for scores to prevent duplicates
+                        if (mapped.student_id && mapped.subject_id && mapped.term) {
+                            mapped.id = `${mapped.student_id}_${mapped.subject_id}_${mapped.term}_${mapped.session || 'current'}`;
+                        }
+                    }
+                    else if (target === 'subjects') {
+                        if (cleanKey.includes('name') || cleanKey.includes('title')) mapped.name = cleanVal;
+                        if (cleanKey.includes('type')) mapped.type = cleanVal;
+                        if (cleanKey.includes('id')) mapped.id = cleanVal;
+                        if (!mapped.id) mapped.id = `SUB-${cleanVal.substring(0,3).toUpperCase()}`;
+                        if (!mapped.type) mapped.type = 'Core';
+                        mapped.credits = 1;
+                    }
+                    else if (target === 'classes') {
+                        if (cleanKey.includes('name') || cleanKey.includes('stream')) mapped.name = cleanVal;
+                        if (cleanKey.includes('level')) mapped.level = cleanVal;
+                        if (!mapped.id) mapped.id = `CLS-${cleanVal.replace(/\s+/g,'-').toUpperCase()}`;
+                    }
+                    else if (target === 'subject_assignments') {
+                        if (cleanKey.includes('subject') || cleanKey.includes('course')) mapped.subject_id = cleanVal;
+                        if (cleanKey.includes('class')) mapped.class_name = cleanVal;
+                        if (!mapped.id) mapped.id = `ASGN-${Math.random().toString(36).substr(2,6).toUpperCase()}`;
+                        mapped.teacher_id = 'unassigned';
+                    }
+                }
+                result[target].push(mapped);
+            });
+        }
+        return result;
+    },
+
+    renderImportSummary(pending, container, previewEl) {
+        container.innerHTML = '';
+        let hasData = false;
+
+        const tableIcons = {
+            students: 'users',
+            scores: 'clipboard-list',
+            subjects: 'book',
+            classes: 'layers',
+            subject_assignments: 'link'
+        };
+
+        for (const [table, records] of Object.entries(pending)) {
+            if (records.length > 0) {
+                hasData = true;
+                const row = document.createElement('div');
+                row.style = 'display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: #f1f5f9; border-radius: 10px;';
+                row.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="background: #fff; padding: 0.5rem; border-radius: 8px; color: #6366f1;">
+                            <i data-lucide="${tableIcons[table]}"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700; color: #1e293b;">${table.toUpperCase()}</div>
+                            <div style="font-size: 0.75rem; color: #64748b;">Detected automatically</div>
+                        </div>
+                    </div>
+                    <div style="font-weight: 800; color: #2563eb; font-size: 1.25rem;">${records.length}</div>
+                `;
+                container.appendChild(row);
+            }
+        }
+
+        if (hasData) {
+            previewEl.style.display = 'block';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        } else {
+            Notifications.show('No recognizable data found in file', 'warning');
+        }
+    },
+
     async renderGrades() {
         const students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         const classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
