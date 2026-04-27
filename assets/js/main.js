@@ -50,10 +50,10 @@ document.querySelectorAll('.pw-toggle').forEach(button => {
         
         if (input.type === 'password') {
             input.type = 'text';
-            icon.setAttribute('data-lucide', 'eye');
+            if (icon) icon.setAttribute('data-lucide', 'eye');
         } else {
             input.type = 'password';
-            icon.setAttribute('data-lucide', 'eye-off');
+            if (icon) icon.setAttribute('data-lucide', 'eye-off');
         }
         
         // Refresh icons
