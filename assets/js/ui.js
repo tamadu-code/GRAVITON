@@ -1640,40 +1640,48 @@ export const UI = {
                 document.getElementById('active-subject-name').textContent = activeSub.name + ' in ' + cls;
             }
 
-            // Resilient student filtering (case-insensitive, trimmed)
+            // 1. Resilient student filtering (case-insensitive, trimmed)
             const targetStudents = students.filter(s => 
-                s.class_name && s.class_name.trim().toLowerCase() === cls.trim().toLowerCase()
+                s.class_name && String(s.class_name).trim().toLowerCase() === String(cls).trim().toLowerCase()
             );
+
+            if (targetStudents.length === 0) {
+                gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">No students found in <strong>${cls}</strong>. Please check the Students module.</td></tr>`;
+                if (mobileContainer) mobileContainer.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-muted);">No students found in ${cls}</div>`;
+                return;
+            }
             
-            // 2. Broad Score Retrieval (Index Query + Fallbacks)
+            // 2. Broad Score Retrieval
             let rawScores = await db.scores.toArray();
             
             // 3. Resilient Multi-Level Filtering
             const filteredScores = rawScores.filter(sc => {
-                // Subject Match (Resilient)
-                const sMatch = String(sc.subject_id).toLowerCase() === String(subId).toLowerCase() || 
-                              (activeSub && String(sc.subject_id).toLowerCase() === activeSub.name.toLowerCase());
-                
+                const dbSubId = String(sc.subject_id || '').toLowerCase().trim();
+                const filterSubId = String(subId).toLowerCase().trim();
+                const subName = activeSub ? activeSub.name.toLowerCase().trim() : '';
+
+                // Subject Match (ID or Name)
+                const sMatch = dbSubId === filterSubId || dbSubId === subName;
                 if (!sMatch) return false;
 
-                // Session Match (Resilient)
+                // Session Match (Resilient partial)
                 const dbSession = String(sc.session || '').toLowerCase().trim();
-                const filterSession = session.toLowerCase().trim();
+                const filterSession = String(session).toLowerCase().trim();
                 const sesMatch = dbSession === filterSession || dbSession.includes(filterSession) || filterSession.includes(dbSession);
-                
                 if (!sesMatch) return false;
 
-                // Term Match (Resilient)
+                // Term Match (Resilient partial)
                 const dbTerm = String(sc.term || '').toLowerCase().trim();
-                const filterTerm = term.toLowerCase().trim();
+                const filterTerm = String(term).toLowerCase().trim();
                 const termMatch = dbTerm === filterTerm || dbTerm.includes(filterTerm) || filterTerm.includes(dbTerm);
                 
                 return termMatch;
             });
 
-            console.log(`Academic Ledger Search:`, { 
-                filters: { cls, subId, term, session },
-                matchesFound: filteredScores.length 
+            console.log(`Academic Ledger Fetch [${cls} | ${activeSub?.name}]:`, {
+                studentsInClass: targetStudents.length,
+                totalScoresInDB: rawScores.length,
+                matchedScores: filteredScores.length
             });
             if (filteredScores.length > 0) console.table(filteredScores.slice(0, 5));
 
@@ -1868,6 +1876,13 @@ export const UI = {
         });
 
         [subjectFilter, termFilter, sessionFilter].forEach(f => f.addEventListener('change', loadAcademicLedger));
+
+        // Initial Load Trigger
+        if (classFilter.value) {
+            classFilter.dispatchEvent(new Event('change'));
+        } else {
+            loadAcademicLedger();
+        }
 
         document.getElementById('btn-commit-grades').addEventListener('click', async () => {
             const rows = document.querySelectorAll('#grade-entry-body tr[data-student-id]');
