@@ -4,6 +4,7 @@
  */
 
 const db = new Dexie('GravitonDB');
+window.db = db; // Expose to console for administration
 
 // Define Schema
 db.version(1).stores({
