@@ -130,7 +130,7 @@ export const UI = {
         // ── Core counts ──────────────────────────────────────────────────
         const studentCount = await db.students.count();
         const classCount   = await db.classes.count();
-        const allSubjects  = await db.subjects.toArray();
+        const allSubjects  = (await db.subjects.toArray()).sort((a,b) => a.name.localeCompare(b.name));
         const subjectCount = new Set(allSubjects.map(s => s.name.toLowerCase())).size;
         
         let teacherCount = 0;
@@ -1066,24 +1066,24 @@ export const UI = {
     },
 
     async renderStudents() {
-        const students = await db.students.toArray();
-        const classes = await db.classes.toArray();
+        const students = (await db.students.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
         
         this.contentArea.innerHTML = `
-            <div class="view-container">
-                <div class="page-banner" style="background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);">
+            <div class="view-container" style="padding: 0.75rem;">
+                <div class="page-banner" style="background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%); padding: 1rem; min-height: auto; gap: 0.75rem;">
                     <div class="banner-content">
-                        <h1 class="banner-title"><i data-lucide="graduation-cap"></i> Student Directory</h1>
-                        <p class="banner-subtitle">Comprehensive database of all registered learners, biometric profiles, and performance metrics.</p>
+                        <h1 class="banner-title" style="font-size: 1.15rem; margin-bottom: 0.25rem;"><i data-lucide="graduation-cap"></i> Student Directory</h1>
+                        <p class="banner-subtitle" style="font-size: 0.75rem; opacity: 0.8; line-height: 1.2;">Manage learners, biometric profiles, and performance metrics.</p>
                     </div>
-                    <div class="banner-stats">
+                    <div class="banner-stats" style="margin: 0.5rem 0;">
                         <div class="banner-stat-item">
-                            <span class="stat-value">${students.length}</span>
-                            <span class="stat-label">Total Body</span>
+                            <span class="stat-value" style="font-size: 1.1rem;">${students.length}</span>
+                            <span class="stat-label" style="font-size: 0.65rem;">Total</span>
                         </div>
                         <div class="banner-stat-item">
-                            <span class="stat-value">${classes.length}</span>
-                            <span class="stat-label">Active Classes</span>
+                            <span class="stat-value" style="font-size: 1.1rem;">${classes.length}</span>
+                            <span class="stat-label" style="font-size: 0.65rem;">Classes</span>
                         </div>
                     </div>
                     <div style="display: flex; gap: 0.75rem;">
@@ -1614,15 +1614,22 @@ export const UI = {
     },
 
     async renderAcademic() {
-        const classes = await db.classes.toArray();
-        const subjects = await db.subjects.toArray();
+        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        const subjects = (await db.subjects.toArray()).sort((a,b) => a.name.localeCompare(b.name));
         
         this.contentArea.innerHTML = `
-            <div class="view-container">
-                <div class="tabs mb-2" style="display: flex; gap: 0.5rem;">
-                    <button class="tab-btn active" data-tab="classes" style="padding: 0.5rem 1rem; border-radius: 8px;">Classes</button>
-                    <button class="tab-btn" data-tab="subjects" style="padding: 0.5rem 1rem; border-radius: 8px;">Subjects</button>
-                    <button class="tab-btn" data-tab="assignments" style="padding: 0.5rem 1rem; border-radius: 8px;">Assignments</button>
+            <div class="view-container" style="padding: 0.75rem;">
+                <div class="page-banner" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 1rem; min-height: auto; margin-bottom: 0.75rem;">
+                    <div class="banner-content">
+                        <h1 class="banner-title" style="font-size: 1.15rem; margin-bottom: 0.25rem;"><i data-lucide="settings-2"></i> Academic Setup</h1>
+                        <p class="banner-subtitle" style="font-size: 0.75rem; opacity: 0.8;">Configure classes and subject curriculum.</p>
+                    </div>
+                </div>
+                
+                <div class="tabs mb-1" style="display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 4px;">
+                    <button class="tab-btn active" data-tab="classes" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; border-radius: 8px;">Classes</button>
+                    <button class="tab-btn" data-tab="subjects" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; border-radius: 8px;">Subjects</button>
+                    <button class="tab-btn" data-tab="assignments" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; border-radius: 8px;">Assignments</button>
                 </div>
                 
                 <div id="tab-content" class="card" style="border-radius: 12px; padding: 1rem; flex: 1; overflow-y: auto;">
