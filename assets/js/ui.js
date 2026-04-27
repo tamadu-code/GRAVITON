@@ -2,6 +2,7 @@
  * Graviton CMS - UI Renderer
  * Manages view transitions and dynamic content
  */
+console.log('UI Module Loading...');
 
 import db, { prepareForSync } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF } from './utils.js';
@@ -30,8 +31,10 @@ export const UI = {
             }
             
             // Clear dynamic header content
-            const extraHeader = document.getElementById('top-bar-extra');
-            if (extraHeader) extraHeader.innerHTML = '';
+            try {
+                const extraHeader = document.getElementById('top-bar-extra');
+                if (extraHeader) extraHeader.innerHTML = '';
+            } catch (e) { console.warn('Failed to clear extra header:', e); }
 
             // Render specific view
             switch(viewName) {
@@ -1595,7 +1598,6 @@ export const UI = {
                     <button id="mobile-btn-commit" class="btn" style="background:#2563eb; color:white; flex:1; border-radius:12px; font-weight:800;">Commit All Grades</button>
                 </div>
             </div>
-            </div>
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1611,6 +1613,22 @@ export const UI = {
             const subId = subjectFilter.value;
             const term = termFilter.value;
             const session = sessionFilter.value;
+
+            // Shared Statistics Helper
+            const updateStatsUI = (scores) => {
+                const totalScores = scores.map(sc => parseFloat(sc.total) || 0).filter(v => v > 0);
+                const avg = totalScores.length > 0 ? (totalScores.reduce((a, b) => a + b, 0) / totalScores.length).toFixed(1) : 0;
+                const peak = totalScores.length > 0 ? Math.max(...totalScores) : 0;
+                const fails = scores.filter(sc => (parseFloat(sc.total) || 0) < 40).length;
+
+                const avgEl = document.getElementById('stat-class-avg');
+                const peakEl = document.getElementById('stat-peak-perf');
+                const failEl = document.getElementById('stat-fail-count');
+                
+                if (avgEl) avgEl.textContent = avg + '%';
+                if (peakEl) peakEl.textContent = peak;
+                if (failEl) failEl.textContent = fails;
+            };
 
             if (!cls || !subId) {
                 gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">Please select a Stream and Course to begin grading</td></tr>`;
@@ -1658,17 +1676,6 @@ export const UI = {
             });
 
             // Update Statistics
-            const updateStatsUI = (scores) => {
-                const totalScores = scores.map(sc => parseFloat(sc.total) || 0).filter(v => v > 0);
-                const avg = totalScores.length > 0 ? (totalScores.reduce((a, b) => a + b, 0) / totalScores.length).toFixed(1) : 0;
-                const peak = totalScores.length > 0 ? Math.max(...totalScores) : 0;
-                const fails = scores.filter(sc => (parseFloat(sc.total) || 0) < 40).length;
-
-                document.getElementById('stat-class-avg').textContent = avg + '%';
-                document.getElementById('stat-peak-perf').textContent = peak;
-                document.getElementById('stat-fail-count').textContent = fails;
-            };
-
             updateStatsUI(filteredScores);
 
             console.log('Final Score Match Result:', { 
@@ -1737,22 +1744,6 @@ export const UI = {
             const topBarExtra = document.getElementById('top-bar-extra');
             const statsHtml = document.getElementById('top-bar-stats-inject').innerHTML;
             if (topBarExtra) topBarExtra.innerHTML = statsHtml;
-
-            // Define stats update helper in this scope
-            const updateStatsUI = (scores) => {
-                const totalScores = scores.map(sc => parseFloat(sc.total) || 0).filter(v => v > 0);
-                const avg = totalScores.length > 0 ? (totalScores.reduce((a, b) => a + b, 0) / totalScores.length).toFixed(1) : 0;
-                const peak = totalScores.length > 0 ? Math.max(...totalScores) : 0;
-                const fails = scores.filter(sc => (parseFloat(sc.total) || 0) < 40).length;
-
-                const avgEl = document.getElementById('stat-class-avg');
-                const peakEl = document.getElementById('stat-peak-perf');
-                const failEl = document.getElementById('stat-fail-count');
-                
-                if (avgEl) avgEl.textContent = avg + '%';
-                if (peakEl) peakEl.textContent = peak;
-                if (failEl) failEl.textContent = fails;
-            };
 
             // Global Real-time Listener (Attached ONCE to contentArea)
             this.contentArea.oninput = (e) => {
