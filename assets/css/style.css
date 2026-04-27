@@ -1562,7 +1562,7 @@ label {
     display: grid;
     grid-template-columns: 350px 1fr;
     gap: 1.5rem;
-    height: calc(100vh - 180px); /* Tighter fit */
+    height: calc(100vh - 140px);
     overflow: hidden;
 }
 
@@ -2398,12 +2398,7 @@ label {
     gap: 2rem;
 }
 
-.directory-container {
-    display: grid;
-    grid-template-columns: 350px 1fr;
-    gap: 2rem;
-    height: calc(100vh - 420px);
-}
+/* Removed redundant directory-container definition */
 
 .actions-bar {
     display: flex;
@@ -2419,7 +2414,7 @@ label {
 }
 
 .profile-stats {
-    margin-bottom: 3rem;
+    margin-bottom: 1.5rem;
 }
 
 .info-grid {
