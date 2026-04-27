@@ -135,22 +135,26 @@ export async function syncFromCloud(forceAll = false) {
     const lastSync = (lastSyncTime && !forceAll) ? new Date(new Date(lastSyncTime).getTime() - 300000).toISOString() : new Date(0).toISOString();
 
     for (const table of tables) {
-        try {
-            const { data, error } = await sb
-                .from(table)
-                .select('*')
-                .gt('updated_at', lastSync);
+        let query = sb.from(table).select('*');
+        
+        // Only apply timestamp filter if not forcing a full sync
+        if (!forceAll) {
+            query = query.gt('updated_at', lastSync);
+        }
 
-            if (!error && data && data.length > 0) {
-                // Use bulkPut for massive performance boost over individual awaits
-                await db[table].bulkPut(data.map(item => ({ 
-                    ...item, 
-                    is_synced: 1 
-                })));
-                console.log(`Synced ${data.length} records for ${table}...`);
-            }
-        } catch (e) {
-            console.error(`Pull error for ${table}:`, e);
+        const { data, error } = await query;
+
+        if (error) {
+            console.error(`Pull error for ${table}:`, error);
+            throw error; // Propagate to caller
+        }
+
+        if (data && data.length > 0) {
+            await db[table].bulkPut(data.map(item => ({ 
+                ...item, 
+                is_synced: 1 
+            })));
+            console.log(`Synced ${data.length} records for ${table}...`);
         }
     }
 
