@@ -1765,6 +1765,14 @@ export const UI = {
             </div>
         `;
 
+        const renderTab = async (tab) => {
+            const container = document.getElementById('tab-content');
+            if (!container) return;
+            
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            const activeBtn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+            if (activeBtn) activeBtn.classList.add('active');
+
             if (tab === 'classes') {
                 container.innerHTML = `
                     <table class="data-table">
