@@ -1686,8 +1686,19 @@ export const UI = {
             // Update Desktop Table
             gradeBody.innerHTML = targetStudents.map(s => {
                 const score = filteredScores.find(sc => String(sc.student_id) === String(s.student_id));
-                const ca = (parseFloat(score?.assignment) || 0) + (parseFloat(score?.test1) || 0) + (parseFloat(score?.test2) || 0) + (parseFloat(score?.project) || 0);
-                const total = ca + (parseFloat(score?.exam) || 0);
+                
+                // Helper to check if a value is effectively null/empty
+                const isN = (v) => v === null || v === undefined || v === '';
+                
+                const assignment = isN(score?.assignment) ? null : parseFloat(score.assignment);
+                const test1 = isN(score?.test1) ? null : parseFloat(score.test1);
+                const test2 = isN(score?.test2) ? null : parseFloat(score.test2);
+                const project = isN(score?.project) ? null : parseFloat(score.project);
+                const exam = isN(score?.exam) ? null : parseFloat(score.exam);
+
+                const hasAny = ![assignment, test1, test2, project, exam].every(v => v === null);
+                const ca = hasAny ? ((assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0)) : null;
+                const total = hasAny ? ((ca || 0) + (exam || 0)) : null;
                 
                 return `
                     <tr data-student-id="${s.student_id}" data-student-row-id="${s.student_id}">
@@ -1696,10 +1707,10 @@ export const UI = {
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="test1" value="${score?.test1 || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="test2" value="${score?.test2 || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="project" value="${score?.project || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
-                        <td class="ca-cell" style="text-align:center; font-weight:700; color:#2563eb;">${ca || '-'}</td>
-                        <td style="text-align:center;"><input type="number" class="score-input" data-field="exam" value="${score?.exam || ''}" placeholder="0" style="width:50px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px; font-weight:700;"></td>
-                        <td class="total-cell" style="text-align:center; font-weight:800; color:#15803d; background:#f0fdf4;">${total || '-'}</td>
-                        <td class="grade-cell" style="text-align:center; font-weight:700;">${total ? ScoringEngine.getGrade(total) : '-'}</td>
+                        <td class="ca-cell" style="text-align:center; font-weight:700; color:#2563eb;">${isN(ca) ? '-' : ca}</td>
+                        <td style="text-align:center;"><input type="number" class="score-input" data-field="exam" value="${isN(score?.exam) ? '' : score.exam}" placeholder="-" style="width:50px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px; font-weight:700;"></td>
+                        <td class="total-cell" style="text-align:center; font-weight:800; color:#15803d; background:#f0fdf4;">${isN(total) ? '-' : total}</td>
+                        <td class="grade-cell" style="text-align:center; font-weight:700;">${isN(total) ? '-' : ScoringEngine.getGrade(total)}</td>
                         <td class="rnk-cell" style="text-align:center; font-weight:700; color:var(--text-muted);">${score?.rank || '-'}</td>
                     </tr>
                 `;
@@ -1710,27 +1721,36 @@ export const UI = {
             if (mobileContainer) {
                 mobileContainer.innerHTML = targetStudents.map(s => {
                     const score = filteredScores.find(sc => String(sc.student_id) === String(s.student_id));
-                    const ca = (parseFloat(score?.assignment) || 0) + (parseFloat(score?.test1) || 0) + (parseFloat(score?.test2) || 0) + (parseFloat(score?.project) || 0);
-                    const total = ca + (parseFloat(score?.exam) || 0);
+                    
+                    const isN = (v) => v === null || v === undefined || v === '';
+                    const assignment = isN(score?.assignment) ? null : parseFloat(score.assignment);
+                    const test1 = isN(score?.test1) ? null : parseFloat(score.test1);
+                    const test2 = isN(score?.test2) ? null : parseFloat(score.test2);
+                    const project = isN(score?.project) ? null : parseFloat(score.project);
+                    const exam = isN(score?.exam) ? null : parseFloat(score.exam);
+
+                    const hasAny = ![assignment, test1, test2, project, exam].every(v => v === null);
+                    const ca = hasAny ? ((assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0)) : null;
+                    const total = hasAny ? ((ca || 0) + (exam || 0)) : null;
                     
                     return `
                         <div class="score-card collapsed" data-student-row-id="${s.student_id}">
                             <div class="score-card-header" onclick="this.parentElement.classList.toggle('collapsed')">
                                 <div class="score-card-title">${s.name}</div>
                                 <div style="display:flex; align-items:center; gap:0.5rem;">
-                                    <span class="badge" style="background:#f0fdf4; color:#15803d; font-weight:800; border-radius:6px; padding:2px 8px;">${total || '-'}</span>
+                                    <span class="badge" style="background:#f0fdf4; color:#15803d; font-weight:800; border-radius:6px; padding:2px 8px;">${isN(total) ? '-' : total}</span>
                                     <i data-lucide="chevron-down" style="width:16px;"></i>
                                 </div>
                             </div>
                             <div class="score-card-content">
-                                <div class="score-field"><label>Assignment</label><input type="number" class="score-input" data-field="assignment" value="${score?.assignment || ''}" placeholder="0"></div>
-                                <div class="score-field"><label>Test 1</label><input type="number" class="score-input" data-field="test1" value="${score?.test1 || ''}" placeholder="0"></div>
-                                <div class="score-field"><label>Test 2</label><input type="number" class="score-input" data-field="test2" value="${score?.test2 || ''}" placeholder="0"></div>
-                                <div class="score-field"><label>Project</label><input type="number" class="score-input" data-field="project" value="${score?.project || ''}" placeholder="0"></div>
-                                <div class="score-field"><label>Exam (60)</label><input type="number" class="score-input" data-field="exam" value="${score?.exam || ''}" placeholder="0" style="border-color:#2563eb; background:#eff6ff;"></div>
-                                <div class="score-field"><label>CA Score</label><div class="ca-cell" style="font-weight:700; color:#2563eb; padding:0.6rem;">${ca || '-'}</div></div>
-                                <div class="score-field"><label>Grand Total</label><div class="total-cell" style="font-weight:800; color:#15803d; background:#f0fdf4; padding:0.6rem; border-radius:8px;">${total || '-'}</div></div>
-                                <div class="score-field"><label>Letter Grade</label><div class="grade-cell" style="font-weight:700; padding:0.6rem;">${total ? ScoringEngine.getGrade(total) : '-'}</div></div>
+                                <div class="score-field"><label>Assignment</label><input type="number" class="score-input" data-field="assignment" value="${isN(score?.assignment) ? '' : score.assignment}" placeholder="-"></div>
+                                <div class="score-field"><label>Test 1</label><input type="number" class="score-input" data-field="test1" value="${isN(score?.test1) ? '' : score.test1}" placeholder="-"></div>
+                                <div class="score-field"><label>Test 2</label><input type="number" class="score-input" data-field="test2" value="${isN(score?.test2) ? '' : score.test2}" placeholder="-"></div>
+                                <div class="score-field"><label>Project</label><input type="number" class="score-input" data-field="project" value="${isN(score?.project) ? '' : score.project}" placeholder="-"></div>
+                                <div class="score-field"><label>Exam (60)</label><input type="number" class="score-input" data-field="exam" value="${isN(score?.exam) ? '' : score.exam}" placeholder="-" style="border-color:#2563eb; background:#eff6ff;"></div>
+                                <div class="score-field"><label>CA Score</label><div class="ca-cell" style="font-weight:700; color:#2563eb; padding:0.6rem;">${isN(ca) ? '-' : ca}</div></div>
+                                <div class="score-field"><label>Grand Total</label><div class="total-cell" style="font-weight:800; color:#15803d; background:#f0fdf4; padding:0.6rem; border-radius:8px;">${isN(total) ? '-' : total}</div></div>
+                                <div class="score-field"><label>Letter Grade</label><div class="grade-cell" style="font-weight:700; padding:0.6rem;">${isN(total) ? '-' : ScoringEngine.getGrade(total)}</div></div>
                                 <div class="score-field"><label>Class Rank</label><div class="rnk-cell" style="font-weight:700; color:#64748b; padding:0.6rem;">${score?.rank || '-'}</div></div>
                             </div>
                         </div>
@@ -1771,10 +1791,21 @@ export const UI = {
                 }
 
                 // 2. Recalculate Totals
-                const getScore = (c, f) => parseFloat(c.querySelector(`[data-field="${f}"]`)?.value) || 0;
-                const ca = getScore(container, 'assignment') + getScore(container, 'test1') + getScore(container, 'test2') + getScore(container, 'project');
-                const total = ca + getScore(container, 'exam');
-                const grade = ScoringEngine.getGrade(total);
+                const getVal = (c, f) => {
+                    const v = c.querySelector(`[data-field="${f}"]`)?.value.trim();
+                    return (v === '' || v === undefined) ? null : parseFloat(v);
+                };
+
+                const ass = getVal(container, 'assignment');
+                const t1 = getVal(container, 'test1');
+                const t2 = getVal(container, 'test2');
+                const prj = getVal(container, 'project');
+                const ex = getVal(container, 'exam');
+
+                const hasAny = ![ass, t1, t2, prj, ex].every(v => v === null);
+                const ca = hasAny ? ((ass || 0) + (t1 || 0) + (t2 || 0) + (prj || 0)) : null;
+                const total = hasAny ? ((ca || 0) + (ex || 0)) : null;
+                const grade = hasAny ? ScoringEngine.getGrade(total) : '-';
 
                 // 3. Sync All Views
                 const nodes = document.querySelectorAll(`[data-student-row-id="${studentId}"]`);
@@ -1784,10 +1815,10 @@ export const UI = {
                     const gradeCell = node.querySelector('.grade-cell');
                     const badge = node.querySelector('.score-card-header .badge');
                     
-                    if (caCell) caCell.textContent = ca;
-                    if (totalCell) totalCell.textContent = total;
+                    if (caCell) caCell.textContent = (ca === null) ? '-' : ca;
+                    if (totalCell) totalCell.textContent = (total === null) ? '-' : total;
                     if (gradeCell) gradeCell.textContent = grade;
-                    if (badge) badge.textContent = total || '-';
+                    if (badge) badge.textContent = (total === null) ? '-' : total;
                     
                     const fieldInput = node.querySelector(`[data-field="${field}"]`);
                     if (fieldInput && fieldInput !== e.target) fieldInput.value = e.target.value;
@@ -1795,8 +1826,10 @@ export const UI = {
 
                 // 4. Update Header Stats
                 const allTotals = Array.from(document.querySelectorAll('.desktop-only .total-cell'))
-                    .map(el => parseFloat(el.textContent) || 0)
-                    .filter(v => v > 0);
+                    .map(el => el.textContent.trim())
+                    .filter(v => v !== '-')
+                    .map(v => parseFloat(v) || 0);
+                
                 updateStatsUI(allTotals.map(t => ({ total: t })));
             };
 
@@ -1848,21 +1881,30 @@ export const UI = {
             const entries = [];
             for (const row of rows) {
                 const studentId = row.dataset.studentId;
-                const assignment = parseFloat(row.querySelector('[data-field="assignment"]').value) || 0;
-                const test1 = parseFloat(row.querySelector('[data-field="test1"]').value) || 0;
-                const test2 = parseFloat(row.querySelector('[data-field="test2"]').value) || 0;
-                const project = parseFloat(row.querySelector('[data-field="project"]').value) || 0;
-                const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
+                const getVal = (f) => {
+                    const v = row.querySelector(`[data-field="${f}"]`).value.trim();
+                    return v === '' ? null : parseFloat(v);
+                };
 
-                const ca = assignment + test1 + test2 + project;
-                const total = ca + exam;
+                const assignment = getVal('assignment');
+                const test1 = getVal('test1');
+                const test2 = getVal('test2');
+                const project = getVal('project');
+                const exam = getVal('exam');
 
-                entries.push({
-                    studentId, assignment, test1, test2, project, ca, exam, total
-                });
+                // A student has a record only if at least one field is not null
+                const hasScore = [assignment, test1, test2, project, exam].some(v => v !== null);
+                
+                if (hasScore) {
+                    const ca = (assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0);
+                    const total = ca + (exam || 0);
+                    entries.push({
+                        studentId, assignment, test1, test2, project, ca, exam, total, hasScore: true
+                    });
+                }
             }
 
-            // Calculate Ordinal Rankings (Dense Rank)
+            // Calculate Rankings (Only for students with scores)
             entries.sort((a, b) => b.total - a.total);
             let currentRank = 1;
             for (let i = 0; i < entries.length; i++) {
