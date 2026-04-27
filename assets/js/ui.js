@@ -1726,60 +1726,57 @@ export const UI = {
 
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
-            // Add Input Listeners for real-time calc
-            document.querySelectorAll('.score-input').forEach(input => {
-                input.addEventListener('input', (e) => {
-                    const container = e.target.closest('[data-student-row-id]');
-                    if (!container) return;
+            // Use Event Delegation for performance and reliability
+            this.contentArea.oninput = (e) => {
+                if (!e.target.classList.contains('score-input')) return;
+                
+                const container = e.target.closest('[data-student-row-id]');
+                if (!container) return;
+                
+                const studentId = container.dataset.studentRowId;
+                if (!studentId || studentId === 'undefined') return;
+
+                // Validation
+                const val = parseFloat(e.target.value) || 0;
+                if (e.target.dataset.field === 'exam' && val > 60) e.target.value = 60;
+                else if (e.target.dataset.field !== 'exam' && val > 10) e.target.value = 10;
+
+                // Recalculate for this specific student
+                const getVal = (c, field) => parseFloat(c.querySelector(`[data-field="${field}"]`).value) || 0;
+                const ca = getVal(container, 'assignment') + getVal(container, 'test1') + getVal(container, 'test2') + getVal(container, 'project');
+                const total = ca + getVal(container, 'exam');
+                const grade = ScoringEngine.getGrade(total);
+
+                // Synchronize all views (Desktop Table Row & Mobile Card)
+                const studentNodes = document.querySelectorAll(`[data-student-row-id="${studentId}"]`);
+                studentNodes.forEach(node => {
+                    const caEl = node.querySelector('.ca-cell');
+                    const totalEl = node.querySelector('.total-cell');
+                    const gradeEl = node.querySelector('.grade-cell');
+                    const badgeEl = node.querySelector('.score-card-header .badge');
                     
-                    const studentId = container.dataset.studentRowId;
-                    if (!studentId || studentId === 'undefined') return;
-
-                    const val = parseFloat(e.target.value) || 0;
-                    if (e.target.dataset.field === 'exam' && val > 60) e.target.value = 60;
-                    else if (e.target.dataset.field !== 'exam' && val > 10) e.target.value = 10;
-
-                    // Calculate based on the container that triggered the event
-                    const getVal = (c, field) => parseFloat(c.querySelector(`[data-field="${field}"]`).value) || 0;
-                    const ca = getVal(container, 'assignment') + getVal(container, 'test1') + getVal(container, 'test2') + getVal(container, 'project');
-                    const total = ca + getVal(container, 'exam');
-
-                    // Synchronize ONLY the specific student across Desktop and Mobile views
-                    const allViews = document.querySelectorAll(`[data-student-row-id="${CSS.escape(studentId)}"]`);
-                    allViews.forEach(node => {
-                        const caEl = node.querySelector('.ca-cell');
-                        const totalEl = node.querySelector('.total-cell');
-                        const gradeEl = node.querySelector('.grade-cell');
-                        const badgeEl = node.querySelector('.score-card-header .badge');
-                        
-                        if (caEl) caEl.textContent = ca;
-                        if (totalEl) totalEl.textContent = total;
-                        if (gradeEl) gradeEl.textContent = ScoringEngine.getGrade(total);
-                        if (badgeEl) badgeEl.textContent = total || '-';
-                        
-                        // Sync input value if different (e.g. sync mobile input from desktop input)
-                        const fieldInput = node.querySelector(`[data-field="${e.target.dataset.field}"]`);
-                        if (fieldInput && fieldInput !== e.target) {
-                            fieldInput.value = e.target.value;
-                        }
-                    });
-
-                    // Update Global Statistics
-                    const updateStatsUI = (scores) => {
-                        const totalScores = scores.map(sc => parseFloat(sc.total) || 0).filter(v => v > 0);
-                        const avg = totalScores.length > 0 ? (totalScores.reduce((a, b) => a + b, 0) / totalScores.length).toFixed(1) : 0;
-                        const peak = totalScores.length > 0 ? Math.max(...totalScores) : 0;
-                        const fails = scores.filter(sc => (parseFloat(sc.total) || 0) < 40).length;
-
-                        document.getElementById('stat-class-avg').textContent = avg + '%';
-                        document.getElementById('stat-peak-perf').textContent = peak;
-                        document.getElementById('stat-fail-count').textContent = fails;
-                    };
+                    if (caEl) caEl.textContent = ca;
+                    if (totalEl) totalEl.textContent = total;
+                    if (gradeEl) gradeEl.textContent = grade;
+                    if (badgeEl) badgeEl.textContent = total || '-';
                     
-                    const allTotals = Array.from(document.querySelectorAll('.desktop-only .total-cell')).map(el => parseFloat(el.textContent) || 0).filter(v => v > 0);
-                    updateStatsUI(allTotals.map(t => ({ total: t })));
+                    // Sync input value across views
+                    const fieldInput = node.querySelector(`[data-field="${e.target.dataset.field}"]`);
+                    if (fieldInput && fieldInput !== e.target) {
+                        fieldInput.value = e.target.value;
+                    }
                 });
-            });
+
+                // Update Overall Class Statistics
+                const allTotals = Array.from(document.querySelectorAll('.desktop-only .total-cell'))
+                    .map(el => parseFloat(el.textContent) || 0)
+                    .filter(v => v > 0);
+                
+                updateStatsUI(allTotals.map(t => ({ total: t })));
+            };
+
+            // Initial Statistics Refresh
+            updateStatsUI(filteredScores);
 
             // Mobile Action Listeners
             const mobileCommit = document.getElementById('mobile-btn-commit');
