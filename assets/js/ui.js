@@ -1580,45 +1580,6 @@ export const UI = {
         const termFilter = document.getElementById('grade-term-filter');
         const sessionFilter = document.getElementById('grade-session-filter');
 
-        const updateStats = () => {
-            const rows = document.querySelectorAll('#grade-entry-body tr[data-student-id]');
-            let totalScore = 0;
-            let count = 0;
-            let high = 0;
-            let fails = 0;
-
-            rows.forEach(row => {
-                const total = parseFloat(row.querySelector('.total-cell').textContent) || 0;
-                if (total > 0) {
-                    totalScore += total;
-                    count++;
-                    if (total > high) high = total;
-                    if (total < 40) fails++;
-                }
-            });
-
-            document.getElementById('stat-class-avg').textContent = count > 0 ? (totalScore / count).toFixed(1) + '%' : '0%';
-            document.getElementById('stat-peak-perf').textContent = high;
-            document.getElementById('stat-fail-count').textContent = fails;
-        };
-
-        const rankStudents = () => {
-            const rows = Array.from(document.querySelectorAll('#grade-entry-body tr[data-student-id]'));
-            const scores = rows.map(r => ({
-                row: r,
-                total: parseFloat(r.querySelector('.total-cell').textContent) || 0
-            })).sort((a,b) => b.total - a.total);
-
-            scores.forEach((s, idx) => {
-                const rnkCell = s.row.querySelector('.rnk-cell');
-                if (s.total > 0) {
-                    rnkCell.textContent = (idx + 1);
-                } else {
-                    rnkCell.textContent = '-';
-                }
-            });
-        };
-
         const loadAcademicLedger = async () => {
             const cls = classFilter.value;
             const subId = subjectFilter.value;
@@ -1634,10 +1595,18 @@ export const UI = {
             document.getElementById('active-subject-name').textContent = activeSub.name + ' in ' + cls;
 
             const targetStudents = students.filter(s => s.class_name === cls);
-            const existingScores = await db.scores.where('[student_id+subject_id+term+session]').equals([targetStudents[0]?.student_id || '', subId, term, session]).toArray();
-            // Note: Dexie complex indexes need to be defined in version().stores. For now, let's just fetch all for subject/term/session and filter.
             const allScores = await db.scores.where('subject_id').equals(subId).toArray();
             const filteredScores = allScores.filter(s => s.term === term && s.session === session);
+
+            // Calculate Stats
+            const totalScores = filteredScores.map(sc => sc.total || 0);
+            const avg = totalScores.length > 0 ? (totalScores.reduce((a, b) => a + b, 0) / totalScores.length).toFixed(1) : 0;
+            const peak = totalScores.length > 0 ? Math.max(...totalScores) : 0;
+            const fails = filteredScores.filter(sc => (sc.total || 0) < 40).length;
+
+            document.getElementById('stat-class-avg').textContent = avg + '%';
+            document.getElementById('stat-peak-perf').textContent = peak;
+            document.getElementById('stat-fail-count').textContent = fails;
 
             gradeBody.innerHTML = targetStudents.map(s => {
                 const score = filteredScores.find(sc => sc.student_id === s.student_id);
@@ -1655,7 +1624,7 @@ export const UI = {
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="exam" value="${score?.exam || ''}" placeholder="0" style="width:50px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px; font-weight:700;"></td>
                         <td class="total-cell" style="text-align:center; font-weight:800; color:#15803d; background:#f0fdf4;">${total || '-'}</td>
                         <td class="grade-cell" style="text-align:center; font-weight:700;">${total ? ScoringEngine.getGrade(total) : '-'}</td>
-                        <td class="rnk-cell" style="text-align:center; font-weight:700; color:var(--text-muted);">-</td>
+                        <td class="rnk-cell" style="text-align:center; font-weight:700; color:var(--text-muted);">${score?.rank || '-'}</td>
                     </tr>
                 `;
             }).join('');
@@ -1681,13 +1650,17 @@ export const UI = {
                     row.querySelector('.total-cell').textContent = total;
                     row.querySelector('.grade-cell').textContent = ScoringEngine.getGrade(total);
 
-                    updateStats();
-                    rankStudents();
+                    // Update Global Stats
+                    const allTotals = Array.from(document.querySelectorAll('.total-cell')).map(el => parseFloat(el.textContent) || 0).filter(v => v > 0);
+                    const newAvg = allTotals.length > 0 ? (allTotals.reduce((a,b) => a+b, 0) / allTotals.length).toFixed(1) : 0;
+                    const newPeak = allTotals.length > 0 ? Math.max(...allTotals) : 0;
+                    const newFails = allTotals.filter(v => v < 40).length;
+
+                    document.getElementById('stat-class-avg').textContent = newAvg + '%';
+                    document.getElementById('stat-peak-perf').textContent = newPeak;
+                    document.getElementById('stat-fail-count').textContent = newFails;
                 });
             });
-
-            updateStats();
-            rankStudents();
         };
 
         classFilter.addEventListener('change', async (e) => {
@@ -1723,7 +1696,9 @@ export const UI = {
             if (!subId) return Notifications.show('Select a course first', 'error');
 
             Notifications.show('Committing grades to ledger...', 'info');
-            
+
+            // Collect all data first to calculate final rankings
+            const entries = [];
             for (const row of rows) {
                 const studentId = row.dataset.studentId;
                 const assignment = parseFloat(row.querySelector('[data-field="assignment"]').value) || 0;
@@ -1735,19 +1710,80 @@ export const UI = {
                 const ca = assignment + test1 + test2 + project;
                 const total = ca + exam;
 
+                entries.push({
+                    studentId, assignment, test1, test2, project, ca, exam, total
+                });
+            }
+
+            // Calculate Ordinal Rankings (Dense Rank)
+            entries.sort((a, b) => b.total - a.total);
+            let currentRank = 1;
+            for (let i = 0; i < entries.length; i++) {
+                if (i > 0 && entries[i].total < entries[i - 1].total) currentRank = i + 1;
+                entries[i].rankValue = ScoringEngine.getOrdinal(currentRank);
+            }
+
+            for (const entry of entries) {
                 await db.scores.put(prepareForSync({
-                    id: `${studentId}_${subId}_${term}_${session}`,
-                    student_id: studentId,
+                    id: `${entry.studentId}_${subId}_${term}_${session}`,
+                    student_id: entry.studentId,
                     subject_id: subId,
                     term, session,
-                    assignment, test1, test2, project, ca, exam, total,
-                    grade: ScoringEngine.getGrade(total),
+                    assignment: entry.assignment, 
+                    test1: entry.test1, 
+                    test2: entry.test2, 
+                    project: entry.project, 
+                    ca: entry.ca, 
+                    exam: entry.exam, 
+                    total: entry.total,
+                    rank: entry.rankValue,
+                    grade: ScoringEngine.getGrade(entry.total),
                     updated_at: new Date().toISOString()
                 }));
             }
 
             syncToCloud();
             Notifications.show('Ledger committed and syncing!', 'success');
+            loadAcademicLedger(); // Refresh to show ranks
+        });
+
+        // Print Empty Sheet Functionality
+        document.getElementById('btn-print-empty').addEventListener('click', () => {
+            const cls = classFilter.value;
+            const subId = subjectFilter.value;
+            if (!cls || !subId) return Notifications.show('Select Stream and Course first', 'warning');
+            
+            const activeSub = subjects.find(s => s.id === subId);
+            const targetStudents = students.filter(s => s.class_name === cls);
+            
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>Empty Score Sheet - ${activeSub.name}</title>
+                    <style>
+                        body { font-family: sans-serif; padding: 2rem; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+                        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+                        th { background: #f8fafc; }
+                    </style>
+                </head>
+                <body>
+                    <h1>Academic Score Sheet (Empty)</h1>
+                    <p><strong>Stream:</strong> ${cls} | <strong>Course:</strong> ${activeSub.name}</p>
+                    <p><strong>Term:</strong> ${termFilter.value} | <strong>Session:</strong> ${sessionFilter.value}</p>
+                    <table>
+                        <thead>
+                            <tr><th>Scholar Name</th><th>ASSIGN (10)</th><th>TEST 1 (10)</th><th>TEST 2 (10)</th><th>PROJ (10)</th><th>EXAM (60)</th><th>TOTAL</th></tr>
+                        </thead>
+                        <tbody>
+                            ${targetStudents.map(s => `<tr><td>${s.name}</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`).join('')}
+                        </tbody>
+                    </table>
+                    <script>window.print(); window.close();</script>
+                </body>
+                </html>
+            `);
         });
     },
 

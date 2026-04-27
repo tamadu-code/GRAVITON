@@ -21,6 +21,10 @@ db.version(2).stores({
     notices: 'id, title, is_active, updated_at, is_synced'
 });
 
+db.version(3).stores({
+    scores: 'id, student_id, subject_id, term, session, rank, updated_at, is_synced'
+});
+
 /**
  * Smart ID Generation
  * Format: SMS/YEAR/INCREMENT (e.g., SMS/2026/104)
