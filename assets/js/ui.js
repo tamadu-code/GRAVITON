@@ -907,7 +907,7 @@ export const UI = {
                     </div>
 
                     <div class="table-container" style="max-height: calc(100vh - 350px); overflow-y: auto;">
-                        <table class="data-table">
+                        <table class="data-table desktop-only">
                             <thead>
                                 <tr>
                                     <th>COURSE TITLE</th>
@@ -935,10 +935,52 @@ export const UI = {
                                 `;}).join('')}
                             </tbody>
                         </table>
+
+                        <!-- Mobile Accordion List -->
+                        <div class="mobile-only" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${consolidated.map(s => {
+                                const details = getSubjectDetails(s.ids, s.classes);
+                                return `
+                                <div class="subject-accordion-item" style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+                                    <div class="accordion-trigger" style="padding: 1rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
+                                        <div>
+                                            <div style="font-weight: 700; color: #1e293b;">${s.name}</div>
+                                            <div style="font-size: 0.75rem; color: #64748b;">Units: ${s.credits || 1} | ${s.type || 'Core'}</div>
+                                        </div>
+                                        <i data-lucide="chevron-down" style="width: 16px; opacity: 0.5;"></i>
+                                    </div>
+                                    <div class="accordion-content" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; background: #f8fafc;">
+                                        <div style="padding: 1rem; border-top: 1px solid #e2e8f0;">
+                                            <div style="margin-bottom: 0.75rem;">
+                                                <strong style="font-size: 0.7rem; color: #64748b;">ASSIGNED STREAMS</strong>
+                                                <div style="margin-top: 0.25rem;">${details.linkedString}</div>
+                                            </div>
+                                            <div style="margin-bottom: 1rem;">
+                                                <strong style="font-size: 0.7rem; color: #64748b;">FACULTY ASSIGNMENT</strong>
+                                                <div style="margin-top: 0.25rem; font-weight: 600; color: #1e293b;">${details.facultyString}</div>
+                                            </div>
+                                            <button class="btn btn-secondary delete-subject-btn" data-ids="${s.ids.join(',')}" data-name="${s.name}" style="width: 100%; color: #ef4444; background: #fef2f2; border: none; font-size: 0.8rem; height: 40px;">
+                                                <i data-lucide="trash-2" style="width: 14px;"></i> Remove from Curriculum
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;}).join('')}
+                        </div>
                     </div>
                 </div>
-            </div>
-        `;
+        // Subject Accordion Trigger Logic
+        this.contentArea.querySelectorAll('.accordion-trigger').forEach(trigger => {
+            trigger.addEventListener('click', () => {
+                const item = trigger.closest('.subject-accordion-item');
+                const isExpanded = item.classList.contains('active');
+                
+                // Close others
+                this.contentArea.querySelectorAll('.subject-accordion-item').forEach(i => i.classList.remove('active'));
+                
+                if (!isExpanded) item.classList.add('active');
+            });
+        });
 
         // Register Course Modal
         const btnRegCourse = document.getElementById('btn-register-course');
@@ -1152,7 +1194,7 @@ export const UI = {
         searchInput.addEventListener('input', updateList);
         classFilter.addEventListener('change', updateList);
 
-        // Selection Logic
+        // Selection Logic (Accordion Style for Mobile)
         listContainer.addEventListener('click', async (e) => {
             const item = e.target.closest('.student-item');
             if (!item) return;
@@ -1162,7 +1204,7 @@ export const UI = {
             // Handle Icon Clicks Directly
             if (e.target.closest('.mobile-edit-std')) {
                 e.stopPropagation();
-                await this.renderStudentDetail(studentId);
+                await this.renderStudentDetail(studentId); // Load data into modal/state
                 document.getElementById('btn-modify-student')?.click();
                 return;
             }
@@ -1173,16 +1215,43 @@ export const UI = {
                 return;
             }
 
+            // Toggle Accordion
+            const isExpanded = item.classList.contains('active');
             document.querySelectorAll('.student-item').forEach(i => i.classList.remove('active'));
-            item.classList.add('active');
-
-            await this.renderStudentDetail(studentId);
-
-            // Mobile UX: Scroll to detail view
-            if (window.innerWidth < 1024) {
-                const detailView = document.getElementById('student-detail-view');
-                if (detailView) {
-                    detailView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            
+            if (!isExpanded) {
+                item.classList.add('active');
+                
+                // If on mobile, populate the internal detail container
+                if (window.innerWidth < 1024) {
+                    const detailArea = item.querySelector('.mobile-detail-accordion');
+                    if (detailArea && !detailArea.innerHTML.trim()) {
+                        detailArea.innerHTML = '<div class="loader-sm"></div>';
+                        const student = await db.students.get(studentId);
+                        const scores = await db.scores.where('student_id').equals(studentId).toArray();
+                        const avg = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + (s.total || 0), 0) / scores.length) : 0;
+                        
+                        detailArea.innerHTML = `
+                            <div style="padding: 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px; font-size: 0.85rem;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+                                    <div class="stat-box-sm"><strong>AVG SCORE</strong><br>${avg}%</div>
+                                    <div class="stat-box-sm"><strong>GENDER</strong><br>${student.gender || 'N/A'}</div>
+                                    <div class="stat-box-sm"><strong>STATUS</strong><br>${student.status}</div>
+                                    <div class="stat-box-sm"><strong>SUBJECTS</strong><br>${scores.length}</div>
+                                </div>
+                                <div style="margin-bottom: 0.75rem;">
+                                    <strong style="color: #64748b; font-size: 0.7rem;">RESIDENTIAL ADDRESS</strong>
+                                    <p style="margin: 2px 0; color: #1e293b;">${student.address || 'No address provided'}</p>
+                                </div>
+                                <div>
+                                    <strong style="color: #64748b; font-size: 0.7rem;">PARENT/GUARDIAN</strong>
+                                    <p style="margin: 2px 0; color: #1e293b;">${student.parent_name || 'N/A'} (${student.parent_phone || 'N/A'})</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+                } else {
+                    await this.renderStudentDetail(studentId);
                 }
             }
         });
@@ -1486,15 +1555,22 @@ export const UI = {
     generateStudentListItems(students) {
         if (students.length === 0) return `<div class="p-2 text-center text-slate-400 text-sm">No students found</div>`;
         return students.map(s => `
-            <div class="student-item" data-id="${s.student_id}" style="cursor: pointer;">
-                <div class="student-item-info">
-                    <span class="student-item-name">${s.name}</span>
-                    <span class="student-item-meta">${s.student_id} • ${s.class_name}</span>
-                </div>
-                <div style="display: flex; gap: 0.85rem; align-items: center;">
-                    <i data-lucide="edit-3" class="mobile-edit-std" style="width: 16px; color: #2563eb;"></i>
-                    <i data-lucide="trash-2" class="mobile-delete-std" style="width: 16px; color: #ef4444;"></i>
-                    <i data-lucide="chevron-right" style="width: 14px; opacity: 0.4;"></i>
+            <div class="student-item-container" style="margin-bottom: 0.5rem;">
+                <div class="student-item" data-id="${s.student_id}" style="cursor: pointer; border-radius: 12px; overflow: hidden; transition: all 0.2s ease;">
+                    <div style="padding: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                        <div class="student-item-info">
+                            <span class="student-item-name" style="font-weight: 700; color: #1e293b;">${s.name}</span>
+                            <span class="student-item-meta" style="font-size: 0.75rem; color: #64748b; display: block;">${s.student_id} • ${s.class_name}</span>
+                        </div>
+                        <div style="display: flex; gap: 0.85rem; align-items: center;">
+                            <i data-lucide="edit-3" class="mobile-edit-std" style="width: 16px; color: #2563eb;"></i>
+                            <i data-lucide="trash-2" class="mobile-delete-std" style="width: 16px; color: #ef4444;"></i>
+                            <i data-lucide="chevron-down" class="accordion-arrow" style="width: 14px; opacity: 0.4;"></i>
+                        </div>
+                    </div>
+                    <div class="mobile-detail-accordion mobile-only" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out;">
+                        <!-- Populated on click -->
+                    </div>
                 </div>
             </div>
         `).join('');

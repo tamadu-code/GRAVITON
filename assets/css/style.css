@@ -540,6 +540,57 @@ h1, h2, h3, .logo {
     animation: slideIn 0.3s ease-out;
 }
 
+/* Stacked Accordion Support */
+.student-item.active {
+    background: #fff !important;
+    border: 1px solid #2563eb !important;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.1) !important;
+}
+
+.student-item.active .mobile-detail-accordion {
+    max-height: 500px !important;
+}
+
+.student-item.active .accordion-arrow {
+    transform: rotate(180deg);
+    color: #2563eb !important;
+    opacity: 1 !important;
+}
+
+.stat-box-sm {
+    background: white;
+    border: 1px solid #e2e8f0;
+    padding: 0.5rem;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.stat-box-sm strong {
+    font-size: 0.6rem;
+    color: #94a3b8;
+    display: block;
+    margin-bottom: 2px;
+}
+
+/* Subject Accordion */
+.subject-accordion-item.active .accordion-content {
+    max-height: 400px !important;
+}
+.subject-accordion-item.active .accordion-trigger i {
+    transform: rotate(180deg);
+}
+
+.loader-sm {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 1rem auto;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
 @keyframes slideIn {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
