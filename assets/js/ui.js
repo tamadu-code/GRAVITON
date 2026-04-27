@@ -1228,16 +1228,17 @@ export const UI = {
                 item.classList.add('active');
                 
                 // If on mobile, populate the internal detail container
-                if (window.innerWidth < 1024) {
-                    const detailArea = item.querySelector('.mobile-detail-accordion');
-                    if (detailArea && !detailArea.innerHTML.trim()) {
-                        detailArea.innerHTML = '<div class="loader-sm"></div>';
-                        const student = await db.students.get(studentId);
+                const detailArea = item.querySelector('.mobile-detail-accordion');
+                if (detailArea && (!detailArea.innerHTML.trim() || detailArea.innerHTML.includes('loader'))) {
+                    detailArea.innerHTML = '<div class="loader-sm"></div>';
+                    
+                    // Fetch data
+                    db.students.get(studentId).then(async student => {
                         const scores = await db.scores.where('student_id').equals(studentId).toArray();
                         const avg = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + (s.total || 0), 0) / scores.length) : 0;
                         
                         detailArea.innerHTML = `
-                            <div style="padding: 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px; font-size: 0.85rem;">
+                            <div class="accordion-inner-content" style="padding: 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px; font-size: 0.85rem;">
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
                                     <div class="stat-box-sm"><strong>AVG SCORE</strong><br>${avg}%</div>
                                     <div class="stat-box-sm"><strong>GENDER</strong><br>${student.gender || 'N/A'}</div>
@@ -1254,10 +1255,13 @@ export const UI = {
                                 </div>
                             </div>
                         `;
-                    }
-                } else {
-                    await this.renderStudentDetail(studentId);
+                    });
                 }
+            }
+            
+            // Also update desktop view if window is large
+            if (window.innerWidth >= 1024) {
+                await this.renderStudentDetail(studentId);
             }
         });
 

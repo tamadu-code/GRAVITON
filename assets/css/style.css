@@ -578,7 +578,8 @@ h1, h2, h3, .logo {
 }
 
 .student-item.active .mobile-detail-accordion {
-    max-height: 500px !important;
+    max-height: 800px !important;
+    opacity: 1 !important;
 }
 
 .student-item.active .accordion-arrow {
