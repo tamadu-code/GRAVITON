@@ -7,35 +7,30 @@
  * Scoring Engine
  */
 export const ScoringEngine = {
-    calculateGrade(total) {
-        if (total >= 70) return 'A';
-        if (total >= 60) return 'B';
-        if (total >= 50) return 'C';
-        if (total >= 45) return 'D';
-        if (total >= 40) return 'E';
-        return 'F';
+    getGrade(total) {
+        if (total >= 75) return 'A1';
+        if (total >= 70) return 'B2';
+        if (total >= 65) return 'B3';
+        if (total >= 60) return 'C4';
+        if (total >= 55) return 'C5';
+        if (total >= 50) return 'C6';
+        if (total >= 45) return 'D7';
+        if (total >= 40) return 'E8';
+        return 'F9';
     },
 
-    validateScore(ca1, ca2, exam) {
-        const errors = [];
-        if (ca1 > 20) errors.push('CA1 cannot exceed 20');
-        if (ca2 > 20) errors.push('CA2 cannot exceed 20');
-        if (exam > 60) errors.push('Exam cannot exceed 60');
-        return {
-            isValid: errors.length === 0,
-            errors
-        };
+    getRemark(total) {
+        if (total >= 75) return 'Distinction';
+        if (total >= 60) return 'Very Good';
+        if (total >= 50) return 'Credit';
+        if (total >= 45) return 'Pass';
+        return 'Serious Intervention Required';
     },
 
-    processScore(ca1, ca2, exam) {
-        const c1 = parseFloat(ca1) || 0;
-        const c2 = parseFloat(ca2) || 0;
-        const ex = parseFloat(exam) || 0;
-        const total = c1 + c2 + ex;
-        return {
-            total,
-            grade: this.calculateGrade(total)
-        };
+    validateScore(field, value) {
+        const val = parseFloat(value) || 0;
+        if (field === 'exam') return val <= 60;
+        return val <= 10; // CA components are 10 each
     }
 };
 

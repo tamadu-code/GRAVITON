@@ -1472,64 +1472,100 @@ export const UI = {
 
     async renderGrades() {
         const students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        const classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         const subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         
         this.contentArea.innerHTML = `
-            <div class="view-container">
-                <div class="page-banner" style="background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);">
+            <div class="view-container" style="padding: 1.5rem; background: #f8fafc;">
+                <!-- Modern Banner with Stats Strip -->
+                <div class="page-banner" style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); border-radius: 16px; padding: 2rem; color: white; display: flex; flex-direction: column; gap: 1.5rem; box-shadow: var(--shadow-lg);">
                     <div class="banner-content">
-                        <h1 class="banner-title"><i data-lucide="bar-chart"></i> Academic Gradebook</h1>
-                        <p class="banner-subtitle">Manage assessment scores and performance analytics.</p>
+                        <div style="display:flex; align-items:center; gap:0.75rem;">
+                            <div style="background:rgba(255,255,255,0.2); padding:0.5rem; border-radius:10px;"><i data-lucide="bar-chart-3" style="width:24px; height:24px;"></i></div>
+                            <h1 class="banner-title" style="font-size: 1.75rem; margin:0;">Grading Intelligence</h1>
+                        </div>
+                        <p class="banner-subtitle" style="opacity:0.8; margin-top:0.5rem; font-size:0.95rem;">Academic performance tracking for <span id="active-subject-name" style="font-weight:700;">Select Course</span>.</p>
                     </div>
+
+                    <div class="stats-strip" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem;">
+                        <div class="stat-mini-card" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 1rem; text-align: center;">
+                            <span id="stat-class-avg" style="display: block; font-size: 1.5rem; font-weight: 800;">0%</span>
+                            <span style="font-size: 0.65rem; text-transform: uppercase; font-weight: 700; opacity: 0.8;">Class Average</span>
+                        </div>
+                        <div class="stat-mini-card" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 1rem; text-align: center;">
+                            <span id="stat-peak-perf" style="display: block; font-size: 1.5rem; font-weight: 800;">0</span>
+                            <span style="font-size: 0.65rem; text-transform: uppercase; font-weight: 700; opacity: 0.8;">Peak Performance</span>
+                        </div>
+                        <div class="stat-mini-card" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 1rem; text-align: center;">
+                            <span id="stat-fail-count" style="display: block; font-size: 1.5rem; font-weight: 800;">0</span>
+                            <span style="font-size: 0.65rem; text-transform: uppercase; font-weight: 700; opacity: 0.8;">Critical Reviews</span>
+                        </div>
+                    </div>
+
                     <div style="display: flex; gap: 0.75rem;">
-                        <button id="btn-print-report-cards" class="btn btn-secondary" style="border-radius: 10px; padding: 0.5rem 1rem; font-size: 0.85rem; color: white;">
-                            <i data-lucide="printer" style="width: 14px;"></i> Report Cards
+                        <button id="btn-print-empty" class="btn" style="background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 0.6rem 1.25rem; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="printer" style="width: 16px;"></i> Empty Sheet
+                        </button>
+                        <button id="btn-commit-grades" class="btn" style="background: white; color: #1e40af; border: none; border-radius: 8px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                            <i data-lucide="save" style="width: 16px;"></i> Commit Grades
                         </button>
                     </div>
                 </div>
 
-                <div class="card" style="border-radius: 12px; padding: 1rem;">
-                    <div class="actions-bar mb-1" style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                        <select id="class-filter" class="input" style="height: 40px; min-width: 150px;">
-                            <option value="">All Classes</option>
-                            ${[...new Set(students.map(s => s.class_name))].sort().map(c => `<option value="${c}">${c}</option>`).join('')}
+                <!-- Modern Filter Cards -->
+                <div class="filter-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="graduation-cap" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Stream</span></div>
+                        <select id="grade-class-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
+                            <option value="">Select Stream</option>
+                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                         </select>
-                        <select id="subject-filter" class="input" style="height: 40px; min-width: 150px;">
-                            <option value="">Select Subject</option>
-                            ${subjects.sort((a,b) => a.name.localeCompare(b.name)).map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                    </div>
+                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="book-open" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Course</span></div>
+                        <select id="grade-subject-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
+                            <option value="">Select Course</option>
+                            ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
                         </select>
-                        <select id="term-filter" class="input" style="height: 40px;">
+                    </div>
+                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="hash" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Term</span></div>
+                        <select id="grade-term-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
                             <option value="1st Term">1st Term</option>
                             <option value="2nd Term">2nd Term</option>
                             <option value="3rd Term">3rd Term</option>
                         </select>
                     </div>
-                    
-                    <div class="table-container" style="max-height: calc(100vh - 350px); overflow-y: auto;">
-                        <table class="data-table">
+                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="calendar" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Session</span></div>
+                        <select id="grade-session-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
+                            <option value="2023/2024">2023/2024</option>
+                            <option value="2024/2025">2024/2025</option>
+                            <option value="2025/2026" selected>2025/2026</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Score Entry Table -->
+                <div class="card mt-2" style="border-radius: 16px; padding: 0.5rem; overflow: hidden; box-shadow: var(--shadow-md);">
+                    <div class="table-container" style="max-height: calc(100vh - 450px); overflow-y: auto;">
+                        <table class="data-table" style="width:100%; font-size:0.85rem;">
                             <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Student</th>
-                                    <th>CA (40)</th>
-                                    <th>Exam (60)</th>
-                                    <th>Total</th>
-                                    <th>Grade</th>
-                                    <th>Action</th>
+                                <tr style="background: #f1f5f9;">
+                                    <th style="padding: 1rem;">Scholar Name</th>
+                                    <th style="text-align:center;">ASS</th>
+                                    <th style="text-align:center;">T1</th>
+                                    <th style="text-align:center;">T2</th>
+                                    <th style="text-align:center;">PRJ</th>
+                                    <th style="text-align:center; background:#eff6ff; color:#2563eb;">CA</th>
+                                    <th style="text-align:center; background:#eff6ff; color:#2563eb;">EXAM</th>
+                                    <th style="text-align:center; background:#f0fdf4; color:#15803d; font-weight:800;">TOTAL</th>
+                                    <th style="text-align:center;">GRD</th>
+                                    <th style="text-align:center;">RNK</th>
                                 </tr>
                             </thead>
-                            <tbody id="score-entry-body">
-                                ${students.map(s => `
-                                    <tr data-student-id="${s.student_id}">
-                                        <td>${s.student_id}</td>
-                                        <td>${s.name}</td>
-                                        <td><input type="number" class="input score-input" data-field="ca" max="40" style="width: 60px; height: 32px; padding: 0 4px;"></td>
-                                        <td><input type="number" class="input score-input" data-field="exam" max="60" style="width: 60px; height: 32px; padding: 0 4px;"></td>
-                                        <td class="total-cell">-</td>
-                                        <td class="grade-cell">-</td>
-                                        <td><button class="btn btn-primary btn-sm save-score">Save</button></td>
-                                    </tr>
-                                `).join('')}
+                            <tbody id="grade-entry-body">
+                                <tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">Please select a Stream and Course to begin grading</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1537,79 +1573,160 @@ export const UI = {
             </div>
         `;
 
-        // Load existing scores when filters change
-        const loadScores = async () => {
-            const subjectId = document.getElementById('subject-filter').value;
-            const classFilter = document.getElementById('class-filter').value;
-            
-            // Clear or Filter rows
-            document.querySelectorAll('#score-entry-body tr').forEach(row => {
-                const sId = row.dataset.studentId;
-                const student = students.find(s => s.student_id === sId);
-                
-                if (classFilter && student.class_name !== classFilter) {
-                    row.style.display = 'none';
-                } else {
-                    row.style.display = '';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        const gradeBody = document.getElementById('grade-entry-body');
+        const subjectFilter = document.getElementById('grade-subject-filter');
+        const classFilter = document.getElementById('grade-class-filter');
+        const termFilter = document.getElementById('grade-term-filter');
+        const sessionFilter = document.getElementById('grade-session-filter');
+
+        const updateStats = () => {
+            const rows = document.querySelectorAll('#grade-entry-body tr[data-student-id]');
+            let totalScore = 0;
+            let count = 0;
+            let high = 0;
+            let fails = 0;
+
+            rows.forEach(row => {
+                const total = parseFloat(row.querySelector('.total-cell').textContent) || 0;
+                if (total > 0) {
+                    totalScore += total;
+                    count++;
+                    if (total > high) high = total;
+                    if (total < 40) fails++;
                 }
             });
 
-            if (!subjectId) return;
+            document.getElementById('stat-class-avg').textContent = count > 0 ? (totalScore / count).toFixed(1) + '%' : '0%';
+            document.getElementById('stat-peak-perf').textContent = high;
+            document.getElementById('stat-fail-count').textContent = fails;
+        };
 
-            const scores = await db.scores.where('subject_id').equals(subjectId).toArray();
-            document.querySelectorAll('#score-entry-body tr').forEach(row => {
-                const sId = row.dataset.studentId;
-                const score = scores.find(s => s.student_id === sId);
-                if (score && row.style.display !== 'none') {
-                    row.querySelector('[data-field="ca"]').value = score.ca;
-                    row.querySelector('[data-field="exam"]').value = score.exam;
-                    const total = score.ca + score.exam;
-                    row.querySelector('.total-cell').textContent = total;
-                    row.querySelector('.grade-cell').textContent = ScoringEngine.getGrade(total);
-                } else if (row.style.display !== 'none') {
-                    row.querySelector('[data-field="ca"]').value = '';
-                    row.querySelector('[data-field="exam"]').value = '';
-                    row.querySelector('.total-cell').textContent = '-';
-                    row.querySelector('.grade-cell').textContent = '-';
+        const rankStudents = () => {
+            const rows = Array.from(document.querySelectorAll('#grade-entry-body tr[data-student-id]'));
+            const scores = rows.map(r => ({
+                row: r,
+                total: parseFloat(r.querySelector('.total-cell').textContent) || 0
+            })).sort((a,b) => b.total - a.total);
+
+            scores.forEach((s, idx) => {
+                const rnkCell = s.row.querySelector('.rnk-cell');
+                if (s.total > 0) {
+                    rnkCell.textContent = (idx + 1);
+                } else {
+                    rnkCell.textContent = '-';
                 }
             });
         };
 
-        document.getElementById('subject-filter').addEventListener('change', loadScores);
-        document.getElementById('class-filter').addEventListener('change', loadScores);
+        const loadAcademicLedger = async () => {
+            const cls = classFilter.value;
+            const subId = subjectFilter.value;
+            const term = termFilter.value;
+            const session = sessionFilter.value;
 
-        // Logic for calculations and saving...
-        document.querySelectorAll('.score-input').forEach(input => {
-            input.addEventListener('input', (e) => {
-                const row = e.target.closest('tr');
-                const ca = parseFloat(row.querySelector('[data-field="ca"]').value) || 0;
-                const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
-                const total = ca + exam;
-                row.querySelector('.total-cell').textContent = total;
-                row.querySelector('.grade-cell').textContent = ScoringEngine.getGrade(total);
-            });
-        });
+            if (!cls || !subId) {
+                gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">Please select a Stream and Course to begin grading</td></tr>`;
+                return;
+            }
 
-        document.querySelectorAll('.save-score').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const row = e.target.closest('tr');
-                const studentId = row.dataset.studentId;
-                const subjectId = document.getElementById('subject-filter').value;
-                if (!subjectId) return Notifications.show('Select subject', 'error');
+            const activeSub = subjects.find(s => s.id === subId);
+            document.getElementById('active-subject-name').textContent = activeSub.name + ' in ' + cls;
 
-                const ca = parseFloat(row.querySelector('[data-field="ca"]').value) || 0;
-                const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
+            const targetStudents = students.filter(s => s.class_name === cls);
+            const existingScores = await db.scores.where('[student_id+subject_id+term+session]').equals([targetStudents[0]?.student_id || '', subId, term, session]).toArray();
+            // Note: Dexie complex indexes need to be defined in version().stores. For now, let's just fetch all for subject/term/session and filter.
+            const allScores = await db.scores.where('subject_id').equals(subId).toArray();
+            const filteredScores = allScores.filter(s => s.term === term && s.session === session);
+
+            gradeBody.innerHTML = targetStudents.map(s => {
+                const score = filteredScores.find(sc => sc.student_id === s.student_id);
+                const ca = (score?.ass || 0) + (score?.t1 || 0) + (score?.t2 || 0) + (score?.prj || 0);
+                const total = ca + (score?.exam || 0);
                 
+                return `
+                    <tr data-student-id="${s.student_id}">
+                        <td style="font-weight:600; padding:1rem;">${s.name}</td>
+                        <td style="text-align:center;"><input type="number" class="score-input" data-field="ass" value="${score?.ass || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                        <td style="text-align:center;"><input type="number" class="score-input" data-field="t1" value="${score?.t1 || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                        <td style="text-align:center;"><input type="number" class="score-input" data-field="t2" value="${score?.t2 || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                        <td style="text-align:center;"><input type="number" class="score-input" data-field="prj" value="${score?.prj || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                        <td class="ca-cell" style="text-align:center; font-weight:700; color:#2563eb;">${ca || '-'}</td>
+                        <td style="text-align:center;"><input type="number" class="score-input" data-field="exam" value="${score?.exam || ''}" placeholder="0" style="width:50px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px; font-weight:700;"></td>
+                        <td class="total-cell" style="text-align:center; font-weight:800; color:#15803d; background:#f0fdf4;">${total || '-'}</td>
+                        <td class="grade-cell" style="text-align:center; font-weight:700;">${total ? ScoringEngine.getGrade(total) : '-'}</td>
+                        <td class="rnk-cell" style="text-align:center; font-weight:700; color:var(--text-muted);">-</td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Add Input Listeners for real-time calc
+            document.querySelectorAll('.score-input').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const row = e.target.closest('tr');
+                    const ass = parseFloat(row.querySelector('[data-field="ass"]').value) || 0;
+                    const t1 = parseFloat(row.querySelector('[data-field="t1"]').value) || 0;
+                    const t2 = parseFloat(row.querySelector('[data-field="t2"]').value) || 0;
+                    const prj = parseFloat(row.querySelector('[data-field="prj"]').value) || 0;
+                    const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
+
+                    // Validation
+                    if (e.target.dataset.field === 'exam' && exam > 60) e.target.value = 60;
+                    else if (e.target.dataset.field !== 'exam' && parseFloat(e.target.value) > 10) e.target.value = 10;
+
+                    const ca = ass + t1 + t2 + prj;
+                    const total = ca + exam;
+
+                    row.querySelector('.ca-cell').textContent = ca;
+                    row.querySelector('.total-cell').textContent = total;
+                    row.querySelector('.grade-cell').textContent = ScoringEngine.getGrade(total);
+
+                    updateStats();
+                    rankStudents();
+                });
+            });
+
+            updateStats();
+            rankStudents();
+        };
+
+        [classFilter, subjectFilter, termFilter, sessionFilter].forEach(f => f.addEventListener('change', loadAcademicLedger));
+
+        document.getElementById('btn-commit-grades').addEventListener('click', async () => {
+            const rows = document.querySelectorAll('#grade-entry-body tr[data-student-id]');
+            const subId = subjectFilter.value;
+            const term = termFilter.value;
+            const session = sessionFilter.value;
+
+            if (!subId) return Notifications.show('Select a course first', 'error');
+
+            Notifications.show('Committing grades to ledger...', 'info');
+            
+            for (const row of rows) {
+                const studentId = row.dataset.studentId;
+                const ass = parseFloat(row.querySelector('[data-field="ass"]').value) || 0;
+                const t1 = parseFloat(row.querySelector('[data-field="t1"]').value) || 0;
+                const t2 = parseFloat(row.querySelector('[data-field="t2"]').value) || 0;
+                const prj = parseFloat(row.querySelector('[data-field="prj"]').value) || 0;
+                const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
+
+                const ca = ass + t1 + t2 + prj;
+                const total = ca + exam;
+
                 await db.scores.put(prepareForSync({
-                    id: `${studentId}_${subjectId}`,
+                    id: `${studentId}_${subId}_${term}_${session}`,
                     student_id: studentId,
-                    subject_id: subjectId,
-                    ca, exam, total: ca + exam,
+                    subject_id: subId,
+                    term, session,
+                    ass, t1, t2, prj, ca, exam, total,
+                    grade: ScoringEngine.getGrade(total),
                     updated_at: new Date().toISOString()
                 }));
-                syncToCloud(); 
-                Notifications.show('Score saved and syncing...', 'success');
-            });
+            }
+
+            syncToCloud();
+            Notifications.show('Ledger committed and syncing!', 'success');
         });
     },
 
