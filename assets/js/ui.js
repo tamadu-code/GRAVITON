@@ -1645,35 +1645,37 @@ export const UI = {
                 s.class_name && s.class_name.trim().toLowerCase() === cls.trim().toLowerCase()
             );
             
-            // Broad Score Retrieval (Index Query + Fallbacks)
-            let allScores = await db.scores.where('subject_id').equals(subId).toArray();
+            // 2. Broad Score Retrieval (Index Query + Fallbacks)
+            let rawScores = await db.scores.toArray();
             
-            // Try numeric conversion
-            if (allScores.length === 0 && !isNaN(subId)) {
-                allScores = await db.scores.where('subject_id').equals(parseInt(subId)).toArray();
-            }
-            
-            // Try subject name (very common for Excel imports)
-            if (allScores.length === 0 && activeSub) {
-                allScores = await db.scores.where('subject_id').equals(activeSub.name).toArray();
-            }
+            // 3. Resilient Multi-Level Filtering
+            const filteredScores = rawScores.filter(sc => {
+                // Subject Match (Resilient)
+                const sMatch = String(sc.subject_id).toLowerCase() === String(subId).toLowerCase() || 
+                              (activeSub && String(sc.subject_id).toLowerCase() === activeSub.name.toLowerCase());
+                
+                if (!sMatch) return false;
 
-            // Ultimate Fallback: Fetch by term/session and filter by subject locally
-            if (allScores.length === 0) {
-                const sessionScores = await db.scores.where('session').equals(session).toArray();
-                allScores = sessionScores.filter(sc => 
-                    String(sc.subject_id).toLowerCase() === String(subId).toLowerCase() || 
-                    (activeSub && String(sc.subject_id).toLowerCase() === activeSub.name.toLowerCase())
-                );
-            }
-            
-            // Filter by Term (Resilient)
-            const filteredScores = allScores.filter(s => {
-                if (!s.term) return false;
-                const dbTerm = String(s.term).toLowerCase();
-                const filterTerm = term.toLowerCase();
-                return dbTerm === filterTerm || filterTerm.includes(dbTerm) || dbTerm.includes(filterTerm);
+                // Session Match (Resilient)
+                const dbSession = String(sc.session || '').toLowerCase().trim();
+                const filterSession = session.toLowerCase().trim();
+                const sesMatch = dbSession === filterSession || dbSession.includes(filterSession) || filterSession.includes(dbSession);
+                
+                if (!sesMatch) return false;
+
+                // Term Match (Resilient)
+                const dbTerm = String(sc.term || '').toLowerCase().trim();
+                const filterTerm = term.toLowerCase().trim();
+                const termMatch = dbTerm === filterTerm || dbTerm.includes(filterTerm) || filterTerm.includes(dbTerm);
+                
+                return termMatch;
             });
+
+            console.log(`Academic Ledger Search:`, { 
+                filters: { cls, subId, term, session },
+                matchesFound: filteredScores.length 
+            });
+            if (filteredScores.length > 0) console.table(filteredScores.slice(0, 5));
 
             // Update Statistics
             updateStatsUI(filteredScores);
