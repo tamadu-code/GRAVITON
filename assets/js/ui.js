@@ -1856,43 +1856,96 @@ export const UI = {
             loadAcademicLedger(); // Refresh to show ranks
         });
 
-        // Print Empty Sheet Functionality
-        document.getElementById('btn-print-empty').addEventListener('click', () => {
+        // Professional Print Empty Sheet Module
+        document.getElementById('btn-print-empty').addEventListener('click', async () => {
             const cls = classFilter.value;
             const subId = subjectFilter.value;
+            const term = termFilter.value;
+            const session = sessionFilter.value;
+
             if (!cls || !subId) return Notifications.show('Select Stream and Course first', 'warning');
-            
-            const activeSub = subjects.find(s => s.id === subId);
-            const targetStudents = students.filter(s => s.class_name === cls);
-            
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(`
+
+            const activeSub = subjects.find(s => String(s.id) === String(subId));
+            const targetStudents = students.filter(s => s.class_name && s.class_name.trim().toLowerCase() === cls.trim().toLowerCase());
+            const schoolName = "TAMADU HIGH SCHOOL"; 
+            const generatedDate = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+
+            // 1. Chunking Logic (23 Students per Page)
+            const PAGESIZE = 23;
+            const pages = [];
+            for (let i = 0; i < Math.max(1, targetStudents.length); i += PAGESIZE) {
+                pages.push(targetStudents.slice(i, i + PAGESIZE));
+            }
+
+            let printHTML = `
                 <html>
                 <head>
-                    <title>Empty Score Sheet - ${activeSub.name}</title>
+                    <title>CA Score Sheet - ${cls}</title>
                     <style>
-                        body { font-family: sans-serif; padding: 2rem; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-                        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-                        th { background: #f8fafc; }
+                        @page { size: landscape; margin: 0; }
+                        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; color: #000 !important; background: #fff !important; }
+                        .print-page {
+                            width: 297mm; height: 209.2mm; padding: 10mm; box-sizing: border-box;
+                            display: flex; flex-direction: column; page-break-after: always;
+                        }
+                        .header { text-align: center; margin-bottom: 10px; }
+                        .school-name { font-size: 1.4rem; font-weight: 800; text-transform: uppercase; }
+                        .doc-title { font-size: 1rem; font-weight: 700; border-bottom: 2px solid #000; padding-bottom: 2px; }
+                        .metadata-grid { 
+                            display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; 
+                            margin: 10px 0; font-size: 0.85rem; border: 1px solid #000; padding: 8px;
+                            background: #f1f5f9 !important; -webkit-print-color-adjust: exact;
+                        }
+                        .meta-val { font-weight: 800; border-bottom: 1px dotted #000; }
+                        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+                        th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
+                        th { background: #f8fafc !important; -webkit-print-color-adjust: exact; font-weight: 700; }
+                        .col-sn { width: 30px; text-align: center; }
+                        .col-name { width: 250px; }
+                        .footer { display: flex; justify-content: space-between; font-size: 0.7rem; margin-top: auto; padding-top: 5px; border-top: 1px solid #000; }
                     </style>
                 </head>
                 <body>
-                    <h1>Academic Score Sheet (Empty)</h1>
-                    <p><strong>Stream:</strong> ${cls} | <strong>Course:</strong> ${activeSub.name}</p>
-                    <p><strong>Term:</strong> ${termFilter.value} | <strong>Session:</strong> ${sessionFilter.value}</p>
-                    <table>
-                        <thead>
-                            <tr><th>Scholar Name</th><th>ASSIGN (10)</th><th>TEST 1 (10)</th><th>TEST 2 (10)</th><th>PROJ (10)</th><th>EXAM (60)</th><th>TOTAL</th></tr>
-                        </thead>
-                        <tbody>
-                            ${targetStudents.map(s => `<tr><td>${s.name}</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`).join('')}
-                        </tbody>
-                    </table>
-                    <script>window.print(); window.close();</script>
-                </body>
-                </html>
-            `);
+            `;
+
+            pages.forEach((pageStudents, pageIdx) => {
+                const emptyRowsNeeded = PAGESIZE - pageStudents.length;
+                printHTML += `
+                    <div class="print-page">
+                        <div class="header">
+                            <div class="school-name">${schoolName}</div>
+                            <div class="doc-title">CONTINUOUS ASSESSMENT SCORE SHEET</div>
+                        </div>
+                        <div class="metadata-grid">
+                            <div>CLASS: <span class="meta-val">${cls}</span></div>
+                            <div>COURSE: <span class="meta-val">${activeSub.name}</span></div>
+                            <div>TEACHER: <span class="meta-val">____________________</span></div>
+                            <div>SESSION: <span class="meta-val">${session}</span></div>
+                            <div>TERM: <span class="meta-val">${term}</span></div>
+                            <div>PAGE: <span class="meta-val">${pageIdx + 1} OF ${pages.length}</span></div>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr><th>S/N</th><th>STUDENT NAME</th><th>ASS (10)</th><th>T1 (10)</th><th>T2 (10)</th><th>PRJ (10)</th><th>EXAM (60)</th></tr>
+                            </thead>
+                            <tbody>
+                                ${pageStudents.map((s, idx) => `<tr><td>${(pageIdx * PAGESIZE) + idx + 1}</td><td>${s.name}</td><td></td><td></td><td></td><td></td><td></td></tr>`).join('')}
+                                ${Array(emptyRowsNeeded).fill(0).map((_, idx) => `<tr><td>${(pageIdx * PAGESIZE) + pageStudents.length + idx + 1}</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`).join('')}
+                            </tbody>
+                        </table>
+                        <div class="footer">
+                            <div>Subject: ${activeSub.name} | Page ${pageIdx + 1} of ${pages.length}</div>
+                            <div>Date Generated: ${generatedDate}</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            printHTML += `</body></html>`;
+            const win = window.open('', '_blank');
+            win.document.write(printHTML);
+            win.document.close();
+            win.onload = () => { setTimeout(() => { win.print(); }, 500); };
         });
     },
 
