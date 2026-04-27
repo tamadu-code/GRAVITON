@@ -971,6 +971,8 @@ export const UI = {
                 </div>
             </div>
         `;
+
+        // Subject Accordion Trigger Logic
         this.contentArea.querySelectorAll('.accordion-trigger').forEach(trigger => {
             trigger.addEventListener('click', () => {
                 const item = trigger.closest('.subject-accordion-item');
@@ -988,11 +990,13 @@ export const UI = {
         if (btnRegCourse) {
             btnRegCourse.addEventListener('click', async () => {
                 const allClasses = await db.classes.toArray();
-                const classCheckboxes = allClasses.map(c => `
-                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #334155; cursor: pointer;">
-                        <input type="checkbox" class="stream-checkbox" value="${c.name}" style="accent-color: #2563eb;"> ${c.name}
-                    </label>
-                `).join('');
+                const classCheckboxes = allClasses.map(c => {
+                    return `
+                        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #334155; cursor: pointer;">
+                            <input type="checkbox" class="stream-checkbox" value="${c.name}" style="accent-color: #2563eb;"> ${c.name}
+                        </label>
+                    `;
+                }).join('');
 
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1.25rem;">
