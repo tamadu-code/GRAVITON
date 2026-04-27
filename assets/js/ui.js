@@ -1726,8 +1726,24 @@ export const UI = {
 
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
-            // Use Event Delegation for performance and reliability
-            this.contentArea.oninput = (e) => {
+            // Statistics Update Logic (Accessible to both initial load and live updates)
+            const updateStatsUI = (scores) => {
+                const totalScores = scores.map(sc => parseFloat(sc.total) || 0).filter(v => v > 0);
+                const avg = totalScores.length > 0 ? (totalScores.reduce((a, b) => a + b, 0) / totalScores.length).toFixed(1) : 0;
+                const peak = totalScores.length > 0 ? Math.max(...totalScores) : 0;
+                const fails = scores.filter(sc => (parseFloat(sc.total) || 0) < 40).length;
+
+                const avgEl = document.getElementById('stat-class-avg');
+                const peakEl = document.getElementById('stat-peak-perf');
+                const failEl = document.getElementById('stat-fail-count');
+                
+                if (avgEl) avgEl.textContent = avg + '%';
+                if (peakEl) peakEl.textContent = peak;
+                if (failEl) failEl.textContent = fails;
+            };
+
+            // Real-time Calculation & Synchronization
+            this.contentArea.addEventListener('input', (e) => {
                 if (!e.target.classList.contains('score-input')) return;
                 
                 const container = e.target.closest('[data-student-row-id]');
@@ -1736,18 +1752,18 @@ export const UI = {
                 const studentId = container.dataset.studentRowId;
                 if (!studentId || studentId === 'undefined') return;
 
-                // Validation
-                const val = parseFloat(e.target.value) || 0;
-                if (e.target.dataset.field === 'exam' && val > 60) e.target.value = 60;
-                else if (e.target.dataset.field !== 'exam' && val > 10) e.target.value = 10;
+                // Validation & Limits
+                let val = parseFloat(e.target.value) || 0;
+                if (e.target.dataset.field === 'exam' && val > 60) { e.target.value = 60; val = 60; }
+                else if (e.target.dataset.field !== 'exam' && val > 10) { e.target.value = 10; val = 10; }
 
-                // Recalculate for this specific student
-                const getVal = (c, field) => parseFloat(c.querySelector(`[data-field="${field}"]`).value) || 0;
+                // Recalculate Student Totals
+                const getVal = (c, f) => parseFloat(c.querySelector(`[data-field="${f}"]`)?.value) || 0;
                 const ca = getVal(container, 'assignment') + getVal(container, 'test1') + getVal(container, 'test2') + getVal(container, 'project');
                 const total = ca + getVal(container, 'exam');
                 const grade = ScoringEngine.getGrade(total);
 
-                // Synchronize all views (Desktop Table Row & Mobile Card)
+                // Update all views for this specific student
                 const studentNodes = document.querySelectorAll(`[data-student-row-id="${studentId}"]`);
                 studentNodes.forEach(node => {
                     const caEl = node.querySelector('.ca-cell');
@@ -1760,25 +1776,25 @@ export const UI = {
                     if (gradeEl) gradeEl.textContent = grade;
                     if (badgeEl) badgeEl.textContent = total || '-';
                     
-                    // Sync input value across views
+                    // Sync the actual input value
                     const fieldInput = node.querySelector(`[data-field="${e.target.dataset.field}"]`);
                     if (fieldInput && fieldInput !== e.target) {
                         fieldInput.value = e.target.value;
                     }
                 });
 
-                // Update Overall Class Statistics
+                // Update Class Stats
                 const allTotals = Array.from(document.querySelectorAll('.desktop-only .total-cell'))
                     .map(el => parseFloat(el.textContent) || 0)
                     .filter(v => v > 0);
                 
                 updateStatsUI(allTotals.map(t => ({ total: t })));
-            };
+            });
 
-            // Initial Statistics Refresh
+            // Refresh statistics on initial load
             updateStatsUI(filteredScores);
 
-            // Mobile Action Listeners
+            // Action Listeners
             const mobileCommit = document.getElementById('mobile-btn-commit');
             const mobilePrint = document.getElementById('mobile-btn-print');
             if (mobileCommit) mobileCommit.onclick = () => document.getElementById('btn-commit-grades').click();
