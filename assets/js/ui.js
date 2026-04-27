@@ -1553,6 +1553,9 @@ export const UI = {
                         <i data-lucide="info" style="width:16px;"></i> <span>Draft scores are saved locally until committed.</span>
                     </div>
                     <div style="display: flex; gap: 1rem;">
+                        <button id="btn-sync-ledger" class="btn" style="background: #fff; color: #2563eb; border: 1px solid #2563eb; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <i data-lucide="refresh-cw" style="width: 16px;"></i> Refresh Data
+                        </button>
                         <button id="btn-print-empty" class="btn" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                             <i data-lucide="printer" style="width: 16px;"></i> Print Empty Sheet
                         </button>
@@ -1678,24 +1681,22 @@ export const UI = {
                 return termMatch;
             });
 
+            // 4. Sort by updated_at Descending (Most recent first)
+            filteredScores.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+
             console.log(`Academic Ledger Fetch [${cls} | ${activeSub?.name}]:`, {
-                studentsInClass: targetStudents.length,
-                totalScoresInDB: rawScores.length,
-                matchedScores: filteredScores.length
+                matchedScores: filteredScores.length,
+                newestDate: filteredScores[0]?.updated_at
             });
-            if (filteredScores.length > 0) console.table(filteredScores.slice(0, 5));
 
             // Update Statistics
             updateStatsUI(filteredScores);
 
-            console.log('Final Score Match Result:', { 
-                targetStudents: targetStudents.length, 
-                foundScores: filteredScores.length 
-            });
-
             // Update Desktop Table
             gradeBody.innerHTML = targetStudents.map(s => {
-                const score = filteredScores.find(sc => String(sc.student_id) === String(s.student_id));
+                // Find score, prioritizing records that actually have data if duplicates exist
+                const score = filteredScores.find(sc => String(sc.student_id) === String(s.student_id) && (sc.total > 0 || sc.exam > 0)) 
+                             || filteredScores.find(sc => String(sc.student_id) === String(s.student_id));
                 
                 // Helper to check if a value is effectively null/empty
                 const isN = (v) => v === null || v === undefined || v === '';
@@ -1876,6 +1877,25 @@ export const UI = {
         });
 
         [subjectFilter, termFilter, sessionFilter].forEach(f => f.addEventListener('change', loadAcademicLedger));
+
+        // Action Listeners
+        const btnSync = document.getElementById('btn-sync-ledger');
+        if (btnSync) {
+            btnSync.addEventListener('click', async () => {
+                const icon = btnSync.querySelector('i');
+                if (icon) icon.classList.add('spinning');
+                Notifications.show('Deep syncing scores...', 'info');
+                try {
+                    await syncFromCloud(true);
+                    await loadAcademicLedger();
+                    Notifications.show('Scores refreshed!', 'success');
+                } catch (e) {
+                    Notifications.show('Sync failed', 'error');
+                } finally {
+                    if (icon) icon.classList.remove('spinning');
+                }
+            });
+        }
 
         // Initial Load Trigger
         if (classFilter.value) {
