@@ -1157,11 +1157,34 @@ export const UI = {
             const item = e.target.closest('.student-item');
             if (!item) return;
 
+            const studentId = item.dataset.id;
+
+            // Handle Icon Clicks Directly
+            if (e.target.closest('.mobile-edit-std')) {
+                e.stopPropagation();
+                await this.renderStudentDetail(studentId);
+                document.getElementById('btn-modify-student')?.click();
+                return;
+            }
+            if (e.target.closest('.mobile-delete-std')) {
+                e.stopPropagation();
+                await this.renderStudentDetail(studentId);
+                document.getElementById('btn-delete-student')?.click();
+                return;
+            }
+
             document.querySelectorAll('.student-item').forEach(i => i.classList.remove('active'));
             item.classList.add('active');
 
-            const id = item.dataset.id;
-            await this.renderStudentDetail(id);
+            await this.renderStudentDetail(studentId);
+
+            // Mobile UX: Scroll to detail view
+            if (window.innerWidth < 1024) {
+                const detailView = document.getElementById('student-detail-view');
+                if (detailView) {
+                    detailView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
         });
 
         const printBtn = document.getElementById('btn-print-credentials');
@@ -1463,15 +1486,15 @@ export const UI = {
     generateStudentListItems(students) {
         if (students.length === 0) return `<div class="p-2 text-center text-slate-400 text-sm">No students found</div>`;
         return students.map(s => `
-            <div class="student-item" data-id="${s.student_id}">
+            <div class="student-item" data-id="${s.student_id}" style="cursor: pointer;">
                 <div class="student-item-info">
                     <span class="student-item-name">${s.name}</span>
                     <span class="student-item-meta">${s.student_id} • ${s.class_name}</span>
                 </div>
-                <div style="display: flex; gap: 0.5rem; opacity: 0.6;">
-                    <i data-lucide="edit-3" style="width: 14px; cursor: pointer;"></i>
-                    <i data-lucide="trash-2" style="width: 14px; cursor: pointer; color: #ef4444;"></i>
-                    <i data-lucide="chevron-right" style="width: 14px;"></i>
+                <div style="display: flex; gap: 0.85rem; align-items: center;">
+                    <i data-lucide="edit-3" class="mobile-edit-std" style="width: 16px; color: #2563eb;"></i>
+                    <i data-lucide="trash-2" class="mobile-delete-std" style="width: 16px; color: #ef4444;"></i>
+                    <i data-lucide="chevron-right" style="width: 14px; opacity: 0.4;"></i>
                 </div>
             </div>
         `).join('');
