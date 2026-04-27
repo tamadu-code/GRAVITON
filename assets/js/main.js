@@ -334,10 +334,16 @@ window.addEventListener('sync-complete', (e) => {
 
 // Global Sync Error Listener
 window.addEventListener('sync-error', (e) => {
-    const { table, error } = e.detail;
-    console.error(`Sync error on ${table}:`, error);
+    const { table, error, code, hint } = e.detail;
+    console.error(`Sync error on ${table}:`, e.detail);
+    
     if (window.Notifications) {
-        Notifications.show(`Sync failed for ${table}: ${error}`, 'error');
+        let msg = `Sync failed for ${table}: ${error}`;
+        if (code === '42501') msg = `Permission Denied on ${table}. Please check RLS Policies.`;
+        if (code === 'PGRST301') msg = `Authentication error. Please logout and re-login.`;
+        if (hint) msg += ` (Hint: ${hint})`;
+        
+        Notifications.show(msg, 'error');
     }
     updateSyncStatus('Sync Error', 'offline');
 });

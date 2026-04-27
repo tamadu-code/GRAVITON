@@ -79,9 +79,15 @@ export async function syncToCloud() {
                         syncCount += chunk.length;
                     } else {
                         console.error(`Sync error for ${table} [Batch ${i/CHUNK_SIZE + 1}]:`, error);
-                        // Optional: trigger event for UI to show error
+                        // Trigger event with full error context
                         window.dispatchEvent(new CustomEvent('sync-error', { 
-                            detail: { table, error: error.message || 'Unknown error' } 
+                            detail: { 
+                                table, 
+                                error: error.message || 'Unknown error',
+                                code: error.code,
+                                hint: error.hint,
+                                details: error.details
+                            } 
                         }));
                     }
                 }
