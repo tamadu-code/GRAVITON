@@ -1501,12 +1501,11 @@ export const UI = {
                             <span style="font-size: 0.65rem; text-transform: uppercase; font-weight: 700; opacity: 0.8;">Critical Reviews</span>
                         </div>
                     </div>
-
-                    </div>
-                </div>
+                </div> <!-- Correctly closing page-banner -->
 
                 <!-- Modern Filter Cards -->
-                <div class="filter-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+                <div class="filter-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="graduation-cap" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Stream</span></div>
                         <select id="grade-class-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
@@ -1538,8 +1537,10 @@ export const UI = {
                     </div>
                 </div>
                 
+                </div>
+                
                 <!-- Dedicated Action Bar -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding: 0.5rem 0;">
+                <div class="action-bar-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding: 0.75rem 1rem; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm);">
                     <div style="display: flex; align-items: center; gap: 0.75rem; color: #64748b; font-size: 0.85rem; font-weight: 600;">
                         <i data-lucide="info" style="width:16px;"></i> <span>Draft scores are saved locally until committed.</span>
                     </div>
@@ -1611,34 +1612,44 @@ export const UI = {
                 return;
             }
 
-            const activeSub = subjects.find(s => s.id === subId);
-            document.getElementById('active-subject-name').textContent = activeSub.name + ' in ' + cls;
+            const activeSub = subjects.find(s => String(s.id) === String(subId));
+            if (activeSub) {
+                document.getElementById('active-subject-name').textContent = activeSub.name + ' in ' + cls;
+            }
 
-            const targetStudents = students.filter(s => s.class_name === cls);
+            // Resilient student filtering (case-insensitive, trimmed)
+            const targetStudents = students.filter(s => 
+                s.class_name && s.class_name.trim().toLowerCase() === cls.trim().toLowerCase()
+            );
             
-            // Comprehensive Score Retrieval Strategy
+            // Broad Score Retrieval (Index Query + Fallbacks)
             let allScores = await db.scores.where('subject_id').equals(subId).toArray();
             
-            // Fallback 1: Numeric ID mismatch
+            // Try numeric conversion
             if (allScores.length === 0 && !isNaN(subId)) {
                 allScores = await db.scores.where('subject_id').equals(parseInt(subId)).toArray();
             }
-            if (allScores.length === 0) {
-                allScores = await db.scores.where('subject_id').equals(subId.toString()).toArray();
-            }
             
-            // Fallback 2: Subject Name matching (for legacy or imported data)
+            // Try subject name (very common for Excel imports)
             if (allScores.length === 0 && activeSub) {
                 allScores = await db.scores.where('subject_id').equals(activeSub.name).toArray();
             }
+
+            // Ultimate Fallback: Fetch by term/session and filter by subject locally
+            if (allScores.length === 0) {
+                const sessionScores = await db.scores.where('session').equals(session).toArray();
+                allScores = sessionScores.filter(sc => 
+                    String(sc.subject_id).toLowerCase() === String(subId).toLowerCase() || 
+                    (activeSub && String(sc.subject_id).toLowerCase() === activeSub.name.toLowerCase())
+                );
+            }
             
-            // Resilient filtering for term and session
+            // Filter by Term (Resilient)
             const filteredScores = allScores.filter(s => {
-                if (!s.term || !s.session) return false;
+                if (!s.term) return false;
                 const dbTerm = String(s.term).toLowerCase();
                 const filterTerm = term.toLowerCase();
-                const termMatch = (dbTerm === filterTerm) || filterTerm.startsWith(dbTerm) || dbTerm.startsWith(filterTerm);
-                return termMatch && String(s.session) === String(session);
+                return dbTerm === filterTerm || filterTerm.includes(dbTerm) || dbTerm.includes(filterTerm);
             });
 
             // Update Statistics
@@ -1655,20 +1666,19 @@ export const UI = {
 
             updateStatsUI(filteredScores);
 
-            if (filteredScores.length === 0 && allScores.length > 0) {
-                console.warn('Scores found for subject but filtered out by term/session:', { term, session });
-            } else if (allScores.length === 0) {
-                console.log('No scores found for this subject in the local database.');
-            }
+            console.log('Final Score Match Result:', { 
+                targetStudents: targetStudents.length, 
+                foundScores: filteredScores.length 
+            });
 
             // Update Desktop Table
             gradeBody.innerHTML = targetStudents.map(s => {
-                const score = filteredScores.find(sc => sc.student_id == s.student_id);
-                const ca = (score?.assignment || 0) + (score?.test1 || 0) + (score?.test2 || 0) + (score?.project || 0);
-                const total = ca + (score?.exam || 0);
+                const score = filteredScores.find(sc => String(sc.student_id) === String(s.id));
+                const ca = (parseFloat(score?.assignment) || 0) + (parseFloat(score?.test1) || 0) + (parseFloat(score?.test2) || 0) + (parseFloat(score?.project) || 0);
+                const total = ca + (parseFloat(score?.exam) || 0);
                 
                 return `
-                    <tr data-student-id="${s.student_id}">
+                    <tr data-student-id="${s.id}">
                         <td style="font-weight:600; padding:1rem;">${s.name}</td>
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="assignment" value="${score?.assignment || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="test1" value="${score?.test1 || ''}" placeholder="0" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
@@ -1687,12 +1697,12 @@ export const UI = {
             const mobileContainer = document.getElementById('mobile-score-entry');
             if (mobileContainer) {
                 mobileContainer.innerHTML = targetStudents.map(s => {
-                    const score = filteredScores.find(sc => sc.student_id == s.student_id);
-                    const ca = (score?.assignment || 0) + (score?.test1 || 0) + (score?.test2 || 0) + (score?.project || 0);
-                    const total = ca + (score?.exam || 0);
+                    const score = filteredScores.find(sc => String(sc.student_id) === String(s.id));
+                    const ca = (parseFloat(score?.assignment) || 0) + (parseFloat(score?.test1) || 0) + (parseFloat(score?.test2) || 0) + (parseFloat(score?.project) || 0);
+                    const total = ca + (parseFloat(score?.exam) || 0);
                     
                     return `
-                        <div class="score-card collapsed" data-student-id="${s.student_id}">
+                        <div class="score-card collapsed" data-student-id="${s.id}">
                             <div class="score-card-header" onclick="this.parentElement.classList.toggle('collapsed')">
                                 <div class="score-card-title">${s.name}</div>
                                 <div style="display:flex; align-items:center; gap:0.5rem;">
