@@ -540,6 +540,24 @@ h1, h2, h3, .logo {
     animation: slideIn 0.3s ease-out;
 }
 
+/* Student Directory Mobile Optimization */
+@media (max-width: 1024px) {
+    .directory-container {
+        display: block !important;
+    }
+    .directory-sidebar {
+        width: 100% !important;
+        border: none !important;
+    }
+    .directory-main {
+        display: none !important; /* Hide the big card on mobile */
+    }
+    .student-item-container {
+        margin-bottom: 0.75rem;
+    }
+}
+
+
 /* Stacked Accordion Support */
 .student-item.active {
     background: #fff !important;
