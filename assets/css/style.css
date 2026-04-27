@@ -2526,3 +2526,12 @@ label {
     transform: translateY(-5px);
     box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.05);
 }
+
+ . s p i n n i n g   { 
+         a n i m a t i o n :   s p i n   1 s   l i n e a r   i n f i n i t e ; 
+ } 
+ @ k e y f r a m e s   s p i n   { 
+         f r o m   {   t r a n s f o r m :   r o t a t e ( 0 d e g ) ;   } 
+         t o   {   t r a n s f o r m :   r o t a t e ( 3 6 0 d e g ) ;   } 
+ }  
+ 

@@ -1086,12 +1086,12 @@ export const UI = {
                             <span class="stat-label" style="font-size: 0.65rem;">Classes</span>
                         </div>
                     </div>
-                    <div style="display: flex; gap: 0.75rem;">
-                        <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 10px; padding: 0.6rem 1.25rem; display: flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.1); color: white; border: none; font-size: 0.85rem;">
-                            <i data-lucide="printer" style="width: 16px;"></i> Credentials
+                    <div class="banner-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button id="btn-add-student" class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; font-weight: 700; font-size: 0.75rem;">
+                            <i data-lucide="user-plus" style="width: 14px;"></i> New Enrolment
                         </button>
-                        <button id="btn-add-student" class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 10px; padding: 0.6rem 1.25rem; display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 0.85rem;">
-                            <i data-lucide="user-plus" style="width: 16px;"></i> New Enrollment
+                        <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); font-size: 0.75rem;">
+                            <i data-lucide="printer" style="width: 14px;"></i> Credentials
                         </button>
                     </div>
                 </div>
@@ -1644,7 +1644,7 @@ export const UI = {
             
             if (tab === 'classes') {
                 container.innerHTML = `
-                    <div class="actions-bar mb-1"><button id="add-class-btn" class="btn btn-primary btn-sm">Add Class</button></div>
+                    <div class="actions-bar mb-1"><button id="add-class-btn" class="btn btn-primary btn-sm" style="padding: 0.5rem 1rem; font-weight: 700;">Add New Stream</button></div>
                     <table class="data-table">
                         <thead><tr><th>Name</th><th>Level</th><th>Action</th></tr></thead>
                         <tbody>${classes.map(c => `<tr><td>${c.name}</td><td>${c.level}</td><td><i data-lucide="trash-2" class="delete-class" data-id="${c.id}" style="color:#ef4444; cursor:pointer; width:16px;"></i></td></tr>`).join('')}</tbody>
@@ -1652,7 +1652,7 @@ export const UI = {
                 `;
             } else if (tab === 'subjects') {
                 container.innerHTML = `
-                    <div class="actions-bar mb-1"><button id="add-subject-btn" class="btn btn-primary btn-sm">Add Subject</button></div>
+                    <div class="actions-bar mb-1"><button id="add-subject-btn" class="btn btn-primary btn-sm" style="padding: 0.5rem 1rem; font-weight: 700;">Register Course</button></div>
                     <table class="data-table">
                         <thead><tr><th>Name</th><th>Type</th><th>Credits</th><th>Action</th></tr></thead>
                         <tbody>${subjects.map(s => `<tr><td>${s.name}</td><td>${s.type}</td><td>${s.credits}</td><td><i data-lucide="trash-2" class="delete-sub" data-id="${s.id}" style="color:#ef4444; cursor:pointer; width:16px;"></i></td></tr>`).join('')}</tbody>
@@ -1667,8 +1667,8 @@ export const UI = {
     },
 
     async renderAttendance() {
-        const students = await db.students.toArray();
-        const classes = await db.classes.toArray();
+        const students = (await db.students.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
         
         this.contentArea.innerHTML = `
             <div class="view-container">

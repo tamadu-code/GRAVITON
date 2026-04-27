@@ -469,19 +469,29 @@ if (mobileMenuBtn && sidebar) {
 const manualSyncBtn = document.getElementById('manual-sync-btn');
 if (manualSyncBtn) {
     manualSyncBtn.addEventListener('click', async () => {
-        manualSyncBtn.classList.add('spinning');
-        updateSyncStatus('Syncing', 'syncing');
+        const icon = manualSyncBtn.querySelector('i');
+        if (icon) icon.classList.add('spinning');
+        
+        updateSyncStatus('Deep Syncing...', 'syncing');
+        Notifications.show('Pulling fresh data from cloud...', 'info');
         
         try {
-            await syncFromCloud();
+            // Force a deep sync by passing true
+            await syncFromCloud(true);
             await syncToCloud();
+            
             updateSyncStatus('Online', 'live');
-            UI.renderView(window.location.hash.substring(1) || 'dashboard');
+            Notifications.show('Sync complete! All records updated.', 'success');
+            
+            // Re-render current view to show new data
+            const currentHash = window.location.hash.substring(1) || 'dashboard';
+            UI.renderView(currentHash);
         } catch (err) {
             console.error('Manual sync failed:', err);
             updateSyncStatus('Sync Error', 'offline');
+            Notifications.show('Sync failed. Check your internet.', 'error');
         } finally {
-            manualSyncBtn.classList.remove('spinning');
+            if (icon) icon.classList.remove('spinning');
         }
     });
 }

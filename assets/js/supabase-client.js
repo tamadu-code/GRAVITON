@@ -103,13 +103,14 @@ export async function syncToCloud() {
 /**
  * Sync Engine - Pull cloud changes to local
  */
-export async function syncFromCloud() {
+export async function syncFromCloud(forceAll = false) {
     if (!sb) return;
 
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance'];
-    // Look back slightly (5 minutes) to account for clock skew and transit time
+    
+    // If forceAll is true, we look back to beginning of time
     const lastSyncTime = localStorage.getItem('last_sync_timestamp');
-    const lastSync = lastSyncTime ? new Date(new Date(lastSyncTime).getTime() - 300000).toISOString() : new Date(0).toISOString();
+    const lastSync = (lastSyncTime && !forceAll) ? new Date(new Date(lastSyncTime).getTime() - 300000).toISOString() : new Date(0).toISOString();
 
     for (const table of tables) {
         try {
