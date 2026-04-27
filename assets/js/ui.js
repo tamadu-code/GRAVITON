@@ -3,8 +3,9 @@
  * Manages view transitions and dynamic content
  */
 
-import db from './db.js';
+import db, { prepareForSync } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF } from './utils.js';
+import { syncToCloud } from './supabase-client.js';
 
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
@@ -581,7 +582,9 @@ export const UI = {
                     addLog(`Scores processed: ${matched} matched, ${skipped} skipped.`, matched > 0 ? 'success' : 'warning');
                 }
 
-                Notifications.show('Bulk import completed successfully', 'success');
+                Notifications.show('Bulk import completed successfully. Synchronizing...', 'info');
+                await syncToCloud();
+                Notifications.show('Cloud synchronization complete.', 'success');
             } catch (err) {
                 addLog(`Import Error: ${err.message}`, 'error');
                 Notifications.show('Import failed: ' + err.message, 'error');
@@ -1225,7 +1228,7 @@ export const UI = {
                         throw new Error('Validation failed');
                     }
 
-                    const newStudent = {
+                    const newStudent = prepareForSync({
                         student_id: serial,
                         name: name,
                         class_name: className,
@@ -1239,12 +1242,11 @@ export const UI = {
                         parent_phone: document.getElementById('std-parent-phone').value.trim(),
                         blood_group: document.getElementById('std-blood').value,
                         genotype: document.getElementById('std-geno').value,
-                        timetable: document.getElementById('std-timetable').value.trim(),
-                        is_synced: 0,
-                        updated_at: new Date().toISOString()
-                    };
+                        timetable: document.getElementById('std-timetable').value.trim()
+                    });
 
                     await db.students.add(newStudent);
+                    syncToCloud(); // Fire and forget sync
                     Notifications.show(`Student ${name} registered successfully.`, 'success');
                     this.renderStudents();
                 }, 'Finalize Registration', 'save');
@@ -1515,13 +1517,13 @@ export const UI = {
                 const ca = parseFloat(row.querySelector('[data-field="ca"]').value) || 0;
                 const exam = parseFloat(row.querySelector('[data-field="exam"]').value) || 0;
                 
-                await db.scores.put({
+                await db.scores.put(prepareForSync({
                     id: `${studentId}_${subjectId}`,
                     student_id: studentId,
                     subject_id: subjectId,
-                    ca, exam, total: ca + exam,
-                    updated_at: new Date().toISOString()
-                });
+                    ca, exam, total: ca + exam
+                }));
+                syncToCloud(); // Fire and forget sync
                 Notifications.show('Saved', 'success');
             });
         });

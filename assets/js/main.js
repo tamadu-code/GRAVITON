@@ -332,6 +332,16 @@ window.addEventListener('sync-complete', (e) => {
     setTimeout(() => updateSyncStatus('Online', 'live'), 2000);
 });
 
+// Global Sync Error Listener
+window.addEventListener('sync-error', (e) => {
+    const { table, error } = e.detail;
+    console.error(`Sync error on ${table}:`, error);
+    if (window.Notifications) {
+        Notifications.show(`Sync failed for ${table}: ${error}`, 'error');
+    }
+    updateSyncStatus('Sync Error', 'offline');
+});
+
 // Logout Button Logic
 const logoutBtn = document.getElementById('logout-btn');
 if (logoutBtn) {

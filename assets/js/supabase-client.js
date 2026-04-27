@@ -5,21 +5,26 @@
 
 import db from './db.js';
 
-// Configuration
+// Configuration - Prioritize localStorage over hardcoded defaults
 const SB_CONFIG = {
-    url: 'https://urqygjltionvaxuacfzr.supabase.co',
-    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVycXlnamx0aW9udmF4dWFjZnpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzEzMDEsImV4cCI6MjA5MjYwNzMwMX0.Vpk7rifsfjMCVBSYpEdVzkHv3w324iKp8B7urlKc_e4'
+    url: localStorage.getItem('sb_url') || 'https://urqygjltionvaxuacfzr.supabase.co',
+    key: localStorage.getItem('sb_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVycXlnamx0aW9udmF4dWFjZnpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzEzMDEsImV4cCI6MjA5MjYwNzMwMX0.Vpk7rifsfjMCVBSYpEdVzkHv3w324iKp8B7urlKc_e4'
 };
 
 let sb = null;
 
-if (SB_CONFIG.url && SB_CONFIG.key) {
-    try {
-        sb = window.supabase.createClient(SB_CONFIG.url, SB_CONFIG.key);
-    } catch (e) {
-        console.error('Failed to initialize Supabase:', e);
+function createClient() {
+    if (SB_CONFIG.url && SB_CONFIG.key) {
+        try {
+            sb = window.supabase.createClient(SB_CONFIG.url, SB_CONFIG.key);
+        } catch (e) {
+            console.error('Failed to initialize Supabase:', e);
+        }
     }
 }
+
+// Initial creation
+createClient();
 
 /**
  * Initialize Supabase Client
@@ -52,23 +57,33 @@ export async function syncToCloud() {
             if (unsynced.length > 0 && sb) {
                 console.log(`Syncing ${unsynced.length} records for ${table}...`);
                 
-                // Remove the is_synced flag before sending to Supabase
-                const dataToSync = unsynced.map(item => {
-                    const { is_synced, ...rest } = item;
-                    return rest;
-                });
+                // Chunk size of 50 to avoid payload limits
+                const CHUNK_SIZE = 50;
+                for (let i = 0; i < unsynced.length; i += CHUNK_SIZE) {
+                    const chunk = unsynced.slice(i, i + CHUNK_SIZE);
+                    
+                    // Remove the is_synced flag before sending to Supabase
+                    const dataToSync = chunk.map(item => {
+                        const { is_synced, ...rest } = item;
+                        return rest;
+                    });
 
-                const { error } = await sb.from(table).upsert(dataToSync);
+                    const { error } = await sb.from(table).upsert(dataToSync);
 
-                if (!error) {
-                    // Mark as synced locally
-                    const pk = table === 'students' ? 'student_id' : 'id';
-                    for (const item of unsynced) {
-                        await db[table].update(item[pk], { is_synced: 1 });
+                    if (!error) {
+                        // Mark as synced locally
+                        const pk = table === 'students' ? 'student_id' : 'id';
+                        for (const item of chunk) {
+                            await db[table].update(item[pk], { is_synced: 1 });
+                        }
+                        syncCount += chunk.length;
+                    } else {
+                        console.error(`Sync error for ${table} [Batch ${i/CHUNK_SIZE + 1}]:`, error);
+                        // Optional: trigger event for UI to show error
+                        window.dispatchEvent(new CustomEvent('sync-error', { 
+                            detail: { table, error: error.message || 'Unknown error' } 
+                        }));
                     }
-                    syncCount += unsynced.length;
-                } else {
-                    console.error(`Sync error for ${table}:`, error);
                 }
             }
         } catch (e) {
