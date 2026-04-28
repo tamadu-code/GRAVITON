@@ -2613,8 +2613,8 @@ label {
     to { transform: rotate(360deg); } 
 }  
 
-/* Mobile Responsive Scoring */
-@media (max-width: 768px) {
+/* Mobile Responsive Scoring & UI Components */
+@media (max-width: 1024px) {
     .desktop-only { display: none !important; }
     .mobile-only { display: block !important; }
     
@@ -2698,7 +2698,7 @@ label {
     }
 }
 
-@media (min-width: 769px) {
+@media (min-width: 1025px) {
     .desktop-only { display: table-row-group !important; }
     .mobile-only { display: none !important; }
     .action-bar-mobile { display: none !important; }
@@ -2752,8 +2752,11 @@ label {
         display: flex;
     }
     
+    /* Removed banner-actions hiding to keep 'New Enrolment' button visible */
     .banner-actions {
-        display: none !important;
+        display: flex !important;
+        width: 100%;
+        justify-content: flex-start;
     }
 }
 
@@ -2810,3 +2813,272 @@ label {
 .data-table tr:nth-child(even) {
     background-color: #fafafa;
 }
+
+/* --- Premium Design Tokens & Components --- */
+
+/* Biodata Header Premium */
+.biodata-header-premium {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border-radius: 24px;
+    padding: 2.5rem;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    gap: 2.5rem;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+.biodata-header-premium::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(79, 70, 229, 0.03) 0%, transparent 70%);
+    z-index: 0;
+}
+
+/* Stats Strip */
+.stats-strip {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.stat-mini-card {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 1rem 1.5rem;
+    min-width: 140px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.stat-mini-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--accent-primary);
+}
+
+.stat-mini-card .stat-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    font-family: 'Outfit', sans-serif;
+}
+
+.stat-mini-card .stat-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Faculty Grid & Cards */
+.faculty-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.faculty-card {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 1.5rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    cursor: pointer;
+}
+
+.faculty-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+    border-color: var(--accent-primary);
+}
+
+.faculty-avatar {
+    width: 90px;
+    height: 90px;
+    border-radius: 24px;
+    background: #f1f5f9;
+    margin-bottom: 1.25rem;
+    padding: 4px;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.faculty-card:hover .faculty-avatar {
+    border-color: var(--accent-primary);
+    transform: scale(1.05);
+}
+
+.faculty-details h3 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.faculty-role {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent-primary);
+    background: rgba(79, 70, 229, 0.08);
+    padding: 0.25rem 0.75rem;
+    border-radius: 99px;
+    display: inline-block;
+    margin-bottom: 1rem;
+}
+
+.faculty-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #f8fafc;
+    border-radius: 12px;
+}
+
+.meta-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+}
+
+.meta-label { color: var(--text-muted); font-weight: 600; }
+.meta-value { color: var(--text-secondary); font-weight: 700; }
+
+.faculty-actions {
+    display: flex;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.faculty-actions button {
+    flex: 1;
+}
+
+/* Mastersheet Table */
+.mastersheet-container {
+    background: white;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    margin-top: 1.5rem;
+}
+
+.mastersheet-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+
+.mastersheet-table th, 
+.mastersheet-table td {
+    padding: 0.75rem 1rem;
+    border: 1px solid #f1f5f9;
+    text-align: center;
+}
+
+.mastersheet-table th {
+    background: #f8fafc;
+    font-weight: 800;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    letter-spacing: 0.5px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.mastersheet-table td:first-child,
+.mastersheet-table th:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: white;
+    z-index: 11;
+    font-weight: 700;
+    border-right: 2px solid #f1f5f9;
+}
+
+.mastersheet-table th:first-child { background: #f8fafc; }
+
+.mastersheet-table tr:hover td {
+    background: #f1f5f9;
+}
+
+.score-cell {
+    font-weight: 600;
+}
+
+.total-cell-premium {
+    background: #eff6ff !important;
+    font-weight: 800 !important;
+    color: var(--accent-primary) !important;
+}
+
+.grade-cell-premium {
+    font-weight: 800;
+}
+
+.grade-A { color: #059669; }
+.grade-C { color: #d97706; }
+.grade-F { color: #dc2626; }
+
+/* Dashboard Premium Widgets */
+.teacher-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+}
+
+.timetable-card {
+    background: white;
+    border-radius: 20px;
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+}
+
+.timetable-item {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.time-slot {
+    min-width: 80px;
+    font-weight: 700;
+    color: var(--accent-primary);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+    animation: fadeInUp 0.5s ease forwards;
+}
+

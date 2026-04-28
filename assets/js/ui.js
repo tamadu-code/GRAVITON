@@ -5,7 +5,7 @@
 console.log('UI Module Loading...');
 
 import db, { prepareForSync } from './db.js';
-import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF } from './utils.js';
+import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet } from './utils.js';
 import { syncToCloud, syncFromCloud } from './supabase-client.js';
 
 export const UI = {
@@ -36,6 +36,27 @@ export const UI = {
                 if (extraHeader) extraHeader.innerHTML = '';
             } catch (e) { console.warn('Failed to clear extra header:', e); }
 
+            // RBAC: Check Teacher Restrictions
+            const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
+            const restrictedForTeachers = ['classes', 'subjects', 'academic', 'bulkimport', 'staff', 'promotion', 'config'];
+            
+            if (isTeacher && restrictedForTeachers.includes(viewName)) {
+                this.contentArea.innerHTML = `
+                    <div class="view-container" style="display: flex; align-items: center; justify-content: center; height: 70vh;">
+                        <div class="text-center" style="max-width: 400px;">
+                            <div style="background: #fee2e2; color: #ef4444; width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+                                <i data-lucide="shield-alert" style="width: 40px; height: 40px;"></i>
+                            </div>
+                            <h2 class="text-2xl font-bold mb-1">Access Restricted</h2>
+                            <p class="text-secondary">Teachers are not authorized to access the <strong>${viewName}</strong> module. Please contact the administrator for assistance.</p>
+                            <button class="btn btn-primary mt-3" onclick="UI.renderView('dashboard')">Back to Dashboard</button>
+                        </div>
+                    </div>
+                `;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                return;
+            }
+
             // Render specific view
             switch(viewName) {
                 case 'dashboard': await this.renderDashboard(); break;
@@ -47,6 +68,8 @@ export const UI = {
                 case 'gradebook': await this.renderGrades(); break;
                 case 'attendance': await this.renderAttendance(); break;
                 case 'reports': await this.renderReports(); break;
+                case 'staff': await this.renderStaff(); break;
+                case 'cbt': await this.renderCBT(); break;
                 case 'promotion': await this.renderPromotionEngine(); break;
                 case 'config': await this.renderSettings(); break;
                 default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
@@ -278,51 +301,109 @@ export const UI = {
                                 <span style="width: 12px; height: 12px; background: #10b981; border-radius: 50%; box-shadow: 0 0 12px #10b981;"></span>
                                 <span style="font-weight: 600;">Systems Operational</span>
                             </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    async renderTeacherDashboard() {
+        const studentCount = await db.students.count();
+        const attendance = await db.attendance.toArray();
+        const today = new Date().toISOString().split('T')[0];
+        const todayAtt = attendance.filter(a => a.date === today);
+        const presentToday = todayAtt.filter(a => a.status === 'Present').length;
+        const attendancePct = todayAtt.length > 0 ? Math.round((presentToday / todayAtt.length) * 100) : 0;
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in-up">
+                <header class="view-header" style="margin-bottom: 2rem;">
+                    <h1 class="text-3xl font-extrabold" style="font-family: 'Outfit', sans-serif;">Teacher Analytics</h1>
+                    <p class="text-secondary">Welcome back, <span class="font-bold text-primary">${this.currentUser.name}</span>. Here is your academic overview.</p>
+                </header>
+
+                <div class="teacher-stats-grid mb-2">
+                    <div class="stat-mini-card">
+                        <span class="stat-label">Assigned Students</span>
+                        <span class="stat-value">${studentCount}</span>
+                    </div>
+                    <div class="stat-mini-card">
+                        <span class="stat-label">Today's Attendance</span>
+                        <span class="stat-value" style="color: ${attendancePct > 90 ? 'var(--accent-success)' : 'var(--accent-warning)'}">${attendancePct}%</span>
+                    </div>
+                    <div class="stat-mini-card">
+                        <span class="stat-label">Active Courses</span>
+                        <span class="stat-value">6</span>
+                    </div>
+                    <div class="stat-mini-card">
+                        <span class="stat-label">Pending Grades</span>
+                        <span class="stat-value" style="color: var(--accent-danger);">12</span>
+                    </div>
+                </div>
+
+                <div class="dashboard-main-grid">
+                    <div class="card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h3 style="margin: 0;"><i data-lucide="calendar"></i> Today's Schedule</h3>
+                            <span class="badge" style="background: #f1f5f9; color: #475569;">Tuesday, 28th April</span>
+                        </div>
+                        <div class="timetable-card">
+                            <div class="timetable-item">
+                                <div class="time-slot">08:30 AM</div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 700;">Mathematics</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted);">JSS 3A | Room 102</div>
+                                </div>
+                                <span class="badge success">Active</span>
+                            </div>
+                            <div class="timetable-item">
+                                <div class="time-slot">10:45 AM</div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 700;">Further Maths</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted);">SSS 2 Science | Lab 4</div>
+                                </div>
+                            </div>
+                            <div class="timetable-item" style="border: none;">
+                                <div class="time-slot">01:15 PM</div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 700;">Data Processing</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted);">SSS 1 Commercial | IT Suite</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="mb-1"><i data-lucide="zap"></i> Quick Actions</h3>
+                        <div class="action-grid mt-1">
+                            <button class="action-btn" onclick="UI.renderView('attendance')" style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 16px;">
+                                <div class="icon-wrapper" style="background: white; padding: 1rem; border-radius: 12px; margin-bottom: 0.5rem;"><i data-lucide="check-square"></i></div>
+                                <span style="font-weight: 700;">Attendance</span>
+                            </button>
+                            <button class="action-btn" onclick="UI.renderView('gradebook')" style="background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; border-radius: 16px;">
+                                <div class="icon-wrapper" style="background: white; padding: 1rem; border-radius: 12px; margin-bottom: 0.5rem;"><i data-lucide="award"></i></div>
+                                <span style="font-weight: 700;">Grading</span>
+                            </button>
+                            <button class="action-btn" onclick="UI.renderView('reports')" style="background: #fdf2f8; border: 1px solid #fbcfe8; color: #9d174d; border-radius: 16px;">
+                                <div class="icon-wrapper" style="background: white; padding: 1rem; border-radius: 12px; margin-bottom: 0.5rem;"><i data-lucide="file-text"></i></div>
+                                <span style="font-weight: 700;">Reports</span>
+                            </button>
+                        </div>
+                        
+                        <div style="margin-top: 2rem; padding: 1.5rem; background: #fafafa; border-radius: 16px; border: 1px solid #f1f5f9;">
+                            <h4 style="font-size: 0.9rem; margin-bottom: 0.75rem;">Performance Trend</h4>
+                            <div style="height: 100px; display: flex; align-items: flex-end; gap: 4px;">
+                                ${[40, 65, 55, 85, 75, 90, 80].map(h => `<div style="flex: 1; height: ${h}%; background: var(--accent-primary); border-radius: 4px 4px 0 0; opacity: 0.6;"></div>`).join('')}
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.7rem; color: var(--text-muted); font-weight: 700;">
+                                <span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
-    },
-
-    async renderTeacherDashboard() {
-        this.contentArea.innerHTML = `
-            <div class="dashboard-grid">
-                <div class="stats-grid mb-2">
-                    <div class="card stat-card secondary-gradient" style="grid-column: span 2;">
-                        <div class="stat-icon"><i data-lucide="user"></i></div>
-                        <div class="stat-info">
-                            <h3>Welcome Back,</h3>
-                            <p class="stat-value" style="font-size: 1.4rem;">${this.currentUser.name}</p>
-                        </div>
-                    </div>
-                    <div class="card stat-card accent-gradient" style="grid-column: span 2;">
-                        <div class="stat-icon"><i data-lucide="calendar"></i></div>
-                        <div class="stat-info">
-                            <h3>Today is</h3>
-                            <p class="stat-value" style="font-size: 1.2rem;">${new Date().toLocaleDateString()}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="dashboard-grid main-dashboard-row">
-                    <div class="card quick-actions">
-                        <h3><i data-lucide="zap"></i> Teacher Actions</h3>
-                        <div class="action-grid mt-2">
-                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'attendance\\']').click()">
-                                <div class="icon-wrapper bg-warning-light"><i data-lucide="check-square" class="text-warning"></i></div>
-                                <span>Mark Attendance</span>
-                            </button>
-                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'gradebook\\']').click()">
-                                <div class="icon-wrapper bg-primary-light"><i data-lucide="award" class="text-primary"></i></div>
-                                <span>Enter Grades</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
     },
 
     async renderParentDashboard() {
@@ -360,291 +441,6 @@ export const UI = {
     /**
      * Bulk Data Import View
      */
-    async renderBulkImport() {
-        this.contentArea.innerHTML = `
-            <div class="view-container">
-                <div class="page-header mb-2">
-                    <h1 class="text-3xl font-bold" style="font-family: 'Outfit', sans-serif;">Bulk Data Utility</h1>
-                    <p class="text-secondary text-lg">Import Students, Subjects, and Scores from an Excel Workbook (.xlsx)</p>
-                </div>
-
-                <div class="import-grid">
-                    <div class="upload-card">
-                        <h3 class="mb-1 font-bold text-xl">1. Prepare Workbook</h3>
-                        <p class="text-secondary mb-3">Ensure your Excel sheets are named exactly as "Students", "Subjects", or "Scores".</p>
-                        
-                        <div id="dropzone" class="dropzone">
-                            <div class="icon-circle mb-2" style="width: 80px; height: 80px; background: #eff6ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
-                                <i data-lucide="file-spreadsheet" style="width: 40px; height: 40px; color: #2563eb;"></i>
-                            </div>
-                            <p class="font-semibold text-lg">Drag & drop your Excel file here</p>
-                            <p class="text-secondary text-sm">or click the button below to browse</p>
-                            <input type="file" id="bulk-file-input" accept=".xlsx, .xls" style="display: none;">
-                            <button class="btn btn-primary mt-2 px-3 py-1" onclick="document.getElementById('bulk-file-input').click()" style="border-radius: 12px;">Browse Files</button>
-                        </div>
-
-                        <button id="run-import-btn" class="btn btn-primary w-full mt-2 py-1-5 text-lg font-bold" disabled style="background: #1e3a8a; border-radius: 16px;">
-                            Initialize Import Engine
-                        </button>
-
-                        <div class="mt-4 p-2 bg-slate-50 rounded-2xl border border-slate-100">
-                            <h4 class="font-bold text-sm mb-1 uppercase tracking-wider text-slate-500">Supported Headers</h4>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div class="text-xs">
-                                    <strong class="text-slate-700">STUDENTS:</strong><br>
-                                    NAMES, CLASS, SERIAL NO, SEX
-                                </div>
-                                <div class="text-xs">
-                                    <strong class="text-slate-700">SUBJECTS:</strong><br>
-                                    TITLE, CLASS
-                                </div>
-                                <div class="text-xs" style="grid-column: span 2; margin-top: 0.5rem;">
-                                    <strong class="text-slate-700">SCORES:</strong><br>
-                                    NAMES, SUBJECTS, CLASS, TERM, SESSION, ASSIGNMENT, TEST 1, TEST 2, PROJECT, EXAM
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="log-card">
-                        <div class="log-header" style="background: #f8fafc; padding: 1.25rem 1.5rem;">
-                            <span class="font-bold text-slate-700">Import Runtime Console</span>
-                            <button class="btn btn-secondary btn-sm" id="clear-logs" style="border-radius: 8px;">Flush Logs</button>
-                        </div>
-                        <div id="import-log-content" class="log-content" style="background: #ffffff;">
-                            <div class="text-slate-400 italic">Console idling. Waiting for file...</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        const logContent = document.getElementById('import-log-content');
-        const fileInput = document.getElementById('bulk-file-input');
-        const runBtn = document.getElementById('run-import-btn');
-        let selectedFile = null;
-
-        const addLog = (msg, type = 'info') => {
-            if (logContent.querySelector('.italic')) logContent.innerHTML = '';
-            const entry = document.createElement('div');
-            entry.className = `log-entry ${type}`;
-            entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            logContent.appendChild(entry);
-            logContent.scrollTop = logContent.scrollHeight;
-        };
-
-        fileInput.addEventListener('change', (e) => {
-            selectedFile = e.target.files[0];
-            if (selectedFile) {
-                addLog(`File selected: ${selectedFile.name}`, 'info');
-                runBtn.disabled = false;
-            }
-        });
-
-        runBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
-            runBtn.disabled = true;
-            runBtn.textContent = 'Processing...';
-            addLog('Starting import process...', 'info');
-
-            try {
-                // Use the shared parseExcel utility
-                const workbook = await parseExcel(selectedFile);
-                
-                // Process Students
-                if (workbook.Students) {
-                    addLog(`Processing ${workbook.Students.length} student records...`, 'info');
-                    const students = [];
-                    const classesToCreate = new Set();
-                    
-                    for (const s of workbook.Students) {
-                        const getVal = (keys) => {
-                            const foundKey = Object.keys(s).find(k => keys.includes(k.toUpperCase().replace(/\s/g, '')));
-                            return foundKey ? s[foundKey] : null;
-                        };
-
-                        // Specific matches for the user's requested format: NAMES, CLASS, SERIAL NO, SEX
-                        const name = getVal(['NAMES', 'NAME', 'FULLNAME', 'STUDENTNAME']);
-                        if (!name) continue;
-
-                        const className = getVal(['CLASS', 'STREAM', 'LEVEL', 'STREAMS']) || 'Unassigned';
-                        classesToCreate.add(className);
-                        
-                        students.push({
-                            student_id: getVal(['SERIALNO', 'SERIAL', 'ID', 'ADMISSIONNO', 'SN']) || `S${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-                            name: name,
-                            class_name: className,
-                            gender: getVal(['SEX', 'GENDER', 'GENDERIDENTITY']) || 'Not Specified',
-                            status: 'Active',
-                            is_synced: 0,
-                            updated_at: new Date().toISOString()
-                        });
-                    }
-                    
-                    // Smart Class Creation
-                    const existingClasses = await db.classes.toArray();
-                    const existingClassNames = new Set(existingClasses.map(c => c.name));
-                    const newClasses = [];
-                    for (const c of classesToCreate) {
-                        if (!existingClassNames.has(c)) {
-                            newClasses.push({
-                                id: `C${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-                                name: c,
-                                level: 'Unspecified',
-                                is_synced: 0,
-                                updated_at: new Date().toISOString()
-                            });
-                        }
-                    }
-                    
-                    if (newClasses.length > 0) {
-                        await db.classes.bulkPut(newClasses);
-                        addLog(`Smart Creation: Generated ${newClasses.length} missing classes automatically.`, 'success');
-                    }
-                    
-                    // Upsert handles both inserts and updates natively in Dexie
-                    await db.students.bulkPut(students);
-                    addLog(`Successfully upserted ${students.length} students.`, 'success');
-                } else {
-                    addLog('No "Students" sheet found.', 'warning');
-                }
-
-                // Process Subjects (Deduplicated)
-                if (workbook.Subjects) {
-                    addLog(`Processing ${workbook.Subjects.length} subject records...`, 'info');
-                    
-                    const uniqueSubjects = new Map();
-                    const assignments = [];
-                    
-                    for (const s of workbook.Subjects) {
-                        const getVal = (keys) => {
-                            const foundKey = Object.keys(s).find(k => keys.includes(k.toUpperCase().replace(/\s/g, '')));
-                            return foundKey ? s[foundKey] : null;
-                        };
-                        
-                        const name = getVal(['TITLE', 'NAME', 'SUBJECT', 'COURSETITLE']);
-                        if (!name) continue;
-                        
-                        const className = getVal(['CLASS', 'STREAM', 'LEVEL', 'STREAMS']) || 'All';
-                        
-                        let subjectId;
-                        const lowerName = name.toLowerCase();
-                        
-                        if (uniqueSubjects.has(lowerName)) {
-                            subjectId = uniqueSubjects.get(lowerName).id;
-                        } else {
-                            const existing = await db.subjects.where('name').equalsIgnoreCase(name).first();
-                            if (existing) {
-                                subjectId = existing.id;
-                            } else {
-                                subjectId = `SUB${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-                                uniqueSubjects.set(lowerName, {
-                                    id: subjectId,
-                                    name: name,
-                                    type: getVal(['TYPE', 'CATEGORY', 'MODULETYPE']) || 'Core',
-                                    credits: getVal(['UNITS', 'CREDITS', 'LOAD', 'CREDITLOAD']) || 1,
-                                    is_synced: 0,
-                                    updated_at: new Date().toISOString()
-                                });
-                            }
-                        }
-                        
-                        assignments.push({
-                            id: `ASG_${subjectId}_${className.replace(/\s/g, '')}`,
-                            subject_id: subjectId,
-                            class_name: className,
-                            is_synced: 0,
-                            updated_at: new Date().toISOString()
-                        });
-                    }
-                    
-                    if (uniqueSubjects.size > 0) {
-                        await db.subjects.bulkPut(Array.from(uniqueSubjects.values()));
-                    }
-                    if (assignments.length > 0) {
-                        await db.subject_assignments.bulkPut(assignments);
-                    }
-                    
-                    addLog(`Smart Deduplication: Processed ${uniqueSubjects.size} unique school subjects across ${assignments.length} class assignments.`, 'success');
-                }
-
-                // Process Scores
-                if (workbook.Scores) {
-                    addLog(`Processing ${workbook.Scores.length} score records...`, 'info');
-                    const allStudents = await db.students.toArray();
-                    const allSubjects = await db.subjects.toArray();
-                    let matched = 0, skipped = 0;
-
-                    for (const row of workbook.Scores) {
-                        const studentName = (row['NAMES'] || '').trim();
-                        const subjectName = (row['SUBJECTS'] || '').trim();
-                        const className = (row['CLASS'] || '').trim();
-
-                        if (!studentName || !subjectName) { skipped++; continue; }
-
-                        // Try to match the student
-                        const student = allStudents.find(s => 
-                            s.name.toLowerCase() === studentName.toLowerCase() && 
-                            (!className || s.class_name === className)
-                        );
-                        const subject = allSubjects.find(s => 
-                            s.name.toLowerCase() === subjectName.toLowerCase()
-                        );
-
-                        if (!student) { 
-                            addLog(`Skipped score: Student "${studentName}" not found.`, 'warning'); 
-                            skipped++; continue; 
-                        }
-
-                        const assignment = parseFloat(row['ASSIGNMENT']) || 0;
-                        const test1 = parseFloat(row['TEST 1']) || 0;
-                        const test2 = parseFloat(row['TEST 2']) || 0;
-                        const project = parseFloat(row['PROJECT']) || 0;
-                        const exam = parseFloat(row['EXAM']) || 0;
-                        const ca = assignment + test1 + test2 + project;
-                        const total = ca + exam;
-
-                        await db.scores.put({
-                            id: `SCR_${student.student_id}_${(subject ? subject.id : subjectName.replace(/\s/g, ''))}_${(row['TERM'] || '1st').replace(/\s/g, '')}`,
-                            student_id: student.student_id,
-                            subject_id: subject ? subject.id : subjectName,
-                            class_name: className || student.class_name,
-                            term: row['TERM'] || '1st',
-                            session: row['SESSION'] || '',
-                            assignment: assignment,
-                            test1: test1,
-                            test2: test2,
-                            project: project,
-                            exam: exam,
-                            ca: ca,
-                            total: total,
-                            is_synced: 0,
-                            updated_at: new Date().toISOString()
-                        });
-                        matched++;
-                    }
-
-                    addLog(`Scores processed: ${matched} matched, ${skipped} skipped.`, matched > 0 ? 'success' : 'warning');
-                }
-
-                Notifications.show('Bulk import completed successfully. Synchronizing...', 'info');
-                await syncToCloud();
-                Notifications.show('Cloud synchronization complete.', 'success');
-            } catch (err) {
-                addLog(`Import Error: ${err.message}`, 'error');
-                Notifications.show('Import failed: ' + err.message, 'error');
-            } finally {
-                runBtn.disabled = false;
-                runBtn.textContent = 'Run Import Now';
-            }
-        });
-
-        document.getElementById('clear-logs').onclick = () => {
-            logContent.innerHTML = '<div class="text-slate-400 italic">Waiting for action...</div>';
-        };
-
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    },
 
 
 
@@ -1120,6 +916,7 @@ export const UI = {
     },
 
     async renderStudents() {
+        const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
         const students = (await db.students.toArray()).sort((a,b) => a.name.localeCompare(b.name));
         const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
         
@@ -1141,9 +938,11 @@ export const UI = {
                         </div>
                     </div>
                     <div class="banner-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        ${!isTeacher ? `
                         <button id="btn-add-student" class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; font-weight: 700; font-size: 0.75rem;">
                             <i data-lucide="user-plus" style="width: 14px;"></i> New Enrolment
                         </button>
+                        ` : ''}
                         <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); font-size: 0.75rem;">
                             <i data-lucide="printer" style="width: 14px;"></i> Credentials
                         </button>
@@ -1427,8 +1226,10 @@ export const UI = {
                                 <p style="font-size: 1.1rem; color: #64748b; margin-top: 0.25rem;">${student.class_name} • Junior Secondary Stream</p>
                             </div>
                              <div style="display: flex; gap: 1rem;">
+                                 ${!((this.currentUser.role || '').toLowerCase() === 'teacher') ? `
                                  <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
                                  <button id="btn-delete-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
+                                 ` : ''}
                              </div>
                         </div>
                     </div>
@@ -1800,9 +1601,22 @@ export const UI = {
     },
 
     async renderGrades() {
-        const students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-        const classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-        const subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
+        const teacherId = this.currentUser.id;
+        
+        let students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        let classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        let subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        
+        // --- Teacher Specific Filtering ---
+        if (isTeacher) {
+            const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
+            const assignedClassNames = [...new Set(assignments.map(a => a.class_name))];
+            const assignedSubjectIds = [...new Set(assignments.map(a => a.subject_id))];
+            
+            classes = classes.filter(c => assignedClassNames.includes(c.name));
+            subjects = subjects.filter(s => assignedSubjectIds.includes(s.id));
+        }
         
         this.contentArea.innerHTML = `
             <div class="view-container" style="padding: 1.5rem; background: #f8fafc;">
@@ -2206,7 +2020,10 @@ export const UI = {
             }
             
             // Dynamically load subjects assigned to this specific class
-            const assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
+            let assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
+            if (isTeacher) {
+                assignments = assignments.filter(a => a.teacher_id === teacherId);
+            }
             const assignedIds = new Set(assignments.map(a => a.subject_id));
             const availableSubjects = subjects.filter(s => assignedIds.has(s.id));
             
@@ -2694,8 +2511,21 @@ export const UI = {
     },
 
     async renderAttendance() {
-        const students = (await db.students.toArray()).sort((a,b) => a.name.localeCompare(b.name));
-        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
+        const teacherId = this.currentUser.id;
+        
+        let students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        let classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        let subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        
+        if (isTeacher) {
+            const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
+            const assignedClassNames = [...new Set(assignments.map(a => a.class_name))];
+            classes = classes.filter(c => assignedClassNames.includes(c.name));
+            
+            const assignedSubjectIds = [...new Set(assignments.map(a => a.subject_id))];
+            subjects = subjects.filter(s => assignedSubjectIds.includes(s.id));
+        }
         
         this.contentArea.innerHTML = `
             <div class="view-container">
@@ -2704,18 +2534,16 @@ export const UI = {
                         <h1 class="banner-title"><i data-lucide="check-circle"></i> Daily Attendance</h1>
                         <p class="banner-subtitle">Track and manage daily presence across all academic levels.</p>
                     </div>
-                    <div style="display: flex; gap: 0.75rem;">
-                        <button id="btn-export-attendance" class="btn btn-secondary" style="border-radius: 10px; padding: 0.5rem 1rem; font-size: 0.85rem; color: white;">
-                            <i data-lucide="download" style="width: 14px;"></i> Export
-                        </button>
-                    </div>
                 </div>
 
                 <div class="card" style="border-radius: 12px; padding: 1rem;">
                     <div class="actions-bar mb-1" style="display: flex; gap: 1rem; flex-wrap: wrap;">
                         <select id="attendance-class-filter" class="input" style="height: 40px;">
-                            <option value="">Select Class</option>
+                            <option value="">Select Stream</option>
                             ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                        </select>
+                        <select id="attendance-subject-filter" class="input" style="height: 40px;">
+                            <option value="">Select Course</option>
                         </select>
                         <input type="date" id="attendance-date" class="input" value="${new Date().toISOString().split('T')[0]}" style="height: 40px;">
                         <button id="btn-save-attendance" class="btn btn-primary" style="height: 40px; border-radius: 10px;">Save Attendance</button>
@@ -2725,45 +2553,206 @@ export const UI = {
                         <table class="data-table">
                             <thead><tr><th>ID</th><th>Student Name</th><th>Status</th></tr></thead>
                             <tbody id="attendance-list-body">
-                                <tr><td colspan="3" class="text-center p-4">Select a class to start tracking</td></tr>
+                                <tr><td colspan="3" class="text-center p-4">Select a class and course to start tracking</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
         `;
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        const classFilter = document.getElementById('attendance-class-filter');
+        const subFilter = document.getElementById('attendance-subject-filter');
+        const listBody = document.getElementById('attendance-list-body');
+
+        classFilter.onchange = async () => {
+            const cls = classFilter.value;
+            if (!cls) {
+                subFilter.innerHTML = '<option value="">Select Course</option>';
+                return;
+            }
+            
+            let assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
+            if (isTeacher) assignments = assignments.filter(a => a.teacher_id === teacherId);
+            
+            const assignedIds = new Set(assignments.map(a => a.subject_id));
+            const availableSubs = subjects.filter(s => assignedIds.has(s.id));
+            
+            subFilter.innerHTML = '<option value="">Select Course</option>' + 
+                availableSubs.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+            
+            if (availableSubs.length > 0) {
+                subFilter.value = availableSubs[0].id;
+                subFilter.dispatchEvent(new Event('change'));
+            }
+        };
+
+        subFilter.onchange = async () => {
+            const cls = classFilter.value;
+            if (!cls) return;
+            
+            const targetStudents = students.filter(s => s.class_name === cls);
+            listBody.innerHTML = targetStudents.map(s => `
+                <tr>
+                    <td>${s.student_id}</td>
+                    <td>${s.name}</td>
+                    <td>
+                        <select class="input attendance-status" data-student-id="${s.student_id}">
+                            <option value="Present">Present</option>
+                            <option value="Absent">Absent</option>
+                            <option value="Late">Late</option>
+                        </select>
+                    </td>
+                </tr>
+            `).join('');
+        };
+        
+        document.getElementById('btn-save-attendance').onclick = async () => {
+            const cls = classFilter.value;
+            const subId = subFilter.value;
+            const date = document.getElementById('attendance-date').value;
+            
+            if (!cls || !subId || !date) {
+                Notifications.show('Please select class, course and date', 'warning');
+                return;
+            }
+            
+            const statuses = document.querySelectorAll('.attendance-status');
+            const attendanceRecords = Array.from(statuses).map(sel => ({
+                id: `ATT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                student_id: sel.dataset.studentId,
+                subject_id: subId,
+                date: date,
+                status: sel.value,
+                class_name: cls
+            }));
+            
+            for (const record of attendanceRecords) {
+                await db.attendance.put(prepareForSync(record));
+            }
+            
+            Notifications.show('Attendance saved successfully', 'success');
+            syncToCloud();
+        };
     },
 
 
 
     async renderReports() {
         const students = await db.students.toArray();
+        const classes = await db.classes.toArray();
         
         this.contentArea.innerHTML = `
-            <div class="actions-bar mb-2">
-                <input type="text" id="report-search" placeholder="Search student for report..." class="input">
-            </div>
-            
-            <div class="grid" id="report-list">
-                ${students.map(s => `
-                    <div class="card student-report-card">
-                        <h3>${s.name}</h3>
-                        <p class="text-secondary">${s.student_id} | ${s.class_name}</p>
-                        <button class="btn btn-primary mt-2 generate-pdf" data-id="${s.student_id}">
-                            <i data-lucide="file-down"></i> Generate Report Card
-                        </button>
+            <div class="view-container">
+                <header class="view-header">
+                    <h1 class="text-2xl font-bold">Reports Intelligence</h1>
+                    <p class="text-secondary">Generate academic report cards and master results sheets.</p>
+                </header>
+
+                <div class="tabs mb-2">
+                    <button class="tab-btn active" data-report-tab="individual">Individual Reports</button>
+                    <button class="tab-btn" data-report-tab="mastersheet">Master Sheets</button>
+                </div>
+
+                <div id="report-tab-content">
+                    <!-- Individual Reports -->
+                    <div id="individual-reports" class="report-section">
+                        <div class="actions-bar mb-2">
+                            <input type="text" id="report-search" placeholder="Search student for report..." class="input" style="width: 100%; max-width: 400px;">
+                        </div>
+                        
+                        <div class="grid" id="report-list">
+                            ${students.map(s => `
+                                <div class="card student-report-card" data-student-name="${s.name.toLowerCase()}">
+                                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                                        <div class="user-avatar-small" style="background: #eff6ff; color: #2563eb;">${s.name.charAt(0)}</div>
+                                        <div>
+                                            <h3 style="font-size: 1rem; margin: 0;">${s.name}</h3>
+                                            <p class="text-secondary" style="font-size: 0.8rem; margin: 0;">${s.student_id} | ${s.class_name}</p>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-primary w-full generate-pdf" data-id="${s.student_id}">
+                                        <i data-lucide="file-down"></i> Generate Report
+                                    </button>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
-                `).join('')}
+
+                    <!-- Master Sheets -->
+                    <div id="mastersheet-reports" class="report-section" style="display: none;">
+                        <div class="card" style="max-width: 600px; margin: 0 auto;">
+                            <h3 class="mb-1">Generate Master Result Sheet</h3>
+                            <p class="text-secondary mb-2">Generate a comprehensive results matrix for an entire class.</p>
+                            
+                            <div class="form-group mb-1">
+                                <label>Select Stream</label>
+                                <select id="master-class-filter" class="input w-100">
+                                    <option value="">Choose a class...</option>
+                                    ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-1 mb-2">
+                                <div>
+                                    <label>Term</label>
+                                    <select id="master-term-filter" class="input w-100">
+                                        <option value="1st Term">1st Term</option>
+                                        <option value="2nd Term">2nd Term</option>
+                                        <option value="3rd Term">3rd Term</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label>Session</label>
+                                    <select id="master-session-filter" class="input w-100">
+                                        <option value="2025/2026">2025/2026</option>
+                                        <option value="2024/2025">2024/2025</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <button id="btn-generate-mastersheet" class="btn btn-primary w-full py-1">
+                                <i data-lucide="layout-grid"></i> Generate Mastersheet Matrix
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
 
+        // Search logic
+        const searchInput = document.getElementById('report-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                document.querySelectorAll('.student-report-card').forEach(card => {
+                    const name = card.dataset.studentName;
+                    card.style.display = name.includes(term) ? 'block' : 'none';
+                });
+            });
+        }
+
+        // Tab logic
+        document.querySelectorAll('[data-report-tab]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('[data-report-tab]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                const tab = btn.dataset.reportTab;
+                document.getElementById('individual-reports').style.display = tab === 'individual' ? 'block' : 'none';
+                document.getElementById('mastersheet-reports').style.display = tab === 'mastersheet' ? 'block' : 'none';
+            });
+        });
+
+        // Individual PDF Generation
         document.querySelectorAll('.generate-pdf').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const id = btn.dataset.id;
                 const student = await db.students.get(id);
                 const scores = await db.scores.where('student_id').equals(id).toArray();
                 
-                // Fetch subject names for scores
                 for (const score of scores) {
                     const sub = await db.subjects.get(score.subject_id);
                     score.subject_name = sub ? sub.name : 'Unknown Subject';
@@ -2773,6 +2762,90 @@ export const UI = {
                 await generateReportCard(student, scores, { name: 'GRAVITON ACADEMY', address: 'Academic Excellence Through Logic' });
             });
         });
+
+        // Mastersheet Generation
+        const btnMaster = document.getElementById('btn-generate-mastersheet');
+        if (btnMaster) {
+            btnMaster.addEventListener('click', async () => {
+                const className = document.getElementById('master-class-filter').value;
+                const term = document.getElementById('master-term-filter').value;
+                const session = document.getElementById('master-session-filter').value;
+                
+                if (!className) return Notifications.show('Please select a class', 'warning');
+                
+                Notifications.show('Compiling mastersheet data...', 'info');
+                
+                const classStudents = await db.students.where('class_name').equals(className).toArray();
+                const classScores = await db.scores.where('class_name').equals(className).toArray();
+                const termScores = classScores.filter(s => s.term === term && s.session === session);
+                
+                // Get unique subjects for this class
+                const subjectIds = [...new Set(termScores.map(s => s.subject_id))];
+                const classSubjects = [];
+                for (const sid of subjectIds) {
+                    const sub = await db.subjects.get(sid);
+                    if (sub) classSubjects.push(sub);
+                }
+                
+                if (classStudents.length === 0) return Notifications.show('No students found in this class', 'error');
+                
+                await generateMastersheet(className, classStudents, classSubjects, termScores, term, session);
+                Notifications.show('Mastersheet generated!', 'success');
+            });
+        }
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async renderStaff() {
+        const profiles = await db.profiles.toArray();
+        const teachers = profiles.filter(p => p.role === 'Teacher' || p.role === 'Admin');
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container">
+                <header class="view-header">
+                    <h1 class="text-2xl font-bold">Faculty Directory</h1>
+                    <p class="text-secondary">Manage school staff and instructional assignments.</p>
+                </header>
+
+                <div class="faculty-grid">
+                    ${teachers.map(t => `
+                        <div class="faculty-card animate-fade-in-up">
+                            <div class="faculty-avatar">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${t.full_name || t.username}" alt="${t.full_name}">
+                            </div>
+                            <div class="faculty-details">
+                                <h3>${t.full_name || t.username}</h3>
+                                <span class="faculty-role">${t.role}</span>
+                                <div class="faculty-meta">
+                                    <div class="meta-item">
+                                        <span class="meta-label">Email:</span>
+                                        <span class="meta-value">${t.username}@school.com</span>
+                                    </div>
+                                    <div class="meta-item">
+                                        <span class="meta-label">ID:</span>
+                                        <span class="meta-value">${t.id.substring(0, 8)}</span>
+                                    </div>
+                                </div>
+                                <div class="faculty-actions">
+                                    <button class="btn btn-secondary btn-sm"><i data-lucide="mail"></i> Message</button>
+                                    <button class="btn btn-primary btn-sm"><i data-lucide="user-cog"></i> Profile</button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                    
+                    <div class="faculty-card" style="border: 2px dashed var(--border-color); background: transparent; justify-content: center;">
+                        <div class="header-icon" style="background: var(--bg-card-hover); padding: 1.5rem; border-radius: 50%; color: var(--accent-primary); margin-bottom: 1rem;">
+                            <i data-lucide="user-plus" style="width: 32px; height: 32px;"></i>
+                        </div>
+                        <h3>Add Staff Member</h3>
+                        <p class="text-secondary" style="font-size: 0.8rem;">Invite new faculty members</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     async renderPromotionEngine() {
@@ -2864,5 +2937,99 @@ export const UI = {
             
             Notifications.show('Settings saved. Please refresh the page to apply.', 'success');
         });
-    }
+    },
+
+    async renderCBT() {
+        const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
+        const teacherId = this.currentUser.id;
+        
+        let subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        let classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        let exams = await db.cbt_exams.toArray();
+
+        if (isTeacher) {
+            const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
+            const assignedSubIds = new Set(assignments.map(a => a.subject_id));
+            subjects = subjects.filter(s => assignedSubIds.has(s.id));
+            
+            const assignedClasses = new Set(assignments.map(a => a.class_name));
+            classes = classes.filter(c => assignedClasses.has(c.name));
+            
+            exams = exams.filter(e => e.teacher_id === teacherId);
+        }
+
+        this.contentArea.innerHTML = `
+            <div class="view-container">
+                <div class="page-banner" style="background: linear-gradient(135deg, #4338ca 0%, #312e81 100%);">
+                    <div class="banner-content">
+                        <h1 class="banner-title"><i data-lucide="monitor"></i> CBT Exam Hub</h1>
+                        <p class="banner-subtitle">Create, manage, and monitor computer-based tests.</p>
+                    </div>
+                    <button id="btn-create-exam" class="btn btn-primary" style="background: white; color: #4338ca; border: none; font-weight: 800;">
+                        <i data-lucide="plus-square"></i> New Exam
+                    </button>
+                </div>
+
+                <div class="card mt-1" style="border-radius: 12px; padding: 1rem;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Title</th><th>Course</th><th>Stream</th><th>Questions</th><th>Duration</th><th>Status</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="exam-list-body">
+                                ${exams.length === 0 ? '<tr><td colspan="7" class="text-center p-4">No exams found. Create one to begin.</td></tr>' : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Exam creation logic
+        document.getElementById('btn-create-exam').onclick = () => {
+            const modalHtml = `
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    <input type="text" id="exam-title" class="input" placeholder="Exam Title (e.g. Mid-Term Quiz)">
+                    <select id="exam-subject" class="input">
+                        ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                    </select>
+                    <select id="exam-class" class="input">
+                        ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                    </select>
+                    <div style="display: flex; gap: 1rem;">
+                        <input type="number" id="exam-duration" class="input" placeholder="Duration (mins)" style="flex: 1;">
+                        <input type="date" id="exam-date" class="input" style="flex: 1;">
+                    </div>
+                </div>
+            `;
+
+            this.showModal('Create New CBT Exam', modalHtml, async () => {
+                const title = document.getElementById('exam-title').value;
+                const subjectId = document.getElementById('exam-subject').value;
+                const className = document.getElementById('exam-class').value;
+                const duration = document.getElementById('exam-duration').value;
+                const date = document.getElementById('exam-date').value;
+
+                if (!title || !subjectId || !className) return;
+
+                const newExam = prepareForSync({
+                    id: `EXM${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    title,
+                    subject_id: subjectId,
+                    class_name: className,
+                    teacher_id: teacherId,
+                    duration: parseInt(duration) || 60,
+                    date: date || new Date().toISOString().split('T')[0],
+                    status: 'Draft'
+                });
+
+                await db.cbt_exams.add(newExam);
+                Notifications.show('Exam created successfully', 'success');
+                this.renderCBT();
+                syncToCloud();
+            }, 'Create Exam');
+        };
+    },
 };

@@ -8,28 +8,24 @@
  */
 export const ScoringEngine = {
     getGrade(total) {
-        if (total >= 95) return 'A+';
-        if (total >= 90) return 'A';
-        if (total >= 85) return 'A-';
-        if (total >= 80) return 'B+';
-        if (total >= 75) return 'B';
-        if (total >= 70) return 'B-';
-        if (total >= 65) return 'C+';
-        if (total >= 60) return 'C';
-        if (total >= 55) return 'C-';
-        if (total >= 50) return 'D+';
-        if (total >= 45) return 'D';
-        if (total >= 40) return 'D-';
-        return 'F';
+        if (total >= 75) return 'A1';
+        if (total >= 70) return 'B2';
+        if (total >= 65) return 'B3';
+        if (total >= 60) return 'C4';
+        if (total >= 55) return 'C5';
+        if (total >= 50) return 'C6';
+        if (total >= 45) return 'D7';
+        if (total >= 40) return 'E8';
+        return 'F9';
     },
 
     getRemark(total) {
-        if (total >= 80) return 'Outstanding';
+        if (total >= 75) return 'Excellent';
         if (total >= 70) return 'Very Good';
-        if (total >= 60) return 'Good';
+        if (total >= 65) return 'Good';
         if (total >= 50) return 'Credit';
         if (total >= 40) return 'Pass';
-        return 'Needs Improvement';
+        return 'Fail';
     },
 
     getOrdinal(n) {
@@ -50,48 +46,189 @@ export const ScoringEngine = {
  */
 export async function generateReportCard(student, scores, schoolInfo) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
     
-    // Header
-    doc.setFontSize(22);
-    doc.text(schoolInfo.name || 'GRAVITON ACADEMY', 105, 20, { align: 'center' });
+    // Helper: Draw Blue Border
+    doc.setDrawColor(37, 99, 235); // Blue
+    doc.setLineWidth(1.5);
+    doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
+    doc.setLineWidth(0.5);
+    
+    // --- Header Section ---
+    // Placeholder for Logo (Top Left)
+    doc.setDrawColor(37, 99, 235);
+    doc.rect(10, 10, 25, 25);
+    doc.setFontSize(8);
+    doc.text("LOGO", 22.5, 23, { align: 'center' });
+    
+    // School Name & Details
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(30, 58, 138); // Dark Blue
+    doc.text("NEW KINGS AND QUEENS MONTESSORI SCHOOL", pageWidth / 2 + 10, 15, { align: 'center' });
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(0, 0, 0);
+    doc.text("OPPOSITE N.U.J. OPILI PLAZA, CHIEF ELLIOT DEKEBI STREET", pageWidth / 2 + 10, 20, { align: 'center' });
+    doc.text("Tel: 08035461711, 08037316183, 08058134229", pageWidth / 2 + 10, 24, { align: 'center' });
+    
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setTextColor(37, 99, 235);
+    doc.text("Motto: Knowledge is Power", pageWidth / 2 + 10, 28, { align: 'center' });
+    
+    // Report Title Box
+    doc.setFillColor(37, 99, 235);
+    doc.rect(40, 32, pageWidth - 80, 7, 'F');
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
-    doc.text(schoolInfo.address || 'Academic Excellence Through Logic', 105, 28, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.text("SCHOOL REPORT CARD", pageWidth / 2, 37, { align: 'center' });
     
-    doc.setDrawColor(88, 166, 255);
-    doc.line(20, 35, 190, 35);
+    // --- Student Info Grid ---
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    let y = 48;
+    const leftX = 12;
+    const midX = 85;
+    const rightX = 145;
     
-    // Student Info
-    doc.setFontSize(12);
-    doc.text(`Student: ${student.name}`, 20, 45);
-    doc.text(`ID: ${student.student_id}`, 20, 52);
-    doc.text(`Class: ${student.class_name}`, 140, 45);
-    doc.text(`Term: ${scores[0]?.term || 'N/A'}`, 140, 52);
+    // Row 1
+    doc.text(`NAME: ${student.name.toUpperCase()}`, leftX, y);
+    doc.line(23, y + 1, 80, y + 1); // Underline name
+    doc.text(`SEX: ${student.gender || 'N/A'}`, midX, y);
+    doc.text(`TOTAL MARKS: ${scores.reduce((a, b) => a + (b.total || 0), 0)}`, rightX, y);
     
-    // Scores Table
-    const tableData = scores.map(s => [
+    y += 7;
+    // Row 2
+    doc.text(`CLASS: ${student.class_name}`, leftX, y);
+    doc.text(`SESSION: ${scores[0]?.session || '2025/2026'}`, midX, y);
+    doc.text(`NO. IN CLASS: ${schoolInfo.classSize || '27'}`, rightX, y);
+    
+    y += 7;
+    // Row 3
+    doc.text(`TERM: ${scores[0]?.term || 'N/A'}`, leftX, y);
+    const avg = scores.length > 0 ? (scores.reduce((a, b) => a + (b.total || 0), 0) / scores.length).toFixed(2) : 0;
+    doc.text(`AVERAGE: ${avg}%`, midX, y);
+    doc.text(`OVERALL GRADE: ${ScoringEngine.getGrade(parseFloat(avg))}`, rightX, y);
+    
+    y += 7;
+    // Row 4
+    doc.text(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'}`, leftX, y);
+    doc.text(`PASS/FAIL: ${parseFloat(avg) >= 40 ? 'PASS' : 'FAIL'}`, midX, y);
+    doc.text(`NEXT BEGINS: ${schoolInfo.termStart || '13th April, 2026'}`, rightX, y);
+    
+    // --- Subjects Table ---
+    const tableHead = [['SUBJECTS', 'ASS', 'T1', 'T2', 'PROJ', 'CA', 'EXAM', 'TOTAL', 'GRADE', 'REMARK']];
+    const tableBody = scores.map(s => [
         s.subject_name,
-        s.ca1,
-        s.ca2,
-        s.exam,
+        s.ass || 0,
+        s.t1 || 0,
+        s.t2 || 0,
+        s.proj || 0,
+        (s.ass || 0) + (s.t1 || 0) + (s.t2 || 0) + (s.proj || 0),
+        s.exam || 0,
         s.total,
-        s.grade
+        s.grade,
+        s.remark || ScoringEngine.getRemark(s.total)
     ]);
     
     doc.autoTable({
-        startY: 65,
-        head: [['Subject', 'CA1 (20)', 'CA2 (20)', 'Exam (60)', 'Total (100)', 'Grade']],
-        body: tableData,
-        theme: 'striped',
-        headStyles: { fillStyle: [31, 111, 235] }
+        startY: y + 5,
+        head: tableHead,
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillStyle: [37, 99, 235], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+        styles: { fontSize: 8, textColor: 0, cellPadding: 2 },
+        columnStyles: {
+            0: { fontStyle: 'bold', halign: 'left', cellWidth: 50 },
+            9: { cellWidth: 25 }
+        },
+        margin: { left: 10, right: 10 }
     });
     
-    // Footer
-    const finalY = doc.lastAutoTable.finalY + 20;
-    doc.text('Form Teacher Remark: ________________________________', 20, finalY);
-    doc.text('Principal Signature: ________________________________', 20, finalY + 15);
+    let currentY = doc.lastAutoTable.finalY + 5;
     
-    doc.save(`${student.name}_Report_Card.pdf`);
+    // --- Affective & Psychomotor Domain ---
+    doc.setFillColor(230, 242, 255);
+    doc.rect(10, currentY, pageWidth - 20, 6, 'F');
+    doc.setTextColor(37, 99, 235);
+    doc.setFontSize(9);
+    doc.text("AFFECTIVE & PSYCHOMOTOR DOMAIN", pageWidth / 2, currentY + 4.5, { align: 'center' });
+    
+    currentY += 10;
+    doc.setTextColor(0, 0, 0);
+    const domainData = [
+        ['Punctuality', '5', 'Neatness', '4', 'Honesty', '5', 'Self Control', '4'],
+        ['Courage', '4', 'Creativity', '5', 'Participation', '4', 'Compliance', '5']
+    ];
+    
+    domainData.forEach(row => {
+        let x = 12;
+        row.forEach((item, idx) => {
+            if (idx % 2 === 0) {
+                doc.text(item, x, currentY);
+                x += 25;
+            } else {
+                doc.text(item, x, currentY);
+                doc.line(x - 2, currentY + 1, x + 5, currentY + 1);
+                x += 20;
+            }
+        });
+        currentY += 6;
+    });
+    
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'italic');
+    doc.text("Rating Scale: 5-Excellent, 4-Very Good, 3-Good, 2-Fair, 1-Needs Imp.", pageWidth / 2, currentY, { align: 'center' });
+    
+    currentY += 10;
+    
+    // --- Teacher's Comment ---
+    doc.setDrawColor(37, 99, 235);
+    doc.rect(10, currentY, pageWidth - 20, 20);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(37, 99, 235);
+    doc.text("TEACHER'S COMMENT:", 12, currentY + 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    doc.text(schoolInfo.teacherComment || "Exceptional brilliance! You have consistently shown deep understanding and mastery of all subjects.", 12, currentY + 10, { maxWidth: pageWidth - 25 });
+    doc.text(`Name: ${schoolInfo.teacherName || 'Oyivwita Arwerosuaghene'}`, 12, currentY + 18);
+    doc.text(`Sign: ____________________`, pageWidth - 60, currentY + 18);
+    
+    currentY += 25;
+    
+    // --- Principal's Comment ---
+    doc.rect(10, currentY, pageWidth - 20, 20);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(37, 99, 235);
+    doc.text("PRINCIPAL'S COMMENT:", 12, currentY + 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    doc.text(schoolInfo.principalComment || "A truly distinctive performance. You are the pride of the school. Keep reaching for the stars!", 12, currentY + 10, { maxWidth: pageWidth - 25 });
+    doc.text(`Name: ${schoolInfo.principalName || 'Mr. Lartey Sampson'}`, 12, currentY + 18);
+    doc.text(`Sign: ____________________`, pageWidth - 60, currentY + 18);
+    
+    // --- Footer ---
+    const footerY = pageHeight - 20;
+    doc.setDrawColor(37, 99, 235);
+    doc.rect(12, footerY - 5, 15, 15); // QR Box
+    doc.setFontSize(6);
+    doc.text("OFFICIAL VERIFICATION", 30, footerY);
+    doc.text("Scan to confirm student", 30, footerY + 3);
+    doc.text("performance details.", 30, footerY + 6);
+    
+    doc.setFontSize(8);
+    const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    doc.text(`Report Generated On: ${dateStr}`, pageWidth - 15, footerY, { align: 'right' });
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(37, 99, 235);
+    doc.text("VALID ONLY WITH ORIGINAL SCHOOL EMBOSSED STAMP", pageWidth - 15, footerY + 6, { align: 'right' });
+    
+    doc.save(`${student.name.replace(/\s+/g, '_')}_Report_Card.pdf`);
 }
 
 /**
@@ -199,3 +336,47 @@ export const Notifications = {
         }, 4000);
     }
 };
+
+/**
+ * Generate Mastersheet (Academic Matrix)
+ */
+export async function generateMastersheet(className, students, subjects, scores, term, session) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('landscape');
+    
+    // Header
+    doc.setFontSize(18);
+    doc.text('ACADEMIC MASTERSHEET', 148, 15, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`${className} | ${term} | ${session}`, 148, 22, { align: 'center' });
+    
+    // Matrix Construction
+    const head = ['Student Name', ...subjects.map(s => s.name.substring(0, 5)), 'Total', 'Avg', 'Rank'];
+    const body = students.map(student => {
+        const studentScores = subjects.map(subject => {
+            const score = scores.find(s => s.student_id === student.student_id && s.subject_id === subject.id);
+            return score ? score.total : '-';
+        });
+        
+        const total = studentScores.reduce((acc, s) => acc + (s === '-' ? 0 : s), 0);
+        const avg = subjects.length > 0 ? (total / subjects.length).toFixed(1) : 0;
+        
+        // Find rank for this student in this term/session (already calculated in scores)
+        const firstScore = scores.find(s => s.student_id === student.student_id);
+        const rank = firstScore ? firstScore.rank : '-';
+        
+        return [student.name, ...studentScores, total, avg, rank];
+    });
+    
+    doc.autoTable({
+        startY: 30,
+        head: [head],
+        body: body,
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1 },
+        headStyles: { fillStyle: [30, 41, 59], textColor: 255 }
+    });
+    
+    doc.save(`Mastersheet_${className}_${term}_${session.replace(/\//g, '-')}.pdf`);
+}
+

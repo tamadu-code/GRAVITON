@@ -158,6 +158,21 @@ async function loadAuthenticatedApp(authUser) {
     if (footerRoleEl) footerRoleEl.textContent = currentRole;
     if (footerAvatarEl) footerAvatarEl.textContent = currentName.charAt(0).toUpperCase();
 
+    // Role-Based UI Filtering (Sidebar)
+    const restrictedForTeacher = ['academic', 'promotion', 'config', 'staff', 'keys', 'finances', 'security', 'pins', 'bulkimport', 'parents'];
+    const restrictedForParent = ['academic', 'promotion', 'config', 'students', 'staff', 'bulkimport', 'keys', 'finances', 'security', 'pins'];
+
+    document.querySelectorAll('.nav-item').forEach(item => {
+        const view = item.getAttribute('data-view');
+        if (currentRole === 'Teacher' && restrictedForTeacher.includes(view)) {
+            item.style.display = 'none';
+        } else if (currentRole === 'Parent' && restrictedForParent.includes(view)) {
+            item.style.display = 'none';
+        } else {
+            item.style.display = 'flex';
+        }
+    });
+
     // Re-render icons
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
@@ -406,7 +421,15 @@ navItems.forEach(item => {
 
         // Strict Role-Based Protection
         const role = UI.currentUser?.role;
-        if (role === 'Parent' && ['academic', 'promotion', 'config', 'students'].includes(view)) {
+        const restrictedForTeacher = ['academic', 'promotion', 'config', 'staff', 'keys', 'finances', 'security', 'pins', 'bulkimport', 'parents'];
+        const restrictedForParent = ['academic', 'promotion', 'config', 'students', 'staff', 'bulkimport', 'keys', 'finances', 'security', 'pins'];
+
+        if (role === 'Teacher' && restrictedForTeacher.includes(view)) {
+            if (window.Notifications) Notifications.show('Access Denied: Admin privileges required.', 'error');
+            return;
+        }
+        
+        if (role === 'Parent' && restrictedForParent.includes(view)) {
             if (window.Notifications) Notifications.show('Access Denied', 'error');
             return;
         }
