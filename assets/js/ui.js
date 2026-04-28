@@ -105,7 +105,7 @@ export const UI = {
         const adminSectionHeaders = document.querySelectorAll('.nav-section-header');
         
         // Modules strictly restricted to Admin only
-        const adminOnlyViews = ['staff', 'keys', 'parents', 'lessons', 'roster', 'curriculum', 'reports', 'insights'];
+        const adminOnlyViews = ['staff', 'keys', 'parents', 'lessons', 'roster', 'curriculum', 'reports', 'insights', 'finances'];
         
         navItems.forEach(item => {
             const view = item.dataset.view;
@@ -117,9 +117,11 @@ export const UI = {
         });
 
         // Hide "ADMINISTRATION" section header if role is not admin
-        if (adminSectionHeaders.length > 1 && role !== 'admin') {
-            adminSectionHeaders[1].style.display = 'none';
-        }
+        adminSectionHeaders.forEach(header => {
+            if (role !== 'admin' && header.textContent.includes('ADMINISTRATION')) {
+                header.style.display = 'none';
+            }
+        });
     },
 
     showModal(title, contentHtml, onConfirm, confirmText = 'Register', confirmIcon = 'save') {
@@ -3162,42 +3164,107 @@ export const UI = {
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
+        // Update Records Button
+        const btnUpdate = this.contentArea.querySelector('button[style*="background: #2563eb;"]');
+        if (btnUpdate) {
+            btnUpdate.onclick = () => {
+                const modalHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        <div class="form-group">
+                            <label>Full Name</label>
+                            <input type="text" id="edit-staff-name" class="input" value="${staff.full_name || ''}" style="width: 100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>Role</label>
+                            <select id="edit-staff-role" class="input" style="width: 100%;">
+                                <option value="Teacher" ${staff.role === 'Teacher' ? 'selected' : ''}>Teacher</option>
+                                <option value="Admin" ${staff.role === 'Admin' ? 'selected' : ''}>Administrator</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+                this.showModal('Update Staff Records', modalHtml, async () => {
+                    const name = document.getElementById('edit-staff-name').value;
+                    const role = document.getElementById('edit-staff-role').value;
+                    await db.profiles.update(staffId, { full_name: name, role, updated_at: new Date().toISOString() });
+                    Notifications.show('Staff records updated', 'success');
+                    this.renderStaffDetail(staffId);
+                    syncToCloud();
+                }, 'Save Updates');
+            };
+        }
+
+        // Terminate Contract Button
+        const btnTerminate = this.contentArea.querySelector('button[style*="color: #ef4444;"]');
+        if (btnTerminate) {
+            btnTerminate.onclick = async () => {
+                if (confirm(`Are you sure you want to terminate the contract for ${staff.full_name}? This will revoke system access.`)) {
+                    await db.profiles.update(staffId, { role: 'Former Staff', status: 'Terminated', updated_at: new Date().toISOString() });
+                    Notifications.show('Contract terminated and access revoked.', 'warning');
+                    this.renderStaff();
+                    syncToCloud();
+                }
+            };
+        }
+
         document.getElementById('btn-staff-assign-sub').onclick = async () => {
             const allClasses = await db.classes.toArray();
             const allSubjects = await db.subjects.toArray();
 
             const modalHtml = `
-                <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-                    <div class="form-group">
-                        <label>Select Subject</label>
-                        <select id="assign-sub-id" class="input" style="width: 100%;">
-                            ${allSubjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-                        </select>
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    <div id="staff-assign-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <div class="staff-assign-row" style="display: flex; gap: 0.5rem; align-items: center; background: rgba(255,255,255,0.05); padding: 0.5rem; border-radius: 8px;">
+                            <select class="input assign-sub" style="flex: 1.5; font-size: 0.85rem;">
+                                ${allSubjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                            </select>
+                            <select class="input assign-cls" style="flex: 1; font-size: 0.85rem;">
+                                ${allClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                            </select>
+                            <button class="btn btn-sm" onclick="this.parentElement.remove()" style="color: #ef4444;"><i data-lucide="trash"></i></button>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Select Class</label>
-                        <select id="assign-class-name" class="input" style="width: 100%;">
-                            ${allClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-                        </select>
-                    </div>
+                    <button class="btn btn-secondary btn-sm w-100" id="btn-add-assign-row" style="border: 2px dashed rgba(255,255,255,0.1);">
+                        <i data-lucide="plus"></i> Add More Assignments
+                    </button>
                 </div>
             `;
 
-            this.showModal('Assign Subject to Teacher', modalHtml, async () => {
-                const subId = document.getElementById('assign-sub-id').value;
-                const className = document.getElementById('assign-class-name').value;
+            this.showModal('Assign Subjects to Teacher', modalHtml, async () => {
+                const rows = document.querySelectorAll('.staff-assign-row');
+                for (const row of rows) {
+                    const subId = row.querySelector('.assign-sub').value;
+                    const className = row.querySelector('.assign-cls').value;
 
-                await db.subject_assignments.add(prepareForSync({
-                    id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
-                    teacher_id: staffId,
-                    subject_id: subId,
-                    class_name: className
-                }));
+                    await db.subject_assignments.add(prepareForSync({
+                        id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
+                        teacher_id: staffId,
+                        subject_id: subId,
+                        class_name: className
+                    }));
+                }
 
-                Notifications.show('Subject assigned successfully', 'success');
+                Notifications.show('Subjects assigned successfully', 'success');
                 this.renderStaffDetail(staffId);
                 syncToCloud();
-            }, 'Assign Subject', 'plus-circle');
+            }, 'Finalize Assignments', 'save');
+
+            document.getElementById('btn-add-assign-row').onclick = () => {
+                const row = document.createElement('div');
+                row.className = 'staff-assign-row';
+                row.style = "display: flex; gap: 0.5rem; align-items: center; background: rgba(255,255,255,0.05); padding: 0.5rem; border-radius: 8px;";
+                row.innerHTML = `
+                    <select class="input assign-sub" style="flex: 1.5; font-size: 0.85rem;">
+                        ${allSubjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                    </select>
+                    <select class="input assign-cls" style="flex: 1; font-size: 0.85rem;">
+                        ${allClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                    </select>
+                    <button class="btn btn-sm" onclick="this.parentElement.remove()" style="color: #ef4444;"><i data-lucide="trash"></i></button>
+                `;
+                document.getElementById('staff-assign-list').appendChild(row);
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            };
         };
     },
 
