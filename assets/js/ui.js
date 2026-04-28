@@ -100,35 +100,25 @@ export const UI = {
     },
 
     initSidebar() {
-        const role = (this.currentUser.role || '').toLowerCase();
-        const isAdmin = role === 'admin' || role === ''; // Default to admin for safety or if pending
+        const role = (localStorage.getItem('user_role') || '').toLowerCase();
+        const navItems = document.querySelectorAll('.nav-item');
+        const adminSectionHeaders = document.querySelectorAll('.nav-section-header');
         
-        const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
-        const sectionHeaders = document.querySelectorAll('.nav-section-header');
+        // Modules strictly restricted to Admin only
+        const adminOnlyViews = ['staff', 'keys', 'parents', 'lessons', 'roster', 'curriculum', 'reports', 'insights'];
         
-        // Hide Admin Section
-        sectionHeaders.forEach(header => {
-            if (header.textContent.includes('ADMINISTRATION') && !isAdmin) {
-                header.style.display = 'none';
-                
-                // Also hide all items following this header until next section
-                let sibling = header.nextElementSibling;
-                while (sibling && !sibling.classList.contains('nav-section-header')) {
-                    sibling.style.display = 'none';
-                    sibling = sibling.nextElementSibling;
-                }
+        navItems.forEach(item => {
+            const view = item.dataset.view;
+            if (role !== 'admin' && adminOnlyViews.includes(view)) {
+                item.style.display = 'none';
+            } else {
+                item.style.display = 'flex';
             }
         });
 
-        // Specific Main Nav items for Teachers/Others
-        const restrictedViews = ['classes', 'subjects', 'lessons', 'roster', 'curriculum', 'reports', 'insights'];
-        if (!isAdmin) {
-            navItems.forEach(item => {
-                const view = item.getAttribute('data-view');
-                if (restrictedViews.includes(view)) {
-                    item.style.display = 'none';
-                }
-            });
+        // Hide "ADMINISTRATION" section header if role is not admin
+        if (adminSectionHeaders.length > 1 && role !== 'admin') {
+            adminSectionHeaders[1].style.display = 'none';
         }
     },
 
@@ -478,10 +468,21 @@ export const UI = {
 
 
     async renderClasses() {
-        const streams = await db.classes.toArray();
+        const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
+        const teacherId = this.currentUser.id;
+        
+        let streams = await db.classes.toArray();
         const studentCounts = await db.students.toArray();
         const formTeachers = await db.form_teachers.toArray().catch(() => []);
         const profiles = await db.profiles.toArray().catch(() => []);
+
+        if (isTeacher) {
+            const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
+            const assignedClasses = new Set(assignments.map(a => a.class_name));
+            // Also include classes where they are form teachers
+            formTeachers.filter(f => f.teacher_id === teacherId).forEach(f => assignedClasses.add(f.class_name));
+            streams = streams.filter(s => assignedClasses.has(s.name));
+        }
         
         const getEnrollment = (className) => studentCounts.filter(s => s.class_name === className).length;
         
@@ -509,9 +510,11 @@ export const UI = {
                             <span class="stat-label">Total Enrollment</span>
                         </div>
                     </div>
+                    ${!isTeacher ? `
                     <button id="btn-add-stream" class="btn" style="background: white; color: #2563eb; font-weight: 700; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
                         <i data-lucide="plus-circle"></i> Add New Stream
                     </button>
+                    ` : ''}
                 </div>
 
                 <div class="actions-bar" style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0;">
@@ -562,10 +565,12 @@ export const UI = {
                                         <span style="font-weight: 700;">${getFormMasterName(s.name)}</span>
                                     </div>
                                 </div>
+                                 ${!isTeacher ? `
                                  <div style="display: flex; gap: 1rem;">
                                      <button class="btn btn-secondary w-full rename-class-btn" data-id="${s.id}" data-name="${s.name}" style="height: 48px; border-radius: 12px; font-weight: 600; background: #f8fafc;"><i data-lucide="edit-3"></i> Rename</button>
                                      <button class="btn btn-secondary delete-class-btn" data-id="${s.id}" data-name="${s.name}" data-count="${getEnrollment(s.name)}" style="height: 48px; border-radius: 12px; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
                                  </div>
+                                 ` : ''}
                             </div>
                         </div>
                     `).join('')}
@@ -660,9 +665,18 @@ export const UI = {
     },
 
     async renderSubjects() {
-        const subjects = await db.subjects.toArray();
+        const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
+        const teacherId = this.currentUser.id;
+        
+        let subjects = await db.subjects.toArray();
         const assignments = await db.subject_assignments.toArray().catch(() => []);
         const profiles = await db.profiles.toArray().catch(() => []);
+
+        if (isTeacher) {
+            const teacherAssignments = assignments.filter(a => a.teacher_id === teacherId);
+            const assignedSubIds = new Set(teacherAssignments.map(a => a.subject_id));
+            subjects = subjects.filter(s => assignedSubIds.has(s.id));
+        }
         
         const getSubjectDetails = (subjectIds, defaultClasses) => {
             const subjectAssignments = assignments.filter(a => subjectIds.includes(a.subject_id));
@@ -720,11 +734,13 @@ export const UI = {
                             <span class="stat-label">Unique Courses</span>
                         </div>
                     </div>
+                    ${!isTeacher ? `
                     <div style="display: flex; gap: 0.75rem;">
                         <button id="btn-register-course" class="btn btn-primary" style="background: white; color: #0f172a; border: none; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem;">
                             <i data-lucide="plus-circle" style="width: 16px;"></i> Register Course
                         </button>
                     </div>
+                    ` : ''}
                 </div>
 
                 <div class="card" style="border-radius: 12px; padding: 1rem;">
@@ -743,7 +759,7 @@ export const UI = {
                                     <th>STREAMS</th>
                                     <th>FACULTY</th>
                                     <th>UNITS</th>
-                                    <th style="text-align: right;">ACTIONS</th>
+                                    ${!isTeacher ? `<th style="text-align: right;">ACTIONS</th>` : ''}
                                 </tr>
                             </thead>
                             <tbody>
@@ -755,11 +771,14 @@ export const UI = {
                                         <td>${details.linkedString}</td>
                                         <td style="font-size: 0.85rem; color: #64748b;">${details.facultyString}</td>
                                         <td style="font-weight: 800; color: #1e40af;">${s.credits || 1}</td>
+                                        ${!isTeacher ? `
                                         <td style="text-align: right;">
                                             <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                                <button class="btn btn-secondary btn-sm modify-subject-btn" data-ids="${s.ids.join(',')}" data-name="${s.name}"><i data-lucide="edit-3" style="width: 14px;"></i></button>
                                                 <button class="btn btn-secondary btn-sm delete-subject-btn" data-ids="${s.ids.join(',')}" data-name="${s.name}" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 14px;"></i></button>
                                             </div>
                                         </td>
+                                        ` : ''}
                                     </tr>
                                 `;}).join('')}
                             </tbody>
@@ -788,9 +807,14 @@ export const UI = {
                                                 <strong style="font-size: 0.7rem; color: #64748b;">FACULTY ASSIGNMENT</strong>
                                                 <div style="margin-top: 0.25rem; font-weight: 600; color: #1e293b;">${details.facultyString}</div>
                                             </div>
-                                            <button class="btn btn-secondary delete-subject-btn" data-ids="${s.ids.join(',')}" data-name="${s.name}" style="width: 100%; color: #ef4444; background: #fef2f2; border: none; font-size: 0.8rem; height: 40px;">
-                                                <i data-lucide="trash-2" style="width: 14px;"></i> Remove from Curriculum
-                                            </button>
+                                            <div style="display: flex; gap: 0.5rem;">
+                                                <button class="btn btn-secondary modify-subject-btn" data-ids="${s.ids.join(',')}" data-name="${s.name}" style="flex: 1; border-radius: 8px; font-size: 0.8rem; height: 40px;">
+                                                    <i data-lucide="edit-3" style="width: 14px;"></i> Edit
+                                                </button>
+                                                <button class="btn btn-secondary delete-subject-btn" data-ids="${s.ids.join(',')}" data-name="${s.name}" style="flex: 1; color: #ef4444; background: #fef2f2; border: none; font-size: 0.8rem; height: 40px;">
+                                                    <i data-lucide="trash-2" style="width: 14px;"></i> Remove
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -946,6 +970,119 @@ export const UI = {
                 }
             });
         });
+
+        // CRUD: Modify Subjects
+        document.querySelectorAll('.modify-subject-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const name = btn.dataset.name;
+                const ids = btn.dataset.ids;
+                this.modifySubject(name, ids);
+            });
+        });
+    },
+
+    async modifySubject(subjectName, currentIds) {
+        const subjects = await db.subjects.toArray();
+        const subject = subjects.find(s => s.name === subjectName);
+        const assignments = await db.subject_assignments.toArray();
+        const teachers = (await db.profiles.toArray()).filter(p => p.role === 'Teacher' || p.role === 'Admin');
+        const classes = await db.classes.toArray();
+
+        const currentAssignments = assignments.filter(a => currentIds.split(',').includes(a.subject_id));
+
+        const modalHtml = `
+            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                <div class="form-group">
+                    <label style="font-size: 0.75rem; font-weight: 700; color: #64748b;">COURSE TITLE</label>
+                    <input type="text" id="edit-sub-name" class="input" value="${subjectName}" style="width:100%; height: 45px; background: rgba(255,255,255,0.05); color: white;">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label style="font-size: 0.75rem; font-weight: 700; color: #64748b;">CREDITS/UNITS</label>
+                        <input type="number" id="edit-sub-credits" class="input" value="${subject.credits || 1}" style="width:100%; background: rgba(255,255,255,0.05); color: white;">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size: 0.75rem; font-weight: 700; color: #64748b;">SUBJECT TYPE</label>
+                        <select id="edit-sub-type" class="input" style="width:100%; background: rgba(255,255,255,0.05); color: white;">
+                            <option value="Core" ${subject.type === 'Core' ? 'selected' : ''}>Core Subject</option>
+                            <option value="Elective" ${subject.type === 'Elective' ? 'selected' : ''}>Elective</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="background: rgba(255,255,255,0.02); padding: 1.25rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+                    <h4 style="font-size: 0.85rem; font-weight: 800; color: white; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="users" style="width:16px;"></i> Teacher Assignments</h4>
+                    <div id="assignment-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        ${currentAssignments.map(a => `
+                            <div class="assignment-row" style="display: flex; gap: 0.5rem; align-items: center; background: rgba(255,255,255,0.05); padding: 0.5rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                                <select class="input assign-teacher" style="flex: 1.5; font-size: 0.85rem; border: none; background: transparent; color: white;">
+                                    ${teachers.map(t => `<option value="${t.id}" ${a.teacher_id === t.id ? 'selected' : ''} style="background: #1e293b;">${t.full_name || t.username}</option>`).join('')}
+                                </select>
+                                <select class="input assign-class" style="flex: 1; font-size: 0.85rem; border: none; background: transparent; color: white;">
+                                    ${classes.map(c => `<option value="${c.name}" ${a.class_name === c.name ? 'selected' : ''} style="background: #1e293b;">${c.name}</option>`).join('')}
+                                </select>
+                                <button class="btn btn-sm" onclick="this.parentElement.remove()" style="color: #ef4444; background: none; border: none;"><i data-lucide="trash"></i></button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="btn btn-secondary btn-sm mt-1 w-100" id="btn-add-assign" style="border: 2px dashed rgba(255,255,255,0.1); background: transparent; color: #94a3b8; font-weight: 700;">
+                        <i data-lucide="plus"></i> Add Assignment
+                    </button>
+                </div>
+            </div>
+        `;
+
+        this.showModal('Modify Subject & Assignments', modalHtml, async () => {
+            const newName = document.getElementById('edit-sub-name').value;
+            const newCredits = parseInt(document.getElementById('edit-sub-credits').value);
+            const newType = document.getElementById('edit-sub-type').value;
+
+            const idsToUpdate = currentIds.split(',');
+            for (const id of idsToUpdate) {
+                await db.subjects.update(id, { name: newName, credits: newCredits, type: newType, updated_at: new Date().toISOString() });
+            }
+
+            // Update assignments
+            const rows = document.querySelectorAll('.assignment-row');
+            await db.subject_assignments.where('subject_id').anyOf(idsToUpdate).delete();
+            
+            for (const row of rows) {
+                const teacherId = row.querySelector('.assign-teacher').value;
+                const className = row.querySelector('.assign-class').value;
+                
+                await db.subject_assignments.add(prepareForSync({
+                    id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
+                    teacher_id: teacherId,
+                    subject_id: idsToUpdate[0], 
+                    class_name: className
+                }));
+            }
+
+            Notifications.show('Subject updated', 'success');
+            this.renderSubjects();
+            syncToCloud();
+        }, 'Update Subject', 'save');
+
+        // Add row logic
+        document.getElementById('btn-add-assign').onclick = () => {
+            const row = document.createElement('div');
+            row.className = 'assignment-row';
+            row.style = "display: flex; gap: 0.5rem; align-items: center; background: rgba(255,255,255,0.05); padding: 0.5rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);";
+            row.innerHTML = `
+                <select class="input assign-teacher" style="flex: 1.5; font-size: 0.85rem; border: none; background: transparent; color: white;">
+                    ${teachers.map(t => `<option value="${t.id}" style="background: #1e293b;">${t.full_name || t.username}</option>`).join('')}
+                </select>
+                <select class="input assign-class" style="flex: 1; font-size: 0.85rem; border: none; background: transparent; color: white;">
+                    ${classes.map(c => `<option value="${c.name}" style="background: #1e293b;">${c.name}</option>`).join('')}
+                </select>
+                <button class="btn btn-sm" onclick="this.parentElement.remove()" style="color: #ef4444; background: none; border: none;"><i data-lucide="trash"></i></button>
+            `;
+            document.getElementById('assignment-list').appendChild(row);
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        };
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     async renderStudents() {
@@ -2835,50 +2972,233 @@ export const UI = {
         const teachers = profiles.filter(p => p.role === 'Teacher' || p.role === 'Admin');
         
         this.contentArea.innerHTML = `
-            <div class="view-container">
-                <header class="view-header">
-                    <h1 class="text-2xl font-bold">Faculty Directory</h1>
-                    <p class="text-secondary">Manage school staff and instructional assignments.</p>
+            <div class="view-container animate-fade-in-up">
+                <header class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h1 class="text-2xl font-bold" style="display: flex; align-items: center; gap: 0.75rem;"><i data-lucide="user-circle"></i> Faculty Directory</h1>
+                        <p class="text-secondary">Manage school staff and instructional assignments.</p>
+                    </div>
+                    <button id="btn-add-staff" class="btn btn-primary" style="border-radius: 14px; padding: 0.8rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; background: #2563eb;">
+                        <i data-lucide="user-plus"></i> Add Staff Member
+                    </button>
                 </header>
 
                 <div class="faculty-grid">
-                    ${teachers.map(t => `
-                        <div class="faculty-card animate-fade-in-up">
+                    ${teachers.length === 0 ? '<div class="text-center p-4 w-100">No staff members found.</div>' : 
+                        teachers.map(t => `
+                        <div class="faculty-card" onclick="UI.renderStaffDetail('${t.id}')" style="cursor: pointer;">
                             <div class="faculty-avatar">
                                 <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${t.full_name || t.username}" alt="${t.full_name}">
                             </div>
                             <div class="faculty-details">
-                                <h3>${t.full_name || t.username}</h3>
-                                <span class="faculty-role">${t.role}</span>
+                                <h3 style="font-weight: 700; color: #1e293b;">${t.full_name || t.username}</h3>
+                                <span class="badge" style="background: #eff6ff; color: #2563eb; font-weight: 700; border-radius: 8px; font-size: 0.7rem; padding: 2px 8px; display: inline-block; margin: 4px 0;">${t.role}</span>
                                 <div class="faculty-meta">
                                     <div class="meta-item">
-                                        <span class="meta-label">Email:</span>
+                                        <i data-lucide="mail" style="width: 14px; color: #94a3b8;"></i>
                                         <span class="meta-value">${t.username}@school.com</span>
                                     </div>
                                     <div class="meta-item">
-                                        <span class="meta-label">ID:</span>
-                                        <span class="meta-value">${t.id.substring(0, 8)}</span>
+                                        <i data-lucide="fingerprint" style="width: 14px; color: #94a3b8;"></i>
+                                        <span class="meta-value">${t.assigned_id || t.id.substring(0, 8)}</span>
                                     </div>
                                 </div>
-                                <div class="faculty-actions">
-                                    <button class="btn btn-secondary btn-sm"><i data-lucide="mail"></i> Message</button>
-                                    <button class="btn btn-primary btn-sm"><i data-lucide="user-cog"></i> Profile</button>
+                                <div class="faculty-actions" style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                                    <button class="btn btn-secondary btn-sm" style="flex: 1; border-radius: 8px; font-size: 0.75rem;"><i data-lucide="mail" style="width: 14px;"></i> Message</button>
+                                    <button class="btn btn-primary btn-sm" style="flex: 1; border-radius: 8px; font-size: 0.75rem; background: #2563eb;" onclick="event.stopPropagation(); UI.renderStaffDetail('${t.id}')"><i data-lucide="user-cog" style="width: 14px;"></i> Profile</button>
                                 </div>
                             </div>
                         </div>
                     `).join('')}
-                    
-                    <div class="faculty-card" style="border: 2px dashed var(--border-color); background: transparent; justify-content: center;">
-                        <div class="header-icon" style="background: var(--bg-card-hover); padding: 1.5rem; border-radius: 50%; color: var(--accent-primary); margin-bottom: 1rem;">
-                            <i data-lucide="user-plus" style="width: 32px; height: 32px;"></i>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        
+        document.getElementById('btn-add-staff').onclick = async () => {
+            const modalHtml = `
+                <div style="display: flex; flex-direction: column; gap: 1rem; max-height: 70vh; overflow-y: auto; padding-right: 0.5rem;">
+                    <div class="form-group">
+                        <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">FULL LEGAL NAME</label>
+                        <input type="text" id="staff-name" class="input" placeholder="e.g. Dr. John Doe" style="width: 100%; height: 50px; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">CONTACT EMAIL</label>
+                            <input type="email" id="staff-email" class="input" placeholder="john.doe@school.edu" style="width: 100%; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
                         </div>
-                        <h3>Add Staff Member</h3>
-                        <p class="text-secondary" style="font-size: 0.8rem;">Invite new faculty members</p>
+                        <div class="form-group">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">EMPLOYMENT TYPE</label>
+                            <select id="staff-type" class="input" style="width: 100%; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
+                                <option value="Full-Time">Full-Time</option>
+                                <option value="Part-Time">Part-Time</option>
+                                <option value="Contract">Contract</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">DATE OF BIRTH</label>
+                            <input type="date" id="staff-dob" class="input" style="width: 100%; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PHONE NUMBER</label>
+                            <input type="text" id="staff-phone" class="input" placeholder="080XXXXXXXX" style="width: 100%; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">ACADEMIC DEPARTMENT</label>
+                        <input type="text" id="staff-dept" class="input" placeholder="e.g. Sciences, Arts, Languages" style="width: 100%; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PROFESSIONAL QUALIFICATIONS</label>
+                        <textarea id="staff-quals" class="input" placeholder="Degrees, certifications, etc." style="width: 100%; height: 60px; resize: none; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">RESIDENTIAL ADDRESS</label>
+                        <textarea id="staff-address" class="input" placeholder="Current home address" style="width: 100%; height: 60px; resize: none; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;"></textarea>
+                    </div>
+                </div>
+            `;
+            
+            this.showModal('Register Faculty Member', modalHtml, async () => {
+                const name = document.getElementById('staff-name').value;
+                const email = document.getElementById('staff-email').value;
+                
+                if (!name || !email) return Notifications.show('Name and Email are required', 'error');
+
+                const newStaff = prepareForSync({
+                    id: `STF${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
+                    username: email.split('@')[0],
+                    full_name: name,
+                    role: 'Teacher',
+                    assigned_id: `SCH/STF/${Math.floor(Math.random()*9000)+1000}`
+                });
+
+                await db.profiles.add(newStaff);
+                Notifications.show('Faculty member registered!', 'success');
+                this.renderStaff();
+                syncToCloud();
+            }, 'Finalize Registration', 'user-plus');
+        };
+    },
+
+    async renderStaffDetail(staffId) {
+        const staff = await db.profiles.get(staffId);
+        if (!staff) return Notifications.show('Staff member not found', 'error');
+
+        const assignments = await db.subject_assignments.where('teacher_id').equals(staffId).toArray();
+        const subjects = await db.subjects.toArray();
+        
+        const staffAssignments = assignments.map(a => {
+            const s = subjects.find(sub => sub.id === a.subject_id);
+            return {
+                subject_name: s ? s.name : 'Unknown Subject',
+                class_name: a.class_name
+            };
+        });
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in-up">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <button class="btn btn-secondary" onclick="UI.renderStaff()"><i data-lucide="arrow-left"></i> Back to Directory</button>
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-secondary" style="color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i> Terminate Contract</button>
+                        <button class="btn btn-primary" style="background: #2563eb;"><i data-lucide="edit"></i> Update Records</button>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 350px 1fr; gap: 2rem;">
+                    <!-- Left: Bio-Data -->
+                    <div class="card" style="border-radius: 20px; padding: 2rem; text-align: center;">
+                        <div style="width: 150px; height: 150px; margin: 0 auto 1.5rem; border-radius: 40px; overflow: hidden; background: #f1f5f9; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);">
+                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${staff.full_name || staff.username}" style="width: 100%; height: 100%; object-fit: cover;">
+                        </div>
+                        <h2 style="font-size: 1.75rem; font-weight: 800; color: #1e293b;">${staff.full_name || staff.username}</h2>
+                        <span class="badge" style="background: #eff6ff; color: #2563eb; font-weight: 800; border-radius: 12px; padding: 0.5rem 1rem; margin-top: 0.5rem; display: inline-block;">${staff.role.toUpperCase()}</span>
+                        
+                        <div style="margin-top: 2rem; text-align: left; display: flex; flex-direction: column; gap: 1.25rem;">
+                            <div style="display: flex; align-items: center; gap: 1rem;">
+                                <div style="width: 40px; height: 40px; background: #f8fafc; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #94a3b8;">
+                                    <i data-lucide="mail" style="width: 18px;"></i>
+                                </div>
+                                <div>
+                                    <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 700;">EMAIL ADDRESS</div>
+                                    <div style="font-weight: 600; color: #475569;">${staff.username}@school.com</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Assignments -->
+                    <div style="display: flex; flex-direction: column; gap: 2rem;">
+                        <div class="card" style="border-radius: 20px; padding: 2rem;">
+                            <h3 style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;"><i data-lucide="book-open" style="color: #2563eb;"></i> Academic Load</h3>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr><th>Subject Name</th><th>Assigned Class</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        ${staffAssignments.length === 0 ? '<tr><td colspan="2" class="text-center p-4">No subjects assigned yet.</td></tr>' : 
+                                            staffAssignments.map(a => `
+                                            <tr>
+                                                <td style="font-weight: 700;">${a.subject_name}</td>
+                                                <td><span class="badge" style="background: #f1f5f9; color: #475569;">${a.class_name}</span></td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <button id="btn-staff-assign-sub" class="btn btn-secondary w-100 mt-1" style="border-radius: 12px; border: 2px dashed #e2e8f0; background: #f8fafc; color: #94a3b8; font-weight: 700; padding: 1rem;">
+                                <i data-lucide="plus"></i> Assign New Subject
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
         `;
+
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        document.getElementById('btn-staff-assign-sub').onclick = async () => {
+            const allClasses = await db.classes.toArray();
+            const allSubjects = await db.subjects.toArray();
+
+            const modalHtml = `
+                <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                    <div class="form-group">
+                        <label>Select Subject</label>
+                        <select id="assign-sub-id" class="input" style="width: 100%;">
+                            ${allSubjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Select Class</label>
+                        <select id="assign-class-name" class="input" style="width: 100%;">
+                            ${allClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+            `;
+
+            this.showModal('Assign Subject to Teacher', modalHtml, async () => {
+                const subId = document.getElementById('assign-sub-id').value;
+                const className = document.getElementById('assign-class-name').value;
+
+                await db.subject_assignments.add(prepareForSync({
+                    id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
+                    teacher_id: staffId,
+                    subject_id: subId,
+                    class_name: className
+                }));
+
+                Notifications.show('Subject assigned successfully', 'success');
+                this.renderStaffDetail(staffId);
+                syncToCloud();
+            }, 'Assign Subject', 'plus-circle');
+        };
     },
 
     async renderPromotionEngine() {
@@ -3144,8 +3464,12 @@ export const UI = {
                             <h3 style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1.5rem;"><i data-lucide="settings"></i> Exam Details</h3>
                             
                             <div class="cbt-form-group">
-                                <label>Exam Title</label>
-                                <input type="text" id="exam-title" class="cbt-input" value="${exam.title}" placeholder="e.g. 1st Term Math Assessment">
+                                <label>Exam Type</label>
+                                <select id="exam-title" class="cbt-input">
+                                    <option value="Test 1" ${exam.title === 'Test 1' ? 'selected' : ''}>Test 1</option>
+                                    <option value="Test 2" ${exam.title === 'Test 2' ? 'selected' : ''}>Test 2</option>
+                                    <option value="Exam" ${exam.title === 'Exam' ? 'selected' : ''}>Final Exam</option>
+                                </select>
                             </div>
 
                             <div class="cbt-form-group">
@@ -3222,6 +3546,37 @@ export const UI = {
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Dynamic Filtering Logic
+        const classSelect = document.getElementById('exam-class');
+        const subjectSelect = document.getElementById('exam-subject');
+
+        classSelect.onchange = async () => {
+            const selectedClass = classSelect.value;
+            subjectSelect.innerHTML = '<option value="">Select Subject</option>';
+            
+            if (!selectedClass) return;
+
+            const assignments = await db.subject_assignments.where('class_name').equals(selectedClass).toArray();
+            const teacherId = this.currentUser.id;
+            const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
+
+            let filteredAssignments = assignments;
+            if (isTeacher) {
+                filteredAssignments = assignments.filter(a => a.teacher_id === teacherId);
+            }
+
+            const subIds = [...new Set(filteredAssignments.map(a => a.subject_id))];
+            const classSubjects = await Promise.all(subIds.map(id => db.subjects.get(id)));
+            
+            classSubjects.filter(Boolean).forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.name;
+                subjectSelect.appendChild(opt);
+            });
+        };
+
         this.refreshQuestionPreview();
     },
 
