@@ -70,6 +70,7 @@ export const UI = {
                 case 'reports': await this.renderReports(); break;
                 case 'staff': await this.renderStaff(); break;
                 case 'cbt': await this.renderCBT(); break;
+                case 'lessons': await this.renderLessons(); break;
                 case 'promotion': await this.renderPromotionEngine(); break;
                 case 'config': await this.renderSettings(); break;
                 default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
@@ -3362,7 +3363,9 @@ export const UI = {
     cbtQuestions: [],
 
     async renderCBT() {
-        const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
+        const role = (this.currentUser.role || '').toLowerCase();
+        const isTeacher = role === 'teacher';
+        const isStudent = role === 'student';
         const teacherId = this.currentUser.id;
         
         let subjects = (await db.subjects.toArray());
@@ -3370,6 +3373,18 @@ export const UI = {
 
         if (isTeacher) {
             exams = exams.filter(e => e.teacher_id === teacherId);
+        } else if (isStudent) {
+            const now = new Date();
+            const student = await db.students.get(this.currentUser.assigned_id || this.currentUser.id);
+            const sClass = student ? student.class_name : '';
+            
+            exams = exams.filter(e => {
+                const isMyClass = e.class_name === sClass;
+                const isActive = e.status === 'Active';
+                const hasStarted = !e.start_time || new Date(e.start_time) <= now;
+                const hasNotEnded = !e.end_time || new Date(e.end_time) >= now;
+                return isMyClass && isActive && hasStarted && hasNotEnded;
+            });
         }
 
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
@@ -3379,15 +3394,17 @@ export const UI = {
                 <div class="page-banner" style="background: linear-gradient(135deg, #4338ca 0%, #312e81 100%);">
                     <div class="banner-content">
                         <h1 class="banner-title"><i data-lucide="monitor"></i> CBT Exam Hub</h1>
-                        <p class="banner-subtitle">Create, manage, and monitor computer-based tests.</p>
+                        <p class="banner-subtitle">${isStudent ? 'Take your computer-based tests here.' : 'Create, manage, and monitor computer-based tests.'}</p>
                     </div>
+                    ${!isStudent ? `
                     <button id="btn-create-exam" class="btn btn-primary" style="background: white; color: #4338ca; border: none; font-weight: 800; box-shadow: var(--shadow-md);">
                         <i data-lucide="plus-square"></i> New Exam
                     </button>
+                    ` : ''}
                 </div>
 
                 <div class="cbt-list-container" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem;">
-                    ${exams.length === 0 ? '<div class="card text-center p-4">No exams found. Click "New Exam" to begin.</div>' : 
+                    ${exams.length === 0 ? '<div class="card text-center p-4">No exams found.</div>' : 
                         exams.map(e => `
                         <div class="cbt-exam-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
                             <div class="cbt-exam-trigger" style="padding: 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: white;" onclick="const content = this.nextElementSibling; const isExpanded = content.style.maxHeight !== '0px' && content.style.maxHeight !== ''; content.style.maxHeight = isExpanded ? '0px' : '500px'; this.querySelector('.chevron-icon').style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';">
@@ -3420,12 +3437,18 @@ export const UI = {
                                         <div style="font-weight: 700; color: #334155;">${e.term} | ${e.session}</div>
                                     </div>
                                     <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end;">
-                                        <button class="btn btn-secondary btn-sm" onclick="UI.renderCBTEditor('${e.id}')" style="height: 40px; padding: 0 1.25rem; border-radius: 10px;">
-                                            <i data-lucide="edit-3" style="width: 16px;"></i> Edit
-                                        </button>
-                                        <button class="btn btn-danger btn-sm" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                                            <i data-lucide="trash-2" style="width: 16px;"></i>
-                                        </button>
+                                        ${isStudent ? `
+                                            <button class="btn btn-primary btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #4338ca;">
+                                                <i data-lucide="play" style="width: 16px;"></i> Start Exam
+                                            </button>
+                                        ` : `
+                                            <button class="btn btn-secondary btn-sm" onclick="UI.renderCBTEditor('${e.id}')" style="height: 40px; padding: 0 1.25rem; border-radius: 10px;">
+                                                <i data-lucide="edit-3" style="width: 16px;"></i> Edit
+                                            </button>
+                                            <button class="btn btn-danger btn-sm" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                                                <i data-lucide="trash-2" style="width: 16px;"></i>
+                                            </button>
+                                        `}
                                     </div>
                                 </div>
                             </div>
@@ -3454,7 +3477,8 @@ export const UI = {
         const teacherId = this.currentUser.id;
         
         let exam = isEdit ? await db.cbt_exams.get(examId) : {
-            title: '', subject_id: '', class_name: '', duration: 30, mode: 'Official Exam', term: '3rd Term', session: '2025/2026', score_field: 'test1', status: 'Draft'
+            title: '', subject_id: '', class_name: '', duration: 30, mode: 'Official Exam', term: '3rd Term', session: '2025/2026', score_field: 'test1', status: 'Draft',
+            start_time: '', end_time: ''
         };
 
         this.cbtQuestions = isEdit ? await db.cbt_questions.where('exam_id').equals(examId).toArray() : [];
@@ -3582,6 +3606,17 @@ export const UI = {
                                     <option value="">Select Subject</option>
                                     ${subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
                                 </select>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                                <div class="cbt-form-group">
+                                    <label>Start Date/Time</label>
+                                    <input type="datetime-local" id="exam-start" class="cbt-input" value="${exam.start_time || ''}">
+                                </div>
+                                <div class="cbt-form-group">
+                                    <label>End Date/Time</label>
+                                    <input type="datetime-local" id="exam-end" class="cbt-input" value="${exam.end_time || ''}">
+                                </div>
                             </div>
 
                             <div class="cbt-form-group">
@@ -3766,6 +3801,8 @@ export const UI = {
             session: document.getElementById('exam-session').value,
             score_field: document.getElementById('exam-score-field').value,
             status: document.getElementById('exam-status').value,
+            start_time: document.getElementById('exam-start').value,
+            end_time: document.getElementById('exam-end').value,
             date: new Date().toISOString().split('T')[0]
         });
 
@@ -3788,6 +3825,256 @@ export const UI = {
         Notifications.show('Exam saved successfully', 'success');
         this.renderCBT();
         syncToCloud();
+    },
+
+    async startCBTExam(examId) {
+        const exam = await db.cbt_exams.get(examId);
+        if (!exam) return;
+
+        let questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+        if (questions.length === 0) {
+            return Notifications.show('This exam has no questions yet.', 'error');
+        }
+
+        // 1. Shuffle Questions
+        questions = this.shuffleArray([...questions]);
+
+        // 2. Shuffle Options for each question
+        questions = questions.map(q => {
+            const options = [
+                { key: 'a', text: q.option_a },
+                { key: 'b', text: q.option_b },
+                { key: 'c', text: q.option_c },
+                { key: 'd', text: q.option_d },
+                { key: 'e', text: q.option_e }
+            ].filter(o => o.text);
+
+            const shuffledOptions = this.shuffleArray([...options]);
+            
+            // The system knows the correct option by its text
+            const correctText = q[`option_${q.correct_option.toLowerCase()}`];
+            
+            return {
+                ...q,
+                shuffledOptions,
+                correctText
+            };
+        });
+
+        // Store session state
+        this.currentExam = exam;
+        this.currentQuestions = questions;
+        this.currentQuestionIndex = 0;
+        this.userAnswers = {};
+        this.examDurationSeconds = (exam.duration || 30) * 60;
+        this.examTimeLeft = this.examDurationSeconds;
+
+        this.renderCBTExamInterface();
+        this.startExamTimer();
+    },
+
+    shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    },
+
+    startExamTimer() {
+        if (this.examTimerInterval) clearInterval(this.examTimerInterval);
+        this.examTimerInterval = setInterval(() => {
+            this.examTimeLeft--;
+            const timerEl = document.getElementById('exam-timer');
+            if (timerEl) {
+                const mins = Math.floor(this.examTimeLeft / 60);
+                const secs = this.examTimeLeft % 60;
+                timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                if (this.examTimeLeft <= 300) timerEl.style.color = '#ef4444';
+            }
+            if (this.examTimeLeft <= 0) {
+                clearInterval(this.examTimerInterval);
+                this.submitExam();
+            }
+        }, 1000);
+    },
+
+    renderCBTExamInterface() {
+        const q = this.currentQuestions[this.currentQuestionIndex];
+        const progress = ((this.currentQuestionIndex + 1) / this.currentQuestions.length) * 100;
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in" style="max-width: 900px; margin: 0 auto; padding-top: 2rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h2 style="font-weight: 800; color: #1e293b; margin: 0;">${this.currentExam.title}</h2>
+                        <p style="color: #64748b; font-size: 0.85rem; font-weight: 600;">Question ${this.currentQuestionIndex + 1} of ${this.currentQuestions.length}</p>
+                    </div>
+                    <div id="exam-timer" style="font-size: 2rem; font-weight: 900; font-family: 'JetBrains Mono', monospace; color: #4338ca; background: #eef2ff; padding: 0.5rem 1.5rem; border-radius: 16px; min-width: 120px; text-align: center; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
+                        00:00
+                    </div>
+                </div>
+
+                <div style="width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; margin-bottom: 2.5rem; overflow: hidden;">
+                    <div style="width: ${progress}%; height: 100%; background: #4338ca; transition: width 0.4s ease;"></div>
+                </div>
+
+                <div class="card" style="padding: 2.5rem; border-radius: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); border: 1px solid #f1f5f9; margin-bottom: 2rem;">
+                    <div style="font-size: 1.25rem; font-weight: 700; color: #1e293b; line-height: 1.6; margin-bottom: 2.5rem;">
+                        ${q.question_text}
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${q.shuffledOptions.map((opt, idx) => `
+                            <label style="display: flex; align-items: center; gap: 1rem; padding: 1.25rem; border: 2px solid ${this.userAnswers[q.id] === opt.text ? '#4338ca' : '#f1f5f9'}; border-radius: 16px; cursor: pointer; transition: all 0.2s; background: ${this.userAnswers[q.id] === opt.text ? '#f5f7ff' : 'white'};" class="option-label">
+                                <input type="radio" name="exam-option" value="${opt.text}" ${this.userAnswers[q.id] === opt.text ? 'checked' : ''} style="width: 20px; height: 20px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
+                                <div style="display: flex; align-items: center; gap: 1rem; width: 100%;">
+                                    <span style="font-weight: 800; color: ${this.userAnswers[q.id] === opt.text ? '#4338ca' : '#94a3b8'}; background: ${this.userAnswers[q.id] === opt.text ? '#eef2ff' : '#f8fafc'}; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem;">
+                                        ${String.fromCharCode(65 + idx)}
+                                    </span>
+                                    <span style="font-weight: 600; color: #334155;">${opt.text}</span>
+                                </div>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <button class="btn btn-secondary" style="border-radius: 12px; height: 52px; padding: 0 1.5rem;" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>
+                        <i data-lucide="arrow-left"></i> Previous
+                    </button>
+                    
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-danger" style="border-radius: 12px; height: 52px; padding: 0 1.5rem; background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3;" onclick="UI.confirmSubmitExam()">
+                            Submit Exam
+                        </button>
+                        
+                        ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
+                            <button class="btn btn-primary" style="border-radius: 12px; height: 52px; padding: 0 2rem; background: #059669;" onclick="UI.confirmSubmitExam()">
+                                Finalize & Submit <i data-lucide="check-circle" style="margin-left: 0.5rem;"></i>
+                            </button>
+                        ` : `
+                            <button class="btn btn-primary" style="border-radius: 12px; height: 52px; padding: 0 2rem; background: #4338ca;" onclick="UI.nextQuestion()">
+                                Next Question <i data-lucide="arrow-right" style="margin-left: 0.5rem;"></i>
+                            </button>
+                        `}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    saveExamProgress(questionId, value) {
+        this.userAnswers[questionId] = value;
+        // Visual feedback
+        this.renderCBTExamInterface();
+    },
+
+    nextQuestion() {
+        if (this.currentQuestionIndex < this.currentQuestions.length - 1) {
+            this.currentQuestionIndex++;
+            this.renderCBTExamInterface();
+        }
+    },
+
+    prevQuestion() {
+        if (this.currentQuestionIndex > 0) {
+            this.currentQuestionIndex--;
+            this.renderCBTExamInterface();
+        }
+    },
+
+    confirmSubmitExam() {
+        const unanswered = this.currentQuestions.length - Object.keys(this.userAnswers).length;
+        const msg = unanswered > 0 
+            ? `You have ${unanswered} unanswered questions. Are you sure you want to submit?`
+            : `Are you sure you want to submit your exam now?`;
+            
+        if (confirm(msg)) {
+            this.submitExam();
+        }
+    },
+
+    async submitExam() {
+        if (this.examTimerInterval) clearInterval(this.examTimerInterval);
+        
+        let score = 0;
+        this.currentQuestions.forEach(q => {
+            if (this.userAnswers[q.id] === q.correctText) {
+                score++;
+            }
+        });
+
+        const result = prepareForSync({
+            id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+            exam_id: this.currentExam.id,
+            student_id: this.currentUser.assigned_id || this.currentUser.id,
+            score,
+            total_questions: this.currentQuestions.length,
+            answers: this.userAnswers,
+            updated_at: new Date().toISOString()
+        });
+
+        await db.cbt_results.add(result);
+        
+        // Auto-post to scoresheet if configured
+        if (this.currentExam.score_field) {
+            await this.postCBTToScoresheet(result);
+        }
+
+        this.contentArea.innerHTML = `
+            <div class="view-container text-center animate-fade-in" style="padding-top: 5rem;">
+                <div style="width: 100px; height: 100px; background: #ecfdf5; color: #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 2rem;">
+                    <i data-lucide="check-circle" style="width: 60px; height: 60px;"></i>
+                </div>
+                <h1 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem;">Exam Submitted!</h1>
+                <p style="color: #64748b; font-size: 1.1rem; margin-bottom: 3rem;">Your responses have been securely recorded. Your final score is being processed.</p>
+                
+                <div class="card" style="max-width: 400px; margin: 0 auto 3rem; padding: 2rem; border-radius: 20px;">
+                    <div style="font-size: 0.85rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">FINAL SCORE</div>
+                    <div style="font-size: 4rem; font-weight: 900; color: #4338ca;">${score} <span style="font-size: 1.5rem; color: #94a3b8;">/ ${this.currentQuestions.length}</span></div>
+                </div>
+
+                <button class="btn btn-primary" onclick="UI.renderCBT()" style="padding: 1rem 3rem; border-radius: 12px; font-weight: 800;">Return to Hub</button>
+            </div>
+        `;
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        syncToCloud();
+    },
+
+    async postCBTToScoresheet(result) {
+        try {
+            const exam = await db.cbt_exams.get(result.exam_id);
+            const student = await db.students.get(result.student_id);
+            if (!exam || !student) return;
+
+            const existingScore = await db.scores
+                .where('[student_id+subject_id+term+session]')
+                .equals([result.student_id, exam.subject_id, exam.term, exam.session])
+                .first();
+
+            const scoreValue = Math.round((result.score / result.total_questions) * 60);
+
+            if (existingScore) {
+                const updateData = { [exam.score_field]: scoreValue };
+                await db.scores.update(existingScore.id, prepareForSync(updateData));
+            } else {
+                const newScore = prepareForSync({
+                    id: `SCR${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    student_id: result.student_id,
+                    subject_id: exam.subject_id,
+                    term: exam.term,
+                    session: exam.session,
+                    [exam.score_field]: scoreValue
+                });
+                await db.scores.add(newScore);
+            }
+        } catch (e) {
+            console.error('Error posting CBT score:', e);
+        }
     },
 
     bulkImportQuestions() {
@@ -3832,6 +4119,220 @@ export const UI = {
             this.refreshQuestionPreview();
             Notifications.show(`Successfully imported ${count} questions`, 'success');
         }, 'Import Now');
+    },
+
+    async renderLessons() {
+        const teachers = await db.profiles.where('role').equals('Teacher').toArray();
+        const classes = await db.classes.toArray();
+        const subjects = await db.subjects.toArray();
+        const assignments = await db.subject_assignments.toArray();
+        const profiles = await db.profiles.toArray();
+
+        // Sort classes serially
+        const classOrder = { 'JSS': 1, 'JS': 1, 'SSS': 2, 'SS': 2, 'PRY': 3, 'BASIC': 4 };
+        classes.sort((a, b) => {
+            const getParts = (name) => {
+                const match = name.match(/^([A-Z]+)\s*(\d+)/i);
+                if (!match) return [name.toUpperCase(), 0];
+                return [match[1].toUpperCase(), parseInt(match[2])];
+            };
+            const [pA, nA] = getParts(a.name);
+            const [pB, nB] = getParts(b.name);
+            const rA = classOrder[pA] || 99;
+            const rB = classOrder[pB] || 99;
+            if (rA !== rB) return rA - rB;
+            if (nA !== nB) return nA - nB;
+            return a.name.localeCompare(b.name);
+        });
+
+        subjects.sort((a,b) => a.name.localeCompare(b.name));
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in-up">
+                <header class="view-header" style="margin-bottom: 2rem;">
+                    <h1 class="text-3xl font-extrabold tracking-tight" style="color: #1e293b;">Administrative Control</h1>
+                    <p class="text-secondary">Manage school infrastructure, staff, and system records.</p>
+                </header>
+
+                <div class="card" style="border-radius: 24px; padding: 2rem; border: 1px solid #f1f5f9; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); margin-bottom: 2rem; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px);">
+                    <div style="display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 2rem;">
+                        <div style="width: 48px; height: 48px; background: #eef2ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #4338ca;">
+                            <i data-lucide="clipboard-list"></i>
+                        </div>
+                        <div>
+                            <h3 style="font-weight: 800; color: #1e293b; font-size: 1.25rem;">Bulk Faculty Workload</h3>
+                            <p style="color: #64748b; font-size: 0.85rem;">Select a teacher, multiple classes, and multiple subjects for high-speed deployment.</p>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                        <div class="form-group">
+                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">1. TARGET STAFF MEMBER</label>
+                            <div style="position: relative;">
+                                <i data-lucide="user-plus" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px;"></i>
+                                <select id="bulk-teacher" class="input" style="padding-left: 2.75rem; width: 100%; border-radius: 12px; height: 52px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                                    <option value="">Select from Faculty...</option>
+                                    ${teachers.map(t => `<option value="${t.id}">${t.full_name}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">TARGET SPECIALIZATION</label>
+                            <div style="position: relative;">
+                                <i data-lucide="activity" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #10b981; width: 18px;"></i>
+                                <select id="bulk-specialization" class="input" style="padding-left: 2.75rem; width: 100%; border-radius: 12px; height: 52px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                                    <option value="Common Subject">Common Subject</option>
+                                    <option value="Specialized">Specialized</option>
+                                    <option value="Elective">Elective</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                        <div>
+                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 1rem; display: block;">2. SELECT DEPLOYMENT CLASSES (<span id="count-classes">0</span>)</label>
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; max-height: 250px; overflow-y: auto; padding: 0.5rem;">
+                                ${classes.map(c => `
+                                    <label style="display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg">
+                                        <input type="checkbox" name="bulk-classes" value="${c.name}" onchange="document.getElementById('count-classes').textContent = document.querySelectorAll('input[name=bulk-classes]:checked').length">
+                                        <span style="font-size: 0.9rem; font-weight: 600; color: #334155;">${c.name}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 1rem; display: block;">3. SELECT SUBJECT TITLES (<span id="count-subjects">0</span>)</label>
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; max-height: 250px; overflow-y: auto; padding: 0.5rem;">
+                                ${subjects.map(s => `
+                                    <label style="display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg">
+                                        <input type="checkbox" name="bulk-subjects" value="${s.id}" onchange="document.getElementById('count-subjects').textContent = document.querySelectorAll('input[name=bulk-subjects]:checked').length">
+                                        <span style="font-size: 0.9rem; font-weight: 600; color: #334155;">${s.name}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end;">
+                        <button id="btn-deploy-workload" class="btn btn-primary" style="padding: 1rem 2rem; border-radius: 12px; font-weight: 800; background: linear-gradient(to right, #4338ca, #312e81); border: none; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                            Secure Deployment Plan <i data-lucide="shield-check" style="margin-left: 0.5rem; width: 18px;"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card" style="border-radius: 24px; padding: 1.5rem; border: 1px solid #f1f5f9; background: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding: 0 0.5rem;">
+                        <h3 style="font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 0.5rem;">
+                            <div style="width: 4px; height: 16px; background: #4338ca; border-radius: 2px;"></div>
+                            Active Deployment Registry
+                        </h3>
+                        <span class="badge" style="background: #f1f5f9; color: #64748b; font-weight: 700; padding: 0.5rem 1rem;">${assignments.length} TOTAL</span>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr style="background: #f8fafc;">
+                                    <th style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Faculty Member</th>
+                                    <th style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Class</th>
+                                    <th style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Subject</th>
+                                    <th style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Specialization</th>
+                                    <th style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Control</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${assignments.length === 0 ? '<tr><td colspan="5" class="text-center p-4">Waiting for faculty deployments...</td></tr>' : 
+                                    assignments.map(a => {
+                                        const teacher = profiles.find(p => p.id === a.teacher_id);
+                                        const subject = subjects.find(s => s.id === a.subject_id);
+                                        return `
+                                            <tr>
+                                                <td>
+                                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                                        <div style="width: 32px; height: 32px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #4338ca; font-size: 0.75rem;">
+                                                            ${teacher ? teacher.full_name.charAt(0) : '?'}
+                                                        </div>
+                                                        <span style="font-weight: 600;">${teacher ? teacher.full_name : 'Unknown'}</span>
+                                                    </div>
+                                                </td>
+                                                <td><span class="badge" style="background: #eef2ff; color: #4338ca;">${a.class_name}</span></td>
+                                                <td><span style="font-weight: 600; color: #334155;">${subject ? subject.name : 'N/A'}</span></td>
+                                                <td><span class="badge" style="background: #f0fdf4; color: #16a34a; font-size: 0.7rem;">${a.specialization || 'Common'}</span></td>
+                                                <td>
+                                                    <button class="btn btn-sm" style="color: #ef4444; background: #fef2f2; border-radius: 8px; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center;" onclick="UI.deleteAssignment('${a.id}')">
+                                                        <i data-lucide="trash-2" style="width: 16px;"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        document.getElementById('btn-deploy-workload').onclick = async () => {
+            const teacherId = document.getElementById('bulk-teacher').value;
+            const specialization = document.getElementById('bulk-specialization').value;
+            const checkedClasses = Array.from(document.querySelectorAll('input[name=bulk-classes]:checked')).map(i => i.value);
+            const checkedSubjects = Array.from(document.querySelectorAll('input[name=bulk-subjects]:checked')).map(i => i.value);
+
+            if (!teacherId || checkedClasses.length === 0 || checkedSubjects.length === 0) {
+                return Notifications.show('Please select a teacher, at least one class, and at least one subject.', 'error');
+            }
+
+            const btn = document.getElementById('btn-deploy-workload');
+            btn.disabled = true;
+            btn.innerHTML = 'Deploying...';
+
+            try {
+                for (const className of checkedClasses) {
+                    for (const subId of checkedSubjects) {
+                        // Check if already assigned
+                        const allAssignments = await db.subject_assignments.toArray();
+                        const existing = allAssignments.find(a => 
+                            a.teacher_id === teacherId && 
+                            a.subject_id === subId && 
+                            a.class_name === className
+                        );
+                        
+                        if (!existing) {
+                            await db.subject_assignments.add(prepareForSync({
+                                id: `ASG${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                                teacher_id: teacherId,
+                                subject_id: subId,
+                                class_name: className,
+                                specialization: specialization
+                            }));
+                        }
+                    }
+                }
+                Notifications.show('Workload deployed successfully!', 'success');
+                this.renderLessons();
+                syncToCloud();
+            } catch (e) {
+                console.error(e);
+                Notifications.show('Deployment failed.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Secure Deployment Plan <i data-lucide="shield-check" style="margin-left: 0.5rem; width: 18px;"></i>';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        };
+    },
+
+    async deleteAssignment(id) {
+        if (confirm('Are you sure you want to delete this assignment?')) {
+            await db.subject_assignments.delete(id);
+            Notifications.show('Assignment removed', 'success');
+            this.renderLessons();
+            syncToCloud();
+        }
     },
 
     isAnswerCloseEnough(studentAns, correctAns) {
