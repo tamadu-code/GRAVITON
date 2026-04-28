@@ -3386,39 +3386,51 @@ export const UI = {
                     </button>
                 </div>
 
-                <div class="card mt-1" style="border-radius: 20px; padding: 1.5rem;">
-                    <div class="table-container">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Exam Title</th>
-                                    <th>Subject</th>
-                                    <th>Class</th>
-                                    <th>Mode</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${exams.length === 0 ? '<tr><td colspan="6" class="text-center p-4">No exams found. Click "New Exam" to begin.</td></tr>' : 
-                                    exams.map(e => `
-                                        <tr>
-                                            <td><div style="font-weight:700;">${e.title}</div><div style="font-size:0.75rem; color:var(--text-muted);">${e.id}</div></td>
-                                            <td>${subMap[e.subject_id] || 'N/A'}</td>
-                                            <td><span class="badge" style="background:#f1f5f9; color:var(--text-primary);">${e.class_name}</span></td>
-                                            <td>${e.mode || 'Exam'}</td>
-                                            <td><span class="badge badge-${e.status === 'Active' ? 'success' : 'warning'}">${e.status}</span></td>
-                                            <td>
-                                                <div style="display:flex; gap:0.5rem;">
-                                                    <button class="btn btn-sm btn-secondary" onclick="UI.renderCBTEditor('${e.id}')" title="Edit Exam"><i data-lucide="edit-3"></i></button>
-                                                    <button class="btn btn-sm btn-danger" onclick="UI.deleteExam('${e.id}')" title="Delete Exam"><i data-lucide="trash-2"></i></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="cbt-list-container" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem;">
+                    ${exams.length === 0 ? '<div class="card text-center p-4">No exams found. Click "New Exam" to begin.</div>' : 
+                        exams.map(e => `
+                        <div class="cbt-exam-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                            <div class="cbt-exam-trigger" style="padding: 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: white;" onclick="const content = this.nextElementSibling; const isExpanded = content.style.maxHeight !== '0px' && content.style.maxHeight !== ''; content.style.maxHeight = isExpanded ? '0px' : '500px'; this.querySelector('.chevron-icon').style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';">
+                                <div style="display: flex; align-items: center; gap: 1rem;">
+                                    <div style="width: 45px; height: 45px; background: #eef2ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #4338ca;">
+                                        <i data-lucide="file-text"></i>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 800; color: #1e293b; font-size: 1.05rem;">${e.title}</div>
+                                        <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">${subMap[e.subject_id] || 'General Subject'} | ${e.class_name}</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 1rem;">
+                                    <span class="badge badge-${e.status === 'Active' ? 'success' : 'warning'}" style="padding: 6px 12px; border-radius: 8px;">${e.status}</span>
+                                    <i data-lucide="chevron-down" class="chevron-icon" style="width: 20px; color: #94a3b8; transition: transform 0.3s ease;"></i>
+                                </div>
+                            </div>
+                            <div class="cbt-exam-content" style="max-height: 0; overflow: hidden; transition: max-height 0.4s ease-out; background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                                <div style="padding: 1.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem;">
+                                    <div>
+                                        <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">EXAM MODE</div>
+                                        <div style="font-weight: 700; color: #334155;">${e.mode || 'Standard Exam'}</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">DURATION</div>
+                                        <div style="font-weight: 700; color: #334155;">${e.duration || 30} Minutes</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">TERM / SESSION</div>
+                                        <div style="font-weight: 700; color: #334155;">${e.term} | ${e.session}</div>
+                                    </div>
+                                    <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end;">
+                                        <button class="btn btn-secondary btn-sm" onclick="UI.renderCBTEditor('${e.id}')" style="height: 40px; padding: 0 1.25rem; border-radius: 10px;">
+                                            <i data-lucide="edit-3" style="width: 16px;"></i> Edit
+                                        </button>
+                                        <button class="btn btn-danger btn-sm" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                                            <i data-lucide="trash-2" style="width: 16px;"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
             </div>
         `;
