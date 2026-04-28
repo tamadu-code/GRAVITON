@@ -2016,8 +2016,8 @@ label {
 /* ─── Page Banners (Premium Glassmorphism) ───────────────────────── */
 .page-banner {
     padding: 0.75rem 1.5rem;
-    min-height: 70px;
-    height: 80px;
+    min-height: 80px;
+    height: auto;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -3082,3 +3082,95 @@ label {
     animation: fadeInUp 0.5s ease forwards;
 }
 
+
+/* CBT Specific Styles */
+.cbt-container {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+}
+
+.cbt-main-card {
+    flex: 2;
+}
+
+.cbt-side-card {
+    flex: 1;
+    position: sticky;
+    top: 1rem;
+}
+
+.question-preview-list {
+    margin-top: 1.5rem;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.question-preview-item {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+    position: relative;
+    transition: all 0.2s;
+}
+
+.question-preview-item:hover {
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.question-preview-item .q-num {
+    position: absolute;
+    top: -10px;
+    left: 10px;
+    background: var(--accent-primary);
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 99px;
+}
+
+.cbt-form-group {
+    margin-bottom: 1.25rem;
+}
+
+.cbt-form-group label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.cbt-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: #f8fafc;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.cbt-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    background: white;
+    box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+}
+
+@media (max-width: 1024px) {
+    .cbt-container {
+        flex-direction: column;
+    }
+    .cbt-side-card {
+        position: static;
+        width: 100%;
+    }
+}

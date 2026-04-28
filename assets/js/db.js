@@ -35,6 +35,13 @@ db.version(5).stores({
     cbt_questions: 'id, exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, updated_at, is_synced'
 });
 
+db.version(6).stores({
+    cbt_exams: 'id, title, subject_id, class_name, teacher_id, mode, term, session, score_field, date, duration, status, updated_at, is_synced',
+    cbt_questions: 'id, exam_id, question_text, option_a, option_b, option_c, option_d, option_e, correct_option, updated_at, is_synced',
+    cbt_results: 'id, exam_id, student_id, score, total_questions, answers, warnings, updated_at, is_synced',
+    exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
+});
+
 /**
  * Smart ID Generation
  * Format: SMS/YEAR/INCREMENT (e.g., SMS/2026/104)

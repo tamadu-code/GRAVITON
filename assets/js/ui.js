@@ -121,7 +121,7 @@ export const UI = {
         });
 
         // Specific Main Nav items for Teachers/Others
-        const restrictedViews = ['classes', 'subjects'];
+        const restrictedViews = ['classes', 'subjects', 'lessons', 'roster', 'curriculum', 'reports', 'insights'];
         if (!isAdmin) {
             navItems.forEach(item => {
                 const view = item.getAttribute('data-view');
@@ -2972,45 +2972,63 @@ export const UI = {
         });
     },
 
+    cbtQuestions: [],
+
     async renderCBT() {
         const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
         const teacherId = this.currentUser.id;
         
-        let subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-        let classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        let subjects = (await db.subjects.toArray());
         let exams = await db.cbt_exams.toArray();
 
         if (isTeacher) {
-            const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
-            const assignedSubIds = new Set(assignments.map(a => a.subject_id));
-            subjects = subjects.filter(s => assignedSubIds.has(s.id));
-            
-            const assignedClasses = new Set(assignments.map(a => a.class_name));
-            classes = classes.filter(c => assignedClasses.has(c.name));
-            
             exams = exams.filter(e => e.teacher_id === teacherId);
         }
 
+        const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
+
         this.contentArea.innerHTML = `
-            <div class="view-container">
+            <div class="view-container animate-fade-in-up">
                 <div class="page-banner" style="background: linear-gradient(135deg, #4338ca 0%, #312e81 100%);">
                     <div class="banner-content">
                         <h1 class="banner-title"><i data-lucide="monitor"></i> CBT Exam Hub</h1>
                         <p class="banner-subtitle">Create, manage, and monitor computer-based tests.</p>
                     </div>
-                    <button id="btn-create-exam" class="btn btn-primary" style="background: white; color: #4338ca; border: none; font-weight: 800;">
+                    <button id="btn-create-exam" class="btn btn-primary" style="background: white; color: #4338ca; border: none; font-weight: 800; box-shadow: var(--shadow-md);">
                         <i data-lucide="plus-square"></i> New Exam
                     </button>
                 </div>
 
-                <div class="card mt-1" style="border-radius: 12px; padding: 1rem;">
+                <div class="card mt-1" style="border-radius: 20px; padding: 1.5rem;">
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
-                                <tr><th>Title</th><th>Course</th><th>Stream</th><th>Questions</th><th>Duration</th><th>Status</th><th>Actions</th></tr>
+                                <tr>
+                                    <th>Exam Title</th>
+                                    <th>Subject</th>
+                                    <th>Class</th>
+                                    <th>Mode</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
                             </thead>
-                            <tbody id="exam-list-body">
-                                ${exams.length === 0 ? '<tr><td colspan="7" class="text-center p-4">No exams found. Create one to begin.</td></tr>' : ''}
+                            <tbody>
+                                ${exams.length === 0 ? '<tr><td colspan="6" class="text-center p-4">No exams found. Click "New Exam" to begin.</td></tr>' : 
+                                    exams.map(e => `
+                                        <tr>
+                                            <td><div style="font-weight:700;">${e.title}</div><div style="font-size:0.75rem; color:var(--text-muted);">${e.id}</div></td>
+                                            <td>${subMap[e.subject_id] || 'N/A'}</td>
+                                            <td><span class="badge" style="background:#f1f5f9; color:var(--text-primary);">${e.class_name}</span></td>
+                                            <td>${e.mode || 'Exam'}</td>
+                                            <td><span class="badge badge-${e.status === 'Active' ? 'success' : 'warning'}">${e.status}</span></td>
+                                            <td>
+                                                <div style="display:flex; gap:0.5rem;">
+                                                    <button class="btn btn-sm btn-secondary" onclick="UI.renderCBTEditor('${e.id}')" title="Edit Exam"><i data-lucide="edit-3"></i></button>
+                                                    <button class="btn btn-sm btn-danger" onclick="UI.deleteExam('${e.id}')" title="Delete Exam"><i data-lucide="trash-2"></i></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
                             </tbody>
                         </table>
                     </div>
@@ -3019,50 +3037,354 @@ export const UI = {
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        document.getElementById('btn-create-exam').onclick = () => this.renderCBTEditor();
+    },
 
-        // Exam creation logic
-        document.getElementById('btn-create-exam').onclick = () => {
-            const modalHtml = `
-                <div style="display: flex; flex-direction: column; gap: 1rem;">
-                    <input type="text" id="exam-title" class="input" placeholder="Exam Title (e.g. Mid-Term Quiz)">
-                    <select id="exam-subject" class="input">
-                        ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-                    </select>
-                    <select id="exam-class" class="input">
-                        ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-                    </select>
-                    <div style="display: flex; gap: 1rem;">
-                        <input type="number" id="exam-duration" class="input" placeholder="Duration (mins)" style="flex: 1;">
-                        <input type="date" id="exam-date" class="input" style="flex: 1;">
+    async deleteExam(id) {
+        if (confirm('Are you sure you want to delete this exam and all its questions?')) {
+            await db.cbt_exams.delete(id);
+            await db.cbt_questions.where('exam_id').equals(id).delete();
+            Notifications.show('Exam deleted successfully', 'success');
+            this.renderCBT();
+            syncToCloud();
+        }
+    },
+
+    async renderCBTEditor(examId = null) {
+        const isEdit = !!examId;
+        const teacherId = this.currentUser.id;
+        
+        let exam = isEdit ? await db.cbt_exams.get(examId) : {
+            title: '', subject_id: '', class_name: '', duration: 30, mode: 'Official Exam', term: '3rd Term', session: '2025/2026', score_field: 'test1', status: 'Draft'
+        };
+
+        this.cbtQuestions = isEdit ? await db.cbt_questions.where('exam_id').equals(examId).toArray() : [];
+
+        let subjects = (await db.subjects.toArray());
+        let classes = (await db.classes.toArray());
+        
+        if ((this.currentUser.role || '').toLowerCase() === 'teacher') {
+            const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
+            const assignedSubIds = new Set(assignments.map(a => a.subject_id));
+            subjects = subjects.filter(s => assignedSubIds.has(s.id));
+            const assignedClasses = new Set(assignments.map(a => a.class_name));
+            classes = classes.filter(c => assignedClasses.has(c.name));
+        }
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in-up">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+                    <div>
+                        <h2 style="display:flex; align-items:center; gap:0.75rem;"><i data-lucide="monitor"></i> Computer Based Testing (CBT)</h2>
+                        <p class="text-secondary">Manage exams and view results</p>
+                    </div>
+                    <button class="btn btn-secondary" onclick="UI.renderCBT()"><i data-lucide="arrow-left"></i> Back to List</button>
+                </div>
+
+                <div class="cbt-container">
+                    <!-- Left Column: Questions -->
+                    <div class="cbt-main-card">
+                        <div class="card" style="border-radius:20px; padding:1.5rem;">
+                            <h3 style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1.5rem;"><i data-lucide="file-text"></i> Add Questions</h3>
+                            
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                                <div class="cbt-form-group">
+                                    <label>Question Type</label>
+                                    <select id="q-type" class="cbt-input">
+                                        <option value="mcq">Multiple Choice</option>
+                                        <option value="fill">Fill in the Gaps</option>
+                                    </select>
+                                </div>
+                                <div class="cbt-form-group">
+                                    <label>Attachment (Image)</label>
+                                    <input type="file" id="q-file" class="cbt-input">
+                                </div>
+                            </div>
+
+                            <div class="cbt-form-group">
+                                <label>Question Text</label>
+                                <textarea id="q-text" class="cbt-input" style="height:100px; resize:none;" placeholder="Type Question Here... (e.g. Solve the equation in the image)"></textarea>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                                <div class="cbt-form-group"><label>Option A</label><input type="text" id="opt-a" class="cbt-input"></div>
+                                <div class="cbt-form-group"><label>Option B</label><input type="text" id="opt-b" class="cbt-input"></div>
+                                <div class="cbt-form-group"><label>Option C</label><input type="text" id="opt-c" class="cbt-input"></div>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                                <div class="cbt-form-group"><label>Option D</label><input type="text" id="opt-d" class="cbt-input"></div>
+                                <div class="cbt-form-group"><label>Option E (Optional)</label><input type="text" id="opt-e" class="cbt-input"></div>
+                            </div>
+
+                            <div class="cbt-form-group">
+                                <label>Correct Answer:</label>
+                                <select id="q-correct" class="cbt-input">
+                                    <option value="A">Option A</option>
+                                    <option value="B">Option B</option>
+                                    <option value="C">Option C</option>
+                                    <option value="D">Option D</option>
+                                    <option value="E">Option E</option>
+                                </select>
+                            </div>
+
+                            <div style="display:flex; justify-content:flex-end; gap:1rem; margin-top:2rem;">
+                                <button class="btn btn-secondary" onclick="UI.bulkImportQuestions()"><i data-lucide="file-up"></i> Bulk Import</button>
+                                <button class="btn btn-primary" onclick="UI.addTempQuestion()"><i data-lucide="plus"></i> Add Question</button>
+                            </div>
+
+                            <div class="question-preview-list" id="q-preview-area">
+                                <!-- Question previews go here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Exam Details -->
+                    <div class="cbt-side-card">
+                        <div class="card" style="border-radius:20px; padding:1.5rem;">
+                            <h3 style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1.5rem;"><i data-lucide="settings"></i> Exam Details</h3>
+                            
+                            <div class="cbt-form-group">
+                                <label>Exam Title</label>
+                                <input type="text" id="exam-title" class="cbt-input" value="${exam.title}" placeholder="e.g. 1st Term Math Assessment">
+                            </div>
+
+                            <div class="cbt-form-group">
+                                <label>Class</label>
+                                <select id="exam-class" class="cbt-input">
+                                    <option value="">Select Class</option>
+                                    ${classes.map(c => `<option value="${c.name}" ${exam.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
+                                </select>
+                            </div>
+
+                            <div class="cbt-form-group">
+                                <label>Subject</label>
+                                <select id="exam-subject" class="cbt-input">
+                                    <option value="">Select Subject</option>
+                                    ${subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
+                                </select>
+                            </div>
+
+                            <div class="cbt-form-group">
+                                <label>Duration (Minutes)</label>
+                                <input type="number" id="exam-duration" class="cbt-input" value="${exam.duration}">
+                            </div>
+
+                            <div class="cbt-form-group">
+                                <label>Exam Mode</label>
+                                <select id="exam-mode" class="cbt-input">
+                                    <option value="Official Exam" ${exam.mode === 'Official Exam' ? 'selected' : ''}>Official Exam (Update Records)</option>
+                                    <option value="Practice" ${exam.mode === 'Practice' ? 'selected' : ''}>Practice Mode (Mock Only)</option>
+                                </select>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+                                <div class="cbt-form-group">
+                                    <label>Target Term</label>
+                                    <select id="exam-term" class="cbt-input">
+                                        <option value="1st Term" ${exam.term === '1st Term' ? 'selected' : ''}>1st Term</option>
+                                        <option value="2nd Term" ${exam.term === '2nd Term' ? 'selected' : ''}>2nd Term</option>
+                                        <option value="3rd Term" ${exam.term === '3rd Term' ? 'selected' : ''}>3rd Term</option>
+                                    </select>
+                                </div>
+                                <div class="cbt-form-group">
+                                    <label>Target Session</label>
+                                    <select id="exam-session" class="cbt-input">
+                                        <option value="2024/2025" ${exam.session === '2024/2025' ? 'selected' : ''}>2024/2025</option>
+                                        <option value="2025/2026" ${exam.session === '2025/2026' ? 'selected' : ''}>2025/2026</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="cbt-form-group">
+                                <label>Push Score To:</label>
+                                <select id="exam-score-field" class="cbt-input">
+                                    <option value="test1" ${exam.score_field === 'test1' ? 'selected' : ''}>Test 1</option>
+                                    <option value="test2" ${exam.score_field === 'test2' ? 'selected' : ''}>Test 2</option>
+                                    <option value="exam" ${exam.score_field === 'exam' ? 'selected' : ''}>Final Exam</option>
+                                </select>
+                            </div>
+
+                            <div class="cbt-form-group">
+                                <label>Visibility Status</label>
+                                <select id="exam-status" class="cbt-input">
+                                    <option value="Draft" ${exam.status === 'Draft' ? 'selected' : ''}>Draft (Hidden)</option>
+                                    <option value="Active" ${exam.status === 'Active' ? 'selected' : ''}>Active (Open for Students)</option>
+                                </select>
+                            </div>
+
+                            <button class="btn btn-primary w-100" style="padding:1rem; border-radius:12px; background:#000080;" onclick="UI.saveExam('${examId || ''}')">
+                                <i data-lucide="save"></i> Save Exam
+                            </button>
+                        </div>
                     </div>
                 </div>
-            `;
+            </div>
+        `;
 
-            this.showModal('Create New CBT Exam', modalHtml, async () => {
-                const title = document.getElementById('exam-title').value;
-                const subjectId = document.getElementById('exam-subject').value;
-                const className = document.getElementById('exam-class').value;
-                const duration = document.getElementById('exam-duration').value;
-                const date = document.getElementById('exam-date').value;
-
-                if (!title || !subjectId || !className) return;
-
-                const newExam = prepareForSync({
-                    id: `EXM${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                    title,
-                    subject_id: subjectId,
-                    class_name: className,
-                    teacher_id: teacherId,
-                    duration: parseInt(duration) || 60,
-                    date: date || new Date().toISOString().split('T')[0],
-                    status: 'Draft'
-                });
-
-                await db.cbt_exams.add(newExam);
-                Notifications.show('Exam created successfully', 'success');
-                this.renderCBT();
-                syncToCloud();
-            }, 'Create Exam');
-        };
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        this.refreshQuestionPreview();
     },
+
+    addTempQuestion() {
+        const text = document.getElementById('q-text').value;
+        if (!text) return Notifications.show('Please enter question text', 'error');
+
+        const q = {
+            id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
+            question_text: text,
+            option_a: document.getElementById('opt-a').value,
+            option_b: document.getElementById('opt-b').value,
+            option_c: document.getElementById('opt-c').value,
+            option_d: document.getElementById('opt-d').value,
+            option_e: document.getElementById('opt-e').value,
+            correct_option: document.getElementById('q-correct').value
+        };
+
+        this.cbtQuestions.push(q);
+        
+        // Reset inputs
+        document.getElementById('q-text').value = '';
+        document.getElementById('opt-a').value = '';
+        document.getElementById('opt-b').value = '';
+        document.getElementById('opt-c').value = '';
+        document.getElementById('opt-d').value = '';
+        document.getElementById('opt-e').value = '';
+        
+        this.refreshQuestionPreview();
+        Notifications.show('Question added to list', 'success');
+    },
+
+    refreshQuestionPreview() {
+        const area = document.getElementById('q-preview-area');
+        if (!area) return;
+
+        if (this.cbtQuestions.length === 0) {
+            area.innerHTML = `<p class="text-secondary text-center p-4">No questions added yet.</p>`;
+            return;
+        }
+
+        area.innerHTML = `<h4>Questions Preview (${this.cbtQuestions.length})</h4>` + this.cbtQuestions.map((q, idx) => `
+            <div class="question-preview-item">
+                <span class="q-num">#${idx + 1}</span>
+                <p style="font-weight:600; margin-bottom:0.5rem;">${q.question_text}</p>
+                <div style="font-size:0.85rem; display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; color:var(--text-secondary);">
+                    <div>A: ${q.option_a}</div>
+                    <div>B: ${q.option_b}</div>
+                    <div>C: ${q.option_c}</div>
+                    <div>D: ${q.option_d}</div>
+                </div>
+                <div style="margin-top:0.5rem; font-size:0.85rem; color:var(--accent-success); font-weight:700;">
+                    Correct: ${q.correct_option}
+                </div>
+                <button class="btn btn-sm btn-danger" style="position:absolute; top:10px; right:10px; padding:2px 5px;" onclick="UI.removeTempQuestion('${q.id}')">
+                    <i data-lucide="x" style="width:14px; height:14px;"></i>
+                </button>
+            </div>
+        `).join('');
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    removeTempQuestion(id) {
+        this.cbtQuestions = this.cbtQuestions.filter(q => q.id !== id);
+        this.refreshQuestionPreview();
+    },
+
+    async saveExam(existingId) {
+        const title = document.getElementById('exam-title').value;
+        const subId = document.getElementById('exam-subject').value;
+        const cls = document.getElementById('exam-class').value;
+
+        if (!title || !subId || !cls) {
+            return Notifications.show('Please fill in required fields (Title, Subject, Class)', 'error');
+        }
+
+        const examId = existingId || `EXM${Math.random().toString(36).substr(2,9).toUpperCase()}`;
+        
+        const examData = prepareForSync({
+            id: examId,
+            title,
+            subject_id: subId,
+            class_name: cls,
+            teacher_id: this.currentUser.id,
+            duration: parseInt(document.getElementById('exam-duration').value) || 30,
+            mode: document.getElementById('exam-mode').value,
+            term: document.getElementById('exam-term').value,
+            session: document.getElementById('exam-session').value,
+            score_field: document.getElementById('exam-score-field').value,
+            status: document.getElementById('exam-status').value,
+            date: new Date().toISOString().split('T')[0]
+        });
+
+        if (existingId) {
+            await db.cbt_exams.update(existingId, examData);
+            // Re-save questions
+            await db.cbt_questions.where('exam_id').equals(existingId).delete();
+        } else {
+            await db.cbt_exams.add(examData);
+        }
+
+        // Save all current questions
+        for (const q of this.cbtQuestions) {
+            await db.cbt_questions.add(prepareForSync({
+                ...q,
+                exam_id: examId
+            }));
+        }
+
+        Notifications.show('Exam saved successfully', 'success');
+        this.renderCBT();
+        syncToCloud();
+    },
+
+    bulkImportQuestions() {
+        const modalHtml = `
+            <div class="form-group">
+                <label>Paste questions below in this format:</label>
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.5rem; background:#f1f5f9; padding:0.5rem; border-radius:8px;">
+                    Question text? (A) Option 1 (B) Option 2 (C) Option 3 (D) Option 4 [Ans: A]
+                </div>
+                <textarea id="bulk-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.8rem;" placeholder="Question 1... [Ans: B]\nQuestion 2... [Ans: C]"></textarea>
+            </div>
+        `;
+
+        this.showModal('Bulk Import Questions', modalHtml, () => {
+            const text = document.getElementById('bulk-q-text').value;
+            if (!text) return;
+
+            const lines = text.split('\n').filter(l => l.trim() !== '');
+            let count = 0;
+
+            lines.forEach(line => {
+                try {
+                    // Basic Regex for: Question (A) Opt (B) Opt (C) Opt (D) Opt [Ans: X]
+                    const qMatch = line.match(/(.*?)\s*\(A\)\s*(.*?)\s*\(B\)\s*(.*?)\s*\(C\)\s*(.*?)\s*\(D\)\s*(.*?)\s*\[Ans:\s*([A-E])\]/i);
+                    
+                    if (qMatch) {
+                        this.cbtQuestions.push({
+                            id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
+                            question_text: qMatch[1].trim(),
+                            option_a: qMatch[2].trim(),
+                            option_b: qMatch[3].trim(),
+                            option_c: qMatch[4].trim(),
+                            option_d: qMatch[5].trim(),
+                            option_e: '',
+                            correct_option: qMatch[6].toUpperCase()
+                        });
+                        count++;
+                    }
+                } catch (e) { console.error('Failed to parse line:', line); }
+            });
+
+            this.refreshQuestionPreview();
+            Notifications.show(`Successfully imported ${count} questions`, 'success');
+        }, 'Import Now');
+    },
+
+    isAnswerCloseEnough(studentAns, correctAns) {
+        if (!studentAns || !correctAns) return false;
+        const s = studentAns.toLowerCase().trim().replace(/\s+/g, ' ');
+        const c = correctAns.toLowerCase().trim().replace(/\s+/g, ' ');
+        return s === c;
+    }
 };
