@@ -145,6 +145,9 @@ async function loadAuthenticatedApp(authUser) {
         assigned_id: profile.assigned_id || null
     };
 
+    // Initialize sidebar visibility based on role
+    UI.initSidebar();
+
     // Update Topbar & Sidebar Footer UI
     const userNameEl = document.querySelector('.user-name');
     const userRoleEl = document.querySelector('.user-role');

@@ -99,6 +99,39 @@ export const UI = {
         `;
     },
 
+    initSidebar() {
+        const role = (this.currentUser.role || '').toLowerCase();
+        const isAdmin = role === 'admin' || role === ''; // Default to admin for safety or if pending
+        
+        const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
+        const sectionHeaders = document.querySelectorAll('.nav-section-header');
+        
+        // Hide Admin Section
+        sectionHeaders.forEach(header => {
+            if (header.textContent.includes('ADMINISTRATION') && !isAdmin) {
+                header.style.display = 'none';
+                
+                // Also hide all items following this header until next section
+                let sibling = header.nextElementSibling;
+                while (sibling && !sibling.classList.contains('nav-section-header')) {
+                    sibling.style.display = 'none';
+                    sibling = sibling.nextElementSibling;
+                }
+            }
+        });
+
+        // Specific Main Nav items for Teachers/Others
+        const restrictedViews = ['classes', 'subjects'];
+        if (!isAdmin) {
+            navItems.forEach(item => {
+                const view = item.getAttribute('data-view');
+                if (restrictedViews.includes(view)) {
+                    item.style.display = 'none';
+                }
+            });
+        }
+    },
+
     showModal(title, contentHtml, onConfirm, confirmText = 'Register', confirmIcon = 'save') {
         // Remove existing if any
         const existing = document.getElementById('ui-modal');

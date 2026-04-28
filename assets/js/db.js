@@ -15,9 +15,7 @@ db.version(1).stores({
     subject_assignments: 'id, teacher_id, subject_id, class_name, updated_at, is_synced',
     form_teachers: 'id, teacher_id, class_name, updated_at, is_synced',
     scores: 'id, student_id, subject_id, term, session, updated_at, is_synced',
-    attendance: 'id, student_id, date, status, updated_at, is_synced',
-    cbt_exams: 'id, title, subject_id, class_name, teacher_id, date, duration, status, updated_at, is_synced',
-    cbt_questions: 'id, exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, updated_at, is_synced'
+    attendance: 'id, student_id, date, status, updated_at, is_synced'
 });
 
 db.version(2).stores({
@@ -30,6 +28,11 @@ db.version(3).stores({
 
 db.version(4).stores({
     students: 'student_id, name, gender, address, class_name, status, updated_at, is_synced'
+});
+
+db.version(5).stores({
+    cbt_exams: 'id, title, subject_id, class_name, teacher_id, date, duration, status, updated_at, is_synced',
+    cbt_questions: 'id, exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, updated_at, is_synced'
 });
 
 /**
