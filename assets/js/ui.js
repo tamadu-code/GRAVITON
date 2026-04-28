@@ -105,12 +105,12 @@ export const UI = {
         const adminSectionHeaders = document.querySelectorAll('.nav-section-header');
         
         // Modules strictly restricted to Admin only
-        const adminOnlyViews = ['staff', 'keys', 'parents', 'lessons', 'roster', 'curriculum', 'reports', 'insights', 'finances'];
+        const adminOnlyViews = ['staff', 'keys', 'parents', 'lessons', 'roster', 'curriculum', 'reports', 'insights', 'finances', 'timetables', 'noticeboard'];
         
         navItems.forEach(item => {
             const view = item.dataset.view;
             if (role !== 'admin' && adminOnlyViews.includes(view)) {
-                item.style.display = 'none';
+                item.setAttribute('style', 'display: none !important');
             } else {
                 item.style.display = 'flex';
             }
@@ -118,8 +118,8 @@ export const UI = {
 
         // Hide "ADMINISTRATION" section header if role is not admin
         adminSectionHeaders.forEach(header => {
-            if (role !== 'admin' && header.textContent.includes('ADMINISTRATION')) {
-                header.style.display = 'none';
+            if (role !== 'admin' && header.textContent.trim().toUpperCase().includes('ADMINISTRATION')) {
+                header.setAttribute('style', 'display: none !important');
             }
         });
     },
