@@ -3447,8 +3447,25 @@ export const UI = {
 
         this.cbtQuestions = isEdit ? await db.cbt_questions.where('exam_id').equals(examId).toArray() : [];
 
-        let subjects = (await db.subjects.toArray());
+        let subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
         let classes = (await db.classes.toArray());
+
+        // Custom serial sort for classes (JSS -> SSS)
+        const classOrder = { 'JSS': 1, 'JS': 1, 'SSS': 2, 'SS': 2, 'PRY': 3, 'BASIC': 4 };
+        classes.sort((a, b) => {
+            const getParts = (name) => {
+                const match = name.match(/^([A-Z]+)\s*(\d+)/i);
+                if (!match) return [name.toUpperCase(), 0];
+                return [match[1].toUpperCase(), parseInt(match[2])];
+            };
+            const [pA, nA] = getParts(a.name);
+            const [pB, nB] = getParts(b.name);
+            const rA = classOrder[pA] || 99;
+            const rB = classOrder[pB] || 99;
+            if (rA !== rB) return rA - rB;
+            if (nA !== nB) return nA - nB;
+            return a.name.localeCompare(b.name);
+        });
         
         if ((this.currentUser.role || '').toLowerCase() === 'teacher') {
             const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
