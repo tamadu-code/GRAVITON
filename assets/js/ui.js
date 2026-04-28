@@ -3663,9 +3663,11 @@ export const UI = {
             }
 
             const subIds = [...new Set(filteredAssignments.map(a => a.subject_id))];
-            const classSubjects = await Promise.all(subIds.map(id => db.subjects.get(id)));
+            const classSubjects = (await Promise.all(subIds.map(id => db.subjects.get(id))))
+                .filter(Boolean)
+                .sort((a, b) => a.name.localeCompare(b.name));
             
-            classSubjects.filter(Boolean).forEach(s => {
+            classSubjects.forEach(s => {
                 const opt = document.createElement('option');
                 opt.value = s.id;
                 opt.textContent = s.name;
