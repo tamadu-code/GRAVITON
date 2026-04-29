@@ -4,7 +4,7 @@
  */
 console.log('UI Module Loading...');
 
-import db, { prepareForSync } from './db.js';
+import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet } from './utils.js';
 import { syncToCloud, syncFromCloud } from './supabase-client.js';
 
@@ -160,8 +160,12 @@ export const UI = {
                     await onConfirm();
                     overlay.remove();
                 } catch (e) {
+                    console.error('Modal Action Error:', e);
                     btn.disabled = false;
                     btn.innerHTML = `<i data-lucide="${confirmIcon}"></i> ${confirmText}`;
+                    if (typeof Notifications !== 'undefined') {
+                        Notifications.show('An error occurred. Check console for details.', 'error');
+                    }
                 }
             } else {
                 overlay.remove();

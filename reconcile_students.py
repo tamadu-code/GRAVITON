@@ -28,29 +28,51 @@ headers_attendance = {
 }
 
 def get_sms_students():
-    url = f"{SUPABASE_URL}/rest/v1/students?select=name,class,student_id,attendance_code,admission_year"
+    url = f"{SUPABASE_URL}/rest/v1/students?select=name,class_name,student_id,attendance_code,admission_year"
     response = requests.get(url, headers=headers_supabase)
     return response.json()
 
 def get_attendance_students():
-    # Assuming /list-students returns [{ "name": "...", "attendance_code": 123, "class": "..." }]
-    url = f"{ATTENDANCE_SYSTEM_URL}/list-students"
-    response = requests.get(url, headers=headers_attendance)
+    # Fetch from Attendance Supabase project students table
+    headers = headers_attendance.copy()
+    headers["apikey"] = ATTENDANCE_TOKEN
+    url = f"{ATTENDANCE_SYSTEM_URL}/rest/v1/students?select=name,code,class"
+    response = requests.get(url, headers=headers)
     if response.status_code != 200:
         print(f"Failed to fetch attendance students: {response.text}")
         return []
-    return response.json()
+    
+    # Map 'code' to 'attendance_code' for consistency in the script
+    data = response.json()
+    for item in data:
+        item['attendance_code'] = item.get('code')
+    return data
 
 def reconcile():
-    print("🚀 Starting Reconciliation...")
+    print("Starting Reconciliation...")
     sms_students = get_sms_students()
     attendance_students = get_attendance_students()
     
+    if isinstance(sms_students, dict) and 'error' in sms_students:
+        print(f"Error fetching SMS students: {sms_students['error']}")
+        return
+    if isinstance(sms_students, dict) and 'message' in sms_students:
+        print(f"Error fetching SMS students: {sms_students['message']}")
+        return
+    if isinstance(attendance_students, dict) and 'error' in attendance_students:
+        print(f"Error fetching attendance students: {attendance_students['error']}")
+        return
+
+    if not isinstance(sms_students, list) or not isinstance(attendance_students, list):
+        print("Data is not in list format. SMS:", type(sms_students), "Attendance:", type(attendance_students))
+        return
+
     if not sms_students or not attendance_students:
         print("Data missing from one or both systems. Aborting.")
         return
 
     sms_df = pd.DataFrame(sms_students)
+    sms_df.rename(columns={'class_name': 'class'}, inplace=True) # Normalize for the script
     att_df = pd.DataFrame(attendance_students)
     
     unmatched_sms = []
@@ -83,9 +105,9 @@ def reconcile():
 
     remaining_att = att_df[att_df['name'].isin(att_names)]
 
-    print(f"✅ Matches found: {len(matches)}")
-    print(f"⚠️ SMS-only: {len(unmatched_sms)}")
-    print(f"ℹ️ Attendance-only: {len(remaining_att)}")
+    print(f"Matches found: {len(matches)}")
+    print(f"SMS-only: {len(unmatched_sms)}")
+    print(f"Attendance-only: {len(remaining_att)}")
 
     # 1. Handle Matched
     print("Updating matched students...")
@@ -143,7 +165,7 @@ def reconcile():
     if not remaining_att.empty:
         remaining_att.to_csv("unmatched_attendance_review.csv", index=False)
         
-    print("🎉 Reconciliation complete. Check .csv files for any students that require manual intervention.")
+    print("Reconciliation complete. Check .csv files for any students that require manual intervention.")
 
 if __name__ == "__main__":
     reconcile()
