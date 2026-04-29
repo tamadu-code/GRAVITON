@@ -1538,6 +1538,7 @@ export const UI = {
                         timetable: document.getElementById('std-timetable').value.trim()
                     });
 
+                    console.log('Registering Student with ID:', serial);
                     await db.students.add(newStudent);
                     syncToCloud(); 
                     Notifications.show(`Student ${name} registered with ID ${serial}.`, 'success');
