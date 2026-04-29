@@ -23,11 +23,44 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    // Call Attendance System
+    // Build Attendance System URL
     const baseUrl = ATTENDANCE_SYSTEM_URL.endsWith('/') ? ATTENDANCE_SYSTEM_URL.slice(0, -1) : ATTENDANCE_SYSTEM_URL
-    const apiUrl = `${baseUrl}/rest/v1/students`
+
+    // SAFETY: Check if student already exists in Attendance System
+    const checkUrl = `${baseUrl}/rest/v1/students?name=eq.${encodeURIComponent(record.name)}&select=code`
+    console.log(`Checking if student exists at: ${checkUrl}`)
     
-    console.log(`Calling Attendance System at: ${apiUrl}`)
+    const checkResponse = await fetch(checkUrl, {
+      headers: {
+        'apikey': ATTENDANCE_TOKEN,
+        'Authorization': `Bearer ${ATTENDANCE_TOKEN}`,
+      },
+    })
+
+    if (checkResponse.ok) {
+      const existing = await checkResponse.json()
+      if (existing.length > 0 && existing[0].code) {
+        // Student already exists in Attendance System — just grab their code
+        const attendance_code = existing[0].code
+        console.log(`Student already exists with code ${attendance_code}. Updating SMS only.`)
+        
+        const { error: updateError } = await supabase
+          .from('students')
+          .update({ attendance_code })
+          .eq('student_id', record.student_id)
+
+        if (updateError) throw updateError
+
+        return new Response(JSON.stringify({ success: true, attendance_code, existed: true }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        })
+      }
+    }
+
+    // Student does NOT exist — create them
+    const apiUrl = `${baseUrl}/rest/v1/students`
+    console.log(`Creating student at: ${apiUrl}`)
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -52,7 +85,6 @@ serve(async (req) => {
     const responseData = await response.json()
     console.log('Attendance System Response:', responseData)
     
-    // Get the biometric code from the Attendance system
     const attendance_code = responseData[0]?.code
     
     if (!attendance_code) {
@@ -64,7 +96,7 @@ serve(async (req) => {
     // SAFE UPDATE: Only update attendance_code. NEVER change student_id.
     const { error: updateError } = await supabase
       .from('students')
-      .update({ attendance_code: attendance_code })
+      .update({ attendance_code })
       .eq('student_id', record.student_id)
 
     if (updateError) throw updateError
