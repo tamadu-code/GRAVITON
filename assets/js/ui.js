@@ -3012,15 +3012,6 @@ export const UI = {
         };
     },
 
-    async function generateStudentId() {
-        const timestamp = Date.now();
-        return {
-            student_id: `PENDING-${timestamp}`,
-            attendance_code: null,
-            admission_year: new Date().getFullYear()
-        };
-    },
-
     async renderReports() {
         const students = await db.students.toArray();
         const classes = await db.classes.toArray();
