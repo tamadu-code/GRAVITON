@@ -16,45 +16,45 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    // Call Attendance System with retries
-    let response
-    let attempts = 0
-    const maxAttempts = 3
+    // Call Attendance System
+    const baseUrl = ATTENDANCE_SYSTEM_URL.endsWith('/') ? ATTENDANCE_SYSTEM_URL.slice(0, -1) : ATTENDANCE_SYSTEM_URL;
+    const apiUrl = `${baseUrl}/rest/v1/students`;
     
-    while (attempts < maxAttempts) {
-      try {
-        response = await fetch(`${ATTENDANCE_SYSTEM_URL}/create-student`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${ATTENDANCE_TOKEN}`
-          },
-          body: JSON.stringify({
-            name: record.name,
-            class: record.class,
-            sub_class: record.sub_class
-          })
-        })
-        
-        if (response.ok) break
-        
-      } catch (err) {
-        console.error(`Attempt ${attempts + 1} failed:`, err)
-      }
-      
-      attempts++
-      if (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempts) * 1000))
-      }
+    console.log(`Calling Attendance System at: ${apiUrl}`);
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'apikey': ATTENDANCE_TOKEN,
+        'Authorization': `Bearer ${ATTENDANCE_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify({
+        name: record.name,
+        class: record.class_name,
+        student_id: record.student_id
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Could not parse error response' }));
+      console.error(`Attendance System Error [${response.status}]:`, errorData);
+      throw new Error(`Failed to create student in Attendance System: ${JSON.stringify(errorData)}`);
     }
 
-    if (!response || !response.ok) {
-      const errorText = response ? await response.text() : 'Fetch failed'
-      throw new Error(`Failed to create student in Attendance System: ${errorText}`)
+    const responseData = await response.json();
+    console.log('Attendance System Response:', responseData);
+    
+    // Use 'code' from the response (as confirmed by user)
+    const attendance_code = responseData[0]?.code;
+    
+    if (!attendance_code) {
+        throw new Error('Attendance system did not return a biometric code');
     }
 
-    const { attendance_code } = await response.json()
-    const newStudentId = `NKQMS-${admissionYear}-${attendance_code}`
+    const newStudentId = `NKQMS-${admissionYear}-${attendance_code}`;
+    console.log(`Generated Final Student ID: ${newStudentId}`);
 
     // Update student in SMS
     const { error: updateError } = await supabase
@@ -64,7 +64,7 @@ serve(async (req) => {
         student_id: newStudentId,
         legacy_student_id: currentStudentId // Preserve old ID
       })
-      .eq('student_id', currentStudentId)
+      .eq('student_id', currentStudentId);
 
     if (updateError) throw updateError
 
