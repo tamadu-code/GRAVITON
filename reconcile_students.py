@@ -3,12 +3,17 @@ import json
 import pandas as pd
 from rapidfuzz import process, fuzz
 import os
+from datetime import datetime
 
-# Configuration (Use environment variables or replace with actual values)
-SUPABASE_URL = os.getenv("SUPABASE_URL", "YOUR_SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "YOUR_SERVICE_ROLE_KEY")
-ATTENDANCE_SYSTEM_URL = os.getenv("ATTENDANCE_SYSTEM_URL", "YOUR_ATTENDANCE_SYSTEM_URL")
-ATTENDANCE_TOKEN = os.getenv("ATTENDANCE_TOKEN", "YOUR_ATTENDANCE_TOKEN")
+# Configuration
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+ATTENDANCE_SYSTEM_URL = os.getenv("ATTENDANCE_SYSTEM_URL")
+ATTENDANCE_TOKEN = os.getenv("ATTENDANCE_TOKEN")
+
+if not all([SUPABASE_URL, SUPABASE_KEY, ATTENDANCE_SYSTEM_URL, ATTENDANCE_TOKEN]):
+    print("Error: Missing environment variables. Please set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ATTENDANCE_SYSTEM_URL, and ATTENDANCE_TOKEN.")
+    exit(1)
 
 headers_supabase = {
     "apikey": SUPABASE_KEY,
@@ -23,64 +28,79 @@ headers_attendance = {
 }
 
 def get_sms_students():
-    url = f"{SUPABASE_URL}/rest/v1/students?select=id,name,class,student_id,attendance_code,admission_year"
+    url = f"{SUPABASE_URL}/rest/v1/students?select=name,class,student_id,attendance_code,admission_year"
     response = requests.get(url, headers=headers_supabase)
     return response.json()
 
 def get_attendance_students():
-    # Assuming an endpoint that lists all students in the attendance system
+    # Assuming /list-students returns [{ "name": "...", "attendance_code": 123, "class": "..." }]
     url = f"{ATTENDANCE_SYSTEM_URL}/list-students"
     response = requests.get(url, headers=headers_attendance)
+    if response.status_code != 200:
+        print(f"Failed to fetch attendance students: {response.text}")
+        return []
     return response.json()
 
 def reconcile():
-    print("Fetching data...")
+    print("🚀 Starting Reconciliation...")
     sms_students = get_sms_students()
     attendance_students = get_attendance_students()
     
+    if not sms_students or not attendance_students:
+        print("Data missing from one or both systems. Aborting.")
+        return
+
     sms_df = pd.DataFrame(sms_students)
     att_df = pd.DataFrame(attendance_students)
     
     unmatched_sms = []
-    unmatched_att = []
     matches = []
-
-    print(f"SMS Students: {len(sms_df)}")
-    print(f"Attendance Students: {len(att_df)}")
+    
+    current_year = datetime.now().year
 
     # Fuzzy Matching
     att_names = att_df['name'].tolist()
     
+    print(f"Processing {len(sms_df)} SMS records and {len(att_df)} Attendance records...")
+
     for idx, sms_student in sms_df.iterrows():
         name = sms_student['name']
         match = process.extractOne(name, att_names, scorer=fuzz.token_sort_ratio)
         
-        if match and match[1] > 85: # Threshold for match
-            matched_att = att_df[att_df['name'] == match[0]].iloc[0]
+        if match and match[1] > 85: # 85% similarity threshold
+            matched_name = match[0]
+            matched_att = att_df[att_df['name'] == matched_name].iloc[0]
             matches.append({
-                "sms_id": sms_student['id'],
+                "sms_id": sms_student['student_id'],
                 "att_code": matched_att['attendance_code'],
-                "name": name
+                "name": name,
+                "admission_year": sms_student.get('admission_year') or current_year,
+                "old_student_id": sms_student['student_id']
             })
-            # Remove from att_names so it's not matched again
-            att_names.remove(match[0])
+            att_names.remove(matched_name)
         else:
             unmatched_sms.append(sms_student)
 
-    # Remaining in att_names are attendance-only
     remaining_att = att_df[att_df['name'].isin(att_names)]
 
-    print(f"Matches found: {len(matches)}")
-    print(f"SMS-only: {len(unmatched_sms)}")
-    print(f"Attendance-only: {len(remaining_att)}")
+    print(f"✅ Matches found: {len(matches)}")
+    print(f"⚠️ SMS-only: {len(unmatched_sms)}")
+    print(f"ℹ️ Attendance-only: {len(remaining_att)}")
 
     # 1. Handle Matched
+    print("Updating matched students...")
     for match in matches:
-        # Update SMS with attendance_code
-        url = f"{SUPABASE_URL}/rest/v1/students?id=eq.{match['sms_id']}"
-        requests.patch(url, headers=headers_supabase, json={"attendance_code": match['att_code']})
+        # OPTION: Convert matched students to new ID format?
+        # Uncomment lines below to enforce new format on matched students
+        # new_id = f"NKQMS-{match['admission_year']}-{match['att_code']}"
+        # payload = {"attendance_code": match['att_code'], "student_id": new_id, "legacy_student_id": match['old_student_id']}
+        
+        payload = {"attendance_code": match['att_code']}
+        url = f"{SUPABASE_URL}/rest/v1/students?student_id=eq.{match['sms_id']}"
+        requests.patch(url, headers=headers_supabase, json=payload)
 
-    # 2. Handle SMS-only (Create in Attendance System)
+    # 2. Handle SMS-only (Push to Attendance System)
+    print("Syncing SMS-only students to Attendance System...")
     for student in unmatched_sms:
         payload = {
             "name": student['name'],
@@ -90,33 +110,41 @@ def reconcile():
         if resp.status_code == 200:
             att_data = resp.json()
             code = att_data['attendance_code']
-            new_id = f"NKQMS-{student['admission_year']}-{code}"
+            year = student.get('admission_year') or current_year
+            new_id = f"NKQMS-{year}-{code}"
             
-            url = f"{SUPABASE_URL}/rest/v1/students?id=eq.{student['id']}"
+            url = f"{SUPABASE_URL}/rest/v1/students?student_id=eq.{student['student_id']}"
             requests.patch(url, headers=headers_supabase, json={
                 "attendance_code": code,
                 "student_id": new_id,
-                "legacy_student_id": student['student_id']
+                "legacy_student_id": student['student_id'],
+                "is_active": True
             })
 
-    # 3. Handle Attendance-only (Create in SMS)
+    # 3. Handle Attendance-only (Pull into SMS)
+    print("Importing Attendance-only students to SMS...")
     for _, student in remaining_att.iterrows():
-        year = 2024 # Or default
-        new_id = f"NKQMS-{year}-{student['attendance_code']}"
+        year = current_year
+        code = student['attendance_code']
+        new_id = f"NKQMS-{year}-{code}"
         payload = {
             "name": student['name'],
             "class": student.get('class', 'Unknown'),
-            "attendance_code": student['attendance_code'],
+            "attendance_code": code,
             "student_id": new_id,
             "is_active": True,
             "admission_year": year
         }
         requests.post(f"{SUPABASE_URL}/rest/v1/students", headers=headers_supabase, json=payload)
 
-    # Export unmatched to CSV
-    pd.DataFrame(unmatched_sms).to_csv("unmatched_sms.csv", index=False)
-    pd.DataFrame(remaining_att).to_csv("unmatched_attendance.csv", index=False)
-    print("Reconciliation complete. CSVs generated for manual review.")
+    # Export unmatched to CSV for review
+    if unmatched_sms:
+        pd.DataFrame(unmatched_sms).to_csv("unmatched_sms_review.csv", index=False)
+    if not remaining_att.empty:
+        remaining_att.to_csv("unmatched_attendance_review.csv", index=False)
+        
+    print("🎉 Reconciliation complete. Check .csv files for any students that require manual intervention.")
 
 if __name__ == "__main__":
     reconcile()
+

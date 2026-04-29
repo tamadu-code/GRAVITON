@@ -1232,8 +1232,12 @@ export const UI = {
 
     async renderStudents() {
         const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
-        const students = (await db.students.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        let students = (await db.students.toArray()).sort((a,b) => a.name.localeCompare(b.name));
         const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        
+        // Default: Only show active students
+        let showAll = false;
+        let activeStudents = students.filter(s => s.is_active !== false);
         
         this.contentArea.innerHTML = `
             <div class="view-container" style="padding: 0.75rem;">
@@ -1244,8 +1248,12 @@ export const UI = {
                     </div>
                     <div class="banner-stats" style="margin: 0.5rem 0;">
                         <div class="banner-stat-item">
-                            <span class="stat-value" style="font-size: 1.1rem;">${students.length}</span>
-                            <span class="stat-label" style="font-size: 0.65rem;">Total</span>
+                            <span class="stat-value" id="active-student-count" style="font-size: 1.1rem;">${activeStudents.length}</span>
+                            <span class="stat-label" style="font-size: 0.65rem;">Active</span>
+                        </div>
+                        <div class="banner-stat-item">
+                            <span class="stat-value" style="font-size: 1.1rem;">${students.length - activeStudents.length}</span>
+                            <span class="stat-label" style="font-size: 0.65rem;">Inactive</span>
                         </div>
                         <div class="banner-stat-item">
                             <span class="stat-value" style="font-size: 1.1rem;">${classes.length}</span>
@@ -1271,13 +1279,16 @@ export const UI = {
                                 <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 16px;"></i>
                                 <input type="text" id="directory-search" placeholder="Search by name or serial..." class="input" style="padding-left: 2.75rem; border-radius: 10px; border: 1px solid #e2e8f0; height: 44px; background: white;">
                             </div>
-                            <select id="class-filter" class="input" style="border-radius: 10px; height: 44px; border: 1px solid #e2e8f0; background: white; font-weight: 600; color: #475569;">
+                            <select id="class-filter" class="input" style="border-radius: 10px; height: 44px; border: 1px solid #e2e8f0; background: white; font-weight: 600; color: #475569; margin-bottom: 0.75rem;">
                                 <option value="">All Academic Streams</option>
                                 ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                             </select>
+                            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: #64748b; cursor: pointer; padding-left: 0.5rem;">
+                                <input type="checkbox" id="show-inactive-toggle" style="accent-color: #2563eb;"> Include Deactivated Students
+                            </label>
                         </div>
                         <div class="sidebar-list" id="student-sidebar-list" style="padding: 1rem;">
-                            ${this.generateStudentListItems(students)}
+                            ${this.generateStudentListItems(activeStudents)}
                         </div>
                     </div>
 
@@ -1297,14 +1308,18 @@ export const UI = {
         // Logic remains same...
         const searchInput = document.getElementById('directory-search');
         const classFilter = document.getElementById('class-filter');
+        const inactiveToggle = document.getElementById('show-inactive-toggle');
         const listContainer = document.getElementById('student-sidebar-list');
 
         const updateList = () => {
             const term = searchInput.value.toLowerCase();
             const filterClass = classFilter.value;
+            const includeInactive = inactiveToggle.checked;
+            
             const filtered = students.filter(s => 
                 (s.name.toLowerCase().includes(term) || s.student_id.toLowerCase().includes(term)) &&
-                (!filterClass || s.class_name === filterClass)
+                (!filterClass || s.class_name === filterClass) &&
+                (includeInactive || s.is_active !== false)
             );
             listContainer.innerHTML = this.generateStudentListItems(filtered);
             if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1312,6 +1327,7 @@ export const UI = {
 
         searchInput.addEventListener('input', updateList);
         classFilter.addEventListener('change', updateList);
+        inactiveToggle.addEventListener('change', updateList);
 
         // Selection Logic (Accordion Style for Mobile)
         listContainer.addEventListener('click', async (e) => {
@@ -1481,19 +1497,32 @@ export const UI = {
                     const name = document.getElementById('std-name').value.trim();
                     const className = document.getElementById('std-class').value;
                     const gender = document.getElementById('std-gender').value;
-                    const serial = document.getElementById('std-serial').value.trim() || `S${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-                    
+                    let serial = document.getElementById('std-serial').value.trim();
+                    let attendanceCode = null;
+                    let admissionYear = new Date().getFullYear();
+
                     if (!name || !className) {
                         Notifications.show('Name and Class are required', 'error');
                         throw new Error('Validation failed');
                     }
 
+                    if (!serial) {
+                        const idData = await generateStudentId();
+                        serial = idData.student_id;
+                        attendanceCode = idData.attendance_code;
+                        admissionYear = idData.admission_year;
+                    }
+                    
                     const newStudent = prepareForSync({
                         student_id: serial,
                         name: name,
                         class_name: className,
                         gender: gender,
                         status: 'Active',
+                        is_active: true,
+                        attendance_code: attendanceCode,
+                        admission_year: admissionYear,
+                        sub_class: className.charAt(0).toUpperCase(), // Default first char of class
                         parent_email: document.getElementById('std-parent-email').value.trim(),
                         dob: document.getElementById('std-dob').value,
                         phone: document.getElementById('std-phone').value.trim(),
@@ -1506,8 +1535,8 @@ export const UI = {
                     });
 
                     await db.students.add(newStudent);
-                    syncToCloud(); // Fire and forget sync
-                    Notifications.show(`Student ${name} registered successfully.`, 'success');
+                    syncToCloud(); 
+                    Notifications.show(`Student ${name} registered with ID ${serial}.`, 'success');
                     this.renderStudents();
                 }, 'Finalize Registration', 'save');
             });
@@ -1543,7 +1572,10 @@ export const UI = {
                              <div style="display: flex; gap: 1rem;">
                                  ${!((this.currentUser.role || '').toLowerCase() === 'teacher') ? `
                                  <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
-                                 <button id="btn-delete-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
+                                 ${student.is_active !== false ? 
+                                    `<button id="btn-deactivate-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="user-x"></i> Deactivate</button>` :
+                                    `<button id="btn-reactivate-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #10b981; background: #ecfdf5; border: none;"><i data-lucide="user-check"></i> Reactivate</button>`
+                                 }
                                  ` : ''}
                              </div>
                         </div>
@@ -1592,7 +1624,7 @@ export const UI = {
                             </div>
                             <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
                                 <span style="color: #94a3b8; font-weight: 600;">Status</span>
-                                <span class="badge" style="background: #ecfdf5; color: #10b981; font-weight: 700; border-radius: 8px; padding: 2px 8px;">${student.status || 'Active'}</span>
+                                <span class="badge" style="background: ${student.is_active !== false ? '#ecfdf5' : '#fef2f2'}; color: ${student.is_active !== false ? '#10b981' : '#ef4444'}; font-weight: 700; border-radius: 8px; padding: 2px 8px;">${student.is_active !== false ? 'Active' : 'Deactivated'}</span>
                             </div>
                             <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
                                 <span style="color: #94a3b8; font-weight: 600;">Blood Group</span>
@@ -1629,15 +1661,36 @@ export const UI = {
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
-        // CRUD: Delete Student
-        const deleteBtn = document.getElementById('btn-delete-student');
-        if (deleteBtn) {
-            deleteBtn.onclick = async () => {
-                if (confirm(`Are you sure you want to delete ${student.name}'s entire profile? This action is irreversible.`)) {
-                    await db.students.delete(studentId);
-                    Notifications.show(`${student.name} has been removed from the directory.`, 'success');
+        // CRUD: Deactivate/Reactivate Student
+        const deactivateBtn = document.getElementById('btn-deactivate-student');
+        if (deactivateBtn) {
+            deactivateBtn.onclick = async () => {
+                if (confirm(`Are you sure you want to deactivate ${student.name}? They will no longer appear in active rosters or attendance sheets.`)) {
+                    await db.students.update(studentId, { 
+                        is_active: false, 
+                        status: 'Inactive', 
+                        updated_at: new Date().toISOString(),
+                        is_synced: 0 
+                    });
+                    Notifications.show(`${student.name} has been deactivated.`, 'success');
                     this.renderStudents();
+                    syncToCloud();
                 }
+            };
+        }
+
+        const reactivateBtn = document.getElementById('btn-reactivate-student');
+        if (reactivateBtn) {
+            reactivateBtn.onclick = async () => {
+                await db.students.update(studentId, { 
+                    is_active: true, 
+                    status: 'Active', 
+                    updated_at: new Date().toISOString(),
+                    is_synced: 0 
+                });
+                Notifications.show(`${student.name} has been reactivated.`, 'success');
+                this.renderStudents();
+                syncToCloud();
             };
         }
 
@@ -1680,16 +1733,15 @@ export const UI = {
     generateStudentListItems(students) {
         if (students.length === 0) return `<div class="p-2 text-center text-slate-400 text-sm">No students found</div>`;
         return students.map(s => `
-            <div class="student-item-container" style="margin-bottom: 0.5rem;">
-                <div class="student-item" data-id="${s.student_id}" style="cursor: pointer; border-radius: 12px; overflow: hidden; transition: all 0.2s ease;">
+            <div class="student-item-container" style="margin-bottom: 0.5rem; opacity: ${s.is_active !== false ? '1' : '0.6'};">
+                <div class="student-item" data-id="${s.student_id}" style="cursor: pointer; border-radius: 12px; overflow: hidden; transition: all 0.2s ease; border: 1px solid ${s.is_active !== false ? 'transparent' : '#fecaca'}; background: ${s.is_active !== false ? 'transparent' : '#fff5f5'};">
                     <div style="padding: 1rem; display: flex; justify-content: space-between; align-items: center;">
                         <div class="student-item-info">
-                            <span class="student-item-name" style="font-weight: 700; color: #1e293b;">${s.name}</span>
+                            <span class="student-item-name" style="font-weight: 700; color: ${s.is_active !== false ? '#1e293b' : '#991b1b'};">${s.name} ${s.is_active === false ? '<span style="font-size: 0.6rem; background: #fee2e2; color: #ef4444; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">INACTIVE</span>' : ''}</span>
                             <span class="student-item-meta" style="font-size: 0.75rem; color: #64748b; display: block;">${s.student_id} • ${s.class_name}</span>
                         </div>
                         <div style="display: flex; gap: 0.85rem; align-items: center;">
                             <i data-lucide="edit-3" class="mobile-edit-std" style="width: 16px; color: #2563eb;"></i>
-                            <i data-lucide="trash-2" class="mobile-delete-std" style="width: 16px; color: #ef4444;"></i>
                             <i data-lucide="chevron-down" class="accordion-arrow" style="width: 14px; opacity: 0.4;"></i>
                         </div>
                     </div>
@@ -2099,7 +2151,8 @@ export const UI = {
 
             // 1. Resilient student filtering (case-insensitive, trimmed)
             const targetStudents = students.filter(s => 
-                s.class_name && String(s.class_name).trim().toLowerCase() === String(cls).trim().toLowerCase()
+                s.class_name && String(s.class_name).trim().toLowerCase() === String(cls).trim().toLowerCase() &&
+                s.is_active !== false
             );
 
             if (targetStudents.length === 0) {
@@ -2908,7 +2961,7 @@ export const UI = {
             const cls = classFilter.value;
             if (!cls) return;
             
-            const targetStudents = students.filter(s => s.class_name === cls);
+            const targetStudents = students.filter(s => s.class_name === cls && s.is_active !== false);
             listBody.innerHTML = targetStudents.map(s => `
                 <tr>
                     <td>${s.student_id}</td>
@@ -2979,7 +3032,7 @@ export const UI = {
                         </div>
                         
                         <div class="grid" id="report-list">
-                            ${students.map(s => `
+                            ${students.filter(s => s.is_active !== false).map(s => `
                                 <div class="card student-report-card" data-student-name="${s.name.toLowerCase()}">
                                     <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
                                         <div class="user-avatar-small" style="background: #eff6ff; color: #2563eb;">${s.name.charAt(0)}</div>
@@ -3090,7 +3143,7 @@ export const UI = {
                 
                 Notifications.show('Compiling mastersheet data...', 'info');
                 
-                const classStudents = await db.students.where('class_name').equals(className).toArray();
+                const classStudents = await db.students.where('class_name').equals(className).filter(s => s.is_active !== false).toArray();
                 const classScores = await db.scores.where('class_name').equals(className).toArray();
                 const termScores = classScores.filter(s => s.term === term && s.session === session);
                 

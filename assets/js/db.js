@@ -43,30 +43,44 @@ db.version(8).stores({
     exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
 });
 
+db.version(9).stores({
+    students: 'student_id, name, gender, address, class_name, status, is_active, attendance_code, admission_year, sub_class, updated_at, is_synced',
+    attendance_records: 'id, student_id, date, status, updated_at, is_synced'
+});
+
 /**
  * Smart ID Generation
- * Format: SMS/YEAR/INCREMENT (e.g., SMS/2026/104)
+ * Format: NKQMS-{year}-{attendance_code}
  */
 export async function generateStudentId() {
     const year = new Date().getFullYear();
-    const prefix = `SMS/${year}/`;
+    const prefix = `NKQMS-${year}-`;
     
-    // Find all students for this year
-    const students = await db.students
-        .filter(s => s.student_id.startsWith(prefix))
-        .toArray();
+    // Find all students to get the max attendance code
+    const students = await db.students.toArray();
     
-    let maxId = 100; // Starting number
+    let maxCode = 1000; // Starting code for attendance
     
     students.forEach(s => {
-        const parts = s.student_id.split('/');
-        const num = parseInt(parts[2]);
-        if (!isNaN(num) && num > maxId) {
-            maxId = num;
+        if (s.attendance_code && s.attendance_code > maxCode) {
+            maxCode = s.attendance_code;
+        }
+        // Fallback check on student_id if attendance_code is missing
+        if (s.student_id && s.student_id.startsWith(prefix)) {
+            const parts = s.student_id.split('-');
+            const code = parseInt(parts[2]);
+            if (!isNaN(code) && code > maxCode) {
+                maxCode = code;
+            }
         }
     });
     
-    return `${prefix}${maxId + 1}`;
+    const nextCode = maxCode + 1;
+    return {
+        student_id: `${prefix}${nextCode}`,
+        attendance_code: nextCode,
+        admission_year: year
+    };
 }
 
 /**

@@ -9,7 +9,7 @@ ADD COLUMN IF NOT EXISTS legacy_student_id TEXT;
 -- 2. Create attendance_records table
 CREATE TABLE IF NOT EXISTS attendance_records (
     id SERIAL PRIMARY KEY,
-    student_id INTEGER REFERENCES students(id) ON DELETE RESTRICT,
+    student_id TEXT REFERENCES students(student_id) ON DELETE RESTRICT,
     date DATE NOT NULL,
     status TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
