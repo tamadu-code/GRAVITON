@@ -1446,7 +1446,7 @@ export const UI = {
                         </div>
                         <div>
                             <label>System ID / Serial (Optional)</label>
-                            <input type="text" id="std-serial" class="input" placeholder="Auto-generated if left blank" style="width: 100%; box-sizing: border-box;">
+                            <input type="text" id="std-serial" class="input" placeholder="Auto-generated if left blank" autocomplete="off" style="width: 100%; box-sizing: border-box;">
                         </div>
                         <div>
                             <label>Parent Email / Username</label>
@@ -1510,7 +1510,8 @@ export const UI = {
                         throw new Error('Validation failed');
                     }
 
-                    if (!serial) {
+                    // Force generate if serial is empty OR in the old 'S...' format
+                    if (!serial || !serial.startsWith('NKQMS-')) {
                         const idData = await generateStudentId();
                         serial = idData.student_id;
                         attendanceCode = idData.attendance_code;
