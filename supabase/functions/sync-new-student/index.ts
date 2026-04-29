@@ -32,7 +32,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         name: record.name,
-        class: record.class_name // Mapping SMS 'class_name' to Attendance 'class'
+        class: record.class_name // Corrected from record.class to record.class_name
       }),
     });
 
