@@ -751,6 +751,59 @@ label {
     font-size: 0.75rem;
 }
 
+.btn-xs {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.65rem;
+    font-weight: 800;
+    border-radius: 4px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-xs:hover {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+/* Mobile Stacked Table View */
+@media (max-width: 768px) {
+    .mobile-stack-table thead {
+        display: none;
+    }
+    .mobile-stack-table tbody tr {
+        display: block;
+        margin-bottom: 1.5rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 1rem;
+        background: white;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    }
+    .mobile-stack-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #f1f5f9;
+        text-align: right;
+    }
+    .mobile-stack-table td::before {
+        content: attr(data-label);
+        font-weight: 700;
+        font-size: 0.75rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+        margin-right: 1rem;
+        text-align: left;
+    }
+    .mobile-stack-table td:last-child {
+        border-bottom: none;
+    }
+}
+
 /* Dashboard Specific Styles */
 .stat-card {
     display: flex;

@@ -204,12 +204,25 @@ if (loginForm) {
         e.preventDefault();
 
         try {
-            const email = document.getElementById('login-email').value.trim();
+            let email = document.getElementById('login-email').value.trim();
             const password = document.getElementById('login-password').value;
 
             loginBtn.disabled = true;
             loginBtn.innerHTML = '<div class="loader" style="width:16px; height:16px; border-width:2px;"></div>';
             loginError.style.display = 'none';
+
+            // --- Student ID Login Translation ---
+            if (!email.includes('@')) {
+                // Potential Student ID or Staff ID
+                const student = await db.students.get(email);
+                if (student) {
+                    // Translate ID to virtual email
+                    // Format: student_ID@school.graviton.com (ID slashes replaced by underscores)
+                    const virtualEmail = `${email.replace(/\//g, '_').toLowerCase()}@student.graviton.com`;
+                    email = virtualEmail;
+                }
+            }
+            // ------------------------------------
 
             const { data, error } = await loginUser(email, password);
 
