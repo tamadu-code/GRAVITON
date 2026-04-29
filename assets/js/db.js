@@ -53,33 +53,11 @@ db.version(9).stores({
  * Format: NKQMS-{year}-{attendance_code}
  */
 export async function generateStudentId() {
-    const year = new Date().getFullYear();
-    const prefix = `NKQMS-${year}-`;
-    
-    // Find all students to get the max attendance code
-    const students = await db.students.toArray();
-    
-    let maxCode = 1000; // Starting code for attendance
-    
-    students.forEach(s => {
-        if (s.attendance_code && s.attendance_code > maxCode) {
-            maxCode = s.attendance_code;
-        }
-        // Fallback check on student_id if attendance_code is missing
-        if (s.student_id && s.student_id.startsWith(prefix)) {
-            const parts = s.student_id.split('-');
-            const code = parseInt(parts[2]);
-            if (!isNaN(code) && code > maxCode) {
-                maxCode = code;
-            }
-        }
-    });
-    
-    const nextCode = maxCode + 1;
+    const timestamp = Date.now();
     return {
-        student_id: `${prefix}${nextCode}`,
-        attendance_code: nextCode,
-        admission_year: year
+        student_id: `PENDING-${timestamp}`,
+        attendance_code: null,
+        admission_year: new Date().getFullYear()
     };
 }
 

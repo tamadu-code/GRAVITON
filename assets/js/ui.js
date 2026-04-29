@@ -1510,8 +1510,8 @@ export const UI = {
                         throw new Error('Validation failed');
                     }
 
-                    // Force generate if serial is empty OR in the old 'S...' format
-                    if (!serial || !serial.startsWith('NKQMS-')) {
+                    // Force generate if serial is empty OR doesn't look like a final ID
+                    if (!serial || serial.startsWith('PENDING-')) {
                         const idData = await generateStudentId();
                         serial = idData.student_id;
                         attendanceCode = idData.attendance_code;
@@ -3012,7 +3012,14 @@ export const UI = {
         };
     },
 
-
+    async function generateStudentId() {
+        const timestamp = Date.now();
+        return {
+            student_id: `PENDING-${timestamp}`,
+            attendance_code: null,
+            admission_year: new Date().getFullYear()
+        };
+    },
 
     async renderReports() {
         const students = await db.students.toArray();
