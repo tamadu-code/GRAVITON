@@ -68,7 +68,7 @@ serve(async (req) => {
         'apikey': ATTENDANCE_TOKEN,
         'Authorization': `Bearer ${ATTENDANCE_TOKEN}`,
         'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
+        'Prefer': 'return=representation,resolution=merge-duplicates'
       },
       body: JSON.stringify({
         name: record.name,
