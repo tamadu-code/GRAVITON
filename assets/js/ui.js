@@ -1748,7 +1748,7 @@ export const UI = {
                     <div style="padding: 1rem; display: flex; justify-content: space-between; align-items: center;">
                         <div class="student-item-info">
                             <span class="student-item-name" style="font-weight: 700; color: ${s.is_active !== false ? '#1e293b' : '#991b1b'};">${s.name} ${s.is_active === false ? '<span style="font-size: 0.6rem; background: #fee2e2; color: #ef4444; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">INACTIVE</span>' : ''}</span>
-                            <span class="student-item-meta" style="font-size: 0.75rem; color: #64748b; display: block;">${s.student_id} • ${s.class_name}</span>
+                            <span class="student-item-meta" style="font-size: 0.75rem; color: #64748b; display: block;">${s.student_id} • ${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</span>
                         </div>
                         <div style="display: flex; gap: 0.85rem; align-items: center;">
                             <i data-lucide="edit-3" class="mobile-edit-std" style="width: 16px; color: #2563eb;"></i>
@@ -2933,6 +2933,11 @@ export const UI = {
                         <div style="font-size: 2rem; font-weight: 900; margin-top: 0.5rem; color: #f59e0b;" id="stat-late">0</div>
                         <i data-lucide="clock" style="position: absolute; right: 1.5rem; bottom: 1.5rem; color: #fef3c7; width: 40px; height: 40px;"></i>
                     </div>
+                    <div class="stat-card-premium">
+                        <span style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">Absent Today</span>
+                        <div style="font-size: 2rem; font-weight: 900; margin-top: 0.5rem; color: #ef4444;" id="stat-absent">0</div>
+                        <i data-lucide="user-x" style="position: absolute; right: 1.5rem; bottom: 1.5rem; color: #fee2e2; width: 40px; height: 40px;"></i>
+                    </div>
                 </div>
 
                 <!-- Main Control Panel -->
@@ -3118,12 +3123,26 @@ export const UI = {
             // 3. Search Filter
             if (search) filteredStudents = filteredStudents.filter(s => s.name.toLowerCase().includes(search));
 
+            // 4. SORT BY NAME (Assigned Order)
+            filteredStudents.sort((a, b) => a.name.localeCompare(b.name));
+
             // Stats Calculation
             const schoolRecords = records.filter(r => !r.is_subject_based);
             const presentCount = schoolRecords.filter(r => r.status === 'Present').length;
-            const turnout = students.length > 0 ? Math.round((presentCount / students.length) * 100) : 0;
+            const lateCount = schoolRecords.filter(r => r.status === 'Late').length;
+            
+            // Turnout includes both Present and Late
+            const totalArrived = presentCount + lateCount;
+            const turnout = students.length > 0 ? Math.round((totalArrived / students.length) * 100) : 0;
+            
+            // Absent are those who are NOT in schoolRecords (no log for today)
+            // But for a live list, we can just subtract totalArrived from current students.length
+            // Or better, count records with status 'Absent' if they exist, but usually no record means absent.
+            const absentCount = Math.max(0, students.length - totalArrived);
             
             document.getElementById('stat-present').textContent = presentCount;
+            document.getElementById('stat-late').textContent = lateCount;
+            document.getElementById('stat-absent').textContent = absentCount;
             document.getElementById('stat-turnout').textContent = `${turnout}%`;
             document.getElementById('stat-turnout-bar').style.width = `${turnout}%`;
 
@@ -3343,13 +3362,15 @@ export const UI = {
                         </div>
                         
                         <div class="grid" id="report-list">
-                            ${students.filter(s => s.is_active !== false).map(s => `
+                            ${students.filter(s => s.is_active !== false)
+                                .sort((a, b) => a.name.localeCompare(b.name))
+                                .map(s => `
                                 <div class="card student-report-card" data-student-name="${s.name.toLowerCase()}">
                                     <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
                                         <div class="user-avatar-small" style="background: #eff6ff; color: #2563eb;">${s.name.charAt(0)}</div>
                                         <div>
                                             <h3 style="font-size: 1rem; margin: 0;">${s.name}</h3>
-                                            <p class="text-secondary" style="font-size: 0.8rem; margin: 0;">${s.student_id} | ${s.class_name}</p>
+                                            <p class="text-secondary" style="font-size: 0.8rem; margin: 0;">${s.student_id} | ${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</p>
                                         </div>
                                     </div>
                                     <button class="btn btn-primary w-full generate-pdf" data-id="${s.student_id}">
