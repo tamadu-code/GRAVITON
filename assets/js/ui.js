@@ -3512,6 +3512,7 @@ export const UI = {
                 const id = btn.dataset.id;
                 const student = await db.students.get(id);
                 const scores = await db.scores.where('student_id').equals(id).toArray();
+                const attendance = await db.attendance_records.where('student_id').equals(id).toArray();
                 
                 for (const score of scores) {
                     const sub = await db.subjects.get(score.subject_id);
@@ -3519,7 +3520,7 @@ export const UI = {
                 }
 
                 Notifications.show(`Generating report for ${student.name}...`, 'info');
-                await generateReportCard(student, scores, { name: 'GRAVITON ACADEMY', address: 'Academic Excellence Through Logic' });
+                await generateReportCard(student, scores, { name: 'GRAVITON ACADEMY', address: 'Academic Excellence Through Logic' }, attendance);
             });
         });
 

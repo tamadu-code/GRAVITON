@@ -38,13 +38,55 @@ export const ScoringEngine = {
         const val = parseFloat(value) || 0;
         if (field === 'exam') return val <= 60;
         return val <= 10; // CA components are 10 each
+    },
+
+    calculatePsychomotorScores(attendance) {
+        if (!attendance || attendance.length === 0) {
+            return {
+                punctuality: 3, participation: 3, compliance: 3, 
+                self_control: 3, honesty: 3, creativity: 4, neatness: 4, courage: 4
+            };
+        }
+
+        const schoolAtt = attendance.filter(a => !a.is_subject_based);
+        const subjectAtt = attendance.filter(a => a.is_subject_based);
+
+        // 1. Punctuality: % of On-Time arrivals
+        const totalSchool = schoolAtt.length;
+        const onTime = schoolAtt.filter(a => a.status === 'Present').length;
+        const punctPct = totalSchool > 0 ? (onTime / totalSchool) * 100 : 60;
+        
+        // 2. Participation: Average attendance in subjects
+        const totalSubPossible = 100; // Placeholder for expected subject logs
+        const subPresent = subjectAtt.filter(a => a.status === 'Present').length;
+        const partPct = totalSubPossible > 0 ? (subPresent / 10) : 3; // Simplified for now
+
+        // Mapping function 0-100 to 1-5
+        const mapTo5 = (pct) => {
+            if (pct >= 90) return 5;
+            if (pct >= 80) return 4;
+            if (pct >= 60) return 3;
+            if (pct >= 40) return 2;
+            return 1;
+        };
+
+        return {
+            punctuality: mapTo5(punctPct),
+            participation: Math.min(5, Math.max(1, Math.round(partPct))),
+            compliance: mapTo5(punctPct > 50 ? 90 : 40), // Logic: if they show up to school, they are compliant
+            self_control: mapTo5(punctPct),
+            honesty: 5, 
+            creativity: 4,
+            neatness: 4,
+            courage: 4
+        };
     }
 };
 
 /**
  * PDF Reporting System (Report Cards)
  */
-export async function generateReportCard(student, scores, schoolInfo) {
+export async function generateReportCard(student, scores, schoolInfo, attendance = []) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
@@ -160,9 +202,13 @@ export async function generateReportCard(student, scores, schoolInfo) {
     
     currentY += 10;
     doc.setTextColor(0, 0, 0);
+    
+    // AUTOMATED SCORES
+    const autoScores = ScoringEngine.calculatePsychomotorScores(attendance);
+    
     const domainData = [
-        ['Punctuality', '5', 'Neatness', '4', 'Honesty', '5', 'Self Control', '4'],
-        ['Courage', '4', 'Creativity', '5', 'Participation', '4', 'Compliance', '5']
+        ['Punctuality', autoScores.punctuality, 'Neatness', autoScores.neatness, 'Honesty', autoScores.honesty, 'Self Control', autoScores.self_control],
+        ['Courage', autoScores.courage, 'Creativity', autoScores.creativity, 'Participation', autoScores.participation, 'Compliance', autoScores.compliance]
     ];
     
     domainData.forEach(row => {
