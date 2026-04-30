@@ -2997,7 +2997,7 @@ export const UI = {
 
                         <!-- Data Table -->
                         <div class="table-container" style="border: 1px solid #f1f5f9; border-radius: 16px;">
-                            <table class="data-table">
+                            <table class="data-table mobile-stack-table">
                                 <thead style="background: #f8fafc;">
                                     <tr>
                                         <th style="width: 60px;">ID</th>
@@ -3185,13 +3185,13 @@ export const UI = {
 
                 return `
                     <tr style="transition: all 0.2s hover;">
-                        <td style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">${s.attendance_code || 'N/A'}</td>
-                        <td>
+                        <td data-label="ID" style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">${s.attendance_code || 'N/A'}</td>
+                        <td data-label="Student">
                             <div style="font-weight: 700; color: #1e293b;">${s.name}</div>
                             <div style="font-size: 0.65rem; color: #94a3b8;">${s.student_id}</div>
                         </td>
-                        <td><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</span></td>
-                        <td style="text-align: center;">
+                        <td data-label="Class"><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</span></td>
+                        <td data-label="Status" style="text-align: center;">
                             ${currentTab === 'school' ? `
                                 <span style="display: inline-flex; align-items: center; gap: 0.5rem; color: ${statusColor}; font-weight: 800; font-size: 0.8rem; background: ${statusColor}15; padding: 4px 12px; border-radius: 99px;">
                                     <span style="width: 6px; height: 6px; background: ${statusColor}; border-radius: 50%;"></span>
@@ -3204,8 +3204,10 @@ export const UI = {
                                 </select>
                             `}
                         </td>
-                        <td style="text-align: right; font-family: monospace; font-weight: 700; color: #64748b;">${signIn}</td>
-                        <td style="text-align: right; font-family: monospace; font-weight: 700; color: #10b981;">${signOut}</td>
+                        <td data-label="Sign In" style="text-align: right; font-family: monospace; font-weight: 700; color: #64748b;">${signIn}</td>
+                        ${currentTab === 'school' ? `
+                            <td data-label="Sign Out" class="td-signout" style="text-align: right; font-family: monospace; font-weight: 700; color: #10b981;">${signOut}</td>
+                        ` : ''}
                     </tr>
                 `;
             }).join('');
