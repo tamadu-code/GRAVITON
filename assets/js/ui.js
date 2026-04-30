@@ -71,7 +71,9 @@ export const UI = {
                 case 'staff': await this.renderStaff(); break;
                 case 'cbt': await this.renderCBT(); break;
                 case 'lessons': await this.renderLessons(); break;
+                case 'timetables': await this.renderTimetable(); break;
                 case 'promotion': await this.renderPromotionEngine(); break;
+
                 case 'config': await this.renderSettings(); break;
                 default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
             }
@@ -4912,10 +4914,138 @@ export const UI = {
         }
     },
 
-    isAnswerCloseEnough(studentAns, correctAns) {
-        if (!studentAns || !correctAns) return false;
-        const s = studentAns.toLowerCase().trim().replace(/\s+/g, ' ');
-        const c = correctAns.toLowerCase().trim().replace(/\s+/g, ' ');
-        return s === c;
-    }
-};
+    async renderTimetable() {
+        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        const subjects = (await db.subjects.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <header class="view-header" style="margin-bottom: 2rem;">
+                    <h1 class="text-3xl font-extrabold tracking-tight">Master Timetable Editor</h1>
+                    <p class="text-secondary">Define the academic schedule for every class and stream.</p>
+                </header>
+
+                <div class="card" style="border-radius: 24px; padding: 2rem; margin-bottom: 2rem;">
+                    <div style="display: flex; gap: 1.5rem; align-items: center; margin-bottom: 2rem;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Active Class Registry</label>
+                            <select id="tt-class-select" class="input" style="width: 100%; height: 52px; border-radius: 12px; background: #f8fafc; font-weight: 700;">
+                                <option value="">Select a class to edit...</option>
+                                ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 0.75rem; align-items: flex-end; padding-top: 1.5rem;">
+                            <button id="btn-save-timetable" class="btn btn-primary" style="height: 52px; border-radius: 12px; padding: 0 2rem; background: #2563eb;">
+                                <i data-lucide="save"></i> Save Schedule
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="timetable-grid-container" style="display: none;">
+                        <div class="table-container" style="border: 1px solid #f1f5f9; border-radius: 16px; overflow: hidden;">
+                            <table class="data-table" style="border-collapse: collapse; width: 100%;">
+                                <thead style="background: #f8fafc;">
+                                    <tr>
+                                        <th style="width: 100px; background: #f1f5f9; text-align: center; font-weight: 800; color: #1e293b; border-bottom: 2px solid #e2e8f0;">PERIOD</th>
+                                        ${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => `
+                                            <th style="text-align: center; font-weight: 800; color: #4338ca; border-bottom: 2px solid #e2e8f0;">${day.toUpperCase()}</th>
+                                        `).join('')}
+                                    </tr>
+                                </thead>
+                                <tbody id="tt-grid-body">
+                                    <!-- Dynamic Periods (1-8) -->
+                                    ${[1, 2, 3, 4, 5, 6, 7, 8].map(p => `
+                                        <tr>
+                                            <td style="text-align: center; background: #f8fafc; font-weight: 900; color: #94a3b8; border-right: 1px solid #f1f5f9;">${p}</td>
+                                            ${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => `
+                                                <td style="padding: 0.5rem; border: 1px solid #f1f5f9;">
+                                                    <select class="tt-slot-select" data-day="${day}" data-period="${p}" style="width: 100%; border: none; background: transparent; font-size: 0.8rem; font-weight: 600; color: #334155; cursor: pointer; outline: none; padding: 0.5rem;">
+                                                        <option value="">-- Free Slot --</option>
+                                                        ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                                                    </select>
+                                                </td>
+                                            `).join('')}
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="tt-empty-state" style="text-align: center; padding: 5rem 2rem;">
+                        <div style="width: 80px; height: 80px; background: #f1f5f9; color: #94a3b8; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+                            <i data-lucide="calendar" style="width: 40px; height: 40px;"></i>
+                        </div>
+                        <h3 style="color: #1e293b; font-weight: 800;">No Class Selected</h3>
+                        <p style="color: #64748b;">Please select a class from the registry above to begin scheduling.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Register Event Listeners
+        this.initTimetableLogic();
+    },
+
+    initTimetableLogic() {
+        const classSelect = document.getElementById('tt-class-select');
+        const gridContainer = document.getElementById('timetable-grid-container');
+        const emptyState = document.getElementById('tt-empty-state');
+        const saveBtn = document.getElementById('btn-save-timetable');
+        const slots = document.querySelectorAll('.tt-slot-select');
+
+        classSelect.onchange = async () => {
+            const cls = classSelect.value;
+            if (!cls) {
+                gridContainer.style.display = 'none';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            gridContainer.style.display = 'block';
+            emptyState.style.display = 'none';
+
+            // Reset all selects
+            slots.forEach(s => s.value = "");
+
+            // Load existing timetable for this class
+            const existing = await db.timetable.where('class_name').equals(cls).toArray();
+            existing.forEach(entry => {
+                const select = document.querySelector(`.tt-slot-select[data-day="${entry.day_of_week}"][data-period="${entry.period_number}"]`);
+                if (select) select.value = entry.subject_id;
+            });
+        };
+
+        saveBtn.onclick = async () => {
+            const cls = classSelect.value;
+            if (!cls) return Notifications.show('Please select a class first', 'error');
+
+            Notifications.show('Compiling academic schedule...', 'info');
+
+            const newEntries = [];
+            slots.forEach(select => {
+                if (select.value) {
+                    newEntries.push(prepareForSync({
+                        id: `TT_${cls}_${select.dataset.day}_P${select.dataset.period}`,
+                        class_name: cls,
+                        day_of_week: select.dataset.day,
+                        period_number: parseInt(select.dataset.period),
+                        subject_id: select.value,
+                        updated_at: new Date().toISOString()
+                    }));
+                }
+            });
+
+            // Clean old entries for this class and save new ones
+            await db.timetable.where('class_name').equals(cls).delete();
+            if (newEntries.length > 0) {
+                await db.timetable.bulkAdd(newEntries);
+            }
+
+            Notifications.show(`Timetable for ${cls} successfully deployed!`, 'success');
+            syncToCloud();
+        };
+    },
+
