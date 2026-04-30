@@ -2997,22 +2997,314 @@ export const UI = {
             
             const statuses = document.querySelectorAll('.attendance-status');
             const attendanceRecords = Array.from(statuses).map(sel => ({
-                id: `ATT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                student_id: sel.dataset.studentId,
-                subject_id: subId,
-                date: date,
-                status: sel.value,
-                class_name: cls
-            }));
-            
-            for (const record of attendanceRecords) {
-                await db.attendance.put(prepareForSync(record));
-            }
-            
-            Notifications.show('Attendance saved successfully', 'success');
-            syncToCloud();
-        };
+    async renderAttendance() {
+        const students = await db.students.filter(s => s.is_active !== false).toArray();
+        const classes = await db.classes.toArray();
+        const subjects = await db.subjects.toArray();
+        const role = (this.currentUser.role || '').toLowerCase();
+        const isTeacher = role === 'teacher';
+        
+        // Initial State
+        const today = new Date().toISOString().split('T')[0];
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <!-- Premium Header Section -->
+                <header class="view-header" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div>
+                        <h1 class="text-3xl font-extrabold tracking-tight" style="font-family: 'Outfit', sans-serif;">Attendance Intelligence</h1>
+                        <p class="text-secondary">Monitor school-wide turnout and track subject-specific participation.</p>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem;">
+                        <button id="btn-sync-attendance" class="btn btn-secondary" style="border-radius: 12px; height: 48px;">
+                            <i data-lucide="refresh-cw"></i> Sync Data
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Analytics Bar -->
+                <div class="stats-grid mb-2" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                    <div class="stat-card-premium" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; border: none;">
+                        <span style="font-size: 0.7rem; font-weight: 800; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.05em;">Today's Turnout</span>
+                        <div style="font-size: 2rem; font-weight: 900; margin-top: 0.5rem;" id="stat-turnout">0%</div>
+                        <div class="progress-mini" style="background: rgba(255,255,255,0.2); height: 4px; border-radius: 2px; margin-top: 0.75rem;">
+                            <div id="stat-turnout-bar" style="width: 0%; height: 100%; background: white; border-radius: 2px; transition: width 1s ease;"></div>
+                        </div>
+                    </div>
+                    <div class="stat-card-premium">
+                        <span style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">Present Now</span>
+                        <div style="font-size: 2rem; font-weight: 900; margin-top: 0.5rem; color: #1e293b;" id="stat-present">0</div>
+                        <i data-lucide="user-check" style="position: absolute; right: 1.5rem; bottom: 1.5rem; color: #e2e8f0; width: 40px; height: 40px;"></i>
+                    </div>
+                    <div class="stat-card-premium">
+                        <span style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">Late Arrivals</span>
+                        <div style="font-size: 2rem; font-weight: 900; margin-top: 0.5rem; color: #f59e0b;" id="stat-late">0</div>
+                        <i data-lucide="clock" style="position: absolute; right: 1.5rem; bottom: 1.5rem; color: #fef3c7; width: 40px; height: 40px;"></i>
+                    </div>
+                </div>
+
+                <!-- Main Control Panel -->
+                <div class="card" style="border-radius: 24px; padding: 0; overflow: hidden; border: 1px solid #f1f5f9; box-shadow: var(--shadow-lg);">
+                    <div class="card-tabs" style="display: flex; background: #f8fafc; border-bottom: 1px solid #f1f5f9;">
+                        <button class="att-tab-btn active" data-tab="school" style="flex: 1; padding: 1.25rem; border: none; background: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.2s;">
+                            <i data-lucide="building-2"></i> School Arrival
+                        </button>
+                        <button class="att-tab-btn" data-tab="subject" style="flex: 1; padding: 1.25rem; border: none; background: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.2s; color: #94a3b8;">
+                            <i data-lucide="book-marked"></i> Subject Periods
+                        </button>
+                    </div>
+
+                    <div style="padding: 1.5rem;">
+                        <!-- Filters -->
+                        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+                            <div style="flex: 1; min-width: 200px;">
+                                <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select Stream</label>
+                                <select id="att-class-filter" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
+                                    <option value="">All Classes</option>
+                                    ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div id="subject-filter-container" style="flex: 1; min-width: 200px; display: none;">
+                                <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Target Subject</label>
+                                <select id="att-subject-filter" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
+                                    <option value="">Select Subject...</option>
+                                    ${subjects.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div style="width: 180px;">
+                                <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Date</label>
+                                <input type="date" id="att-date" class="input" value="${today}" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
+                            </div>
+                        </div>
+
+                        <!-- Search and Actions -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <div style="position: relative; width: 300px;">
+                                <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px;"></i>
+                                <input type="text" id="att-search" placeholder="Search student name..." class="input" style="padding-left: 2.75rem; width: 100%; height: 44px; border-radius: 10px; font-size: 0.85rem;">
+                            </div>
+                            <div id="subject-actions" style="display: none;">
+                                <button id="btn-save-subject-att" class="btn btn-primary" style="background: #10b981; border-radius: 10px; height: 44px; padding: 0 1.5rem;">
+                                    <i data-lucide="save"></i> Commit Subject Attendance
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Data Table -->
+                        <div class="table-container" style="border: 1px solid #f1f5f9; border-radius: 16px;">
+                            <table class="data-table">
+                                <thead style="background: #f8fafc;">
+                                    <tr>
+                                        <th style="width: 60px;">ID</th>
+                                        <th>Student Name</th>
+                                        <th>Class</th>
+                                        <th style="text-align: center;">Status</th>
+                                        <th id="th-time" style="text-align: right;">Time Log</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="attendance-list-body">
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Register Internal Event Listeners
+        this.initAttendanceLogic(students);
+
+        // Sync Data Button
+        const btnSyncAtt = document.getElementById('btn-sync-attendance');
+        if (btnSyncAtt) {
+            btnSyncAtt.onclick = async () => {
+                const icon = btnSyncAtt.querySelector('i');
+                if (icon) icon.classList.add('spinning');
+                Notifications.show('Pulling latest attendance from cloud...', 'info');
+                try {
+                    await syncFromCloud(true);
+                    await this.renderAttendance(); // Refresh UI
+                    Notifications.show('Attendance data refreshed!', 'success');
+                } catch (e) {
+                    Notifications.show(`Sync failed: ${e.message || e}`, 'error');
+                } finally {
+                    if (icon) icon.classList.remove('spinning');
+                }
+            };
+        }
     },
+
+    initAttendanceLogic(students) {
+        const tabBtns = document.querySelectorAll('.att-tab-btn');
+        const classFilter = document.getElementById('att-class-filter');
+        const subjectFilter = document.getElementById('att-subject-filter');
+        const subjectContainer = document.getElementById('subject-filter-container');
+        const dateInput = document.getElementById('att-date');
+        const searchInput = document.getElementById('att-search');
+        const listBody = document.getElementById('attendance-list-body');
+        const subjectActions = document.getElementById('subject-actions');
+        const thTime = document.getElementById('th-time');
+
+        let currentTab = 'school';
+
+        const refreshList = async () => {
+            const date = dateInput.value;
+            const cls = classFilter.value;
+            const search = searchInput.value.toLowerCase();
+            const subjectName = subjectFilter.value;
+
+            // Load records
+            const records = await db.attendance_records
+                .where('date').equals(date)
+                .toArray();
+
+            let filteredStudents = students;
+            
+            // 1. Basic Class Filter
+            if (cls) filteredStudents = filteredStudents.filter(s => s.class_name === cls);
+            
+            // 2. SMART FILTER: Specialization for SSS 2 & 3
+            if (currentTab === 'subject' && subjectName && (cls === 'SSS 2' || cls === 'SSS 3')) {
+                // Find the specialization for this subject assignment
+                const assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
+                const subjects = await db.subjects.toArray();
+                const targetSubject = subjects.find(s => s.name === subjectName);
+                
+                if (targetSubject) {
+                    const assignment = assignments.find(a => String(a.subject_id) === String(targetSubject.id));
+                    const subSpecialization = assignment ? assignment.specialization : 'Common Subject';
+                    
+                    // Only show students who match this specialization (or show everyone if it's a 'Common Subject')
+                    if (subSpecialization && subSpecialization !== 'Common Subject') {
+                        filteredStudents = filteredStudents.filter(s => 
+                            (s.sub_class || '').toLowerCase() === subSpecialization.toLowerCase()
+                        );
+                    }
+                }
+            }
+
+            // 3. Search Filter
+            if (search) filteredStudents = filteredStudents.filter(s => s.name.toLowerCase().includes(search));
+
+            // Stats Calculation
+            const schoolRecords = records.filter(r => !r.is_subject_based);
+            const presentCount = schoolRecords.filter(r => r.status === 'Present').length;
+            const turnout = students.length > 0 ? Math.round((presentCount / students.length) * 100) : 0;
+            
+            document.getElementById('stat-present').textContent = presentCount;
+            document.getElementById('stat-turnout').textContent = `${turnout}%`;
+            document.getElementById('stat-turnout-bar').style.width = `${turnout}%`;
+
+            // Render Rows
+            listBody.innerHTML = filteredStudents.map(s => {
+                let record;
+                if (currentTab === 'school') {
+                    record = schoolRecords.find(r => r.student_id === s.student_id);
+                } else {
+                    record = records.find(r => r.student_id === s.student_id && r.is_subject_based && r.subject_name === subjectName);
+                }
+
+                const status = record ? record.status : 'Absent';
+                const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : '#ef4444');
+                const timeStr = record && record.check_in ? new Date(record.check_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
+
+                return `
+                    <tr style="transition: all 0.2s hover;">
+                        <td style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">${s.attendance_code || 'N/A'}</td>
+                        <td>
+                            <div style="font-weight: 700; color: #1e293b;">${s.name}</div>
+                            <div style="font-size: 0.65rem; color: #94a3b8;">${s.student_id}</div>
+                        </td>
+                        <td><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}</span></td>
+                        <td style="text-align: center;">
+                            ${currentTab === 'school' ? `
+                                <span style="display: inline-flex; align-items: center; gap: 0.5rem; color: ${statusColor}; font-weight: 800; font-size: 0.8rem; background: ${statusColor}15; padding: 4px 12px; border-radius: 99px;">
+                                    <span style="width: 6px; height: 6px; background: ${statusColor}; border-radius: 50%;"></span>
+                                    ${status}
+                                </span>
+                            ` : `
+                                <select class="input subject-status-select" data-student-id="${s.student_id}" style="width: 120px; height: 32px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; background: ${status === 'Present' ? '#f0fdf4' : '#fff1f2'}; border: none;">
+                                    <option value="Absent" ${status === 'Absent' ? 'selected' : ''}>Absent</option>
+                                    <option value="Present" ${status === 'Present' ? 'selected' : ''}>Present</option>
+                                </select>
+                            `}
+                        </td>
+                        <td style="text-align: right; font-weight: 600; color: #64748b; font-family: 'JetBrains Mono', monospace;">
+                            ${currentTab === 'school' ? timeStr : `<i data-lucide="edit-2" style="width: 14px; opacity: 0.5;"></i>`}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        };
+
+        // Tab Switching
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabBtns.forEach(b => {
+                    b.classList.remove('active');
+                    b.style.color = '#94a3b8';
+                    b.style.borderBottom = 'none';
+                });
+                btn.classList.add('active');
+                btn.style.color = '#2563eb';
+                btn.style.borderBottom = '3px solid #2563eb';
+
+                currentTab = btn.dataset.tab;
+                if (currentTab === 'subject') {
+                    subjectContainer.style.display = 'block';
+                    subjectActions.style.display = 'block';
+                    thTime.textContent = 'Action';
+                } else {
+                    subjectContainer.style.display = 'none';
+                    subjectActions.style.display = 'none';
+                    thTime.textContent = 'Time Log';
+                }
+                refreshList();
+            });
+        });
+
+        [classFilter, subjectFilter, dateInput, searchInput].forEach(el => el.addEventListener('change', refreshList));
+        searchInput.addEventListener('input', refreshList);
+
+        // Save Subject Attendance
+        document.getElementById('btn-save-subject-att').onclick = async () => {
+            const subject = subjectFilter.value;
+            if (!subject) return Notifications.show('Please select a subject first', 'warning');
+
+            const selects = document.querySelectorAll('.subject-status-select');
+            const date = dateInput.value;
+            
+            Notifications.show('Saving subject participation...', 'info');
+
+            for (const sel of selects) {
+                const studentId = sel.dataset.studentId;
+                const status = sel.value;
+
+                await db.attendance_records.put(prepareForSync({
+                    id: `SUB_${studentId}_${subject}_${date}`,
+                    student_id: studentId,
+                    date: date,
+                    status: status,
+                    subject_name: subject,
+                    is_subject_based: true
+                }));
+            }
+
+            Notifications.show('Attendance committed successfully', 'success');
+            syncToCloud();
+            refreshList();
+        };
+
+        // Initial Load
+        refreshList();
+    },
+
+
 
     async renderReports() {
         const students = await db.students.toArray();
