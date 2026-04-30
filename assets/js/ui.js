@@ -3322,22 +3322,19 @@ export const UI = {
             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
             const dayOfWeek = dayNames[new Date(dateVal).getDay()];
             
-            // Handle Fixed Events
+            // Handle Fixed Event Reminders (Soft Suggestions)
             if (dayOfWeek === 'Thursday' && period === '5') {
-                subjectFilter.value = ""; // Clear selection
-                Notifications.show("Fixed Event: Fasting and Prayer (No Academic Subject)", "warning");
-                return;
+                Notifications.show("Note: Usually Fasting and Prayer time.", "info");
             }
             if (dayOfWeek === 'Friday' && (period === '3' || period === '4')) {
-                subjectFilter.value = ""; 
-                Notifications.show("Fixed Event: School Sports (No Academic Subject)", "warning");
-                return;
+                Notifications.show("Note: Usually School Sports time.", "info");
             }
 
             const entry = await db.timetable
                 .where('[class_name+day_of_week+period_number]')
                 .equals([cls, dayOfWeek, parseInt(period)])
                 .first();
+
 
             if (entry) {
                 const subject = await db.subjects.get(entry.subject_id);
