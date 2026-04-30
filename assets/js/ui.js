@@ -3163,9 +3163,25 @@ export const UI = {
                 const status = record ? record.status : 'Absent';
                 const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : '#ef4444');
                 
-                const formatTime = (iso) => iso ? new Date(iso).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
+                const formatTime = (iso) => {
+                    if (!iso) return '--:--';
+                    const d = new Date(iso);
+                    if (isNaN(d.getTime())) {
+                        // Try parsing if it's just a time string (e.g. "08:30:00")
+                        if (typeof iso === 'string' && iso.includes(':') && !iso.includes('-')) {
+                            return iso.substring(0, 5); 
+                        }
+                        return '--:--';
+                    }
+                    return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                };
+
                 const signIn = formatTime(record?.check_in);
                 const signOut = formatTime(record?.check_out);
+                
+                if (record && (record.check_in || record.check_out)) {
+                    console.log(`Time data for ${s.name}: In=${record.check_in}, Out=${record.check_out}`);
+                }
 
                 return `
                     <tr style="transition: all 0.2s hover;">
