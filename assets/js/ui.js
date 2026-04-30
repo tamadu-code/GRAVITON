@@ -3086,8 +3086,14 @@ export const UI = {
 
             let filteredStudents = students;
             
-            // 1. Basic Class Filter
-            if (cls) filteredStudents = filteredStudents.filter(s => s.class_name === cls);
+            // 1. Basic Class Filter (Robust matching for sub-classes)
+            if (cls) {
+                filteredStudents = filteredStudents.filter(s => 
+                    s.class_name === cls || 
+                    (s.class_name + (s.sub_class || '')).startsWith(cls) ||
+                    cls.startsWith(s.class_name)
+                );
+            }
             
             // 2. SMART FILTER: Specialization for SSS 2 & 3
             if (currentTab === 'subject' && subjectName && (cls === 'SSS 2' || cls === 'SSS 3')) {
