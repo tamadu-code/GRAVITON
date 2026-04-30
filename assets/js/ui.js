@@ -3131,18 +3131,19 @@ export const UI = {
             // 4. SORT BY NAME (Assigned Order)
             filteredStudents.sort((a, b) => a.name.localeCompare(b.name));
 
-            // Stats Calculation
-            const schoolRecords = records.filter(r => !r.is_subject_based);
-            const presentCount = schoolRecords.filter(r => r.status === 'Present').length;
-            const lateCount = schoolRecords.filter(r => r.status === 'Late').length;
+            // Stats Calculation - Count UNIQUE students only
+            const uniqueSchoolMap = new Map();
+            records.filter(r => !r.is_subject_based).forEach(r => {
+                // If multiple records exist, we take the one with better status or later time
+                uniqueSchoolMap.set(r.student_id, r);
+            });
+
+            const uniqueArrived = Array.from(uniqueSchoolMap.values());
+            const presentCount = uniqueArrived.filter(r => r.status === 'Present').length;
+            const lateCount = uniqueArrived.filter(r => r.status === 'Late').length;
             
-            // Turnout includes both Present and Late
             const totalArrived = presentCount + lateCount;
             const turnout = students.length > 0 ? Math.round((totalArrived / students.length) * 100) : 0;
-            
-            // Absent are those who are NOT in schoolRecords (no log for today)
-            // But for a live list, we can just subtract totalArrived from current students.length
-            // Or better, count records with status 'Absent' if they exist, but usually no record means absent.
             const absentCount = Math.max(0, students.length - totalArrived);
             
             document.getElementById('stat-present').textContent = totalArrived;

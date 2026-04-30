@@ -132,16 +132,24 @@ serve(async (req) => {
     }
 
     // Step 4: Upsert attendance record in SMS (including sign out)
-    const { error: upsertError } = await supabase
+    const { data: upsertData, error: upsertError } = await supabase
       .from('attendance_records')
       .upsert({
+        attendance_code,
+        date,
         student_id: student.student_id,
-        date: date,
-        status: status,
-        check_in: sign_in ? `${date}T${sign_in}` : null,
-        check_out: sign_out ? `${date}T${sign_out}` : null,
-        is_subject_based: false
-      }, { onConflict: 'student_id,date,is_subject_based,subject_name,period_number' })
+        check_in: sign_in ? `${date}T${sign_in}` : undefined,
+        check_out: sign_out ? `${date}T${sign_out}` : undefined,
+        status: is_late ? 'Late' : 'Present',
+        subject_id: record.subject_id || null,
+        period_id: record.period_id || null,
+        metadata: { 
+          source: 'biometric_sync',
+          raw_payload: record 
+        }
+      }, { 
+        onConflict: 'student_id,date,subject_id,period_id' 
+      })
 
     if (upsertError) {
       console.error('Failed to upsert attendance:', upsertError)
