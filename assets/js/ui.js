@@ -3184,14 +3184,25 @@ export const UI = {
                 }
 
                 return `
-                    <tr style="transition: all 0.2s hover;">
-                        <td data-label="ID" style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">${s.attendance_code || 'N/A'}</td>
-                        <td data-label="Student">
-                            <div style="font-weight: 700; color: #1e293b;">${s.name}</div>
-                            <div style="font-size: 0.65rem; color: #94a3b8;">${s.student_id}</div>
+                    <tr class="attendance-row" style="transition: all 0.2s hover; cursor: pointer;">
+                        <td data-label="Student" class="mobile-main-header" style="border-bottom: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                                <div>
+                                    <div style="font-weight: 700; color: #1e293b;">${s.name}</div>
+                                    <div class="mobile-hide" style="font-size: 0.65rem; color: #94a3b8;">${s.student_id}</div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 1rem;">
+                                    <span style="display: inline-flex; align-items: center; gap: 0.5rem; color: ${statusColor}; font-weight: 800; font-size: 0.8rem; background: ${statusColor}15; padding: 4px 12px; border-radius: 99px;">
+                                        <span style="width: 6px; height: 6px; background: ${statusColor}; border-radius: 50%;"></span>
+                                        ${status}
+                                    </span>
+                                    <i data-lucide="chevron-down" class="accordion-arrow mobile-only" style="width: 16px; color: #94a3b8; transition: transform 0.3s;"></i>
+                                </div>
+                            </div>
                         </td>
-                        <td data-label="Class"><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</span></td>
-                        <td data-label="Status" style="text-align: center;">
+                        <td data-label="ID" class="collapsible-field" style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">${s.attendance_code || 'N/A'}</td>
+                        <td data-label="Class" class="collapsible-field"><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</span></td>
+                        <td data-label="Status" class="mobile-hide" style="text-align: center;">
                             ${currentTab === 'school' ? `
                                 <span style="display: inline-flex; align-items: center; gap: 0.5rem; color: ${statusColor}; font-weight: 800; font-size: 0.8rem; background: ${statusColor}15; padding: 4px 12px; border-radius: 99px;">
                                     <span style="width: 6px; height: 6px; background: ${statusColor}; border-radius: 50%;"></span>
@@ -3204,14 +3215,27 @@ export const UI = {
                                 </select>
                             `}
                         </td>
-                        <td data-label="Sign In" style="text-align: right; font-family: monospace; font-weight: 700; color: #64748b;">${signIn}</td>
+                        <td data-label="Sign In" class="collapsible-field" style="text-align: right; font-family: monospace; font-weight: 700; color: #64748b;">${signIn}</td>
                         ${currentTab === 'school' ? `
-                            <td data-label="Sign Out" class="td-signout" style="text-align: right; font-family: monospace; font-weight: 700; color: #10b981;">${signOut}</td>
+                            <td data-label="Sign Out" class="td-signout collapsible-field" style="text-align: right; font-family: monospace; font-weight: 700; color: #10b981;">${signOut}</td>
                         ` : ''}
                     </tr>
                 `;
             }).join('');
-            
+
+            // Click to toggle collapsible fields on mobile
+            listBody.querySelectorAll('.attendance-row').forEach(row => {
+                row.addEventListener('click', (e) => {
+                    if (e.target.closest('select') || e.target.closest('button')) return;
+                    if (window.innerWidth <= 768) {
+                        const isExpanded = row.classList.contains('expanded');
+                        listBody.querySelectorAll('.attendance-row.expanded').forEach(r => r.classList.remove('expanded'));
+                        if (!isExpanded) row.classList.add('expanded');
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    }
+                });
+            });
+
             if (typeof lucide !== 'undefined') lucide.createIcons();
         };
 

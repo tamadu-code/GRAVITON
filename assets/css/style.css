@@ -802,6 +802,38 @@ label {
     .mobile-stack-table td:last-child {
         border-bottom: none;
     }
+
+    /* Attendance Specific Collapsible Card Styles */
+    .attendance-row .collapsible-field {
+        display: none !important;
+    }
+    .attendance-row.expanded .collapsible-field {
+        display: flex !important;
+    }
+    .attendance-row .mobile-main-header {
+        width: 100% !important;
+        display: block !important;
+        background: #f8fafc;
+        border-radius: 12px 12px 0 0;
+    }
+    .attendance-row.expanded .mobile-main-header {
+        border-bottom: 1px solid #f1f5f9 !important;
+    }
+    .mobile-hide {
+        display: none !important;
+    }
+    .mobile-only {
+        display: block !important;
+    }
+    .attendance-row.expanded .accordion-arrow {
+        transform: rotate(180deg);
+    }
+}
+
+@media (min-width: 769px) {
+    .mobile-only {
+        display: none !important;
+    }
 }
 
 /* Dashboard Specific Styles */
