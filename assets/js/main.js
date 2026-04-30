@@ -83,27 +83,37 @@ function showLoginScreen() {
 
 // ─── App Initialization ───
 async function initApp() {
+    console.log('Graviton CMS: Initializing App...');
+    
     // Run icon creation first
     if (typeof lucide !== 'undefined') lucide.createIcons();
     
     // Show a small loader on login button if we are still checking session
     if (loginBtn) {
         loginBtn.disabled = true;
-        loginBtn.innerHTML = '<span>Verifying Session...</span><div class="loader" style="width:14px; height:14px;"></div>';
+        loginBtn.innerHTML = '<span>Verifying Session...</span><div class="loader" style="width:14px; height:14px; border:2px solid white; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></div>';
     }
 
     try {
-        const session = await getCurrentSession();
+        // Add a timeout to session check to prevent permanent "Verifying Session" state
+        const sessionPromise = getCurrentSession();
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Session check timed out')), 5000));
+        
+        const session = await Promise.race([sessionPromise, timeoutPromise]);
+        
         if (session) {
+            console.log('Session found, loading app...');
             await loadAuthenticatedApp(session.user);
         } else {
+            console.log('No session found, showing login.');
             showLoginScreen();
         }
     } catch (e) {
-        console.error('Initialization error:', e);
+        console.warn('Initialization notice/error:', e.message);
         showLoginScreen();
     } finally {
-        if (loginBtn && loginBtn.disabled && loginScreen.style.display !== 'none') {
+        // ALWAYS ensure the login button is re-enabled if we are still on the login screen
+        if (loginBtn && loginScreen.style.display !== 'none') {
             loginBtn.disabled = false;
             loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
             if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -403,7 +413,7 @@ window.addEventListener('sync-error', (e) => {
     const { table, error, code, hint } = e.detail;
     console.error(`Sync error on ${table}:`, e.detail);
     
-    if (window.Notifications) {
+    if (Notifications) {
         let msg = `Sync failed for ${table}: ${error}`;
         if (code === '42501') msg = `Permission Denied on ${table}. Please check RLS Policies.`;
         if (code === 'PGRST301') msg = `Authentication error. Please logout and re-login.`;
@@ -599,6 +609,14 @@ window.addEventListener('offline', () => {
 });
 
 // ─── Start the App ───
+window.addEventListener('error', (e) => {
+    console.error('Global Error Captured:', e.message, 'at', e.filename, ':', e.lineno);
+});
+
+window.addEventListener('unhandledrejection', (e) => {
+    console.error('Unhandled Promise Rejection:', e.reason);
+});
+
 initApp();
 
 // ─── PWA Service Worker Registration ───
