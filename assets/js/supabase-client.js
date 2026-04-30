@@ -68,7 +68,7 @@ export async function syncToCloud() {
     } catch (e) { console.error('Migration error:', e); }
     // ----------------------------------------
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable'];
     let syncCount = 0;
 
     for (const table of tables) {
@@ -97,7 +97,9 @@ export async function syncToCloud() {
                             scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
                             attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
                             attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
+                            timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
                             notices: ['id', 'title', 'is_active', 'updated_at']
+
                         };
 
                         const columns = allowedColumns[table] || Object.keys(item);
@@ -145,7 +147,7 @@ export async function syncToCloud() {
 export async function syncFromCloud(forceAll = false) {
     if (!sb) return;
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable'];
     
     // If forceAll is true, we look back to beginning of time
     const lastSyncTime = localStorage.getItem('last_sync_timestamp');

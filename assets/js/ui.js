@@ -3275,7 +3275,47 @@ export const UI = {
             });
         });
 
-        [classFilter, subjectFilter, dateInput, searchInput].forEach(el => el.addEventListener('change', refreshList));
+        const suggestSubject = async () => {
+            if (currentTab !== 'subject') return;
+            
+            const dateVal = dateInput.value;
+            const cls = classFilter.value;
+            const period = document.getElementById('att-period').value;
+            
+            if (!dateVal || !cls || !period) return;
+
+            // Get Day of Week (0 = Sunday, 1 = Monday...)
+            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const dayOfWeek = dayNames[new Date(dateVal).getDay()];
+            
+            if (dayOfWeek === 'Saturday' || dayOfWeek === 'Sunday') return;
+
+            const entry = await db.timetable
+                .where('[class_name+day_of_week+period_number]')
+                .equals([cls, dayOfWeek, parseInt(period)])
+                .first();
+
+            if (entry) {
+                const subject = await db.subjects.get(entry.subject_id);
+                if (subject) {
+                    subjectFilter.value = subject.name;
+                    Notifications.show(`Timetable Suggestion: ${subject.name} for ${dayOfWeek} Period ${period}`, 'info');
+                    refreshList();
+                }
+            }
+        };
+
+        [classFilter, dateInput].forEach(el => el.addEventListener('change', () => {
+            suggestSubject();
+            refreshList();
+        }));
+
+        document.getElementById('att-period').addEventListener('change', () => {
+            suggestSubject();
+            refreshList();
+        });
+
+        subjectFilter.addEventListener('change', refreshList);
         searchInput.addEventListener('input', refreshList);
 
         // Save Subject Attendance
