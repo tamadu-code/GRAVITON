@@ -38,15 +38,73 @@ serve(async (req) => {
     }
 
     // Step 2: Find student in SMS by attendance_code
-    const { data: student, error: fetchError } = await supabase
+    const { data: initialStudent, error: fetchError } = await supabase
       .from('students')
       .select('student_id, name, is_active')
       .eq('attendance_code', parseInt(attendance_code))
-      .single()
+      .maybeSingle();
 
-    if (fetchError || !student) {
-      console.error(`Student with code ${attendance_code} not found in SMS`)
-      return new Response(JSON.stringify({ error: `Student not found for code ${attendance_code}` }), { status: 404 })
+    let student = initialStudent;
+
+    if (!student) {
+      console.log(`Student with code ${attendance_code} not found in SMS. Attempting auto-discovery...`);
+      
+      const ATTENDANCE_SYSTEM_URL = Deno.env.get('ATTENDANCE_SYSTEM_URL');
+      const ATTENDANCE_TOKEN = Deno.env.get('ATTENDANCE_TOKEN');
+      
+      if (!ATTENDANCE_SYSTEM_URL || !ATTENDANCE_TOKEN) {
+        console.error('Missing Attendance System configuration for auto-discovery.');
+        return new Response(JSON.stringify({ error: `Student not found for code ${attendance_code} and auto-discovery is misconfigured` }), { status: 404 });
+      }
+
+      const baseUrl = ATTENDANCE_SYSTEM_URL.endsWith('/') ? ATTENDANCE_SYSTEM_URL.slice(0, -1) : ATTENDANCE_SYSTEM_URL;
+      const checkUrl = `${baseUrl}/rest/v1/students?code=eq.${attendance_code}&select=name,class`;
+      
+      const checkResponse = await fetch(checkUrl, {
+        headers: {
+          'apikey': ATTENDANCE_TOKEN,
+          'Authorization': `Bearer ${ATTENDANCE_TOKEN}`,
+        },
+      });
+
+      if (checkResponse.ok) {
+        const attStudents = await checkResponse.json();
+        if (attStudents.length > 0) {
+          const attStudent = attStudents[0];
+          console.log(`Discovered student in Attendance System: ${attStudent.name}`);
+          
+          // Create the student in SMS
+          const year = new Date().getFullYear();
+          const new_student_id = `NKQMS-${year}-${attendance_code}`;
+          
+          const { data: newStudent, error: createError } = await supabase
+            .from('students')
+            .insert({
+              student_id: new_student_id,
+              name: attStudent.name,
+              class_name: attStudent.class || 'Unknown',
+              attendance_code: parseInt(attendance_code),
+              is_active: true,
+              admission_year: year
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('Failed to auto-create student in SMS:', createError);
+            return new Response(JSON.stringify({ error: 'Failed to auto-create student' }), { status: 500 });
+          }
+          
+          student = newStudent;
+          console.log(`Auto-created student: ${student.name} (${student.student_id})`);
+        } else {
+          console.error(`Student code ${attendance_code} not found in Attendance System either.`);
+          return new Response(JSON.stringify({ error: `Student not found for code ${attendance_code}` }), { status: 404 });
+        }
+      } else {
+        console.error('Failed to communicate with Attendance System for auto-discovery.');
+        return new Response(JSON.stringify({ error: 'Attendance System communication error' }), { status: 500 });
+      }
     }
 
     console.log(`Matched student: ${student.name} (${student.student_id})`)
