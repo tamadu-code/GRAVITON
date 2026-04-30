@@ -1241,7 +1241,7 @@ export const UI = {
     async renderStudents() {
         const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
         let students = (await db.students.toArray()).sort((a,b) => a.name.localeCompare(b.name));
-        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
         
         // Default: Only show active students
         let showAll = false;
@@ -2958,7 +2958,8 @@ export const UI = {
                                 <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select Stream</label>
                                 <select id="att-class-filter" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
                                     <option value="">All Classes</option>
-                                    ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                    ${classes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
+                                        .map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                                 </select>
                             </div>
                             <div id="subject-filter-container" style="flex: 1; min-width: 200px; display: none;">
