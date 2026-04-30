@@ -3277,20 +3277,62 @@ export const UI = {
             });
         });
 
+        const getCurrentPeriodByTime = (dateStr) => {
+            const now = dateStr ? new Date(`${dateStr}T${new Date().toLocaleTimeString('en-GB')}`) : new Date();
+            const hours = now.getHours();
+            const mins = now.getMinutes();
+            const timeVal = hours * 60 + mins; // Total minutes from midnight
+
+            // Define Time Ranges (in minutes from midnight)
+            const schedule = [
+                { p: 1, start: 480, end: 520 },  // 08:00 - 08:40
+                { p: 2, start: 520, end: 560 },  // 08:40 - 09:20
+                { p: 3, start: 560, end: 600 },  // 09:20 - 10:00
+                { p: 4, start: 600, end: 640 },  // 10:00 - 10:40
+                { p: 5, start: 640, end: 690 },  // 10:40 - 11:30
+                { p: 0, start: 690, end: 720 },  // 11:30 - 12:00 (BREAK)
+                { p: 6, start: 720, end: 760 },  // 12:00 - 12:40
+                { p: 7, start: 760, end: 800 },  // 12:40 - 13:20
+                { p: 8, start: 800, end: 840 }   // 13:20 - 14:00
+            ];
+
+            const match = schedule.find(s => timeVal >= s.start && timeVal < s.end);
+            return match ? match.p : null;
+        };
+
         const suggestSubject = async () => {
             if (currentTab !== 'subject') return;
             
             const dateVal = dateInput.value;
             const cls = classFilter.value;
-            const period = document.getElementById('att-period').value;
+            const periodSelect = document.getElementById('att-period');
             
+            // Auto-detect period if it's "Today"
+            const isToday = dateVal === new Date().toISOString().split('T')[0];
+            if (isToday) {
+                const autoPeriod = getCurrentPeriodByTime();
+                if (autoPeriod !== null && autoPeriod > 0) {
+                    periodSelect.value = autoPeriod;
+                }
+            }
+
+            const period = periodSelect.value;
             if (!dateVal || !cls || !period) return;
 
-            // Get Day of Week (0 = Sunday, 1 = Monday...)
             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
             const dayOfWeek = dayNames[new Date(dateVal).getDay()];
             
-            if (dayOfWeek === 'Saturday' || dayOfWeek === 'Sunday') return;
+            // Handle Fixed Events
+            if (dayOfWeek === 'Thursday' && period === '5') {
+                subjectFilter.value = ""; // Clear selection
+                Notifications.show("Fixed Event: Fasting and Prayer (No Academic Subject)", "warning");
+                return;
+            }
+            if (dayOfWeek === 'Friday' && (period === '3' || period === '4')) {
+                subjectFilter.value = ""; 
+                Notifications.show("Fixed Event: School Sports (No Academic Subject)", "warning");
+                return;
+            }
 
             const entry = await db.timetable
                 .where('[class_name+day_of_week+period_number]')
@@ -3301,11 +3343,12 @@ export const UI = {
                 const subject = await db.subjects.get(entry.subject_id);
                 if (subject) {
                     subjectFilter.value = subject.name;
-                    Notifications.show(`Timetable Suggestion: ${subject.name} for ${dayOfWeek} Period ${period}`, 'info');
+                    Notifications.show(`Timetable Suggestion: ${subject.name}`, 'info');
                     refreshList();
                 }
             }
         };
+
 
         [classFilter, dateInput].forEach(el => el.addEventListener('change', () => {
             suggestSubject();
