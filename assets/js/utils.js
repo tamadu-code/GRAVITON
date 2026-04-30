@@ -105,37 +105,57 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
     
-    // Helper: Draw Blue Border
-    doc.setDrawColor(37, 99, 235); // Blue
+    // Helper: Hex to RGB
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : { r: 37, g: 99, b: 235 };
+    };
+    const theme = hexToRgb(schoolInfo.themeColor || '#060495');
+
+    // Helper: Draw Border
+    doc.setDrawColor(theme.r, theme.g, theme.b);
     doc.setLineWidth(1.5);
     doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
     doc.setLineWidth(0.5);
     
     // --- Header Section ---
-    // Placeholder for Logo (Top Left)
-    doc.setDrawColor(37, 99, 235);
-    doc.rect(10, 10, 25, 25);
-    doc.setFontSize(8);
-    doc.text("LOGO", 22.5, 23, { align: 'center' });
+    if (schoolInfo.logo) {
+        try {
+            doc.addImage(schoolInfo.logo, 'PNG', 10, 10, 25, 25);
+        } catch (e) {
+            console.warn('Failed to add logo to PDF:', e);
+            doc.setDrawColor(theme.r, theme.g, theme.b);
+            doc.rect(10, 10, 25, 25);
+        }
+    } else {
+        doc.setDrawColor(theme.r, theme.g, theme.b);
+        doc.rect(10, 10, 25, 25);
+        doc.setFontSize(8);
+        doc.text("LOGO", 22.5, 23, { align: 'center' });
+    }
     
     // School Name & Details
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
-    doc.setTextColor(30, 58, 138); // Dark Blue
-    doc.text("NEW KINGS AND QUEENS MONTESSORI SCHOOL", pageWidth / 2 + 10, 15, { align: 'center' });
+    doc.setTextColor(theme.r * 0.5, theme.g * 0.5, theme.b * 0.5); // Darker version of theme
+    doc.text(schoolInfo.name.toUpperCase(), pageWidth / 2 + 10, 15, { align: 'center' });
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(0, 0, 0);
-    doc.text("OPPOSITE N.U.J. OPILI PLAZA, CHIEF ELLIOT DEKEBI STREET", pageWidth / 2 + 10, 20, { align: 'center' });
-    doc.text("Tel: 08035461711, 08037316183, 08058134229", pageWidth / 2 + 10, 24, { align: 'center' });
+    doc.text(schoolInfo.address.toUpperCase(), pageWidth / 2 + 10, 20, { align: 'center' });
+    doc.text(`Tel: ${schoolInfo.phone} | Email: ${schoolInfo.email}`, pageWidth / 2 + 10, 24, { align: 'center' });
     
     doc.setFont('helvetica', 'bolditalic');
-    doc.setTextColor(37, 99, 235);
-    doc.text("Motto: Knowledge is Power", pageWidth / 2 + 10, 28, { align: 'center' });
+    doc.setTextColor(theme.r, theme.g, theme.b);
+    doc.text(`Motto: ${schoolInfo.motto}`, pageWidth / 2 + 10, 28, { align: 'center' });
     
     // Report Title Box
-    doc.setFillColor(37, 99, 235);
+    doc.setFillColor(theme.r, theme.g, theme.b);
     doc.rect(40, 32, pageWidth - 80, 7, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
@@ -279,12 +299,34 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.text("Scan to confirm student", 30, footerY + 3);
     doc.text("performance details.", 30, footerY + 6);
     
+    // --- Footer Section (Signatures) ---
+    const footerY = 275;
+    
+    // Principal's Signature Area
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.text("__________________________", 25, footerY - 5);
+    doc.setFont('helvetica', 'bold');
+    doc.text(schoolInfo.principalName.toUpperCase(), 25, footerY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text("School Principal", 25, footerY + 4);
+    
+    if (schoolInfo.principalSignature) {
+        try {
+            doc.addImage(schoolInfo.principalSignature, 'PNG', 25, footerY - 18, 30, 12);
+        } catch (e) {
+            console.warn('Failed to add signature to PDF:', e);
+        }
+    }
+
     doc.setFontSize(8);
     const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    doc.setTextColor(100, 116, 139);
     doc.text(`Report Generated On: ${dateStr}`, pageWidth - 15, footerY, { align: 'right' });
     
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(37, 99, 235);
+    doc.setTextColor(theme.r, theme.g, theme.b);
     doc.text("VALID ONLY WITH ORIGINAL SCHOOL EMBOSSED STAMP", pageWidth - 15, footerY + 6, { align: 'right' });
     
     doc.save(`${student.name.replace(/\s+/g, '_')}_Report_Card.pdf`);

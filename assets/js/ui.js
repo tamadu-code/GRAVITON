@@ -3514,13 +3514,30 @@ export const UI = {
                 const scores = await db.scores.where('student_id').equals(id).toArray();
                 const attendance = await db.attendance_records.where('student_id').equals(id).toArray();
                 
+                // Fetch System Settings
+                const allSettings = await db.settings.toArray();
+                const settings = {};
+                allSettings.forEach(s => settings[s.key] = s.value);
+
+                const schoolInfo = {
+                    name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
+                    address: settings.schoolAddress || '123 Education Street, Academic City',
+                    phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
+                    email: settings.schoolEmail || 'info@school.com',
+                    motto: settings.schoolMotto || 'Knowledge is Power',
+                    principalName: settings.principalName || 'Mr. Lartey Sampson',
+                    principalSignature: settings.principalSignature || null,
+                    logo: settings.schoolLogo || null,
+                    themeColor: settings.themeColor || '#060495'
+                };
+                
                 for (const score of scores) {
                     const sub = await db.subjects.get(score.subject_id);
                     score.subject_name = sub ? sub.name : 'Unknown Subject';
                 }
 
                 Notifications.show(`Generating report for ${student.name}...`, 'info');
-                await generateReportCard(student, scores, { name: 'GRAVITON ACADEMY', address: 'Academic Excellence Through Logic' }, attendance);
+                await generateReportCard(student, scores, schoolInfo, attendance);
             });
         });
 
@@ -5101,16 +5118,18 @@ export const UI = {
         // Default values if not set
         const config = {
             schoolName: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
+            schoolManager: settings.schoolManager || 'TAMADU CODE',
             schoolMotto: settings.schoolMotto || 'Knowledge is Power',
-            schoolAddress: settings.schoolAddress || 'OPPOSITE N.U.J. OPILI PLAZA, CHIEF ELLIOT DEKEBI STREET',
-            schoolContact: settings.schoolContact || '08035461711, 08037316183',
+            schoolAddress: settings.schoolAddress || '123 Education Street, Academic City',
+            schoolPhone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
+            schoolEmail: settings.schoolEmail || 'info@school.com',
             currentSession: settings.currentSession || '2025/2026',
             currentTerm: settings.currentTerm || 'First Term',
             gradingSystem: settings.gradingSystem || 'Grade-Based (A1, B2, etc.)',
             principalName: settings.principalName || 'Mr. Lartey Sampson',
             principalSignature: settings.principalSignature || null,
             schoolLogo: settings.schoolLogo || null,
-            themeColor: settings.themeColor || '#2563eb'
+            themeColor: settings.themeColor || '#060495'
         };
 
         this.contentArea.innerHTML = `
@@ -5123,29 +5142,78 @@ export const UI = {
                 <!-- Section: Institutional Identity -->
                 <div class="card" style="padding: 2rem; border-radius: 24px; margin-bottom: 2rem; border: 1px solid #f1f5f9;">
                     <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
-                        <i data-lucide="building" style="color: #2563eb;"></i> Institutional Identity
+                        <i data-lucide="building" style="color: #2563eb;"></i> School Identity (Report Card Header)
                     </h3>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
+                            <label>School Name</label>
+                            <input type="text" id="set-school-name" class="input" value="${config.schoolName}">
+                        </div>
+                        <div class="form-group">
+                            <label>School Manager</label>
+                            <input type="text" id="set-school-manager" class="input" value="${config.schoolManager}">
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 1.5rem;">
+                        <label>School Address</label>
+                        <input type="text" id="set-school-address" class="input" value="${config.schoolAddress}">
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                        <div class="form-group">
+                            <label>Phone Number</label>
+                            <input type="text" id="set-school-phone" class="input" value="${config.schoolPhone}">
+                        </div>
+                        <div class="form-group">
+                            <label>Email Address</label>
+                            <input type="email" id="set-school-email" class="input" value="${config.schoolEmail}">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                        <div class="form-group">
                             <label>Principal's Name</label>
-                            <input type="text" id="set-principal-name" class="input" value="${config.principalName}" placeholder="e.g. Mr. John Doe">
+                            <input type="text" id="set-principal-name" class="input" value="${config.principalName}">
                         </div>
                         <div class="form-group">
                             <label>School Motto</label>
-                            <input type="text" id="set-school-motto" class="input" value="${config.schoolMotto}" placeholder="e.g. Excellence First">
+                            <input type="text" id="set-school-motto" class="input" value="${config.schoolMotto}">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                        <div class="form-group">
+                            <label>School Logo</label>
+                            <div style="display: flex; align-items: center; gap: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px dashed #cbd5e1;">
+                                <input type="file" id="set-school-logo-file" accept="image/*" style="display: none;">
+                                <button class="btn btn-secondary" onclick="document.getElementById('set-school-logo-file').click()">
+                                    <i data-lucide="image"></i> Choose Logo
+                                </button>
+                                <div id="logo-preview" style="height: 40px; width: 40px; border-radius: 8px; overflow: hidden; background: #fff; border: 1px solid #e2e8f0;">
+                                    ${config.schoolLogo ? `<img src="${config.schoolLogo}" style="width: 100%; height: 100%; object-fit: contain;">` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Theme Color</label>
+                            <div style="display: flex; align-items: center; gap: 1rem; background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px solid #e2e8f0;">
+                                <input type="color" id="set-theme-color" value="${config.themeColor}" style="width: 50px; height: 40px; border: none; border-radius: 8px; cursor: pointer;">
+                                <span style="font-family: monospace; font-weight: 700; color: #475569;">${config.themeColor.toUpperCase()}</span>
+                            </div>
                         </div>
                     </div>
 
                     <div class="form-group" style="margin-bottom: 1.5rem;">
                         <label>Principal's Signature</label>
-                        <div style="display: flex; align-items: center; gap: 1.5rem; background: #f8fafc; padding: 1.5rem; border-radius: 16px; border: 1px dashed #cbd5e1;">
+                        <div style="display: flex; align-items: center; gap: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px dashed #cbd5e1;">
                             <input type="file" id="set-principal-sig-file" accept="image/*" style="display: none;">
                             <button class="btn btn-secondary" onclick="document.getElementById('set-principal-sig-file').click()">
                                 <i data-lucide="upload"></i> Upload Signature
                             </button>
-                            <div id="sig-preview" style="height: 50px;">
-                                ${config.principalSignature ? `<img src="${config.principalSignature}" style="max-height: 100%;">` : '<span style="color: #94a3b8; font-size: 0.85rem;">No signature uploaded</span>'}
+                            <div id="sig-preview" style="height: 40px;">
+                                ${config.principalSignature ? `<img src="${config.principalSignature}" style="max-height: 100%;">` : '<span style="color: #94a3b8; font-size: 0.85rem;">No signature</span>'}
                             </div>
                         </div>
                     </div>
@@ -5255,21 +5323,42 @@ export const UI = {
                 reader.readAsDataURL(file);
             }
         };
+
+        document.getElementById('set-school-logo-file').onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (re) => {
+                    document.getElementById('logo-preview').innerHTML = `<img src="${re.target.result}" style="width: 100%; height: 100%; object-fit: contain;">`;
+                    this.pendingLogo = re.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        };
     },
 
     async saveSettings() {
         Notifications.show('Saving system configuration...', 'info');
         
         const settingsToSave = [
+            { key: 'schoolName', value: document.getElementById('set-school-name').value },
+            { key: 'schoolManager', value: document.getElementById('set-school-manager').value },
+            { key: 'schoolAddress', value: document.getElementById('set-school-address').value },
+            { key: 'schoolPhone', value: document.getElementById('set-school-phone').value },
+            { key: 'schoolEmail', value: document.getElementById('set-school-email').value },
             { key: 'principalName', value: document.getElementById('set-principal-name').value },
             { key: 'schoolMotto', value: document.getElementById('set-school-motto').value },
             { key: 'currentSession', value: document.getElementById('set-current-session').value },
             { key: 'currentTerm', value: document.getElementById('set-current-term').value },
-            { key: 'gradingSystem', value: document.getElementById('set-grading-system').value }
+            { key: 'gradingSystem', value: document.getElementById('set-grading-system').value },
+            { key: 'themeColor', value: document.getElementById('set-theme-color').value }
         ];
 
         if (this.pendingSignature) {
             settingsToSave.push({ key: 'principalSignature', value: this.pendingSignature });
+        }
+        if (this.pendingLogo) {
+            settingsToSave.push({ key: 'schoolLogo', value: this.pendingLogo });
         }
 
         try {
