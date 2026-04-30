@@ -5,7 +5,9 @@
 import { UI } from './ui.js';
 window.UI = UI;
 import { loginUser, logoutUser, getCurrentSession, getUserProfile, registerUser, resetPassword, startSyncLoop, syncToCloud, syncFromCloud } from './supabase-client.js';
+import db from './db.js';
 import { Notifications } from './utils.js';
+
 
 // Initialize Lucide Icons safely
 if (typeof lucide !== 'undefined') {
@@ -187,6 +189,16 @@ async function loadAuthenticatedApp(authUser) {
     }).catch(() => {
         updateSyncStatus('Offline', 'offline');
     });
+
+    // ─── Auto-Hydration Check ───
+    const studentCount = await db.students.count();
+    if (studentCount === 0 && navigator.onLine) {
+        Notifications.show('Detecting fresh environment... Restoring data from cloud.', 'info');
+        await syncFromCloud(true);
+        // Re-render current view to show restored data
+        UI.renderView(window.location.hash.substring(1) || 'dashboard');
+    }
+
 
     // Handle initial route
     const hash = window.location.hash.substring(1) || 'dashboard';
