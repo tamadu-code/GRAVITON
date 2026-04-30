@@ -5090,6 +5090,289 @@ export const UI = {
             Notifications.show(`Timetable for ${cls} successfully deployed!`, 'success');
             syncToCloud();
         };
+    },
+
+    async renderSettings() {
+        // Load settings from DB
+        const allSettings = await db.settings.toArray();
+        const settings = {};
+        allSettings.forEach(s => settings[s.key] = s.value);
+
+        // Default values if not set
+        const config = {
+            schoolName: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
+            schoolMotto: settings.schoolMotto || 'Knowledge is Power',
+            schoolAddress: settings.schoolAddress || 'OPPOSITE N.U.J. OPILI PLAZA, CHIEF ELLIOT DEKEBI STREET',
+            schoolContact: settings.schoolContact || '08035461711, 08037316183',
+            currentSession: settings.currentSession || '2025/2026',
+            currentTerm: settings.currentTerm || 'First Term',
+            gradingSystem: settings.gradingSystem || 'Grade-Based (A1, B2, etc.)',
+            principalName: settings.principalName || 'Mr. Lartey Sampson',
+            principalSignature: settings.principalSignature || null,
+            schoolLogo: settings.schoolLogo || null,
+            themeColor: settings.themeColor || '#2563eb'
+        };
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in" style="max-width: 900px; margin: 0 auto;">
+                <header class="view-header" style="margin-bottom: 2.5rem; text-align: center;">
+                    <h1 style="font-size: 2.5rem; font-weight: 900; color: #1e293b; margin-bottom: 0.5rem;">System Settings</h1>
+                    <p style="color: #64748b;">Configure institutional identity, academic cycles, and data governance.</p>
+                </header>
+
+                <!-- Section: Institutional Identity -->
+                <div class="card" style="padding: 2rem; border-radius: 24px; margin-bottom: 2rem; border: 1px solid #f1f5f9;">
+                    <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                        <i data-lucide="building" style="color: #2563eb;"></i> Institutional Identity
+                    </h3>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                        <div class="form-group">
+                            <label>Principal's Name</label>
+                            <input type="text" id="set-principal-name" class="input" value="${config.principalName}" placeholder="e.g. Mr. John Doe">
+                        </div>
+                        <div class="form-group">
+                            <label>School Motto</label>
+                            <input type="text" id="set-school-motto" class="input" value="${config.schoolMotto}" placeholder="e.g. Excellence First">
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 1.5rem;">
+                        <label>Principal's Signature</label>
+                        <div style="display: flex; align-items: center; gap: 1.5rem; background: #f8fafc; padding: 1.5rem; border-radius: 16px; border: 1px dashed #cbd5e1;">
+                            <input type="file" id="set-principal-sig-file" accept="image/*" style="display: none;">
+                            <button class="btn btn-secondary" onclick="document.getElementById('set-principal-sig-file').click()">
+                                <i data-lucide="upload"></i> Upload Signature
+                            </button>
+                            <div id="sig-preview" style="height: 50px;">
+                                ${config.principalSignature ? `<img src="${config.principalSignature}" style="max-height: 100%;">` : '<span style="color: #94a3b8; font-size: 0.85rem;">No signature uploaded</span>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Academic Session Operations -->
+                <div class="card" style="padding: 2rem; border-radius: 24px; margin-bottom: 2rem; border: 1px solid #f1f5f9;">
+                    <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                        <i data-lucide="calendar" style="color: #10b981;"></i> Academic Session Operations
+                    </h3>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                        <div class="form-group">
+                            <label>Current Session</label>
+                            <input type="text" id="set-current-session" class="input" value="${config.currentSession}" placeholder="e.g. 2025/2026">
+                        </div>
+                        <div class="form-group">
+                            <label>Current Term</label>
+                            <select id="set-current-term" class="input">
+                                <option value="First Term" ${config.currentTerm === 'First Term' ? 'selected' : ''}>First Term</option>
+                                <option value="Second Term" ${config.currentTerm === 'Second Term' ? 'selected' : ''}>Second Term</option>
+                                <option value="Third Term" ${config.currentTerm === 'Third Term' ? 'selected' : ''}>Third Term</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 2rem;">
+                        <label>Ranking System</label>
+                        <select id="set-grading-system" class="input">
+                            <option value="Grade-Based (A1, B2, etc.)" ${config.gradingSystem === 'Grade-Based (A1, B2, etc.)' ? 'selected' : ''}>Grade-Based (A1, B2, etc.)</option>
+                            <option value="Positional Ranking" ${config.gradingSystem === 'Positional Ranking' ? 'selected' : ''}>Positional Ranking</option>
+                            <option value="Point System (5.0 CGPA)" ${config.gradingSystem === 'Point System (5.0 CGPA)' ? 'selected' : ''}>Point System (5.0 CGPA)</option>
+                        </select>
+                    </div>
+
+                    <div style="background: #f5f3ff; border: 1px solid #ddd6fe; padding: 1.5rem; border-radius: 20px;">
+                        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                            <i data-lucide="graduation-cap" style="color: #7c3aed;"></i>
+                            <h4 style="font-weight: 800; color: #5b21b6; margin: 0;">End of Session Promotion</h4>
+                        </div>
+                        <p style="font-size: 0.85rem; color: #6d28d9; margin-bottom: 1.5rem;">Automatically move students to the next class (e.g. JSS 1 → JSS 2) and graduate SSS 3 students. <strong>Warning: Use only at the end of the Academic Session!</strong></p>
+                        <button class="btn btn-primary" style="width: 100%; background: #7c3aed; border: none; height: 52px; border-radius: 12px; font-weight: 800;" onclick="UI.executePromotion()">
+                            Execute School-Wide Promotion
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Section: Data Management -->
+                <div class="card" style="padding: 2rem; border-radius: 24px; margin-bottom: 2rem; border: 1px solid #f1f5f9;">
+                    <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                        <i data-lucide="database" style="color: #f59e0b;"></i> Data Management
+                    </h3>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 20px;">
+                            <h4 style="font-size: 0.9rem; font-weight: 800; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="download" style="width: 18px;"></i> Backup Data
+                            </h4>
+                            <p style="font-size: 0.75rem; color: #64748b; margin-bottom: 1rem;">Download a local copy of your entire school database (.db file). Keep this safe as a point of recovery.</p>
+                            <button class="btn btn-secondary" style="width: 100%; height: 44px; border-radius: 10px;" onclick="UI.downloadBackup()">
+                                Download Local Backup (.json)
+                            </button>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 20px;">
+                            <h4 style="font-size: 0.9rem; font-weight: 800; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="clock" style="width: 18px;"></i> Auto-Backup Status
+                            </h4>
+                            <p style="font-size: 0.75rem; color: #64748b; margin-bottom: 1rem;">The system automatically backs up every 2 weeks to your Documents folder.</p>
+                            <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">
+                                <div>No automatic backup recorded yet.</div>
+                                <div>Location: Documents/School Management Backups</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="background: #fff1f2; border: 1px solid #fecdd3; padding: 1.5rem; border-radius: 20px;">
+                        <h4 style="font-size: 0.9rem; font-weight: 800; color: #e11d48; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="upload-cloud" style="width: 18px;"></i> Restore Data
+                        </h4>
+                        <p style="font-size: 0.75rem; color: #be123c; margin-bottom: 1rem;">Restore the entire system from a previously downloaded .db backup. <strong>Warning: This overrides current data.</strong></p>
+                        <input type="file" id="restore-file" style="display: none;" accept=".json" onchange="UI.handleRestore(event)">
+                        <button class="btn btn-danger" style="width: 100%; height: 44px; border-radius: 10px; background: #fee2e2; color: #e11d48; border: 1px solid #fecdd3;" onclick="document.getElementById('restore-file').click()">
+                            Upload & Restore (.json)
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 1rem; margin-bottom: 5rem;">
+                    <button class="btn btn-primary" style="flex: 1; height: 56px; border-radius: 16px; font-weight: 900; font-size: 1.1rem; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);" onclick="UI.saveSettings()">
+                        Save All Configuration
+                    </button>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Register file upload listener
+        document.getElementById('set-principal-sig-file').onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (re) => {
+                    document.getElementById('sig-preview').innerHTML = `<img src="${re.target.result}" style="max-height: 100%;">`;
+                    this.pendingSignature = re.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+    },
+
+    async saveSettings() {
+        Notifications.show('Saving system configuration...', 'info');
+        
+        const settingsToSave = [
+            { key: 'principalName', value: document.getElementById('set-principal-name').value },
+            { key: 'schoolMotto', value: document.getElementById('set-school-motto').value },
+            { key: 'currentSession', value: document.getElementById('set-current-session').value },
+            { key: 'currentTerm', value: document.getElementById('set-current-term').value },
+            { key: 'gradingSystem', value: document.getElementById('set-grading-system').value }
+        ];
+
+        if (this.pendingSignature) {
+            settingsToSave.push({ key: 'principalSignature', value: this.pendingSignature });
+        }
+
+        try {
+            for (const s of settingsToSave) {
+                const existing = await db.settings.where('key').equals(s.key).first();
+                if (existing) {
+                    await db.settings.update(existing.id, prepareForSync(s));
+                } else {
+                    await db.settings.add(prepareForSync({ id: `SET_${s.key.toUpperCase()}`, ...s }));
+                }
+            }
+            Notifications.show('Settings saved successfully!', 'success');
+            syncToCloud();
+        } catch (e) {
+            console.error(e);
+            Notifications.show('Failed to save settings.', 'error');
+        }
+    },
+
+    async executePromotion() {
+        if (!confirm('WARNING: You are about to promote all students to their next classes. This action should only be taken at the end of the academic session. Do you wish to proceed?')) return;
+
+        Notifications.show('Executing school-wide promotion...', 'info');
+        
+        try {
+            const students = await db.students.where('is_active').equals(1).toArray();
+            let promoted = 0;
+            let graduated = 0;
+
+            for (const s of students) {
+                const currentClass = s.class_name.toUpperCase();
+                let nextClass = '';
+
+                // Promotion Logic
+                if (currentClass.includes('JSS 1') || currentClass.includes('JS 1')) nextClass = 'JSS 2';
+                else if (currentClass.includes('JSS 2') || currentClass.includes('JS 2')) nextClass = 'JSS 3';
+                else if (currentClass.includes('JSS 3') || currentClass.includes('JS 3')) nextClass = 'SSS 1';
+                else if (currentClass.includes('SSS 1') || currentClass.includes('SS 1')) nextClass = 'SSS 2';
+                else if (currentClass.includes('SSS 2') || currentClass.includes('SS 2')) nextClass = 'SSS 3';
+                else if (currentClass.includes('SSS 3') || currentClass.includes('SS 3')) {
+                    await db.students.update(s.student_id, prepareForSync({ status: 'Graduated', is_active: 0 }));
+                    graduated++;
+                    continue;
+                }
+
+                if (nextClass) {
+                    await db.students.update(s.student_id, prepareForSync({ class_name: nextClass }));
+                    promoted++;
+                }
+            }
+
+            Notifications.show(`Promotion Complete! ${promoted} students promoted, ${graduated} graduated.`, 'success');
+            syncToCloud();
+        } catch (e) {
+            console.error(e);
+            Notifications.show('Promotion failed.', 'error');
+        }
+    },
+
+    async downloadBackup() {
+        const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'scores', 'attendance_records', 'settings'];
+        const backup = {};
+        
+        for (const t of tables) {
+            backup[t] = await db[t].toArray();
+        }
+
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", `Graviton_Backup_${new Date().toISOString().split('T')[0]}.json`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    },
+
+    async handleRestore(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const backup = JSON.parse(e.target.result);
+                if (confirm('Are you sure you want to restore? This will overwrite all current local data.')) {
+                    Notifications.show('Restoring system data...', 'info');
+                    
+                    for (const table in backup) {
+                        if (db[table]) {
+                            await db[table].clear();
+                            await db[table].bulkAdd(backup[table]);
+                        }
+                    }
+                    
+                    Notifications.show('Restore successful! Reloading application...', 'success');
+                    setTimeout(() => location.reload(), 1500);
+                }
+            } catch (err) {
+                console.error(err);
+                Notifications.show('Invalid backup file.', 'error');
+            }
+        };
+        reader.readAsText(file);
     }
 };
 

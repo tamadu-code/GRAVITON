@@ -43,10 +43,11 @@ db.version(8).stores({
     exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
 });
 
-db.version(11).stores({
+db.version(12).stores({
     students: 'student_id, name, gender, address, class_name, status, is_active, attendance_code, admission_year, sub_class, updated_at, is_synced',
     attendance_records: 'id, student_id, date, status, subject_name, period_number, is_subject_based, updated_at, is_synced',
-    timetable: 'id, class_name, day_of_week, period_number, subject_id, teacher_id, [class_name+day_of_week+period_number], updated_at, is_synced'
+    timetable: 'id, class_name, day_of_week, period_number, subject_id, teacher_id, [class_name+day_of_week+period_number], updated_at, is_synced',
+    settings: 'id, key, value, updated_at, is_synced'
 });
 
 
