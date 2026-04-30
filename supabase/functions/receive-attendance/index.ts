@@ -26,11 +26,11 @@ serve(async (req) => {
     // We need to find the student's code from the Attendance System, then match it to SMS
 
     // Step 1: We receive the attendance_code directly (mapped by the trigger)
-    const attendance_code = record.attendance_code || record.code
-    const date = record.date
-    const sign_in = record.sign_in
-    const sign_out = record.sign_out
-    const is_late = record.is_late
+    const attendance_code = record.attendance_code || record.code || record.student_code
+    const date = record.date || record.attendance_date
+    const sign_in = record.sign_in || record.check_in || record.time
+    const sign_out = record.sign_out || record.check_out || record.exit_time
+    const is_late = record.is_late || record.late
 
     if (!attendance_code || !date) {
       console.error('Missing required fields: attendance_code or date')
