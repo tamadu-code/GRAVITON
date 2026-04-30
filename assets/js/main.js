@@ -191,13 +191,18 @@ async function loadAuthenticatedApp(authUser) {
     });
 
     // ─── Auto-Hydration Check ───
-    const studentCount = await db.students.count();
-    if (studentCount === 0 && navigator.onLine) {
-        Notifications.show('Detecting fresh environment... Restoring data from cloud.', 'info');
-        await syncFromCloud(true);
-        // Re-render current view to show restored data
-        UI.renderView(window.location.hash.substring(1) || 'dashboard');
+    try {
+        const studentCount = await db.students.count();
+        if (studentCount === 0 && navigator.onLine) {
+            Notifications.show('Detecting fresh environment... Restoring data from cloud.', 'info');
+            await syncFromCloud(true);
+            // Re-render current view to show restored data
+            UI.renderView(window.location.hash.substring(1) || 'dashboard');
+        }
+    } catch (dbErr) {
+        console.warn('Auto-hydration deferred: Database initializing...', dbErr);
     }
+
 
 
     // Handle initial route
