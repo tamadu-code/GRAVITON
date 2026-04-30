@@ -2924,7 +2924,7 @@ export const UI = {
                         </div>
                     </div>
                     <div class="stat-card-premium">
-                        <span style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">Present Now</span>
+                        <span style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">Total Present</span>
                         <div style="font-size: 2rem; font-weight: 900; margin-top: 0.5rem; color: #1e293b;" id="stat-present">0</div>
                         <i data-lucide="user-check" style="position: absolute; right: 1.5rem; bottom: 1.5rem; color: #e2e8f0; width: 40px; height: 40px;"></i>
                     </div>
@@ -3003,7 +3003,8 @@ export const UI = {
                                         <th>Student Name</th>
                                         <th>Class</th>
                                         <th style="text-align: center;">Status</th>
-                                        <th id="th-time" style="text-align: right;">Time Log</th>
+                                        <th id="th-signin" style="text-align: right;">Sign In</th>
+                                        <th id="th-signout" style="text-align: right;">Sign Out</th>
                                     </tr>
                                 </thead>
                                 <tbody id="attendance-list-body">
@@ -3140,7 +3141,7 @@ export const UI = {
             // Or better, count records with status 'Absent' if they exist, but usually no record means absent.
             const absentCount = Math.max(0, students.length - totalArrived);
             
-            document.getElementById('stat-present').textContent = presentCount;
+            document.getElementById('stat-present').textContent = totalArrived;
             document.getElementById('stat-late').textContent = lateCount;
             document.getElementById('stat-absent').textContent = absentCount;
             document.getElementById('stat-turnout').textContent = `${turnout}%`;
@@ -3157,7 +3158,10 @@ export const UI = {
 
                 const status = record ? record.status : 'Absent';
                 const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : '#ef4444');
-                const timeStr = record && record.check_in ? new Date(record.check_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
+                
+                const formatTime = (iso) => iso ? new Date(iso).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
+                const signIn = formatTime(record?.check_in);
+                const signOut = formatTime(record?.check_out);
 
                 return `
                     <tr style="transition: all 0.2s hover;">
@@ -3180,9 +3184,8 @@ export const UI = {
                                 </select>
                             `}
                         </td>
-                        <td style="text-align: right; font-weight: 600; color: #64748b; font-family: 'JetBrains Mono', monospace;">
-                            ${currentTab === 'school' ? timeStr : `<i data-lucide="edit-2" style="width: 14px; opacity: 0.5;"></i>`}
-                        </td>
+                        <td style="text-align: right; font-family: monospace; font-weight: 700; color: #64748b;">${signIn}</td>
+                        <td style="text-align: right; font-family: monospace; font-weight: 700; color: #10b981;">${signOut}</td>
                     </tr>
                 `;
             }).join('');
