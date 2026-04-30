@@ -25,12 +25,16 @@ serve(async (req) => {
     // The Attendance System sends: student_id (their UUID), date, sign_in, sign_out, is_late
     // We need to find the student's code from the Attendance System, then match it to SMS
 
-    // Step 1: We receive the attendance_code directly (mapped by the trigger)
-    const attendance_code = record.attendance_code || record.code || record.student_code
-    const date = record.date || record.attendance_date
-    const sign_in = record.sign_in || record.check_in || record.time
-    const sign_out = record.sign_out || record.check_out || record.exit_time
-    const is_late = record.is_late || record.late
+    // STEP 1: LOG EVERYTHING FOR DEBUGGING
+    console.log('--- NEW ATTENDANCE PAYLOAD RECEIVED ---')
+    console.log(JSON.stringify(record, null, 2))
+    
+    // Step 2: Map fields with maximum flexibility
+    const attendance_code = record.attendance_code || record.code || record.student_code || record.id
+    const date = record.date || record.attendance_date || record.datetime?.split('T')[0]
+    const sign_in = record.sign_in || record.check_in || record.time || record.in_time || record.entry
+    const sign_out = record.sign_out || record.check_out || record.exit_time || record.out_time || record.exit
+    const is_late = record.is_late || record.late || (record.status === 'Late')
 
     if (!attendance_code || !date) {
       console.error('Missing required fields: attendance_code or date')
