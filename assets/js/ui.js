@@ -5087,5 +5087,6 @@ export const UI = {
             Notifications.show(`Timetable for ${cls} successfully deployed!`, 'success');
             syncToCloud();
         };
-    },
+    }
+};
 
