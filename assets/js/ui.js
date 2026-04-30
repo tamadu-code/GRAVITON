@@ -3003,9 +3003,9 @@ export const UI = {
                                         <th style="width: 60px;">ID</th>
                                         <th>Student Name</th>
                                         <th>Class</th>
-                                        <th style="text-align: center;">Status</th>
                                         <th id="th-signin" style="text-align: right;">Sign In</th>
                                         <th id="th-signout" style="text-align: right;">Sign Out</th>
+                                        <th style="text-align: center;">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="attendance-list-body">
@@ -3208,6 +3208,10 @@ export const UI = {
                         </td>
                         <td data-label="ID" class="collapsible-field" style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">${s.attendance_code || 'N/A'}</td>
                         <td data-label="Class" class="collapsible-field"><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</span></td>
+                        <td data-label="Sign In" class="collapsible-field" style="text-align: right; font-family: monospace; font-weight: 700; color: #64748b;">${signIn}</td>
+                        ${currentTab === 'school' ? `
+                            <td data-label="Sign Out" class="td-signout collapsible-field" style="text-align: right; font-family: monospace; font-weight: 700; color: #10b981;">${signOut}</td>
+                        ` : ''}
                         <td data-label="Status" class="mobile-hide" style="text-align: center;">
                             ${currentTab === 'school' ? `
                                 <span style="display: inline-flex; align-items: center; gap: 0.5rem; color: ${statusColor}; font-weight: 800; font-size: 0.8rem; background: ${statusColor}15; padding: 4px 12px; border-radius: 99px;">
@@ -3221,10 +3225,6 @@ export const UI = {
                                 </select>
                             `}
                         </td>
-                        <td data-label="Sign In" class="collapsible-field" style="text-align: right; font-family: monospace; font-weight: 700; color: #64748b;">${signIn}</td>
-                        ${currentTab === 'school' ? `
-                            <td data-label="Sign Out" class="td-signout collapsible-field" style="text-align: right; font-family: monospace; font-weight: 700; color: #10b981;">${signOut}</td>
-                        ` : ''}
                     </tr>
                 `;
             }).join('');
