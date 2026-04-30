@@ -3071,10 +3071,17 @@ export const UI = {
                                     ${subjects.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
                                 </select>
                             </div>
+                            <div style="width: 140px;">
+                                <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Period</label>
+                                <select id="att-period" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
+                                    ${[1,2,3,4,5,6,7,8].map(p => `<option value="${p}">Period ${p}</option>`).join('')}
+                                </select>
+                            </div>
                             <div style="width: 180px;">
                                 <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Date</label>
                                 <input type="date" id="att-date" class="input" value="${today}" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
                             </div>
+
                         </div>
 
                         <!-- Search and Actions -->
@@ -3274,26 +3281,29 @@ export const UI = {
         // Save Subject Attendance
         document.getElementById('btn-save-subject-att').onclick = async () => {
             const subject = subjectFilter.value;
+            const period = document.getElementById('att-period').value;
             if (!subject) return Notifications.show('Please select a subject first', 'warning');
 
             const selects = document.querySelectorAll('.subject-status-select');
             const date = dateInput.value;
             
-            Notifications.show('Saving subject participation...', 'info');
+            Notifications.show(`Saving attendance for ${subject} (Period ${period})...`, 'info');
 
             for (const sel of selects) {
                 const studentId = sel.dataset.studentId;
                 const status = sel.value;
 
                 await db.attendance_records.put(prepareForSync({
-                    id: `SUB_${studentId}_${subject}_${date}`,
+                    id: `SUB_${studentId}_${subject}_P${period}_${date}`,
                     student_id: studentId,
                     date: date,
                     status: status,
                     subject_name: subject,
+                    period_number: parseInt(period),
                     is_subject_based: true
                 }));
             }
+
 
             Notifications.show('Attendance committed successfully', 'success');
             syncToCloud();
