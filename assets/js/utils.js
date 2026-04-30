@@ -228,10 +228,10 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         let x = 12;
         row.forEach((item, idx) => {
             if (idx % 2 === 0) {
-                doc.text(item, x, currentY);
+                doc.text(String(item), x, currentY);
                 x += 25;
             } else {
-                doc.text(item, x, currentY);
+                doc.text(String(item), x, currentY);
                 doc.line(x - 2, currentY + 1, x + 5, currentY + 1);
                 x += 20;
             }
