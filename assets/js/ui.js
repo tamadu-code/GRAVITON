@@ -190,7 +190,8 @@ export const UI = {
 
     async renderAdminDashboard() {
         // ── Core counts ──────────────────────────────────────────────────
-        const studentCount = await db.students.count();
+        // Filter to only active students
+        const studentCount = await db.students.filter(s => s.is_active !== false).count();
         const classCount   = await db.classes.count();
         const allSubjects  = (await db.subjects.toArray()).sort((a,b) => a.name.localeCompare(b.name));
         const subjectCount = new Set(allSubjects.map(s => s.name.toLowerCase())).size;
@@ -340,7 +341,8 @@ export const UI = {
     },
 
     async renderTeacherDashboard() {
-        const studentCount = await db.students.count();
+        // Filter to only active students
+        const studentCount = await db.students.filter(s => s.is_active !== false).count();
         const attendance = await db.attendance.toArray();
         const today = new Date().toISOString().split('T')[0];
         const todayAtt = attendance.filter(a => a.date === today);

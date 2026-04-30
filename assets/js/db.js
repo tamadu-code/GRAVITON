@@ -27,7 +27,7 @@ db.version(3).stores({
 });
 
 db.version(4).stores({
-    students: 'student_id, name, gender, address, class_name, status, updated_at, is_synced'
+    students: 'student_id, name, gender, address, class_name, status, is_active, updated_at, is_synced'
 });
 
 db.version(5).stores({
