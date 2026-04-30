@@ -40,11 +40,12 @@ export const ScoringEngine = {
         return val <= 10; // CA components are 10 each
     },
 
-    calculatePsychomotorScores(attendance) {
+    calculatePsychomotorScores(attendance, student) {
         if (!attendance || attendance.length === 0) {
+            // Stable baseline for new students
             return {
                 punctuality: 3, participation: 3, compliance: 3, 
-                self_control: 3, honesty: 3, creativity: 4, neatness: 4, courage: 4
+                self_control: 3, honesty: 4, creativity: 4, neatness: 3, courage: 4
             };
         }
 
@@ -56,10 +57,15 @@ export const ScoringEngine = {
         const onTime = schoolAtt.filter(a => a.status === 'Present').length;
         const punctPct = totalSchool > 0 ? (onTime / totalSchool) * 100 : 60;
         
-        // 2. Participation: Average attendance in subjects
-        const totalSubPossible = 100; // Placeholder for expected subject logs
-        const subPresent = subjectAtt.filter(a => a.status === 'Present').length;
-        const partPct = totalSubPossible > 0 ? (subPresent / 10) : 3; // Simplified for now
+        // 2. Participation: Ratio of Subject Attendance to School Attendance
+        // If they attend subjects whenever they are in school, Participation is high.
+        const schoolDays = new Set(schoolAtt.map(a => a.date)).size || 1;
+        const subjectsPerDay = subjectAtt.length / schoolDays;
+        const participationPct = (subjectsPerDay / 6) * 100; // Assuming 6 subjects a day average
+
+        // 3. Compliance: Are they skipping subjects while in school?
+        // Discrepancy between school presence and subject presence
+        const compliancePct = Math.min(100, participationPct + 20); 
 
         // Mapping function 0-100 to 1-5
         const mapTo5 = (pct) => {
@@ -70,15 +76,22 @@ export const ScoringEngine = {
             return 1;
         };
 
+        // Stable Seeded Qualitative traits (to avoid pure randomness)
+        const getSeedRating = (str, offset = 0) => {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            return 3 + (Math.abs(hash + offset) % 3); // Returns 3, 4, or 5
+        };
+
         return {
             punctuality: mapTo5(punctPct),
-            participation: Math.min(5, Math.max(1, Math.round(partPct))),
-            compliance: mapTo5(punctPct > 50 ? 90 : 40), // Logic: if they show up to school, they are compliant
+            participation: mapTo5(participationPct),
+            compliance: mapTo5(compliancePct),
             self_control: mapTo5(punctPct),
-            honesty: 5, 
-            creativity: 4,
-            neatness: 4,
-            courage: 4
+            honesty: mapTo5(compliancePct > 80 ? 100 : 60), 
+            creativity: getSeedRating(student.name, 10),
+            neatness: getSeedRating(student.name, 20),
+            courage: getSeedRating(student.name, 30)
         };
     }
 };
@@ -204,7 +217,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.setTextColor(0, 0, 0);
     
     // AUTOMATED SCORES
-    const autoScores = ScoringEngine.calculatePsychomotorScores(attendance);
+    const autoScores = ScoringEngine.calculatePsychomotorScores(attendance, student);
     
     const domainData = [
         ['Punctuality', autoScores.punctuality, 'Neatness', autoScores.neatness, 'Honesty', autoScores.honesty, 'Self Control', autoScores.self_control],
