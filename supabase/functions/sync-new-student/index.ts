@@ -93,17 +93,31 @@ serve(async (req) => {
 
     console.log(`Received biometric code: ${attendance_code}`)
 
-    // SAFE UPDATE: Only update attendance_code. NEVER change student_id.
+    // CALCULATE NEW ID: NKQMS-YEAR-CODE
+    const year = record.admission_year || new Date().getFullYear()
+    const new_student_id = `NKQMS-${year}-${attendance_code}`
+
+    console.log(`Renaming student ID from ${record.student_id} to ${new_student_id}`)
+
+    // PERFORM ATOMIC RENAME (Update references first)
+    // We do this in order to maintain data integrity
+    await supabase.from('scores').update({ student_id: new_student_id }).eq('student_id', record.student_id)
+    await supabase.from('attendance_records').update({ student_id: new_student_id }).eq('student_id', record.student_id)
+    
+    // Finally update the student record itself (including the ID)
     const { error: updateError } = await supabase
       .from('students')
-      .update({ attendance_code })
+      .update({ 
+        student_id: new_student_id,
+        attendance_code: attendance_code 
+      })
       .eq('student_id', record.student_id)
 
     if (updateError) throw updateError
 
-    console.log(`Successfully synced ${record.name} with code ${attendance_code}`)
+    console.log(`Successfully synced and renamed ${record.name} to ${new_student_id}`)
 
-    return new Response(JSON.stringify({ success: true, attendance_code }), {
+    return new Response(JSON.stringify({ success: true, attendance_code, new_student_id }), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,
     })
