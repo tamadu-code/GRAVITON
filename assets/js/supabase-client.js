@@ -96,7 +96,7 @@ export async function syncToCloud() {
                             form_teachers: ['id', 'teacher_id', 'class_name', 'updated_at'],
                             scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
                             attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
-                            attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
+                            attendance_records: ['id', 'student_id', 'date', 'status', 'check_in', 'check_out', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
                             timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
                             notices: ['id', 'title', 'is_active', 'updated_at']
 
