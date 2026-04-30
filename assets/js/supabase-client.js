@@ -15,15 +15,19 @@ let sb = null;
 
 function createClient() {
     if (SB_CONFIG.url && SB_CONFIG.key) {
-        try {
-            sb = window.supabase.createClient(SB_CONFIG.url, SB_CONFIG.key);
-        } catch (e) {
-            console.error('Failed to initialize Supabase:', e);
+        if (typeof window.supabase !== 'undefined') {
+            try {
+                sb = window.supabase.createClient(SB_CONFIG.url, SB_CONFIG.key);
+            } catch (e) {
+                console.error('Failed to initialize Supabase:', e);
+            }
+        } else {
+            console.warn('Supabase CDN library not detected yet. Initialization deferred.');
         }
     }
 }
 
-// Initial creation
+// Initial attempt
 createClient();
 
 /**
@@ -37,6 +41,7 @@ export function initSupabase(url, key) {
 }
 
 export function getSupabase() {
+    if (!sb) createClient();
     return sb;
 }
 
@@ -44,7 +49,8 @@ export function getSupabase() {
  * Sync Engine - Push local changes to cloud
  */
 export async function syncToCloud() {
-    if (!sb) return { success: false, message: 'Supabase not configured' };
+    const client = getSupabase();
+    if (!client) return { success: false, message: 'Supabase not configured' };
 
     // --- Data Migration for CA Components ---
     try {
@@ -145,7 +151,8 @@ export async function syncToCloud() {
  * Sync Engine - Pull cloud changes to local
  */
 export async function syncFromCloud(forceAll = false) {
-    if (!sb) return;
+    const client = getSupabase();
+    if (!client) return;
 
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable'];
     
@@ -241,8 +248,9 @@ export function startSyncLoop(intervalMs = 60000) {
  * Sign in with email and password
  */
 export async function loginUser(email, password) {
-    if (!sb) return { data: null, error: { message: 'Supabase not initialized' } };
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    const client = getSupabase();
+    if (!client) return { data: null, error: { message: 'Supabase not initialized' } };
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
     return { data, error };
 }
 
@@ -250,9 +258,10 @@ export async function loginUser(email, password) {
  * Sign out
  */
 export async function logoutUser() {
-    if (!sb) return true; // No Supabase — just let the caller reload
+    const client = getSupabase();
+    if (!client) return true; // No Supabase — just let the caller reload
     try {
-        await sb.auth.signOut();
+        await client.auth.signOut();
     } catch(e) {
         console.error('Sign out error:', e);
     }
@@ -263,8 +272,9 @@ export async function logoutUser() {
  * Get current session
  */
 export async function getCurrentSession() {
-    if (!sb) return null;
-    const { data, error } = await sb.auth.getSession();
+    const client = getSupabase();
+    if (!client) return null;
+    const { data, error } = await client.auth.getSession();
     if (error) return null;
     return data.session;
 }
@@ -273,8 +283,9 @@ export async function getCurrentSession() {
  * Get user profile from the profiles table
  */
 export async function getUserProfile(userId) {
-    if (!sb) return null;
-    const { data, error } = await sb.from('profiles').select('*').eq('id', userId).single();
+    const client = getSupabase();
+    if (!client) return null;
+    const { data, error } = await client.from('profiles').select('*').eq('id', userId).single();
     if (error) {
         console.error("Error fetching profile:", error);
         return null;
@@ -287,10 +298,11 @@ export async function getUserProfile(userId) {
  * Creates auth user and inserts profile row
  */
 export async function registerUser(email, password, fullName, role) {
-    if (!sb) return { data: null, error: { message: 'Supabase not initialized' } };
+    const client = getSupabase();
+    if (!client) return { data: null, error: { message: 'Supabase not initialized' } };
 
     // 1. Create auth user
-    const { data, error } = await sb.auth.signUp({
+    const { data, error } = await client.auth.signUp({
         email,
         password,
         options: {
@@ -312,7 +324,7 @@ export async function registerUser(email, password, fullName, role) {
             updated_at: new Date().toISOString()
         };
 
-        const { error: profileError } = await sb.from('profiles').upsert(profileData);
+        const { error: profileError } = await client.from('profiles').upsert(profileData);
         if (profileError) {
             console.warn('Profile insert warning (may already exist via trigger):', profileError.message);
         }
@@ -325,9 +337,10 @@ export async function registerUser(email, password, fullName, role) {
  * Send password reset email
  */
 export async function resetPassword(email) {
-    if (!sb) return { error: { message: 'Supabase not initialized' } };
+    const client = getSupabase();
+    if (!client) return { error: { message: 'Supabase not initialized' } };
 
-    const { data, error } = await sb.auth.resetPasswordForEmail(email, {
+    const { data, error } = await client.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin
     });
 
