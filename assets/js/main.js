@@ -565,14 +565,24 @@ window.addEventListener('sync-complete', (e) => {
     }
 });
 
-window.addEventListener('online', () => {
+window.addEventListener('online', async () => {
     const indicator = document.querySelector('.status-indicator');
     const text = document.querySelector('.status-text');
     if (indicator && text) {
         indicator.className = 'status-indicator live';
         text.textContent = 'Cloud Live';
     }
+
+    // NEW: Immediate push of offline data upon reconnection
+    Notifications.show('Connection restored! Syncing pending data...', 'info');
+    try {
+        await syncToCloud();
+        Notifications.show('All offline data synchronized successfully.', 'success');
+    } catch (err) {
+        console.error('Reconnection sync failed:', err);
+    }
 });
+
 
 window.addEventListener('offline', () => {
     const indicator = document.querySelector('.status-indicator');
