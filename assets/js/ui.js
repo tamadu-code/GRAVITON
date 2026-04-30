@@ -2954,7 +2954,7 @@ export const UI = {
                     <div style="padding: 1.5rem;">
                         <!-- Filters -->
                         <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
-                            <div style="flex: 1; min-width: 200px;">
+                            <div id="class-filter-container" style="flex: 1; min-width: 200px;">
                                 <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select Stream</label>
                                 <select id="att-class-filter" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
                                     <option value="">All Classes</option>
@@ -2968,7 +2968,7 @@ export const UI = {
                                     ${subjects.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
                                 </select>
                             </div>
-                            <div style="width: 140px;">
+                            <div id="period-filter-container" style="width: 140px; display: none;">
                                 <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Period</label>
                                 <select id="att-period" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
                                     ${[1,2,3,4,5,6,7,8].map(p => `<option value="${p}">Period ${p}</option>`).join('')}
@@ -3051,7 +3051,10 @@ export const UI = {
         const searchInput = document.getElementById('att-search');
         const listBody = document.getElementById('attendance-list-body');
         const subjectActions = document.getElementById('subject-actions');
-        const thTime = document.getElementById('th-time');
+        const thSignIn = document.getElementById('th-signin');
+        const thSignOut = document.getElementById('th-signout');
+        const classContainer = document.getElementById('class-filter-container');
+        const periodContainer = document.getElementById('period-filter-container');
 
         let currentTab = 'school';
 
@@ -3209,11 +3212,15 @@ export const UI = {
                 if (currentTab === 'subject') {
                     subjectContainer.style.display = 'block';
                     subjectActions.style.display = 'block';
-                    thTime.textContent = 'Action';
+                    periodContainer.style.display = 'block';
+                    thSignIn.textContent = 'Action';
+                    thSignOut.style.display = 'none';
                 } else {
                     subjectContainer.style.display = 'none';
                     subjectActions.style.display = 'none';
-                    thTime.textContent = 'Time Log';
+                    periodContainer.style.display = 'none';
+                    thSignIn.textContent = 'Sign In';
+                    thSignOut.style.display = 'table-cell';
                 }
                 refreshList();
             });
