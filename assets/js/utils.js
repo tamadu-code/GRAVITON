@@ -300,7 +300,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.text("performance details.", 30, footerY + 6);
     
     // --- Footer Section (Signatures) ---
-    const footerY = 275;
+    // Reuse footerY from above or adjust
     
     // Principal's Signature Area
     doc.setFontSize(10);
