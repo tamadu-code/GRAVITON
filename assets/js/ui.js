@@ -3156,7 +3156,7 @@ export const UI = {
             listBody.innerHTML = filteredStudents.map(s => {
                 let record;
                 if (currentTab === 'school') {
-                    record = schoolRecords.find(r => r.student_id === s.student_id);
+                    record = uniqueSchoolMap.get(s.student_id);
                 } else {
                     record = records.find(r => r.student_id === s.student_id && r.is_subject_based && r.subject_name === subjectName);
                 }
