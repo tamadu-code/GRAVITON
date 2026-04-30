@@ -3265,3 +3265,37 @@ label {
         width: 100%;
     }
 }
+
+/* Desktop Branding & Header Tweaks */
+@media (min-width: 1025px) {
+    .mobile-menu-btn {
+        display: none !important;
+    }
+    
+    #view-title {
+        display: none !important;
+    }
+    
+    #desktop-school-name {
+        display: block !important;
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        letter-spacing: -0.025em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 400px;
+    }
+}
+
+/* Sidebar Logo Adjustments */
+#sidebar-school-name {
+    text-transform: uppercase;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.sidebar.collapsed #sidebar-school-name {
+    display: none;
+}

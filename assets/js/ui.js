@@ -15,6 +15,31 @@ export const UI = {
         role: localStorage.getItem('user_role') || 'Admin',
         name: 'Admin User'
     },
+    
+    async updateInstitutionalBranding() {
+        const allSettings = await db.settings.toArray();
+        const settings = {};
+        allSettings.forEach(s => settings[s.key] = s.value);
+        
+        const schoolName = settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI';
+        const schoolLogo = settings.schoolLogo;
+        const themeColor = settings.themeColor || '#060495';
+        
+        const sidebarName = document.getElementById('sidebar-school-name');
+        const sidebarLogo = document.getElementById('sidebar-school-logo');
+        const desktopName = document.getElementById('desktop-school-name');
+        
+        if (sidebarName) sidebarName.textContent = schoolName.toUpperCase();
+        if (desktopName) desktopName.textContent = schoolName.toUpperCase();
+        
+        if (sidebarLogo) {
+            sidebarLogo.textContent = schoolName.charAt(0).toUpperCase();
+            sidebarLogo.style.color = themeColor;
+            if (schoolLogo) {
+                sidebarLogo.innerHTML = `<img src="${schoolLogo}" style="width: 100%; height: 100%; border-radius: 12px; object-fit: cover;">`;
+            }
+        }
+    },
 
     async renderView(viewName) {
         try {
@@ -24,6 +49,7 @@ export const UI = {
             }
 
             this.showLoader();
+            await this.updateInstitutionalBranding();
             
             // Update Title
             if (this.viewTitle) {
@@ -5370,6 +5396,7 @@ export const UI = {
                     await db.settings.add(prepareForSync({ id: `SET_${s.key.toUpperCase()}`, ...s }));
                 }
             }
+            await this.updateInstitutionalBranding();
             Notifications.show('Settings saved successfully!', 'success');
             syncToCloud();
         } catch (e) {
