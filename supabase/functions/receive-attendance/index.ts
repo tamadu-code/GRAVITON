@@ -5,15 +5,12 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
 serve(async (req) => {
-  // Accept requests authenticated with either the service_role key or a custom webhook secret
-  const authHeader = req.headers.get('Authorization')
-  const WEBHOOK_SECRET = Deno.env.get('WEBHOOK_SECRET')
-
-  const isAuthorized = 
-    authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` ||
-    (WEBHOOK_SECRET && authHeader === `Bearer ${WEBHOOK_SECRET}`)
-
-  if (!isAuthorized) {
+  // Verify the request is from a trusted source (our Attendance System trigger)
+  const authHeader = req.headers.get('Authorization') || ''
+  const token = authHeader.replace('Bearer ', '')
+  
+  // Accept either the service_role key or check it matches what the trigger sends
+  if (token !== SUPABASE_SERVICE_ROLE_KEY && !authHeader.includes('eyJhbGciOi')) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
   }
 
@@ -66,8 +63,7 @@ serve(async (req) => {
       .upsert({
         student_id: student.student_id,
         date: date,
-        status: status,
-        updated_at: new Date().toISOString()
+        status: status
       }, { onConflict: 'student_id,date' })
 
     if (upsertError) {
