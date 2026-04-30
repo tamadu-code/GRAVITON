@@ -73,6 +73,17 @@ serve(async (req) => {
           const attStudent = attStudents[0];
           console.log(`Discovered student in Attendance System: ${attStudent.name}`);
           
+          // Split Class arm if exists (e.g. "JSS 1A" -> "JSS 1" and "A")
+          const fullClass = attStudent.class || 'Unknown';
+          let className = fullClass;
+          let subClass = null;
+          
+          const classMatch = fullClass.match(/^(.+?)\s?([A-Z])$/i);
+          if (classMatch) {
+            className = classMatch[1].trim();
+            subClass = classMatch[2].toUpperCase();
+          }
+
           // Create the student in SMS
           const year = new Date().getFullYear();
           const new_student_id = `NKQMS-${year}-${attendance_code}`;
@@ -82,7 +93,8 @@ serve(async (req) => {
             .insert({
               student_id: new_student_id,
               name: attStudent.name,
-              class_name: attStudent.class || 'Unknown',
+              class_name: className,
+              sub_class: subClass,
               attendance_code: parseInt(attendance_code),
               is_active: true,
               admission_year: year
@@ -109,33 +121,37 @@ serve(async (req) => {
 
     console.log(`Matched student: ${student.name} (${student.student_id})`)
 
-    // Step 3: Determine status from sign_in/sign_out data
+    // Step 3: Determine status and times from sign_in/sign_out data
     let status = 'Absent'
     if (sign_in) {
       status = is_late ? 'Late' : 'Present'
     }
 
-    // Step 4: Upsert attendance record in SMS
+    // Step 4: Upsert attendance record in SMS (including sign out)
     const { error: upsertError } = await supabase
       .from('attendance_records')
       .upsert({
         student_id: student.student_id,
         date: date,
-        status: status
-      }, { onConflict: 'student_id,date' })
+        status: status,
+        check_in: sign_in ? `${date}T${sign_in}` : null,
+        check_out: sign_out ? `${date}T${sign_out}` : null,
+        is_subject_based: false
+      }, { onConflict: 'student_id,date,is_subject_based,subject_name,period_number' })
 
     if (upsertError) {
       console.error('Failed to upsert attendance:', upsertError)
       throw upsertError
     }
 
-    console.log(`Attendance recorded: ${student.name} → ${status} on ${date}`)
+    console.log(`Attendance recorded: ${student.name} → ${status} (Out: ${sign_out || 'N/A'}) on ${date}`)
 
     return new Response(JSON.stringify({ 
       success: true, 
       student: student.name, 
       status, 
-      date 
+      date,
+      sign_out
     }), {
       headers: { 'Content-Type': 'application/json' },
       status: 200,

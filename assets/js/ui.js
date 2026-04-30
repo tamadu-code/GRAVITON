@@ -3049,6 +3049,30 @@ export const UI = {
 
         let currentTab = 'school';
 
+        const updateSubjectFilter = async () => {
+            const cls = classFilter.value;
+            if (!cls) {
+                const subjects = await db.subjects.toArray();
+                subjectFilter.innerHTML = `
+                    <option value="">Select Subject...</option>
+                    ${subjects.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
+                `;
+                return;
+            }
+            
+            const assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
+            const subjects = await db.subjects.toArray();
+            
+            const filteredSubjects = subjects.filter(s => 
+                assignments.some(a => String(a.subject_id) === String(s.id))
+            );
+            
+            subjectFilter.innerHTML = `
+                <option value="">Select Subject...</option>
+                ${filteredSubjects.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
+            `;
+        };
+
         const refreshList = async () => {
             const date = dateInput.value;
             const cls = classFilter.value;
@@ -3117,7 +3141,7 @@ export const UI = {
                             <div style="font-weight: 700; color: #1e293b;">${s.name}</div>
                             <div style="font-size: 0.65rem; color: #94a3b8;">${s.student_id}</div>
                         </td>
-                        <td><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}</span></td>
+                        <td><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</span></td>
                         <td style="text-align: center;">
                             ${currentTab === 'school' ? `
                                 <span style="display: inline-flex; align-items: center; gap: 0.5rem; color: ${statusColor}; font-weight: 800; font-size: 0.8rem; background: ${statusColor}15; padding: 4px 12px; border-radius: 99px;">
@@ -3238,6 +3262,7 @@ export const UI = {
 
 
         [classFilter, dateInput].forEach(el => el.addEventListener('change', () => {
+            if (el === classFilter) updateSubjectFilter();
             suggestSubject();
             refreshList();
         }));
