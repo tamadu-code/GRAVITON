@@ -25,6 +25,9 @@ export const UI = {
         const schoolLogo = settings.schoolLogo;
         const themeColor = settings.themeColor || '#060495';
         
+        // Apply theme color as CSS variable for desktop header
+        document.documentElement.style.setProperty('--school-theme-color', themeColor);
+        
         const sidebarName = document.getElementById('sidebar-school-name');
         const sidebarLogo = document.getElementById('sidebar-school-logo');
         const desktopName = document.getElementById('desktop-school-name');

@@ -3278,14 +3278,14 @@ label {
     
     #desktop-school-name {
         display: block !important;
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        letter-spacing: -0.025em;
+        font-family: 'Outfit', sans-serif;
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: var(--school-theme-color, #060495);
+        letter-spacing: 0.04em;
+        text-align: center;
+        text-transform: uppercase;
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 400px;
     }
 }
 
