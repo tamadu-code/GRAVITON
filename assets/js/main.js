@@ -82,7 +82,11 @@ function showLoginScreen() {
 }
 
 // ─── App Initialization ───
+let isInitializing = false;
 async function initApp() {
+    if (isInitializing) return;
+    isInitializing = true;
+    
     console.log('Graviton CMS: Initializing App...');
     
     // Run icon creation first
@@ -122,12 +126,8 @@ async function initApp() {
 }
 
 async function loadAuthenticatedApp(authUser) {
-    // Hide all auth screens, show app
-    loginScreen.style.display = 'none';
-    createAccountScreen.style.display = 'none';
-    forgotPasswordScreen.style.display = 'none';
-    appContainer.style.display = 'flex';
-
+    console.log('Loading authenticated app for:', authUser.email);
+    
     // Fetch user profile from Supabase
     let profile = await getUserProfile(authUser.id);
 
@@ -192,6 +192,12 @@ async function loadAuthenticatedApp(authUser) {
     // Re-render icons
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
+    // Hide all auth screens, show app (Done last to ensure app is ready)
+    loginScreen.style.display = 'none';
+    createAccountScreen.style.display = 'none';
+    forgotPasswordScreen.style.display = 'none';
+    appContainer.style.display = 'flex';
+
     // Start Data Sync Loop and update status when first sync completes
     updateSyncStatus('Syncing', 'syncing');
     startSyncLoop().then(() => {
@@ -204,7 +210,7 @@ async function loadAuthenticatedApp(authUser) {
     try {
         const studentCount = await db.students.count();
         if (studentCount === 0 && navigator.onLine) {
-            Notifications.show('Detecting fresh environment... Restoring data from cloud.', 'info');
+            if (Notifications) Notifications.show('Detecting fresh environment... Restoring data from cloud.', 'info');
             await syncFromCloud(true);
             // Re-render current view to show restored data
             UI.renderView(window.location.hash.substring(1) || 'dashboard');
@@ -212,8 +218,6 @@ async function loadAuthenticatedApp(authUser) {
     } catch (dbErr) {
         console.warn('Auto-hydration deferred: Database initializing...', dbErr);
     }
-
-
 
     // Handle initial route
     const hash = window.location.hash.substring(1) || 'dashboard';
@@ -260,7 +264,14 @@ if (loginForm) {
                 loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             } else if (data && data.session) {
+                console.log('Login successful, loading app...');
                 await loadAuthenticatedApp(data.session.user);
+            } else {
+                // Successful auth but no session returned (unexpected)
+                loginError.textContent = 'Session could not be established. Please try again.';
+                loginError.style.display = 'block';
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
             }
         } catch (err) {
             console.error('Login error:', err);
