@@ -3181,7 +3181,13 @@ export const UI = {
                 
                 if (record && (record.check_in || record.check_out)) {
                     console.log(`Time data for ${s.name}: In=${record.check_in}, Out=${record.check_out}`);
+                } else if (record) {
+                    console.log(`Record found for ${s.name} but no times. Status: ${record.status}`);
+                } else {
+                    console.log(`No record found for ${s.name}`);
                 }
+                
+                console.log(`Student Data for ${s.name}: ID=${s.student_id}, Code=${s.attendance_code}, Class=${s.class_name}`);
 
                 return `
                     <tr class="attendance-row" style="transition: all 0.2s hover; cursor: pointer;">

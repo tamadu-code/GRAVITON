@@ -809,6 +809,10 @@ label {
     }
     .attendance-row.expanded .collapsible-field {
         display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        height: auto !important;
+        padding: 0.75rem 0 !important;
     }
     .attendance-row .mobile-main-header {
         width: 100% !important;
