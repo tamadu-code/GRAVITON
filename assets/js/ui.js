@@ -2279,6 +2279,9 @@ export const UI = {
             // 4. Sort by updated_at Descending (Most recent first)
             filteredScores.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 
+            console.log("[Debug] targetStudents count:", targetStudents.length, "Sample:", targetStudents[0]);
+            console.log("[Debug] filteredScores count:", filteredScores.length, "Sample:", filteredScores[0]);
+
             // Update Statistics
             updateStatsUI(filteredScores);
 
@@ -2287,9 +2290,23 @@ export const UI = {
                 const score = filteredScores.find(sc => {
                     const scId = String(sc.student_id || '').trim().toLowerCase();
                     const sId = String(s.student_id || '').trim().toLowerCase();
-                    return scId && sId && (scId === sId || scId.includes(sId) || sId.includes(scId));
+                    const idMatch = scId && sId && (scId === sId || scId.includes(sId) || sId.includes(scId));
+                    
+                    const scName = String(sc.name || '').trim().toLowerCase();
+                    const sName = String(s.name || '').trim().toLowerCase();
+                    const nameMatch = scName && sName && (scName === sName || scName.includes(sName) || sName.includes(scName));
+
+                    if (!idMatch && nameMatch) {
+                        console.log(`[Debug] Matched by NAME fallback: Score(${scName}) -> Student(${sName})`);
+                    }
+                    
+                    return idMatch || nameMatch;
                 });
                 
+                if (!score && filteredScores.length > 0) {
+                    console.log(`[Debug] No match for student: ${s.name} (${s.student_id})`);
+                }
+
                 // Helper to check if a value is effectively null/empty
                 const isN = (v) => v === null || v === undefined || v === '';
                 
@@ -2326,7 +2343,13 @@ export const UI = {
                     const score = filteredScores.find(sc => {
                         const scId = String(sc.student_id || '').trim().toLowerCase();
                         const sId = String(s.student_id || '').trim().toLowerCase();
-                        return scId && sId && (scId === sId || scId.includes(sId) || sId.includes(scId));
+                        const idMatch = scId && sId && (scId === sId || scId.includes(sId) || sId.includes(scId));
+                        
+                        const scName = String(sc.name || '').trim().toLowerCase();
+                        const sName = String(s.name || '').trim().toLowerCase();
+                        const nameMatch = scName && sName && (scName === sName || scName.includes(sName) || sName.includes(scName));
+
+                        return idMatch || nameMatch;
                     });
                     
                     const isN = (v) => v === null || v === undefined || v === '';
