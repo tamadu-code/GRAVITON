@@ -3645,7 +3645,7 @@ export const UI = {
                     </label>
                     
                     <div class="glass-collapse-content" style="padding: 0; max-height: auto;">
-                        <div class="control-console-cards" style="margin: 0;">
+                        <div class="control-console-cards" style="margin: 0; display: flex; flex-direction: column; gap: 0.75rem;">
                             <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="target"></i> Stream Target</div>
                                 <div class="console-input-wrapper">
@@ -3675,13 +3675,19 @@ export const UI = {
                                     </select>
                                 </div>
                             </div>
-                            <div class="console-card" style="flex: 0.8;">
+                            <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="clock"></i> Term Closure</div>
                                 <div class="console-input-wrapper">
-                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" title="Next Term Begins">
+                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;">
                                 </div>
                             </div>
-                            <button id="btn-sync-generate" class="btn-sync-generate">
+                            <div class="console-card">
+                                <div class="console-card-header"><i data-lucide="calendar-plus"></i> Next Term Begins</div>
+                                <div class="console-input-wrapper">
+                                    <input type="date" id="report-next-term" class="console-input" style="font-size: 0.85rem;">
+                                </div>
+                            </div>
+                            <button id="btn-sync-generate" class="btn-sync-generate" style="width: 100%; border-radius: 12px; height: 50px;">
                                 <i data-lucide="refresh-cw"></i> Sync & Generate
                             </button>
                         </div>
@@ -3723,6 +3729,7 @@ export const UI = {
             const session = document.getElementById('report-session').value;
             const term = document.getElementById('report-term').value;
             const closureDate = document.getElementById('report-closure').value;
+            const nextTermDate = document.getElementById('report-next-term').value;
 
             if (!className) return Notifications.show('Please select a Stream Target.', 'warning');
 
@@ -5090,25 +5097,44 @@ export const UI = {
                         </div>
                         <div>
                             <h3 style="font-weight: 800; color: #1e293b; font-size: 1.25rem;">Bulk Faculty Workload</h3>
-                            <p style="color: #64748b; font-size: 0.85rem;">Select a teacher, multiple classes, and multiple subjects for high-speed deployment.</p>
+                            <p style="color: #64748b; font-size: 0.85rem;">Select a teacher, target class, and subject title for high-speed deployment.</p>
                         </div>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 1.5rem; margin-bottom: 2rem;">
                         <div class="form-group">
-                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 1rem; display: block;">1. TARGET STAFF MEMBERS (<span id="count-teachers">0</span>)</label>
-                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; max-height: 200px; overflow-y: auto; padding: 0.5rem;">
-                                ${teachers.map(t => `
-                                    <label style="display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg">
-                                        <input type="checkbox" name="bulk-teachers" value="${t.id}" onchange="document.getElementById('count-teachers').textContent = document.querySelectorAll('input[name=bulk-teachers]:checked').length">
-                                        <div style="display: flex; flex-direction: column;">
-                                            <span style="font-size: 0.9rem; font-weight: 700; color: #1e293b;">${t.full_name}</span>
-                                            <span style="font-size: 0.7rem; color: #94a3b8;">${t.id}</span>
-                                        </div>
-                                    </label>
-                                `).join('')}
+                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">1. TARGET STAFF MEMBER</label>
+                            <div style="position: relative;">
+                                <i data-lucide="user" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #4338ca; width: 18px;"></i>
+                                <select id="bulk-teacher-select" class="input" style="padding-left: 2.75rem; width: 100%; border-radius: 12px; height: 52px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                                    <option value="">Select Staff...</option>
+                                    ${teachers.map(t => `<option value="${t.id}">${t.full_name}</option>`).join('')}
+                                </select>
                             </div>
                         </div>
+
+                        <div class="form-group">
+                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">2. SELECT DEPLOYMENT CLASS</label>
+                            <div style="position: relative;">
+                                <i data-lucide="layers" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #4338ca; width: 18px;"></i>
+                                <select id="bulk-class-select" class="input" style="padding-left: 2.75rem; width: 100%; border-radius: 12px; height: 52px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                                    <option value="">Select Class...</option>
+                                    ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">3. SELECT SUBJECT TITLE</label>
+                            <div style="position: relative;">
+                                <i data-lucide="book" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #4338ca; width: 18px;"></i>
+                                <select id="bulk-subject-select" class="input" style="padding-left: 2.75rem; width: 100%; border-radius: 12px; height: 52px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                                    <option value="">Select Subject...</option>
+                                    ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="form-group">
                             <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">TARGET SPECIALIZATION</label>
                             <div style="position: relative;">
@@ -5118,42 +5144,6 @@ export const UI = {
                                     <option value="Specialized">Specialized</option>
                                     <option value="Elective">Elective</option>
                                 </select>
-                            </div>
-                            <div style="margin-top: 1.5rem; padding: 1.25rem; background: #f0fdf4; border-radius: 16px; border: 1px solid #dcfce7;">
-                                <h4 style="font-size: 0.75rem; color: #166534; font-weight: 800; margin-bottom: 0.5rem;">PRO TIP</h4>
-                                <p style="font-size: 0.7rem; color: #166534; line-height: 1.5;">Selecting multiple teachers, classes, and subjects will create a combined workload matrix instantly.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
-                        <div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                                <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; display: block; margin: 0;">2. SELECT DEPLOYMENT CLASSES (<span id="count-classes">0</span>)</label>
-                                <div style="display: flex; gap: 0.5rem;">
-                                    <button class="btn-xs" onclick="UI.bulkSelectClasses('all')">ALL</button>
-                                    <button class="btn-xs" onclick="UI.bulkSelectClasses('jss')">JSS</button>
-                                    <button class="btn-xs" onclick="UI.bulkSelectClasses('sss')">SSS</button>
-                                </div>
-                            </div>
-                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; max-height: 250px; overflow-y: auto; padding: 0.5rem;">
-                                ${classes.map(c => `
-                                    <label style="display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg" data-class-name="${c.name}">
-                                        <input type="checkbox" name="bulk-classes" value="${c.name}" onchange="document.getElementById('count-classes').textContent = document.querySelectorAll('input[name=bulk-classes]:checked').length">
-                                        <span style="font-size: 0.9rem; font-weight: 600; color: #334155;">${c.name}</span>
-                                    </label>
-                                `).join('')}
-                            </div>
-                        </div>
-                        <div>
-                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 1rem; display: block;">3. SELECT SUBJECT TITLES (<span id="count-subjects">0</span>)</label>
-                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; max-height: 250px; overflow-y: auto; padding: 0.5rem;">
-                                ${subjects.map(s => `
-                                    <label style="display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg">
-                                        <input type="checkbox" name="bulk-subjects" value="${s.id}" onchange="document.getElementById('count-subjects').textContent = document.querySelectorAll('input[name=bulk-subjects]:checked').length">
-                                        <span style="font-size: 0.9rem; font-weight: 600; color: #334155;">${s.name}</span>
-                                    </label>
-                                `).join('')}
                             </div>
                         </div>
                     </div>
@@ -5174,45 +5164,66 @@ export const UI = {
                         <span class="badge" style="background: #f1f5f9; color: #64748b; font-weight: 700; padding: 0.5rem 1rem;">${assignments.length} TOTAL</span>
                     </div>
 
-                    <div class="table-container">
-                        <table class="data-table mobile-stack-table">
-                            <thead>
-                                <tr style="background: #f8fafc;">
-                                    <th style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Faculty Member</th>
-                                    <th style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Class</th>
-                                    <th style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Subject</th>
-                                    <th style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Specialization</th>
-                                    <th style="font-size: 0.7rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Control</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${assignments.length === 0 ? '<tr><td colspan="5" class="text-center p-4">Waiting for faculty deployments...</td></tr>' : 
-                                    assignments.map(a => {
-                                        const teacher = profiles.find(p => p.id === a.teacher_id);
-                                        const subject = subjects.find(s => s.id === a.subject_id);
-                                        return `
-                                            <tr>
-                                                <td data-label="Faculty Member">
-                                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                                        <div style="width: 32px; height: 32px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #4338ca; font-size: 0.75rem;">
-                                                            ${teacher ? teacher.full_name.charAt(0) : '?'}
+                    <div class="registry-list-container">
+                        ${(() => {
+                            // Group assignments by teacher
+                            const grouped = {};
+                            assignments.forEach(a => {
+                                if (!grouped[a.teacher_id]) grouped[a.teacher_id] = [];
+                                grouped[a.teacher_id].push(a);
+                            });
+
+                            const teacherIds = Object.keys(grouped);
+                            if (teacherIds.length === 0) return '<div class="text-center p-4">Waiting for faculty deployments...</div>';
+
+                            return teacherIds.map(tid => {
+                                const teacher = profiles.find(p => p.id === tid);
+                                const teacherAssignments = grouped[tid];
+                                return `
+                                    <div class="mobile-collapse-card" style="margin-bottom: 1rem; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+                                        <input type="checkbox" id="toggle-teacher-${tid}" style="display: none;" class="registry-toggle">
+                                        <label for="toggle-teacher-${tid}" style="display: flex; justify-content: space-between; align-items: center; padding: 1.25rem; background: #f8fafc; cursor: pointer; transition: background 0.2s;">
+                                            <div style="display: flex; align-items: center; gap: 1rem;">
+                                                <div style="width: 40px; height: 40px; background: #eef2ff; color: #4338ca; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800;">
+                                                    ${teacher ? teacher.full_name.charAt(0) : '?'}
+                                                </div>
+                                                <div>
+                                                    <div style="font-weight: 800; color: #1e293b;">${teacher ? teacher.full_name : 'Unknown'}</div>
+                                                    <div style="font-size: 0.7rem; color: #64748b; font-weight: 600;">${teacherAssignments.length} Assigned Tasks</div>
+                                                </div>
+                                            </div>
+                                            <i data-lucide="chevron-down" class="chevron-icon" style="color: #94a3b8; transition: transform 0.3s;"></i>
+                                        </label>
+                                        <div class="registry-content" style="display: none; padding: 0; background: white; border-top: 1px solid #f1f5f9;">
+                                            ${teacherAssignments.map(a => {
+                                                const subject = subjects.find(s => s.id === a.subject_id);
+                                                return `
+                                                    <div style="padding: 1rem; border-bottom: 1px solid #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+                                                        <div style="flex: 1;">
+                                                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                                                                <span class="badge" style="background: #eef2ff; color: #4338ca; font-size: 0.65rem;">${a.class_name}</span>
+                                                                <span style="font-weight: 700; color: #1e293b; font-size: 0.9rem;">${subject ? subject.name : 'N/A'}</span>
+                                                            </div>
+                                                            <div style="font-size: 0.7rem; color: #10b981; font-weight: 800; text-transform: uppercase;">
+                                                                <i data-lucide="check-circle" style="width: 10px; height: 10px; display: inline-block; vertical-align: middle;"></i> ${a.specialization || 'Common'}
+                                                            </div>
                                                         </div>
-                                                        <span style="font-weight: 600;">${teacher ? teacher.full_name : 'Unknown'}</span>
+                                                        <div style="display: flex; gap: 0.5rem;">
+                                                            <button class="btn btn-sm" style="color: #2563eb; background: #eff6ff; border-radius: 8px; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center;" onclick="UI.editAssignment('${a.id}')">
+                                                                <i data-lucide="edit-3" style="width: 16px;"></i>
+                                                            </button>
+                                                            <button class="btn btn-sm" style="color: #ef4444; background: #fef2f2; border-radius: 8px; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center;" onclick="UI.deleteAssignment('${a.id}')">
+                                                                <i data-lucide="trash-2" style="width: 16px;"></i>
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                </td>
-                                                <td data-label="Class"><span class="badge" style="background: #eef2ff; color: #4338ca;">${a.class_name}</span></td>
-                                                <td data-label="Subject"><span style="font-weight: 600; color: #334155;">${subject ? subject.name : 'N/A'}</span></td>
-                                                <td data-label="Specialization"><span class="badge" style="background: #f0fdf4; color: #16a34a; font-size: 0.7rem;">${a.specialization || 'Common'}</span></td>
-                                                <td data-label="Control">
-                                                    <button class="btn btn-sm" style="color: #ef4444; background: #fef2f2; border-radius: 8px; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center;" onclick="UI.deleteAssignment('${a.id}')">
-                                                        <i data-lucide="trash-2" style="width: 16px;"></i>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                            </tbody>
-                        </table>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('');
+                        })()}
                     </div>
                 </div>
             </div>
@@ -5237,13 +5248,13 @@ export const UI = {
     },
 
     async deployWorkload() {
-        const checkedTeachers = Array.from(document.querySelectorAll('input[name=bulk-teachers]:checked')).map(i => i.value);
+        const teacherId = document.getElementById('bulk-teacher-select').value;
+        const className = document.getElementById('bulk-class-select').value;
+        const subjectId = document.getElementById('bulk-subject-select').value;
         const specialization = document.getElementById('bulk-specialization').value;
-        const checkedClasses = Array.from(document.querySelectorAll('input[name=bulk-classes]:checked')).map(i => i.value);
-        const checkedSubjects = Array.from(document.querySelectorAll('input[name=bulk-subjects]:checked')).map(i => i.value);
 
-        if (checkedTeachers.length === 0 || checkedClasses.length === 0 || checkedSubjects.length === 0) {
-            return Notifications.show('Please select at least one teacher, class, and subject.', 'error');
+        if (!teacherId || !className || !subjectId) {
+            return Notifications.show('Please select a teacher, class, and subject title.', 'error');
         }
 
         const btn = document.getElementById('btn-deploy-workload');
@@ -5252,31 +5263,30 @@ export const UI = {
 
         try {
             const allAssignments = await db.subject_assignments.toArray();
-            let addedCount = 0;
-
-            for (const teacherId of checkedTeachers) {
-                for (const className of checkedClasses) {
-                    for (const subId of checkedSubjects) {
-                        const existing = allAssignments.find(a => 
-                            a.teacher_id === teacherId && 
-                            a.subject_id === subId && 
-                            a.class_name === className
-                        );
-                        
-                        if (!existing) {
-                            await db.subject_assignments.add(prepareForSync({
-                                id: `ASG${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                                teacher_id: teacherId,
-                                subject_id: subId,
-                                class_name: className,
-                                specialization: specialization
-                            }));
-                            addedCount++;
-                        }
-                    }
-                }
+            
+            const existing = allAssignments.find(a => 
+                a.teacher_id === teacherId && 
+                a.subject_id === subjectId && 
+                a.class_name === className
+            );
+            
+            if (!existing) {
+                await db.subject_assignments.add(prepareForSync({
+                    id: `ASG${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    teacher_id: teacherId,
+                    subject_id: subjectId,
+                    class_name: className,
+                    specialization: specialization
+                }));
+                Notifications.show(`Workload deployed successfully!`, 'success');
+            } else {
+                // If exists, update specialization
+                await db.subject_assignments.update(existing.id, prepareForSync({
+                    specialization: specialization
+                }));
+                Notifications.show(`Deployment updated.`, 'success');
             }
-            Notifications.show(`Workload deployed! ${addedCount} new assignments created.`, 'success');
+            
             this.renderLessons();
             syncToCloud();
         } catch (e) {
@@ -5287,6 +5297,21 @@ export const UI = {
             btn.innerHTML = 'Secure Deployment Plan <i data-lucide="shield-check" style="margin-left: 0.5rem; width: 18px;"></i>';
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
+    },
+
+    async editAssignment(id) {
+        const assignment = await db.subject_assignments.get(id);
+        if (!assignment) return;
+
+        // Populate the form
+        document.getElementById('bulk-teacher-select').value = assignment.teacher_id;
+        document.getElementById('bulk-class-select').value = assignment.class_name;
+        document.getElementById('bulk-subject-select').value = assignment.subject_id;
+        document.getElementById('bulk-specialization').value = assignment.specialization || 'Common Subject';
+
+        // Scroll to form
+        document.getElementById('bulk-teacher-select').scrollIntoView({ behavior: 'smooth' });
+        Notifications.show('Assignment data loaded into form for editing.', 'info');
     },
 
     async deleteAssignment(id) {

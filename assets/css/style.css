@@ -3773,3 +3773,30 @@ label {
 .glass-collapse-checkbox:checked + .glass-collapse-header .glass-collapse-chevron {
     transform: rotate(180deg);
 }
+
+/* ── Registry Grouped Cards ── */
+.registry-toggle:checked ~ .registry-content {
+    display: block !important;
+    animation: slideDown 0.3s ease-out;
+}
+
+.registry-toggle:checked ~ label .chevron-icon {
+    transform: rotate(180deg);
+}
+
+.mobile-collapse-card label:hover {
+    background: #f1f5f9 !important;
+}
+
+/* Stacking for console cards on mobile */
+@media (max-width: 768px) {
+    .control-console-cards {
+        flex-direction: column !important;
+        padding: 1rem !important;
+        gap: 0.75rem !important;
+    }
+    .console-card {
+        width: 100% !important;
+        margin: 0 !important;
+    }
+}
