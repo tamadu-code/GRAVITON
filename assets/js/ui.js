@@ -1374,130 +1374,72 @@ export const UI = {
         classFilter.addEventListener('change', updateList);
         inactiveToggle.addEventListener('change', updateList);
 
-        // Selection Logic (Accordion Style for Mobile)
-        listContainer.addEventListener('click', async (e) => {
-            const item = e.target.closest('.student-item');
-            if (!item) return;
-
-            const studentId = item.dataset.id;
-
-            // Handle Icon Clicks Directly
-            if (e.target.closest('.mobile-edit-std')) {
-                e.stopPropagation();
-                await this.renderStudentDetail(studentId); // Load data into modal/state
-                document.getElementById('btn-modify-student')?.click();
-                return;
-            }
-            if (e.target.closest('.mobile-delete-std')) {
-                e.stopPropagation();
-                await this.renderStudentDetail(studentId);
-                document.getElementById('btn-delete-student')?.click();
-                return;
-            }
-
-            // Toggle Accordion
-            const isExpanded = item.classList.contains('active');
-            document.querySelectorAll('.student-item').forEach(i => i.classList.remove('active'));
+        // Selection Logic (Glass Accordion Style)
+        listContainer.addEventListener('change', async (e) => {
+            const checkbox = e.target;
+            if (!checkbox.classList.contains('student-toggle')) return;
             
-            if (!isExpanded) {
-                item.classList.add('active');
-                
-                // If on mobile, populate the internal detail container
-                const detailArea = item.querySelector('.mobile-detail-accordion');
-                if (detailArea && (!detailArea.innerHTML.trim() || detailArea.innerHTML.includes('loader'))) {
-                    detailArea.innerHTML = '<div class="loader-sm"></div>';
-                    
-                    // Fetch data
-                    db.students.get(studentId).then(async student => {
+            const card = checkbox.closest('.student-card');
+            const studentId = card.dataset.id;
+            
+            if (checkbox.checked) {
+                // Close other accordions
+                document.querySelectorAll('.student-toggle').forEach(cb => {
+                    if (cb !== checkbox) cb.checked = false;
+                });
+
+                const detailArea = document.getElementById(`info-${studentId.replace(/\//g, '_')}`);
+                if (detailArea && (detailArea.innerHTML.includes('loader-sm') || !detailArea.innerHTML.trim())) {
+                    const student = await db.students.get(studentId);
+                    if (student) {
                         const scores = await db.scores.where('student_id').equals(studentId).toArray();
                         const avg = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + (s.total || 0), 0) / scores.length) : 0;
-                        const gradeLabel = avg >= 70 ? 'A' : avg >= 60 ? 'B' : avg >= 50 ? 'C' : avg >= 40 ? 'D' : avg > 0 ? 'F' : '-';
                         
                         detailArea.innerHTML = `
-                            <div style="padding: 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
-                                <div class="student-biodata-grid">
-                                    <div class="student-biodata-field">
-                                        <label>Student ID</label>
-                                        <span>${student.student_id || 'N/A'}</span>
-                                    </div>
-                                    <div class="student-biodata-field">
-                                        <label>Class / Stream</label>
-                                        <span>${student.class_name || 'N/A'}${student.sub_class ? ' ' + student.sub_class : ''}</span>
-                                    </div>
-                                    <div class="student-biodata-field">
-                                        <label>Gender</label>
-                                        <span>${student.gender || 'N/A'}</span>
-                                    </div>
-                                    <div class="student-biodata-field">
-                                        <label>Status</label>
-                                        <span style="color: ${student.is_active !== false ? '#10b981' : '#ef4444'};">${student.is_active !== false ? 'Active' : 'Inactive'}</span>
-                                    </div>
-                                    <div class="student-biodata-field">
-                                        <label>Admission Year</label>
-                                        <span>${student.admission_year || 'N/A'}</span>
-                                    </div>
-                                    <div class="student-biodata-field">
-                                        <label>Biometric Code</label>
-                                        <span>${student.attendance_code || 'Not Linked'}</span>
-                                    </div>
-                                    <div class="student-biodata-field">
-                                        <label>Date of Birth</label>
-                                        <span>${student.dob || 'N/A'}</span>
-                                    </div>
-                                    <div class="student-biodata-field">
-                                        <label>Avg Score</label>
-                                        <span style="color: ${avg >= 50 ? '#15803d' : '#ef4444'};">${avg > 0 ? avg + '% (' + gradeLabel + ')' : 'No scores'}</span>
-                                    </div>
-                                    <div class="student-biodata-field" style="grid-column: 1 / -1;">
-                                        <label>Subjects Registered</label>
-                                        <span>${scores.length > 0 ? scores.length + ' subjects' : 'None yet'}</span>
-                                    </div>
-                                    <div class="student-biodata-field" style="grid-column: 1 / -1;">
-                                        <label>Residential Address</label>
-                                        <span>${student.address || 'No address provided'}</span>
-                                    </div>
-                                    <div class="student-biodata-field">
-                                        <label>Parent / Guardian</label>
-                                        <span>${student.parent_name || 'N/A'}</span>
-                                    </div>
-                                    <div class="student-biodata-field">
-                                        <label>Parent Phone</label>
-                                        <span>${student.parent_phone || 'N/A'}</span>
-                                    </div>
-                                    ${student.parent_email ? `
-                                    <div class="student-biodata-field" style="grid-column: 1 / -1;">
-                                        <label>Parent Email</label>
-                                        <span>${student.parent_email}</span>
-                                    </div>
-                                    ` : ''}
-                                </div>
-                                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                                    <button class="btn btn-secondary mobile-edit-std-btn" data-id="${student.student_id}" style="flex: 1; border-radius: 8px; font-size: 0.8rem; height: 40px; font-weight: 700;">
-                                        <i data-lucide="edit-3" style="width: 14px;"></i> Edit Profile
-                                    </button>
-                                    <button class="btn btn-secondary" onclick="UI.renderStudentDetail('${student.student_id}')" style="flex: 1; border-radius: 8px; font-size: 0.8rem; height: 40px; background: #2563eb; color: white; border: none; font-weight: 700;">
-                                        <i data-lucide="user" style="width: 14px;"></i> Full View
-                                    </button>
-                                </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                <div class="stat-box-sm"><strong>GENDER</strong><span>${student.gender || 'N/A'}</span></div>
+                                <div class="stat-box-sm"><strong>STATUS</strong><span style="color: ${student.is_active !== false ? '#10b981' : '#ef4444'};">${student.is_active !== false ? 'Active' : 'Inactive'}</span></div>
+                                <div class="stat-box-sm"><strong>AVG SCORE</strong><span>${avg > 0 ? avg + '%' : 'No scores'}</span></div>
+                                <div class="stat-box-sm"><strong>GENOTYPE</strong><span>${student.genotype || 'N/A'}</span></div>
+                            </div>
+                            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+                                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; margin-bottom: 0.5rem;">Residential Address</div>
+                                <div style="font-size: 0.85rem; color: #1e293b; font-weight: 600;">${student.address || 'No address provided'}</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-secondary" onclick="UI.renderStudentDetail('${student.student_id}')" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 44px; background: #2563eb; color: white; border: none; font-weight: 700;">
+                                    <i data-lucide="user" style="width: 14px;"></i> View Full Profile
+                                </button>
+                                <button class="btn btn-secondary mobile-edit-std-btn" data-id="${student.student_id}" style="border-radius: 10px; font-size: 0.75rem; height: 44px; font-weight: 700; width: 44px; display: flex; align-items: center; justify-content: center; padding: 0;">
+                                    <i data-lucide="edit-3" style="width: 16px;"></i>
+                                </button>
                             </div>
                         `;
                         if (typeof lucide !== 'undefined') lucide.createIcons();
                         
-                        // Attach edit button handler
                         const editBtn = detailArea.querySelector('.mobile-edit-std-btn');
                         if (editBtn) {
-                            editBtn.addEventListener('click', async (e) => {
-                                e.stopPropagation();
+                            editBtn.addEventListener('click', async (btnEv) => {
+                                btnEv.stopPropagation();
                                 await this.renderStudentDetail(student.student_id);
                                 document.getElementById('btn-modify-student')?.click();
                             });
                         }
-                    });
+                    }
+                }
+                
+                // Desktop View Sync
+                if (window.innerWidth >= 1024) {
+                    await this.renderStudentDetail(studentId);
                 }
             }
-            
-            // Also update desktop view if window is large
-            if (window.innerWidth >= 1024) {
+        });
+
+        // Header click for desktop quick-view
+        listContainer.addEventListener('click', async (e) => {
+            const header = e.target.closest('.glass-collapse-header');
+            if (header && window.innerWidth >= 1024) {
+                const studentId = header.closest('.student-card').dataset.id;
                 await this.renderStudentDetail(studentId);
             }
         });
@@ -1661,6 +1603,10 @@ export const UI = {
 
         const scores = await db.scores.where('student_id').equals(studentId).toArray();
         const avgScore = scores.length > 0 ? Math.round(scores.reduce((acc, s) => acc + (s.total || 0), 0) / scores.length) : 0;
+        
+        // Get global settings for the student profile context
+        const session = (await db.settings.get('current_session'))?.value || '2023/2024';
+        const term = (await db.settings.get('current_term'))?.value || 'First Term';
 
         detailView.innerHTML = `
             <div style="padding: 1.5rem;">
@@ -1676,7 +1622,7 @@ export const UI = {
                             <div>
                                 <span class="badge" style="background: #eff6ff; color: #2563eb; font-weight: 800; border-radius: 12px; padding: 0.4rem 0.8rem; margin-bottom: 0.5rem; display: inline-block;">ACADEMIC ID: ${student.student_id}</span>
                                 <h1 style="font-size: 2rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em; line-height: 1.1;">${student.name}</h1>
-                                <p style="font-size: 1.1rem; color: #64748b; margin-top: 0.25rem;">${student.class_name} • Junior Secondary Stream</p>
+                                <p style="font-size: 1.1rem; color: #64748b; margin-top: 0.25rem;">${student.class_name} • ${student.sub_class || 'General Stream'}</p>
                             </div>
                              <div style="display: flex; gap: 1rem;">
                                  ${!((this.currentUser.role || '').toLowerCase() === 'teacher') ? `
@@ -1693,24 +1639,21 @@ export const UI = {
 
                 <div class="profile-stats" style="margin-bottom: 2rem;">
                     <div style="background: #f8fafc; padding: 1.25rem; border-radius: 20px; border: 1px solid #f1f5f9;">
+                        <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Current Session</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.25rem;">
+                            <span style="font-size: 1.4rem; font-weight: 800; color: #1e293b;">${session}</span>
+                        </div>
+                    </div>
+                    <div style="background: #f8fafc; padding: 1.25rem; border-radius: 20px; border: 1px solid #f1f5f9;">
+                        <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Current Term</span>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.25rem;">
+                            <span style="font-size: 1.4rem; font-weight: 800; color: #1e293b;">${term}</span>
+                        </div>
+                    </div>
+                    <div style="background: #f8fafc; padding: 1.25rem; border-radius: 20px; border: 1px solid #f1f5f9;">
                         <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Cumulative Avg</span>
                         <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.25rem;">
-                            <span style="font-size: 1.75rem; font-weight: 800; color: #1e293b;">${avgScore}%</span>
-                            <span style="color: #10b981; font-weight: 700; font-size: 0.8rem;">+2.4%</span>
-                        </div>
-                    </div>
-                    <div style="background: #f8fafc; padding: 1.25rem; border-radius: 20px; border: 1px solid #f1f5f9;">
-                        <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Attendance Rate</span>
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.25rem;">
-                            <span style="font-size: 1.75rem; font-weight: 800; color: #1e293b;">94%</span>
-                            <span style="color: #ef4444; font-weight: 700; font-size: 0.8rem;">-0.5%</span>
-                        </div>
-                    </div>
-                    <div style="background: #f8fafc; padding: 1.25rem; border-radius: 20px; border: 1px solid #f1f5f9;">
-                        <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Active Subjects</span>
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-top: 0.25rem;">
-                            <span style="font-size: 1.75rem; font-weight: 800; color: #1e293b;">${scores.length}</span>
-                            <span style="color: #64748b; font-weight: 700; font-size: 0.8rem;">Assigned</span>
+                            <span style="font-size: 1.4rem; font-weight: 800; color: #1e293b;">${avgScore}%</span>
                         </div>
                     </div>
                 </div>
@@ -1718,7 +1661,6 @@ export const UI = {
                 <div class="profile-tabs" style="border-bottom: 2px solid #f1f5f9; display: flex; gap: 3rem; margin-bottom: 2rem;">
                     <button style="background: none; border: none; border-bottom: 2px solid #2563eb; padding: 1rem 0; font-weight: 800; color: #1e293b; cursor: pointer;">General Profile</button>
                     <button style="background: none; border: none; padding: 1rem 0; font-weight: 600; color: #64748b; cursor: pointer;">Academic Records</button>
-                    <button style="background: none; border: none; padding: 1rem 0; font-weight: 600; color: #64748b; cursor: pointer;">Attendance Logs</button>
                 </div>
 
                 <div class="info-grid">
@@ -1743,6 +1685,10 @@ export const UI = {
                                 <span style="color: #94a3b8; font-weight: 600;">Genotype</span>
                                 <span style="font-weight: 700; color: #475569;">${student.genotype || 'N/A'}</span>
                             </div>
+                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                <span style="color: #94a3b8; font-weight: 600;">Date of Birth</span>
+                                <span style="font-weight: 700; color: #475569;">${student.dob || 'N/A'}</span>
+                            </div>
                         </div>
                     </div>
                     
@@ -1758,6 +1704,10 @@ export const UI = {
                             <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
                                 <span style="color: #94a3b8; font-weight: 600;">Parent/Guardian Name</span>
                                 <span style="font-weight: 700; color: #475569;">${student.parent_name || 'N/A'}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                <span style="color: #94a3b8; font-weight: 600;">Parent Email</span>
+                                <span style="font-weight: 700; color: #475569;">${student.parent_email || 'N/A'}</span>
                             </div>
                             <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
                                 <span style="color: #94a3b8; font-weight: 600;">Emergency Contact</span>
@@ -1840,22 +1790,26 @@ export const UI = {
     },
 
     generateStudentListItems(students) {
-        if (students.length === 0) return `<div class="p-2 text-center text-slate-400 text-sm">No students found</div>`;
+        if (students.length === 0) return `<div style="padding: 2rem; text-align: center; color: #94a3b8; font-weight: 600;">No students found in this stream</div>`;
         return students.map(s => `
-            <div class="student-item-container" style="margin-bottom: 0.5rem; opacity: ${s.is_active !== false ? '1' : '0.6'};">
-                <div class="student-item" data-id="${s.student_id}" style="cursor: pointer; border-radius: 12px; overflow: hidden; transition: all 0.2s ease; border: 1px solid ${s.is_active !== false ? 'transparent' : '#fecaca'}; background: ${s.is_active !== false ? 'transparent' : '#fff5f5'};">
-                    <div style="padding: 1rem; display: flex; justify-content: space-between; align-items: center;">
-                        <div class="student-item-info">
-                            <span class="student-item-name" style="font-weight: 700; color: ${s.is_active !== false ? '#1e293b' : '#991b1b'};">${s.name} ${s.is_active === false ? '<span style="font-size: 0.6rem; background: #fee2e2; color: #ef4444; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">INACTIVE</span>' : ''}</span>
-                            <span class="student-item-meta" style="font-size: 0.75rem; color: #64748b; display: block;">${s.student_id} • ${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</span>
+            <div class="glass-collapse-card student-card" data-id="${s.student_id}" style="margin-bottom: 0.75rem; opacity: ${s.is_active !== false ? '1' : '0.7'};">
+                <input type="checkbox" id="toggle-std-${s.student_id}" class="glass-collapse-checkbox student-toggle">
+                <label for="toggle-std-${s.student_id}" class="glass-collapse-header" style="padding: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1; overflow: hidden;">
+                        <div style="width: 44px; height: 44px; border-radius: 12px; background: ${s.is_active !== false ? '#eff6ff' : '#fee2e2'}; display: flex; align-items: center; justify-content: center; border: 1px solid ${s.is_active !== false ? '#dbeafe' : '#fecaca'}; flex-shrink: 0;">
+                             <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${s.name}" style="width: 34px; height: 34px;" alt="${s.name}">
                         </div>
-                        <div style="display: flex; gap: 0.85rem; align-items: center;">
-                            <i data-lucide="edit-3" class="mobile-edit-std" style="width: 16px; color: #2563eb;"></i>
-                            <i data-lucide="chevron-down" class="accordion-arrow" style="width: 14px; opacity: 0.4;"></i>
+                        <div style="flex: 1; overflow: hidden;">
+                            <div style="font-weight: 800; color: #1e293b; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.name}</div>
+                            <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">${s.student_id} • ${s.class_name}</div>
                         </div>
+                        ${s.is_active === false ? '<span class="badge" style="background: #fee2e2; color: #ef4444; font-size: 0.55rem; padding: 2px 6px;">INACTIVE</span>' : ''}
                     </div>
-                    <div class="mobile-detail-accordion mobile-only" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out;">
-                        <!-- Populated on click -->
+                    <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                </label>
+                <div class="glass-collapse-content" style="background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                    <div class="student-quick-info-container" id="info-${s.student_id.replace(/\//g, '_')}" style="padding: 1rem;">
+                         <div style="display: flex; justify-content: center; padding: 1rem;"><div class="loader-sm"></div></div>
                     </div>
                 </div>
             </div>
@@ -2804,6 +2758,7 @@ export const UI = {
         const subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         const assignments = await db.subject_assignments.toArray();
         const profiles = await db.profiles.toArray();
+        const formTeachers = await db.form_teachers.toArray();
         
         this.contentArea.innerHTML = `
             <div class="view-container" style="padding: 0.75rem;">
@@ -2862,21 +2817,75 @@ export const UI = {
             if (activeBtn) activeBtn.classList.add('active');
 
             if (tab === 'classes') {
+                const teachers = profiles.filter(p => (p.role || '').toLowerCase() === 'teacher');
                 container.innerHTML = `
-                    <table class="data-table">
-                        <thead><tr><th>Stream Name</th><th>Level</th><th>Action</th></tr></thead>
-                        <tbody>${classes.map(c => `<tr>
-                            <td style="font-weight:700; color:var(--text-primary);">${c.name}</td>
-                            <td>${c.level}</td>
-                            <td>
-                                <div style="display:flex; gap:1rem;">
-                                    <i data-lucide="edit-2" class="edit-class" data-id="${c.id}" style="color:var(--accent-primary); cursor:pointer; width:18px;"></i>
-                                    <i data-lucide="trash-2" class="delete-class" data-id="${c.id}" style="color:var(--accent-danger); cursor:pointer; width:18px;"></i>
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${classes.map(c => {
+                            const ft = formTeachers.find(f => f.class_name === c.name);
+                            return `
+                                <div class="glass-collapse-card">
+                                    <input type="checkbox" id="toggle-cls-${c.id}" class="glass-collapse-checkbox">
+                                    <label for="toggle-cls-${c.id}" class="glass-collapse-header" style="padding: 1.25rem;">
+                                        <div style="display: flex; align-items: center; gap: 1rem;">
+                                            <div style="width: 44px; height: 44px; background: #eef2ff; color: #4338ca; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; border: 1px solid #dbeafe;">
+                                                <i data-lucide="layers" style="width: 20px;"></i>
+                                            </div>
+                                            <div>
+                                                <div style="font-weight: 800; color: #1e293b; font-size: 1rem;">${c.name}</div>
+                                                <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">${c.level}</div>
+                                            </div>
+                                        </div>
+                                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                                    </label>
+                                    <div class="glass-collapse-content" style="background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                                        <div style="padding: 1.5rem;">
+                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                                                <div class="form-group">
+                                                    <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Assign Form Master</label>
+                                                    <select class="input form-master-select" data-class-name="${c.name}" style="width: 100%; border-radius: 10px; height: 48px; background: white; font-weight: 700;">
+                                                        <option value="">Unassigned</option>
+                                                        ${teachers.map(t => `<option value="${t.id}" ${ft && ft.teacher_id === t.id ? 'selected' : ''}>${t.full_name}</option>`).join('')}
+                                                    </select>
+                                                </div>
+                                                <div class="form-group" style="display: flex; align-items: flex-end; gap: 0.75rem;">
+                                                    <button class="btn btn-secondary edit-class" data-id="${c.id}" style="height: 48px; border-radius: 10px; flex: 1;">
+                                                        <i data-lucide="edit-3"></i> Rename
+                                                    </button>
+                                                    <button class="btn btn-danger delete-class" data-id="${c.id}" style="height: 48px; border-radius: 10px; flex: 1;">
+                                                        <i data-lucide="trash-2"></i> Delete
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem;">
+                                                <div style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                                                    <i data-lucide="info" style="width: 14px;"></i> Stream Insights
+                                                </div>
+                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                                    <div>
+                                                        <div style="font-size: 0.6rem; color: #94a3b8; font-weight: 700;">STUDENT POPULATION</div>
+                                                        <div style="font-weight: 800; color: #1e293b;" class="cls-pop-count" data-class-name="${c.name}">Loading...</div>
+                                                    </div>
+                                                    <div>
+                                                        <div style="font-size: 0.6rem; color: #94a3b8; font-weight: 700;">SUBJECTS OFFERED</div>
+                                                        <div style="font-weight: 800; color: #1e293b;">${assignments.filter(a => a.class_name === c.name).length} Courses</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </td>
-                        </tr>`).join('')}</tbody>
-                    </table>
+                            `;
+                        }).join('')}
+                    </div>
                 `;
+                
+                // Update populations
+                const studentList = await db.students.toArray();
+                classes.forEach(c => {
+                    const count = studentList.filter(s => s.class_name === c.name && s.is_active !== false).length;
+                    const el = container.querySelector(`.cls-pop-count[data-class-name="${c.name}"]`);
+                    if (el) el.textContent = `${count} Students`;
+                });
             } else if (tab === 'subjects') {
                 container.innerHTML = `
                     <table class="data-table">
@@ -2989,7 +2998,8 @@ export const UI = {
     attachAcademicListeners() {
         document.querySelectorAll('.edit-subject').forEach(icon => {
             icon.onclick = async (e) => {
-                const id = e.target.closest('i').dataset.id;
+                const target = e.target.closest('.edit-subject') || e.target.closest('i');
+                const id = target.dataset.id;
                 const sub = await db.subjects.get(id);
                 if (!sub) return;
 
@@ -3019,9 +3029,25 @@ export const UI = {
             };
         });
 
-        document.querySelectorAll('.edit-class').forEach(icon => {
+        document.querySelectorAll('.delete-sub').forEach(icon => {
             icon.onclick = async (e) => {
-                const id = e.target.closest('i').dataset.id;
+                const target = e.target.closest('.delete-sub') || e.target.closest('i');
+                const id = target.dataset.id;
+                if (confirm('Delete this course? All associated scores will be lost!')) {
+                    await db.subjects.delete(id);
+                    await db.scores.where('subject_id').equals(id).delete();
+                    await db.subject_assignments.where('subject_id').equals(id).delete();
+                    Notifications.show('Course removed', 'success');
+                    this.renderAcademic();
+                    syncToCloud();
+                }
+            };
+        });
+
+        document.querySelectorAll('.edit-class').forEach(btn => {
+            btn.onclick = async (e) => {
+                const target = e.target.closest('.edit-class') || e.target.closest('i');
+                const id = target.dataset.id;
                 const cls = await db.classes.get(id);
                 if (!cls) return;
 
@@ -3047,6 +3073,62 @@ export const UI = {
                 }, 'Update Stream');
             };
         });
+
+        document.querySelectorAll('.delete-class').forEach(btn => {
+            btn.onclick = async (e) => {
+                const target = e.target.closest('.delete-class') || e.target.closest('i');
+                const id = target.dataset.id;
+                if (confirm('Delete this stream? Students and assignments will be orphaned!')) {
+                    const cls = await db.classes.get(id);
+                    if (cls) {
+                        await db.classes.delete(id);
+                        await db.form_teachers.where('class_name').equals(cls.name).delete();
+                        await db.subject_assignments.where('class_name').equals(cls.name).delete();
+                        Notifications.show('Stream removed', 'success');
+                        this.renderAcademic();
+                        syncToCloud();
+                    }
+                }
+            };
+        });
+
+        document.querySelectorAll('.form-master-select').forEach(select => {
+            select.onchange = (e) => {
+                this.updateFormMaster(e.target.dataset.className, e.target.value);
+            };
+        });
+
+        document.querySelectorAll('.delete-assignment').forEach(icon => {
+            icon.onclick = async (e) => {
+                const target = e.target.closest('.delete-assignment') || e.target.closest('i');
+                const id = target.dataset.id;
+                if (confirm('Remove this assignment?')) {
+                    await db.subject_assignments.delete(id);
+                    Notifications.show('Assignment removed', 'success');
+                    this.renderAcademic();
+                    syncToCloud();
+                }
+            };
+        });
+    },
+
+    async updateFormMaster(className, teacherId) {
+        if (!teacherId) {
+            await db.form_teachers.where('class_name').equals(className).delete();
+        } else {
+            const existing = await db.form_teachers.where('class_name').equals(className).first();
+            if (existing) {
+                await db.form_teachers.update(existing.id, prepareForSync({ teacher_id: teacherId }));
+            } else {
+                await db.form_teachers.add(prepareForSync({
+                    id: `FT_${className.replace(/\s+/g, '_')}_${Date.now()}`,
+                    teacher_id: teacherId,
+                    class_name: className
+                }));
+            }
+        }
+        Notifications.show('Form Master updated', 'success');
+        syncToCloud();
     },
 
 
@@ -3138,7 +3220,7 @@ export const UI = {
                             </div>
                             <div style="width: 180px;">
                                 <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Date</label>
-                                <input type="date" id="att-date" class="input" value="${today}" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
+                                <input type="date" id="att-date" class="input" value="${today}" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc; cursor: pointer;" onclick="this.showPicker()">
                             </div>
 
                         </div>
@@ -3156,23 +3238,9 @@ export const UI = {
                             </div>
                         </div>
 
-                        <!-- Data Table -->
-                        <div class="table-container" style="border: 1px solid #f1f5f9; border-radius: 16px;">
-                            <table class="data-table mobile-stack-table">
-                                <thead style="background: #f8fafc;">
-                                    <tr>
-                                        <th style="width: 60px;">ID</th>
-                                        <th>Student Name</th>
-                                        <th>Class</th>
-                                        <th id="th-signin" style="text-align: right;">Sign In</th>
-                                        <th id="th-signout" style="text-align: right;">Sign Out</th>
-                                        <th style="text-align: center;">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="attendance-list-body">
-                                    <!-- Dynamic rows -->
-                                </tbody>
-                            </table>
+                        <!-- Responsive Card List -->
+                        <div id="attendance-list-container" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <!-- Dynamic cards -->
                         </div>
                     </div>
                 </div>
@@ -3211,10 +3279,8 @@ export const UI = {
         const subjectContainer = document.getElementById('subject-filter-container');
         const dateInput = document.getElementById('att-date');
         const searchInput = document.getElementById('att-search');
-        const listBody = document.getElementById('attendance-list-body');
+        const listBody = document.getElementById('attendance-list-container');
         const subjectActions = document.getElementById('subject-actions');
-        const thSignIn = document.getElementById('th-signin');
-        const thSignOut = document.getElementById('th-signout');
         const classContainer = document.getElementById('class-filter-container');
         const periodContainer = document.getElementById('period-filter-container');
 
@@ -3379,57 +3445,67 @@ export const UI = {
                 console.log(`Student Data for ${s.name}: ID=${s.student_id}, Code=${s.attendance_code}, Class=${s.class_name}`);
 
                 return `
-                    <tr class="attendance-row" style="transition: all 0.2s hover; cursor: pointer;">
-                        <td data-label="Student" class="mobile-main-header" style="border-bottom: none;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                                <div>
-                                    <div style="font-weight: 700; color: #1e293b;">${s.name}</div>
-                                    <div class="mobile-hide" style="font-size: 0.65rem; color: #94a3b8;">${s.student_id}</div>
+                    <div class="glass-collapse-card attendance-card ${record ? 'active' : ''}" style="margin: 0; background: white; border: 1px solid #e2e8f0; border-radius: 16px; transition: all 0.3s ease;">
+                        <input type="checkbox" id="toggle-att-${s.student_id}" class="glass-collapse-checkbox">
+                        <label for="toggle-att-${s.student_id}" class="glass-collapse-header" style="padding: 0.75rem 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1; overflow: hidden;">
+                                <div style="width: 40px; height: 40px; background: #f1f5f9; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: 800; font-size: 0.7rem; flex-shrink: 0;">
+                                    ${s.name.split(' ').map(n => n[0]).join('').substring(0,2)}
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 1rem;">
-                                    <span style="display: inline-flex; align-items: center; gap: 0.5rem; color: ${statusColor}; font-weight: 800; font-size: 0.8rem; background: ${statusColor}15; padding: 4px 12px; border-radius: 99px;">
-                                        <span style="width: 6px; height: 6px; background: ${statusColor}; border-radius: 50%;"></span>
-                                        ${status}
+                                <div style="flex: 1; min-width: 0;">
+                                    <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.name}</div>
+                                    <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 600;">${s.student_id} • ${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</div>
+                                </div>
+                                <div style="flex-shrink: 0; display: flex; align-items: center; gap: 0.5rem; margin-right: 1.5rem;">
+                                    <span style="display: inline-flex; align-items: center; gap: 0.35rem; color: ${statusColor}; font-weight: 800; font-size: 0.6rem; background: ${statusColor}15; padding: 4px 8px; border-radius: 6px; border: 1px solid ${statusColor}20;">
+                                        <span style="width: 4px; height: 4px; background: ${statusColor}; border-radius: 50%;"></span>
+                                        ${status.toUpperCase()}
                                     </span>
-                                    <i data-lucide="chevron-down" class="accordion-arrow mobile-only" style="width: 16px; color: #94a3b8; transition: transform 0.3s;"></i>
                                 </div>
                             </div>
-                        </td>
-                        <td data-label="ID" class="collapsible-field" style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">${s.attendance_code || 'N/A'}</td>
-                        <td data-label="Class" class="collapsible-field"><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</span></td>
-                        <td data-label="Sign In" class="collapsible-field" style="text-align: right; font-family: monospace; font-weight: 700; color: #64748b;">${signIn}</td>
-                        ${currentTab === 'school' ? `
-                            <td data-label="Sign Out" class="td-signout collapsible-field" style="text-align: right; font-family: monospace; font-weight: 700; color: #10b981;">${signOut}</td>
-                        ` : ''}
-                        <td data-label="Status" class="mobile-hide" style="text-align: center;">
-                            ${currentTab === 'school' ? `
-                                <span style="display: inline-flex; align-items: center; gap: 0.5rem; color: ${statusColor}; font-weight: 800; font-size: 0.8rem; background: ${statusColor}15; padding: 4px 12px; border-radius: 99px;">
-                                    <span style="width: 6px; height: 6px; background: ${statusColor}; border-radius: 50%;"></span>
-                                    ${status}
-                                </span>
-                            ` : `
-                                <select class="input subject-status-select" data-student-id="${s.student_id}" style="width: 120px; height: 32px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; background: ${status === 'Present' ? '#f0fdf4' : '#fff1f2'}; border: none;">
-                                    <option value="Absent" ${status === 'Absent' ? 'selected' : ''}>Absent</option>
-                                    <option value="Present" ${status === 'Present' ? 'selected' : ''}>Present</option>
-                                </select>
-                            `}
-                        </td>
-                    </tr>
+                            <span class="glass-collapse-chevron" style="position: absolute; right: 0.75rem;"><i data-lucide="chevron-down"></i></span>
+                        </label>
+                        
+                        <div class="glass-collapse-content" style="border-top: 1px solid #f1f5f9; background: #f8fafc; border-radius: 0 0 16px 16px;">
+                            <div style="padding: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                                <div class="att-detail-item">
+                                    <label style="display: block; font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Clock In</label>
+                                    <div style="font-family: monospace; font-weight: 700; color: #1e293b; font-size: 1rem;">${signIn}</div>
+                                </div>
+                                ${currentTab === 'school' ? `
+                                <div class="att-detail-item">
+                                    <label style="display: block; font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Clock Out</label>
+                                    <div style="font-family: monospace; font-weight: 700; color: #10b981; font-size: 1rem;">${signOut}</div>
+                                </div>
+                                ` : `
+                                <div class="att-detail-item">
+                                    <label style="display: block; font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Period</label>
+                                    <div style="font-weight: 700; color: #2563eb; font-size: 0.9rem;">P ${document.getElementById('att-period').value}</div>
+                                </div>
+                                `}
+                                
+                                <div style="grid-column: 1 / -1; margin-top: 0.25rem;">
+                                    <label style="display: block; font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Manual Override</label>
+                                    ${currentTab === 'school' ? `
+                                        <div style="display: flex; gap: 0.4rem;">
+                                            <button class="btn att-status-btn ${status === 'Present' ? 'active' : ''}" style="flex: 1; height: 36px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: ${status === 'Present' ? '#10b981' : 'white'}; color: ${status === 'Present' ? 'white' : '#64748b'}; border: 1px solid ${status === 'Present' ? '#10b981' : '#e2e8f0'};" onclick="UI.updateAttendanceStatus('${s.student_id}', 'Present')">Present</button>
+                                            <button class="btn att-status-btn ${status === 'Late' ? 'active' : ''}" style="flex: 1; height: 36px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: ${status === 'Late' ? '#f59e0b' : 'white'}; color: ${status === 'Late' ? 'white' : '#64748b'}; border: 1px solid ${status === 'Late' ? '#f59e0b' : '#e2e8f0'};" onclick="UI.updateAttendanceStatus('${s.student_id}', 'Late')">Late</button>
+                                            <button class="btn att-status-btn ${status === 'Absent' ? 'active' : ''}" style="flex: 1; height: 36px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: ${status === 'Absent' ? '#ef4444' : 'white'}; color: ${status === 'Absent' ? 'white' : '#64748b'}; border: 1px solid ${status === 'Absent' ? '#ef4444' : '#e2e8f0'};" onclick="UI.updateAttendanceStatus('${s.student_id}', 'Absent')">Absent</button>
+                                        </div>
+                                    ` : `
+                                        <select class="input subject-status-select" data-student-id="${s.student_id}" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: white; border: 1px solid #e2e8f0; font-size: 0.8rem;">
+                                            <option value="Absent" ${status === 'Absent' ? 'selected' : ''}>Absent</option>
+                                            <option value="Present" ${status === 'Present' ? 'selected' : ''}>Present</option>
+                                        </select>
+                                    `}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 `;
             }).join('');
 
-            // Click to toggle collapsible fields on mobile
-            listBody.querySelectorAll('.attendance-row').forEach(row => {
-                row.addEventListener('click', (e) => {
-                    if (e.target.closest('select') || e.target.closest('button')) return;
-                    if (window.innerWidth <= 768) {
-                        const isExpanded = row.classList.contains('expanded');
-                        listBody.querySelectorAll('.attendance-row.expanded').forEach(r => r.classList.remove('expanded'));
-                        if (!isExpanded) row.classList.add('expanded');
-                        if (typeof lucide !== 'undefined') lucide.createIcons();
-                    }
-                });
-            });
+            // Logic for status buttons and other interactions will be handled by delegated events or direct onclick
 
             if (typeof lucide !== 'undefined') lucide.createIcons();
         };
@@ -3447,19 +3523,9 @@ export const UI = {
                 btn.style.borderBottom = '3px solid #2563eb';
 
                 currentTab = btn.dataset.tab;
-                if (currentTab === 'subject') {
-                    subjectContainer.style.display = 'block';
-                    subjectActions.style.display = 'block';
-                    periodContainer.style.display = 'block';
-                    thSignIn.textContent = 'Action';
-                    thSignOut.style.display = 'none';
-                } else {
-                    subjectContainer.style.display = 'none';
-                    subjectActions.style.display = 'none';
-                    periodContainer.style.display = 'none';
-                    thSignIn.textContent = 'Sign In';
-                    thSignOut.style.display = 'table-cell';
-                }
+                subjectContainer.style.display = currentTab === 'subject' ? 'block' : 'none';
+                subjectActions.style.display = currentTab === 'subject' ? 'block' : 'none';
+                periodContainer.style.display = currentTab === 'subject' ? 'block' : 'none';
                 refreshList();
             });
         });
@@ -5101,24 +5167,12 @@ export const UI = {
                         </div>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr; gap: 1.5rem; margin-bottom: 2rem;">
                         <div class="form-group">
-                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">1. TARGET STAFF MEMBERS (<span id="count-teachers">0</span>)</label>
-                            <div class="glass-collapse-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
-                                <input type="checkbox" id="toggle-bulk-teachers" class="glass-collapse-checkbox">
-                                <label for="toggle-bulk-teachers" class="glass-collapse-header" style="background: #f8fafc; padding: 1rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; min-height: 52px; display: flex;">
-                                    <span class="glass-collapse-title" style="font-size: 0.9rem; font-weight: 700;"><i data-lucide="user" style="width: 16px;"></i> Select Staff Members...</span>
-                                    <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
-                                </label>
-                                <div class="glass-collapse-content" style="max-height: 250px; overflow-y: auto; padding: 0.5rem;">
-                                    ${teachers.map(t => `
-                                        <label style="display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg">
-                                            <input type="checkbox" name="bulk-teachers" value="${t.id}" onchange="document.getElementById('count-teachers').textContent = document.querySelectorAll('input[name=bulk-teachers]:checked').length">
-                                            <span style="font-size: 0.9rem; font-weight: 700; color: #1e293b;">${t.full_name}</span>
-                                        </label>
-                                    `).join('')}
-                                </div>
-                            </div>
+                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">1. TARGET STAFF MEMBER</label>
+                            <select id="bulk-teachers-select" class="input" style="width: 100%; height: 52px; border-radius: 12px; background: #f8fafc; font-weight: 700;">
+                                <option value="">Select Teacher...</option>
+                                ${teachers.map(t => `<option value="${t.id}">${t.full_name}</option>`).join('')}
+                            </select>
                         </div>
 
                         <div class="form-group">
@@ -5133,14 +5187,14 @@ export const UI = {
                             <div class="glass-collapse-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
                                 <input type="checkbox" id="toggle-bulk-classes" class="glass-collapse-checkbox">
                                 <label for="toggle-bulk-classes" class="glass-collapse-header" style="background: #f8fafc; padding: 1rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; min-height: 52px; display: flex;">
-                                    <span class="glass-collapse-title" style="font-size: 0.9rem; font-weight: 700;"><i data-lucide="layers" style="width: 16px;"></i> Select Classes...</span>
+                                    <span class="glass-collapse-title" style="font-size: 0.9rem; font-weight: 700;"><i data-lucide="layers" style="width: 16px;"></i> Select Classes (Multi-select enabled)</span>
                                     <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                                 </label>
-                                <div class="glass-collapse-content" style="max-height: 250px; overflow-y: auto; padding: 0.5rem;">
+                                <div class="glass-collapse-content" style="max-height: 250px; overflow-y: auto; padding: 0.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
                                     ${classes.map(c => `
-                                        <label style="display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg" data-class-name="${c.name}">
-                                            <input type="checkbox" name="bulk-classes" value="${c.name}" onchange="document.getElementById('count-classes').textContent = document.querySelectorAll('input[name=bulk-classes]:checked').length">
-                                            <span style="font-size: 0.9rem; font-weight: 600; color: #334155;">${c.name}</span>
+                                        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.75rem; cursor: pointer; transition: background 0.2s; border-radius: 8px; background: #f8fafc; border: 1px solid #f1f5f9;" data-class-name="${c.name}">
+                                            <input type="checkbox" name="bulk-classes" value="${c.name}" style="width: 18px; height: 18px;" onchange="document.getElementById('count-classes').textContent = document.querySelectorAll('input[name=bulk-classes]:checked').length">
+                                            <span style="font-size: 0.85rem; font-weight: 700; color: #1e293b;">${c.name}</span>
                                         </label>
                                     `).join('')}
                                 </div>
@@ -5152,14 +5206,14 @@ export const UI = {
                             <div class="glass-collapse-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
                                 <input type="checkbox" id="toggle-bulk-subjects" class="glass-collapse-checkbox">
                                 <label for="toggle-bulk-subjects" class="glass-collapse-header" style="background: #f8fafc; padding: 1rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; min-height: 52px; display: flex;">
-                                    <span class="glass-collapse-title" style="font-size: 0.9rem; font-weight: 700;"><i data-lucide="book" style="width: 16px;"></i> Select Subjects...</span>
+                                    <span class="glass-collapse-title" style="font-size: 0.9rem; font-weight: 700;"><i data-lucide="book" style="width: 16px;"></i> Select Subjects (Multi-select enabled)</span>
                                     <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                                 </label>
-                                <div class="glass-collapse-content" style="max-height: 250px; overflow-y: auto; padding: 0.5rem;">
+                                <div class="glass-collapse-content" style="max-height: 300px; overflow-y: auto; padding: 0.5rem;">
                                     ${subjects.map(s => `
-                                        <label style="display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg">
-                                            <input type="checkbox" name="bulk-subjects" value="${s.id}" onchange="document.getElementById('count-subjects').textContent = document.querySelectorAll('input[name=bulk-subjects]:checked').length">
-                                            <span style="font-size: 0.9rem; font-weight: 600; color: #334155;">${s.name}</span>
+                                        <label style="display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px; margin-bottom: 2px;" class="hover-bg">
+                                            <input type="checkbox" name="bulk-subjects" value="${s.id}" style="width: 18px; height: 18px;" onchange="document.getElementById('count-subjects').textContent = document.querySelectorAll('input[name=bulk-subjects]:checked').length">
+                                            <span style="font-size: 0.9rem; font-weight: 700; color: #1e293b;">${s.name}</span>
                                         </label>
                                     `).join('')}
                                 </div>
@@ -5221,49 +5275,50 @@ export const UI = {
                                 const totalTasks = Object.values(teacherSubjects).flat().length;
 
                                 return `
-                                    <div class="mobile-collapse-card" style="margin-bottom: 1rem; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
-                                        <input type="checkbox" id="toggle-teacher-${tid}" style="display: none;" class="registry-toggle">
-                                        <label for="toggle-teacher-${tid}" style="display: flex; justify-content: space-between; align-items: center; padding: 1.25rem; background: #f8fafc; cursor: pointer; transition: background 0.2s;">
+                                    <div class="glass-collapse-card" style="margin-bottom: 1rem;">
+                                        <input type="checkbox" id="toggle-teacher-${tid}" class="glass-collapse-checkbox">
+                                        <label for="toggle-teacher-${tid}" class="glass-collapse-header" style="padding: 1.25rem;">
                                             <div style="display: flex; align-items: center; gap: 1rem;">
-                                                <div style="width: 40px; height: 40px; background: #eef2ff; color: #4338ca; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800;">
+                                                <div style="width: 44px; height: 44px; background: #eef2ff; color: #4338ca; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; border: 1px solid #dbeafe;">
                                                     ${teacher ? teacher.full_name.charAt(0) : '?'}
                                                 </div>
                                                 <div>
-                                                    <div style="font-weight: 800; color: #1e293b;">${teacher ? teacher.full_name : 'Unknown'}</div>
-                                                    <div style="font-size: 0.7rem; color: #64748b; font-weight: 600;">${totalTasks} Assigned Tasks</div>
+                                                    <div style="font-weight: 800; color: #1e293b; font-size: 1rem;">${teacher ? teacher.full_name : 'Unknown Staff'}</div>
+                                                    <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">${subjectNames.length} Subjects • ${totalTasks} Classes</div>
                                                 </div>
                                             </div>
-                                            <i data-lucide="chevron-down" class="chevron-icon" style="color: #94a3b8; transition: transform 0.3s;"></i>
+                                            <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                                         </label>
-                                        <div class="registry-content" style="display: none; padding: 0.5rem; background: white; border-top: 1px solid #f1f5f9;">
-                                            ${subjectNames.map(subName => {
-                                                const subAssignments = teacherSubjects[subName];
-                                                // Sort classes: JSS1, JSS2, JSS3, SSS1...
-                                                subAssignments.sort((a, b) => a.class_name.localeCompare(b.class_name, undefined, {numeric: true, sensitivity: 'base'}));
-                                                
-                                                return `
-                                                    <div style="margin-bottom: 1rem; padding: 0.75rem; background: #fcfdfe; border-radius: 12px; border: 1px solid #f1f5f9;">
-                                                        <div style="font-size: 0.75rem; font-weight: 800; color: #4338ca; text-transform: uppercase; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-                                                            <i data-lucide="book-open" style="width: 14px;"></i> ${subName}
-                                                        </div>
-                                                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                                                            ${subAssignments.map(a => `
-                                                                <div style="display: flex; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.25rem 0.5rem; gap: 0.5rem;">
-                                                                    <span style="font-weight: 700; color: #1e293b; font-size: 0.8rem;">${a.class_name}</span>
-                                                                    <div style="display: flex; gap: 0.25rem;">
-                                                                        <button class="btn btn-sm" style="color: #2563eb; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center;" onclick="UI.editAssignment('${a.id}')">
-                                                                            <i data-lucide="edit-3" style="width: 12px;"></i>
-                                                                        </button>
-                                                                        <button class="btn btn-sm" style="color: #ef4444; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center;" onclick="UI.deleteAssignment('${a.id}')">
-                                                                            <i data-lucide="trash-2" style="width: 12px;"></i>
-                                                                        </button>
+                                        <div class="glass-collapse-content" style="background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                                            <div style="padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                                                ${subjectNames.map(subName => {
+                                                    const subAssignments = teacherSubjects[subName];
+                                                    subAssignments.sort((a, b) => a.class_name.localeCompare(b.class_name, undefined, {numeric: true, sensitivity: 'base'}));
+                                                    
+                                                    return `
+                                                        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1rem; box-shadow: var(--shadow-sm);">
+                                                            <div style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem;">
+                                                                <i data-lucide="book-open" style="width: 14px; color: #4338ca;"></i> ${subName}
+                                                            </div>
+                                                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.5rem;">
+                                                                ${subAssignments.map(a => `
+                                                                    <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 0.5rem 0.75rem;">
+                                                                        <span style="font-weight: 800; color: #1e293b; font-size: 0.85rem;">${a.class_name}</span>
+                                                                        <div style="display: flex; gap: 0.25rem;">
+                                                                            <button class="btn-xs" style="background: white;" onclick="UI.editAssignment('${a.id}')">
+                                                                                <i data-lucide="edit-3" style="width: 12px;"></i>
+                                                                            </button>
+                                                                            <button class="btn-xs" style="background: white; color: #ef4444;" onclick="UI.deleteAssignment('${a.id}')">
+                                                                                <i data-lucide="trash-2" style="width: 12px;"></i>
+                                                                            </button>
+                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                            `).join('')}
+                                                                `).join('')}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                `;
-                                            }).join('')}
+                                                    `;
+                                                }).join('')}
+                                            </div>
                                         </div>
                                     </div>
                                 `;
@@ -5293,14 +5348,16 @@ export const UI = {
     },
 
     async deployWorkload() {
-        const checkedTeachers = Array.from(document.querySelectorAll('input[name=bulk-teachers]:checked')).map(i => i.value);
+        const teacherId = document.getElementById('bulk-teachers-select').value;
         const checkedClasses = Array.from(document.querySelectorAll('input[name=bulk-classes]:checked')).map(i => i.value);
         const checkedSubjects = Array.from(document.querySelectorAll('input[name=bulk-subjects]:checked')).map(i => i.value);
         const specialization = document.getElementById('bulk-specialization').value;
 
-        if (checkedTeachers.length === 0 || checkedClasses.length === 0 || checkedSubjects.length === 0) {
-            return Notifications.show('Please select at least one teacher, class, and subject title.', 'error');
+        if (!teacherId || checkedClasses.length === 0 || checkedSubjects.length === 0) {
+            return Notifications.show('Please select a teacher, at least one class, and at least one subject title.', 'error');
         }
+
+        const checkedTeachers = [teacherId]; // Standardize for loop below
 
         const btn = document.getElementById('btn-deploy-workload');
         btn.disabled = true;
@@ -5356,7 +5413,7 @@ export const UI = {
         if (!assignment) return;
 
         // Reset and populate
-        document.querySelectorAll('input[name=bulk-teachers]').forEach(i => i.checked = (i.value === assignment.teacher_id));
+        document.getElementById('bulk-teachers-select').value = assignment.teacher_id;
         document.querySelectorAll('input[name=bulk-classes]').forEach(i => i.checked = (i.value === assignment.class_name));
         document.querySelectorAll('input[name=bulk-subjects]').forEach(i => i.checked = (i.value === assignment.subject_id));
         document.getElementById('bulk-specialization').value = assignment.specialization || 'Common Subject';
