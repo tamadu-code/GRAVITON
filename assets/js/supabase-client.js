@@ -74,7 +74,7 @@ export async function syncToCloud() {
     } catch (e) { console.error('Migration error:', e); }
     // ----------------------------------------
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'settings'];
     let syncCount = 0;
 
     for (const table of tables) {
@@ -104,7 +104,8 @@ export async function syncToCloud() {
                             attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
                             attendance_records: ['id', 'student_id', 'date', 'status', 'check_in', 'check_out', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
                             timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
-                            notices: ['id', 'title', 'is_active', 'updated_at']
+                            notices: ['id', 'title', 'is_active', 'updated_at'],
+                            settings: ['id', 'key', 'value', 'updated_at']
 
                         };
 
@@ -154,7 +155,7 @@ export async function syncFromCloud(forceAll = false) {
     const client = getSupabase();
     if (!client) return;
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'settings'];
     
     // If forceAll is true, we look back to beginning of time
     const lastSyncTime = localStorage.getItem('last_sync_timestamp');

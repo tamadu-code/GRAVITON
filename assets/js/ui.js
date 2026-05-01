@@ -2561,7 +2561,12 @@ export const UI = {
 
             const activeSub = subjects.find(s => String(s.id) === String(subId));
             const targetStudents = students.filter(s => s.class_name && s.class_name.trim().toLowerCase() === cls.trim().toLowerCase());
-            const schoolName = "TAMADU HIGH SCHOOL"; 
+            const allSettings = await db.settings.toArray();
+            const settings = {};
+            allSettings.forEach(s => settings[s.key] = s.value);
+            
+            const schoolName = settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI';
+            const schoolLogo = settings.schoolLogo || '';
             const generatedDate = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
 
             let printHTML = `
@@ -2600,9 +2605,12 @@ export const UI = {
                             <thead>
                                 <tr>
                                     <th colspan="7" style="background:white !important; border:none; padding:0;">
-                                        <div class="header-row">
-                                            <div class="school-name">${schoolName}</div>
-                                            <div class="doc-title">CONTINUOUS ASSESSMENT SCORE SHEET</div>
+                                        <div class="header-row" style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
+                                            ${schoolLogo ? `<img src="${schoolLogo}" style="height: 60px; width: 60px; object-fit: contain; border-radius: 8px;">` : ''}
+                                            <div style="text-align: left;">
+                                                <div class="school-name" style="margin-bottom: 5px;">${schoolName}</div>
+                                                <div class="doc-title" style="margin: 0;">CONTINUOUS ASSESSMENT SCORE SHEET</div>
+                                            </div>
                                         </div>
                                         <table class="metadata-table">
                                             <tr>
