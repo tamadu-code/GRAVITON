@@ -654,6 +654,9 @@ export const UI = {
         const teacherId = this.currentUser.id;
         
         let streams = await db.classes.toArray();
+        // Alphabetical sort (Natural sort)
+        streams.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+        
         const studentCounts = await db.students.toArray();
         const formTeachers = await db.form_teachers.toArray().catch(() => []);
         const profiles = await db.profiles.toArray().catch(() => []);
@@ -676,86 +679,108 @@ export const UI = {
         };
 
         this.contentArea.innerHTML = `
-            <div class="view-container">
-                <div class="page-banner">
+            <div class="view-container" style="padding: 1.5rem; background: #f1f5f9;">
+                <div class="page-banner" style="margin-bottom: 2rem;">
                     <div class="banner-content">
-                        <h1 class="banner-title"><i data-lucide="layers"></i> School Manager</h1>
-                        <p class="banner-subtitle">Configure streams, monitor enrollment, and manage classroom assignments for the current session.</p>
+                        <h1 class="banner-title"><i data-lucide="layers"></i> Academic Streams</h1>
+                        <p class="banner-subtitle">Organize classes, monitor population density, and assign form masters.</p>
                     </div>
                     <div class="banner-stats">
                         <div class="banner-stat-item">
                             <span class="stat-value">${streams.length}</span>
-                            <span class="stat-label">Active Streams</span>
+                            <span class="stat-label">Streams</span>
                         </div>
                         <div class="banner-stat-item">
                             <span class="stat-value">${studentCounts.length}</span>
-                            <span class="stat-label">Total Enrollment</span>
+                            <span class="stat-label">Total Students</span>
                         </div>
                     </div>
                     ${!isTeacher ? `
-                    <button id="btn-add-stream" class="btn" style="background: white; color: #2563eb; font-weight: 700; border-radius: 16px; padding: 1rem 2rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
-                        <i data-lucide="plus-circle"></i> Add New Stream
+                    <button id="btn-add-stream" class="btn btn-primary" style="background: white; color: #2563eb; font-weight: 700; border-radius: 12px; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; box-shadow: var(--shadow-md);">
+                        <i data-lucide="plus-circle" style="width:18px;"></i> Add New
                     </button>
                     ` : ''}
                 </div>
 
-                <div class="actions-bar" style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0;">
-                    <div style="position: relative; flex: 1; max-width: 500px;">
-                        <i data-lucide="search" style="position: absolute; left: 1.25rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 20px;"></i>
-                        <input type="text" placeholder="Search for a specific stream or level..." class="input" style="padding-left: 3.5rem; border-radius: 14px; border: 1px solid #f1f5f9; background: #f8fafc; height: 52px;">
-                    </div>
-                    <div style="display: flex; gap: 1rem;">
-                        <button class="btn btn-secondary" style="border-radius: 12px; height: 52px; padding: 0 1.5rem;"><i data-lucide="filter"></i> Filter</button>
-                        <button class="btn btn-secondary" style="border-radius: 12px; height: 52px; padding: 0 1.5rem;"><i data-lucide="download"></i> Export</button>
-                    </div>
-                </div>
-
-                <div class="stream-grid">
-                    ${streams.map((s, index) => `
-                        <div class="stream-card">
-                            <div class="stream-card-header">
-                                <div class="stream-card-title"><i data-lucide="graduation-cap"></i> ${s.name}</div>
-                                <span class="stream-id-badge" style="background: #f1f5f9; color: #64748b; font-weight: 700; padding: 4px 10px; border-radius: 8px;">STRM ${index + 1}</span>
-                            </div>
-                            <div class="stream-card-body" style="padding: 2rem;">
-                                <div class="enrollment-stat" style="margin-bottom: 1.5rem;">
-                                    <div class="enroll-icon" style="width: 64px; height: 64px; background: #eff6ff; color: #2563eb; border-radius: 18px;">
-                                        <i data-lucide="users" style="width: 32px; height: 32px;"></i>
+                <div class="stream-list" style="display: flex; flex-direction: column; gap: 1rem;">
+                    ${streams.map((s, index) => {
+                        const enrollment = getEnrollment(s.name);
+                        const capacity = 40;
+                        const pct = Math.min(100, (enrollment / capacity) * 100);
+                        const statusColor = enrollment >= capacity ? '#ef4444' : '#2563eb';
+                        
+                        return `
+                        <div class="glass-collapse-card" style="margin: 0; border: 1px solid #e2e8f0; background: white;">
+                            <input type="checkbox" id="toggle-stream-${index}" class="glass-collapse-checkbox">
+                            <label for="toggle-stream-${index}" class="glass-collapse-header" style="padding: 1.25rem 1.5rem;">
+                                <div style="display: flex; align-items: center; gap: 1.25rem;">
+                                    <div style="width: 48px; height: 48px; background: #eff6ff; color: #2563eb; border-radius: 14px; display: flex; align-items: center; justify-content: center;">
+                                        <i data-lucide="graduation-cap" style="width:24px; height:24px;"></i>
                                     </div>
-                                    <div class="enroll-info" style="flex: 1;">
-                                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                                            <span class="count" style="font-size: 2rem;">${getEnrollment(s.name)}</span>
-                                            <span style="color: #94a3b8; font-weight: 600; font-size: 0.8rem;">/ 40 Capacity</span>
-                                        </div>
-                                        <div style="width: 100%; background: #f1f5f9; height: 6px; border-radius: 3px; margin-top: 0.5rem; overflow: hidden;">
-                                            <div style="height: 100%; width: ${Math.min(100, (getEnrollment(s.name)/40)*100)}%; background: ${(getEnrollment(s.name) >= 40) ? '#ef4444' : '#2563eb'}; border-radius: 3px;"></div>
+                                    <div>
+                                        <h3 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 1.2rem;">${s.name}</h3>
+                                        <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.25rem;">
+                                            <span style="font-size: 0.7rem; color: #64748b; font-weight: 700; text-transform: uppercase; background:#f1f5f9; padding:2px 6px; border-radius:4px;">STRM ${index + 1}</span>
+                                            <span style="font-size: 0.7rem; color: #059669; font-weight: 700; text-transform: uppercase; background:#ecfdf5; padding:2px 6px; border-radius:4px;">${s.level || 'Unspecified'}</span>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="stream-meta" style="margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="level-tag" style="background: #ecfdf5; color: #059669; padding: 6px 12px; border-radius: 10px; font-weight: 600; font-size: 0.8rem;">
-                                            <i data-lucide="shield-check" style="width: 14px;"></i> ${s.level} Level
-                                        </span>
-                                        <span class="status-tag" style="display: flex; align-items: center; gap: 0.5rem; color: #10b981; font-weight: 700; font-size: 0.8rem;">
-                                            <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span> ONLINE
-                                        </span>
+                                <div style="display: flex; align-items: center; gap: 2rem;">
+                                    <div style="text-align: right;">
+                                        <div style="font-size: 1.25rem; font-weight: 800; color: #1e293b;">${enrollment}</div>
+                                        <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Enrollment</div>
                                     </div>
-                                    <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #475569; background: #f8fafc; padding: 0.75rem; border-radius: 12px; border: 1px solid #f1f5f9;">
-                                        <i data-lucide="user" style="width: 16px; color: #94a3b8;"></i> 
-                                        <span style="font-weight: 600; color: #94a3b8;">Form Master:</span> 
-                                        <span style="font-weight: 700;">${getFormMasterName(s.name)}</span>
+                                    <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                                </div>
+                            </label>
+                            <div class="glass-collapse-content" style="padding: 2rem; background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                                <div style="display: grid; grid-template-columns: 1fr 300px; gap: 2.5rem;">
+                                    <div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                                            <span style="font-weight: 700; color: #475569; font-size: 0.9rem;">Population Density</span>
+                                            <span style="font-weight: 800; color: ${statusColor}; font-size: 0.9rem;">${enrollment} / ${capacity} Students</span>
+                                        </div>
+                                        <div style="width: 100%; background: #e2e8f0; height: 10px; border-radius: 5px; overflow: hidden; margin-bottom: 2rem;">
+                                            <div style="height: 100%; width: ${pct}%; background: ${statusColor}; transition: width 0.6s ease;"></div>
+                                        </div>
+                                        
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                                            <div style="background: white; padding: 1.25rem; border-radius: 16px; border: 1px solid #e2e8f0;">
+                                                <div style="display:flex; align-items:center; gap:0.5rem; color:#64748b; font-size:0.75rem; font-weight:700; text-transform:uppercase; margin-bottom:0.75rem;">
+                                                    <i data-lucide="user-check" style="width:14px;"></i> Form Master
+                                                </div>
+                                                <div style="font-weight: 800; color: #1e293b;">${getFormMasterName(s.name)}</div>
+                                            </div>
+                                            <div style="background: white; padding: 1.25rem; border-radius: 16px; border: 1px solid #e2e8f0;">
+                                                <div style="display:flex; align-items:center; gap:0.5rem; color:#64748b; font-size:0.75rem; font-weight:700; text-transform:uppercase; margin-bottom:0.75rem;">
+                                                    <i data-lucide="radio" style="width:14px;"></i> Stream Status
+                                                </div>
+                                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #10b981; font-weight: 800;">
+                                                    <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span> ONLINE
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="display: flex; flex-direction: column; justify-content: center; gap: 0.75rem;">
+                                        ${!isTeacher ? `
+                                        <button class="btn btn-secondary w-full rename-class-btn" data-id="${s.id}" data-name="${s.name}" style="height: 52px; border-radius: 14px; font-weight: 700; background: white; border: 1.5px solid #e2e8f0; display:flex; align-items:center; justify-content:center; gap:0.75rem; color:#475569;">
+                                            <i data-lucide="edit-3" style="width:18px;"></i> Modify Identity
+                                        </button>
+                                        <button class="btn btn-secondary delete-class-btn" data-id="${s.id}" data-name="${s.name}" data-count="${enrollment}" style="height: 52px; border-radius: 14px; color: #ef4444; background: #fff1f2; border: 1.5px solid #fee2e2; font-weight: 700; display:flex; align-items:center; justify-content:center; gap:0.75rem;">
+                                            <i data-lucide="trash-2" style="width:18px;"></i> Decommission
+                                        </button>
+                                        ` : `
+                                        <button class="btn btn-primary w-full" onclick="UI.renderView('attendance')" style="height: 52px; border-radius: 14px; font-weight: 700; display:flex; align-items:center; justify-content:center; gap:0.75rem;">
+                                            <i data-lucide="check-square" style="width:18px;"></i> Take Attendance
+                                        </button>
+                                        `}
                                     </div>
                                 </div>
-                                 ${!isTeacher ? `
-                                 <div style="display: flex; gap: 1rem;">
-                                     <button class="btn btn-secondary w-full rename-class-btn" data-id="${s.id}" data-name="${s.name}" style="height: 48px; border-radius: 12px; font-weight: 600; background: #f8fafc;"><i data-lucide="edit-3"></i> Rename</button>
-                                     <button class="btn btn-secondary delete-class-btn" data-id="${s.id}" data-name="${s.name}" data-count="${getEnrollment(s.name)}" style="height: 48px; border-radius: 12px; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i></button>
-                                 </div>
-                                 ` : ''}
                             </div>
                         </div>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </div>
             </div>
         `;
