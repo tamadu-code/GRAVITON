@@ -3800,3 +3800,42 @@ label {
         margin: 0 !important;
     }
 }
+
+/* ── Nested Registry Grouping ── */
+.registry-content div[style*="background: #fcfdfe"] {
+    transition: all 0.2s ease;
+}
+
+.registry-content div[style*="background: #fcfdfe"]:hover {
+    border-color: #2563eb !important;
+    background: #f8fafc !important;
+}
+
+/* ── Form Checkbox Lists ── */
+.glass-collapse-card .glass-collapse-content label:hover {
+    background: #eff6ff !important;
+}
+
+.glass-collapse-card .glass-collapse-checkbox:checked + .glass-collapse-header {
+    background: #eff6ff !important;
+    border-bottom-color: #dbeafe !important;
+}
+
+/* Ensure date picker inputs feel premium */
+input[type="date"].console-input {
+    cursor: pointer;
+    position: relative;
+}
+
+input[type="date"].console-input::-webkit-calendar-picker-indicator {
+    background: transparent;
+    bottom: 0;
+    color: transparent;
+    cursor: pointer;
+    height: auto;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: auto;
+}

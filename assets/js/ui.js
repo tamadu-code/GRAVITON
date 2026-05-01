@@ -3678,13 +3678,13 @@ export const UI = {
                             <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="clock"></i> Term Closure</div>
                                 <div class="console-input-wrapper">
-                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;">
+                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" readonly onclick="this.showPicker()" onfocus="this.showPicker()">
                                 </div>
                             </div>
                             <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="calendar-plus"></i> Next Term Begins</div>
                                 <div class="console-input-wrapper">
-                                    <input type="date" id="report-next-term" class="console-input" style="font-size: 0.85rem;">
+                                    <input type="date" id="report-next-term" class="console-input" style="font-size: 0.85rem;" readonly onclick="this.showPicker()" onfocus="this.showPicker()">
                                 </div>
                             </div>
                             <button id="btn-sync-generate" class="btn-sync-generate" style="width: 100%; border-radius: 12px; height: 50px;">
@@ -5097,41 +5097,72 @@ export const UI = {
                         </div>
                         <div>
                             <h3 style="font-weight: 800; color: #1e293b; font-size: 1.25rem;">Bulk Faculty Workload</h3>
-                            <p style="color: #64748b; font-size: 0.85rem;">Select a teacher, target class, and subject title for high-speed deployment.</p>
+                            <p style="color: #64748b; font-size: 0.85rem;">Select multiple teachers, classes, and subjects for high-speed deployment.</p>
                         </div>
                     </div>
 
                     <div style="display: grid; grid-template-columns: 1fr; gap: 1.5rem; margin-bottom: 2rem;">
                         <div class="form-group">
-                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">1. TARGET STAFF MEMBER</label>
-                            <div style="position: relative;">
-                                <i data-lucide="user" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #4338ca; width: 18px;"></i>
-                                <select id="bulk-teacher-select" class="input" style="padding-left: 2.75rem; width: 100%; border-radius: 12px; height: 52px; background: #f8fafc; border: 1px solid #e2e8f0;">
-                                    <option value="">Select Staff...</option>
-                                    ${teachers.map(t => `<option value="${t.id}">${t.full_name}</option>`).join('')}
-                                </select>
+                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">1. TARGET STAFF MEMBERS (<span id="count-teachers">0</span>)</label>
+                            <div class="glass-collapse-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+                                <input type="checkbox" id="toggle-bulk-teachers" class="glass-collapse-checkbox">
+                                <label for="toggle-bulk-teachers" class="glass-collapse-header" style="background: #f8fafc; padding: 1rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; min-height: 52px; display: flex;">
+                                    <span class="glass-collapse-title" style="font-size: 0.9rem; font-weight: 700;"><i data-lucide="user" style="width: 16px;"></i> Select Staff Members...</span>
+                                    <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                                </label>
+                                <div class="glass-collapse-content" style="max-height: 250px; overflow-y: auto; padding: 0.5rem;">
+                                    ${teachers.map(t => `
+                                        <label style="display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg">
+                                            <input type="checkbox" name="bulk-teachers" value="${t.id}" onchange="document.getElementById('count-teachers').textContent = document.querySelectorAll('input[name=bulk-teachers]:checked').length">
+                                            <span style="font-size: 0.9rem; font-weight: 700; color: #1e293b;">${t.full_name}</span>
+                                        </label>
+                                    `).join('')}
+                                </div>
                             </div>
                         </div>
 
                         <div class="form-group">
-                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">2. SELECT DEPLOYMENT CLASS</label>
-                            <div style="position: relative;">
-                                <i data-lucide="layers" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #4338ca; width: 18px;"></i>
-                                <select id="bulk-class-select" class="input" style="padding-left: 2.75rem; width: 100%; border-radius: 12px; height: 52px; background: #f8fafc; border: 1px solid #e2e8f0;">
-                                    <option value="">Select Class...</option>
-                                    ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-                                </select>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; display: block; margin: 0;">2. SELECT DEPLOYMENT CLASSES (<span id="count-classes">0</span>)</label>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn-xs" onclick="UI.bulkSelectClasses('all')">ALL</button>
+                                    <button class="btn-xs" onclick="UI.bulkSelectClasses('jss')">JSS</button>
+                                    <button class="btn-xs" onclick="UI.bulkSelectClasses('sss')">SSS</button>
+                                </div>
+                            </div>
+                            <div class="glass-collapse-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+                                <input type="checkbox" id="toggle-bulk-classes" class="glass-collapse-checkbox">
+                                <label for="toggle-bulk-classes" class="glass-collapse-header" style="background: #f8fafc; padding: 1rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; min-height: 52px; display: flex;">
+                                    <span class="glass-collapse-title" style="font-size: 0.9rem; font-weight: 700;"><i data-lucide="layers" style="width: 16px;"></i> Select Classes...</span>
+                                    <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                                </label>
+                                <div class="glass-collapse-content" style="max-height: 250px; overflow-y: auto; padding: 0.5rem;">
+                                    ${classes.map(c => `
+                                        <label style="display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg" data-class-name="${c.name}">
+                                            <input type="checkbox" name="bulk-classes" value="${c.name}" onchange="document.getElementById('count-classes').textContent = document.querySelectorAll('input[name=bulk-classes]:checked').length">
+                                            <span style="font-size: 0.9rem; font-weight: 600; color: #334155;">${c.name}</span>
+                                        </label>
+                                    `).join('')}
+                                </div>
                             </div>
                         </div>
 
                         <div class="form-group">
-                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">3. SELECT SUBJECT TITLE</label>
-                            <div style="position: relative;">
-                                <i data-lucide="book" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #4338ca; width: 18px;"></i>
-                                <select id="bulk-subject-select" class="input" style="padding-left: 2.75rem; width: 100%; border-radius: 12px; height: 52px; background: #f8fafc; border: 1px solid #e2e8f0;">
-                                    <option value="">Select Subject...</option>
-                                    ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-                                </select>
+                            <label style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; display: block;">3. SELECT SUBJECT TITLES (<span id="count-subjects">0</span>)</label>
+                            <div class="glass-collapse-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+                                <input type="checkbox" id="toggle-bulk-subjects" class="glass-collapse-checkbox">
+                                <label for="toggle-bulk-subjects" class="glass-collapse-header" style="background: #f8fafc; padding: 1rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; min-height: 52px; display: flex;">
+                                    <span class="glass-collapse-title" style="font-size: 0.9rem; font-weight: 700;"><i data-lucide="book" style="width: 16px;"></i> Select Subjects...</span>
+                                    <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                                </label>
+                                <div class="glass-collapse-content" style="max-height: 250px; overflow-y: auto; padding: 0.5rem;">
+                                    ${subjects.map(s => `
+                                        <label style="display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; cursor: pointer; transition: background 0.2s; border-radius: 8px;" class="hover-bg">
+                                            <input type="checkbox" name="bulk-subjects" value="${s.id}" onchange="document.getElementById('count-subjects').textContent = document.querySelectorAll('input[name=bulk-subjects]:checked').length">
+                                            <span style="font-size: 0.9rem; font-weight: 600; color: #334155;">${s.name}</span>
+                                        </label>
+                                    `).join('')}
+                                </div>
                             </div>
                         </div>
 
@@ -5167,18 +5198,28 @@ export const UI = {
                     <div class="registry-list-container">
                         ${(() => {
                             // Group assignments by teacher
-                            const grouped = {};
+                            const groupedByTeacher = {};
                             assignments.forEach(a => {
-                                if (!grouped[a.teacher_id]) grouped[a.teacher_id] = [];
-                                grouped[a.teacher_id].push(a);
+                                if (!groupedByTeacher[a.teacher_id]) groupedByTeacher[a.teacher_id] = {};
+                                
+                                const subject = subjects.find(s => s.id === a.subject_id);
+                                const subjectName = subject ? subject.name : 'Unknown Subject';
+                                
+                                if (!groupedByTeacher[a.teacher_id][subjectName]) {
+                                    groupedByTeacher[a.teacher_id][subjectName] = [];
+                                }
+                                groupedByTeacher[a.teacher_id][subjectName].push(a);
                             });
 
-                            const teacherIds = Object.keys(grouped);
+                            const teacherIds = Object.keys(groupedByTeacher);
                             if (teacherIds.length === 0) return '<div class="text-center p-4">Waiting for faculty deployments...</div>';
 
                             return teacherIds.map(tid => {
                                 const teacher = profiles.find(p => p.id === tid);
-                                const teacherAssignments = grouped[tid];
+                                const teacherSubjects = groupedByTeacher[tid];
+                                const subjectNames = Object.keys(teacherSubjects).sort();
+                                const totalTasks = Object.values(teacherSubjects).flat().length;
+
                                 return `
                                     <div class="mobile-collapse-card" style="margin-bottom: 1rem; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
                                         <input type="checkbox" id="toggle-teacher-${tid}" style="display: none;" class="registry-toggle">
@@ -5189,32 +5230,36 @@ export const UI = {
                                                 </div>
                                                 <div>
                                                     <div style="font-weight: 800; color: #1e293b;">${teacher ? teacher.full_name : 'Unknown'}</div>
-                                                    <div style="font-size: 0.7rem; color: #64748b; font-weight: 600;">${teacherAssignments.length} Assigned Tasks</div>
+                                                    <div style="font-size: 0.7rem; color: #64748b; font-weight: 600;">${totalTasks} Assigned Tasks</div>
                                                 </div>
                                             </div>
                                             <i data-lucide="chevron-down" class="chevron-icon" style="color: #94a3b8; transition: transform 0.3s;"></i>
                                         </label>
-                                        <div class="registry-content" style="display: none; padding: 0; background: white; border-top: 1px solid #f1f5f9;">
-                                            ${teacherAssignments.map(a => {
-                                                const subject = subjects.find(s => s.id === a.subject_id);
+                                        <div class="registry-content" style="display: none; padding: 0.5rem; background: white; border-top: 1px solid #f1f5f9;">
+                                            ${subjectNames.map(subName => {
+                                                const subAssignments = teacherSubjects[subName];
+                                                // Sort classes: JSS1, JSS2, JSS3, SSS1...
+                                                subAssignments.sort((a, b) => a.class_name.localeCompare(b.class_name, undefined, {numeric: true, sensitivity: 'base'}));
+                                                
                                                 return `
-                                                    <div style="padding: 1rem; border-bottom: 1px solid #f8fafc; display: flex; justify-content: space-between; align-items: center;">
-                                                        <div style="flex: 1;">
-                                                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-                                                                <span class="badge" style="background: #eef2ff; color: #4338ca; font-size: 0.65rem;">${a.class_name}</span>
-                                                                <span style="font-weight: 700; color: #1e293b; font-size: 0.9rem;">${subject ? subject.name : 'N/A'}</span>
-                                                            </div>
-                                                            <div style="font-size: 0.7rem; color: #10b981; font-weight: 800; text-transform: uppercase;">
-                                                                <i data-lucide="check-circle" style="width: 10px; height: 10px; display: inline-block; vertical-align: middle;"></i> ${a.specialization || 'Common'}
-                                                            </div>
+                                                    <div style="margin-bottom: 1rem; padding: 0.75rem; background: #fcfdfe; border-radius: 12px; border: 1px solid #f1f5f9;">
+                                                        <div style="font-size: 0.75rem; font-weight: 800; color: #4338ca; text-transform: uppercase; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                                                            <i data-lucide="book-open" style="width: 14px;"></i> ${subName}
                                                         </div>
-                                                        <div style="display: flex; gap: 0.5rem;">
-                                                            <button class="btn btn-sm" style="color: #2563eb; background: #eff6ff; border-radius: 8px; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center;" onclick="UI.editAssignment('${a.id}')">
-                                                                <i data-lucide="edit-3" style="width: 16px;"></i>
-                                                            </button>
-                                                            <button class="btn btn-sm" style="color: #ef4444; background: #fef2f2; border-radius: 8px; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center;" onclick="UI.deleteAssignment('${a.id}')">
-                                                                <i data-lucide="trash-2" style="width: 16px;"></i>
-                                                            </button>
+                                                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                                                            ${subAssignments.map(a => `
+                                                                <div style="display: flex; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.25rem 0.5rem; gap: 0.5rem;">
+                                                                    <span style="font-weight: 700; color: #1e293b; font-size: 0.8rem;">${a.class_name}</span>
+                                                                    <div style="display: flex; gap: 0.25rem;">
+                                                                        <button class="btn btn-sm" style="color: #2563eb; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center;" onclick="UI.editAssignment('${a.id}')">
+                                                                            <i data-lucide="edit-3" style="width: 12px;"></i>
+                                                                        </button>
+                                                                        <button class="btn btn-sm" style="color: #ef4444; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center;" onclick="UI.deleteAssignment('${a.id}')">
+                                                                            <i data-lucide="trash-2" style="width: 12px;"></i>
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            `).join('')}
                                                         </div>
                                                     </div>
                                                 `;
@@ -5248,13 +5293,13 @@ export const UI = {
     },
 
     async deployWorkload() {
-        const teacherId = document.getElementById('bulk-teacher-select').value;
-        const className = document.getElementById('bulk-class-select').value;
-        const subjectId = document.getElementById('bulk-subject-select').value;
+        const checkedTeachers = Array.from(document.querySelectorAll('input[name=bulk-teachers]:checked')).map(i => i.value);
+        const checkedClasses = Array.from(document.querySelectorAll('input[name=bulk-classes]:checked')).map(i => i.value);
+        const checkedSubjects = Array.from(document.querySelectorAll('input[name=bulk-subjects]:checked')).map(i => i.value);
         const specialization = document.getElementById('bulk-specialization').value;
 
-        if (!teacherId || !className || !subjectId) {
-            return Notifications.show('Please select a teacher, class, and subject title.', 'error');
+        if (checkedTeachers.length === 0 || checkedClasses.length === 0 || checkedSubjects.length === 0) {
+            return Notifications.show('Please select at least one teacher, class, and subject title.', 'error');
         }
 
         const btn = document.getElementById('btn-deploy-workload');
@@ -5263,30 +5308,37 @@ export const UI = {
 
         try {
             const allAssignments = await db.subject_assignments.toArray();
-            
-            const existing = allAssignments.find(a => 
-                a.teacher_id === teacherId && 
-                a.subject_id === subjectId && 
-                a.class_name === className
-            );
-            
-            if (!existing) {
-                await db.subject_assignments.add(prepareForSync({
-                    id: `ASG${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                    teacher_id: teacherId,
-                    subject_id: subjectId,
-                    class_name: className,
-                    specialization: specialization
-                }));
-                Notifications.show(`Workload deployed successfully!`, 'success');
-            } else {
-                // If exists, update specialization
-                await db.subject_assignments.update(existing.id, prepareForSync({
-                    specialization: specialization
-                }));
-                Notifications.show(`Deployment updated.`, 'success');
+            let addedCount = 0;
+            let updatedCount = 0;
+
+            for (const tId of checkedTeachers) {
+                for (const className of checkedClasses) {
+                    for (const subId of checkedSubjects) {
+                        const existing = allAssignments.find(a => 
+                            a.teacher_id === tId && 
+                            a.subject_id === subId && 
+                            a.class_name === className
+                        );
+                        
+                        if (!existing) {
+                            await db.subject_assignments.add(prepareForSync({
+                                id: `ASG${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                                teacher_id: tId,
+                                subject_id: subId,
+                                class_name: className,
+                                specialization: specialization
+                            }));
+                            addedCount++;
+                        } else {
+                            await db.subject_assignments.update(existing.id, prepareForSync({
+                                specialization: specialization
+                            }));
+                            updatedCount++;
+                        }
+                    }
+                }
             }
-            
+            Notifications.show(`Deployment complete! ${addedCount} new, ${updatedCount} updated.`, 'success');
             this.renderLessons();
             syncToCloud();
         } catch (e) {
@@ -5303,15 +5355,36 @@ export const UI = {
         const assignment = await db.subject_assignments.get(id);
         if (!assignment) return;
 
-        // Populate the form
-        document.getElementById('bulk-teacher-select').value = assignment.teacher_id;
-        document.getElementById('bulk-class-select').value = assignment.class_name;
-        document.getElementById('bulk-subject-select').value = assignment.subject_id;
+        // Reset and populate
+        document.querySelectorAll('input[name=bulk-teachers]').forEach(i => i.checked = (i.value === assignment.teacher_id));
+        document.querySelectorAll('input[name=bulk-classes]').forEach(i => i.checked = (i.value === assignment.class_name));
+        document.querySelectorAll('input[name=bulk-subjects]').forEach(i => i.checked = (i.value === assignment.subject_id));
         document.getElementById('bulk-specialization').value = assignment.specialization || 'Common Subject';
 
+        // Update counts
+        document.getElementById('count-teachers').textContent = '1';
+        document.getElementById('count-classes').textContent = '1';
+        document.getElementById('count-subjects').textContent = '1';
+
+        // Expand if collapsed
+        document.getElementById('toggle-bulk-teachers').checked = true;
+        document.getElementById('toggle-bulk-classes').checked = true;
+        document.getElementById('toggle-bulk-subjects').checked = true;
+
         // Scroll to form
-        document.getElementById('bulk-teacher-select').scrollIntoView({ behavior: 'smooth' });
-        Notifications.show('Assignment data loaded into form for editing.', 'info');
+        document.getElementById('toggle-bulk-teachers').scrollIntoView({ behavior: 'smooth' });
+        Notifications.show('Assignment data loaded into form.', 'info');
+    },
+
+    bulkSelectClasses(type) {
+        const checkboxes = document.querySelectorAll('input[name=bulk-classes]');
+        checkboxes.forEach(cb => {
+            const className = cb.value.toLowerCase();
+            if (type === 'all') cb.checked = true;
+            else if (type === 'jss') cb.checked = className.startsWith('jss');
+            else if (type === 'sss') cb.checked = className.startsWith('sss');
+        });
+        document.getElementById('count-classes').textContent = document.querySelectorAll('input[name=bulk-classes]:checked').length;
     },
 
     async deleteAssignment(id) {
