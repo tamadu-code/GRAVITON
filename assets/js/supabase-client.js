@@ -118,8 +118,24 @@ export async function syncToCloud() {
                         if (record.subject_id && !validSubjectIds.has(record.subject_id)) {
                             // Attempt to rescue the record by mapping the old string name to the new UUID
                             const oldNameKey = record.subject_id.toLowerCase().trim();
-                            if (window._subjectNameMap && window._subjectNameMap.has(oldNameKey)) {
-                                const newCorrectId = window._subjectNameMap.get(oldNameKey);
+                            let newCorrectId = window._subjectNameMap && window._subjectNameMap.get(oldNameKey);
+                            
+                            // Fuzzy Fallback
+                            if (!newCorrectId && window._subjectNameMap) {
+                                const oldAlpha = oldNameKey.replace(/[^a-z0-9]/g, '');
+                                for (const [subjName, subjId] of window._subjectNameMap.entries()) {
+                                    const subjAlpha = subjName.replace(/[^a-z0-9]/g, '');
+                                    // Match if they are identical alphanumerically, or if one is a significant substring of the other (>5 chars)
+                                    if (subjAlpha === oldAlpha || 
+                                       (oldAlpha.length > 5 && subjAlpha.includes(oldAlpha)) || 
+                                       (subjAlpha.length > 5 && oldAlpha.includes(subjAlpha))) {
+                                        newCorrectId = subjId;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (newCorrectId) {
                                 console.log(`[Auto-Migration] Rescued ${table} record ${record.id}: Mapped "${record.subject_id}" to ${newCorrectId}`);
                                 record.subject_id = newCorrectId;
                                 record.is_synced = 0;
