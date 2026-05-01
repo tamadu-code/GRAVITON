@@ -1407,7 +1407,7 @@ export const UI = {
                                 <div style="font-size: 0.85rem; color: #1e293b; font-weight: 600;">${student.address || 'No address provided'}</div>
                             </div>
                             <div style="display: flex; gap: 0.5rem;">
-                                <button class="btn btn-secondary" onclick="UI.renderStudentDetail('${student.student_id}')" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 44px; background: #2563eb; color: white; border: none; font-weight: 700;">
+                                <button class="btn btn-secondary view-full-profile-btn" data-id="${student.student_id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 44px; background: #2563eb; color: white; border: none; font-weight: 700;">
                                     <i data-lucide="user" style="width: 14px;"></i> View Full Profile
                                 </button>
                                 <button class="btn btn-secondary mobile-edit-std-btn" data-id="${student.student_id}" style="border-radius: 10px; font-size: 0.75rem; height: 44px; font-weight: 700; width: 44px; display: flex; align-items: center; justify-content: center; padding: 0;">
@@ -1418,6 +1418,15 @@ export const UI = {
                         if (typeof lucide !== 'undefined') lucide.createIcons();
                         
                         const editBtn = detailArea.querySelector('.mobile-edit-std-btn');
+                        const viewProfileBtn = detailArea.querySelector('.view-full-profile-btn');
+
+                        if (viewProfileBtn) {
+                            viewProfileBtn.addEventListener('click', async (btnEv) => {
+                                btnEv.stopPropagation();
+                                await this.renderStudentDetail(student.student_id);
+                            });
+                        }
+
                         if (editBtn) {
                             editBtn.addEventListener('click', async (btnEv) => {
                                 btnEv.stopPropagation();
@@ -2888,37 +2897,69 @@ export const UI = {
                 });
             } else if (tab === 'subjects') {
                 container.innerHTML = `
-                    <table class="data-table">
-                        <thead><tr><th>Course Name</th><th>Type</th><th>Credits</th><th>Action</th></tr></thead>
-                        <tbody>${subjects.map(s => `<tr>
-                            <td style="font-weight:700; color:var(--text-primary); font-size:1rem;">${s.name}</td>
-                            <td style="color:var(--text-secondary);">${s.type}</td>
-                            <td>${s.credits}</td>
-                            <td>
-                                <div style="display:flex; gap:1rem;">
-                                    <i data-lucide="edit-2" class="edit-subject" data-id="${s.id}" style="color:var(--accent-primary); cursor:pointer; width:18px;"></i>
-                                    <i data-lucide="trash-2" class="delete-sub" data-id="${s.id}" style="color:var(--accent-danger); cursor:pointer; width:18px;"></i>
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${subjects.map(s => `
+                            <div class="glass-collapse-card">
+                                <input type="checkbox" id="toggle-sub-${s.id}" class="glass-collapse-checkbox">
+                                <label for="toggle-sub-${s.id}" class="glass-collapse-header" style="padding: 1rem;">
+                                    <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1;">
+                                        <div style="width: 40px; height: 40px; background: #f0fdf4; color: #16a34a; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                                            <i data-lucide="book" style="width: 18px;"></i>
+                                        </div>
+                                        <div>
+                                            <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem;">${s.name}</div>
+                                            <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">${s.type} • ${s.credits} Credits</div>
+                                        </div>
+                                    </div>
+                                    <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                                </label>
+                                <div class="glass-collapse-content" style="background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                                    <div style="padding: 1rem; display: flex; gap: 0.75rem;">
+                                        <button class="btn btn-secondary edit-subject" data-id="${s.id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 40px;">
+                                            <i data-lucide="edit-2"></i> Edit Course
+                                        </button>
+                                        <button class="btn btn-danger delete-sub" data-id="${s.id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 40px;">
+                                            <i data-lucide="trash-2"></i> Delete
+                                        </button>
+                                    </div>
                                 </div>
-                            </td>
-                        </tr>`).join('')}</tbody>
-                    </table>
+                            </div>
+                        `).join('')}
+                    </div>
                 `;
             } else if (tab === 'assignments') {
                 const sortedAssignments = [...assignments].sort((a,b) => (a.class_name || '').localeCompare(b.class_name || ''));
                 container.innerHTML = `
-                    <table class="data-table">
-                        <thead><tr><th>Stream</th><th>Course</th><th>Teacher</th><th>Action</th></tr></thead>
-                        <tbody>${sortedAssignments.map(a => {
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${sortedAssignments.map(a => {
                             const sub = subjects.find(s => s.id === a.subject_id);
                             const teacher = profiles.find(p => p.id === a.teacher_id);
-                            return `<tr>
-                                <td style="font-weight:700;">${a.class_name}</td>
-                                <td>${sub ? sub.name : 'Unknown'}</td>
-                                <td>${teacher ? teacher.full_name : 'Unassigned'}</td>
-                                <td><i data-lucide="trash-2" class="delete-assignment" data-id="${a.id}" style="color:var(--accent-danger); cursor:pointer; width:18px;"></i></td>
-                            </tr>`;
-                        }).join('')}</tbody>
-                    </table>
+                            return `
+                                <div class="glass-collapse-card">
+                                    <input type="checkbox" id="toggle-asgn-${a.id}" class="glass-collapse-checkbox">
+                                    <label for="toggle-asgn-${a.id}" class="glass-collapse-header" style="padding: 1rem;">
+                                        <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1;">
+                                            <div style="width: 40px; height: 40px; background: #fff7ed; color: #ea580c; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                                                <i data-lucide="user-plus" style="width: 18px;"></i>
+                                            </div>
+                                            <div>
+                                                <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem;">${sub ? sub.name : 'Unknown'}</div>
+                                                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">${a.class_name} • ${teacher ? teacher.full_name : 'Unassigned'}</div>
+                                            </div>
+                                        </div>
+                                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                                    </label>
+                                    <div class="glass-collapse-content" style="background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                                        <div style="padding: 1rem;">
+                                            <button class="btn btn-danger delete-assignment" data-id="${a.id}" style="width: 100%; border-radius: 10px; font-size: 0.75rem; height: 40px;">
+                                                <i data-lucide="trash-2"></i> Remove Assignment
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
                 `;
             }
             
@@ -3744,13 +3785,13 @@ export const UI = {
                             <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="clock"></i> Term Closure</div>
                                 <div class="console-input-wrapper">
-                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" readonly onclick="this.showPicker()" onfocus="this.showPicker()">
+                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" onclick="this.showPicker()" onfocus="this.showPicker()">
                                 </div>
                             </div>
                             <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="calendar-plus"></i> Next Term Begins</div>
                                 <div class="console-input-wrapper">
-                                    <input type="date" id="report-next-term" class="console-input" style="font-size: 0.85rem;" readonly onclick="this.showPicker()" onfocus="this.showPicker()">
+                                    <input type="date" id="report-next-term" class="console-input" style="font-size: 0.85rem;" onclick="this.showPicker()" onfocus="this.showPicker()">
                                 </div>
                             </div>
                             <button id="btn-sync-generate" class="btn-sync-generate" style="width: 100%; border-radius: 12px; height: 50px;">
