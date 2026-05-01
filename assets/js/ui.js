@@ -5366,13 +5366,13 @@ export const UI = {
                 </header>
 
                 <!-- Section: Institutional Identity -->
-                <div class="glass-collapse-card" style="border: none;">
+                <div class="glass-collapse-card">
                     <input type="checkbox" id="toggle-settings-identity" class="glass-collapse-checkbox" checked>
-                    <label for="toggle-settings-identity" class="glass-collapse-header" style="background: rgba(248, 250, 252, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 16px 16px 0 0;">
+                    <label for="toggle-settings-identity" class="glass-collapse-header">
                         <span class="glass-collapse-title"><i data-lucide="building" style="width: 18px; color: #2563eb;"></i> School Identity (Report Card Header)</span>
                         <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                     </label>
-                    <div class="glass-collapse-content" style="padding: 1.5rem; background: rgba(255, 255, 255, 0.5);">
+                    <div class="glass-collapse-content">
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
@@ -5450,13 +5450,13 @@ export const UI = {
                 </div>
 
                 <!-- Section: Academic Session Operations -->
-                <div class="glass-collapse-card" style="border: none;">
+                <div class="glass-collapse-card">
                     <input type="checkbox" id="toggle-settings-session" class="glass-collapse-checkbox" checked>
-                    <label for="toggle-settings-session" class="glass-collapse-header" style="background: rgba(248, 250, 252, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 16px 16px 0 0;">
+                    <label for="toggle-settings-session" class="glass-collapse-header">
                         <span class="glass-collapse-title"><i data-lucide="calendar" style="width: 18px; color: #10b981;"></i> Academic Session Operations</span>
                         <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                     </label>
-                    <div class="glass-collapse-content" style="padding: 1.5rem; background: rgba(255, 255, 255, 0.5);">
+                    <div class="glass-collapse-content">
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
@@ -5530,13 +5530,13 @@ export const UI = {
                 </div>
 
                 <!-- Section: Data Management -->
-                <div class="glass-collapse-card" style="border: none;">
+                <div class="glass-collapse-card">
                     <input type="checkbox" id="toggle-settings-data" class="glass-collapse-checkbox" checked>
-                    <label for="toggle-settings-data" class="glass-collapse-header" style="background: rgba(248, 250, 252, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 16px 16px 0 0;">
+                    <label for="toggle-settings-data" class="glass-collapse-header">
                         <span class="glass-collapse-title"><i data-lucide="database" style="width: 18px; color: #f59e0b;"></i> Data Management</span>
                         <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                     </label>
-                    <div class="glass-collapse-content" style="padding: 1.5rem; background: rgba(255, 255, 255, 0.5);">
+                    <div class="glass-collapse-content">
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 20px;">

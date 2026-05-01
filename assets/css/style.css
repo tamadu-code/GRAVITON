@@ -1,10 +1,10 @@
 :root {
     /* Color Palette - Modern High Contrast Light Theme */
-    --bg-main: #f8fafc;
-    --bg-sidebar: #ffffff;
-    --bg-card: #ffffff;
-    --bg-card-hover: #f1f5f9;
-    --border-color: #e2e8f0;
+    --bg-main: linear-gradient(135deg, #dbeafe 0%, #f3e8ff 50%, #ffedd5 100%);
+    --bg-sidebar: rgba(255, 255, 255, 0.7);
+    --bg-card: rgba(255, 255, 255, 0.6);
+    --bg-card-hover: rgba(255, 255, 255, 0.8);
+    --border-color: rgba(255, 255, 255, 0.4);
     --text-primary: #0f172a;
     --text-secondary: #475569;
     --text-muted: #94a3b8;
@@ -58,6 +58,8 @@ h1, h2, h3, .logo {
 .sidebar {
     width: var(--sidebar-width);
     background-color: var(--bg-sidebar);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
@@ -394,8 +396,9 @@ h1, h2, h3, .logo {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background-color: var(--glass-bg);
-    backdrop-filter: blur(10px);
+    background-color: var(--bg-sidebar);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -505,9 +508,12 @@ h1, h2, h3, .logo {
 
 .card {
     background-color: var(--bg-card);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--border-color);
     border-radius: 12px;
     padding: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.6);
     transition: transform 0.2s, background-color 0.2s;
 }
 
