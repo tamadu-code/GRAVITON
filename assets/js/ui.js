@@ -1848,7 +1848,7 @@ export const UI = {
             Notifications.show('Analyzing file structure...', 'info');
             try {
                 const data = await parseExcel(file);
-                pendingData = this.processImportData(data);
+                pendingData = await this.processImportData(data);
                 this.renderImportSummary(pendingData, summaryList, preview);
             } catch (err) {
                 Notifications.show('Failed to read file', 'error');
@@ -1882,7 +1882,7 @@ export const UI = {
         };
     },
 
-    processImportData(data) {
+    async processImportData(data) {
         const result = {
             students: [],
             scores: [],
@@ -1890,6 +1890,8 @@ export const UI = {
             classes: [],
             subject_assignments: []
         };
+
+        const existingStudents = await db.students.toArray();
 
         for (const [sheetName, rows] of Object.entries(data)) {
             if (!rows || rows.length === 0) continue;
@@ -1952,8 +1954,17 @@ export const UI = {
 
                 // Smart Student ID resolution for scores
                 if (target === 'scores' && !mapped.student_id && mapped.name) {
-                    const studentMatch = result.students.find(s => s.name && s.name.toLowerCase().trim() === mapped.name.toLowerCase().trim());
-                    if (studentMatch) mapped.student_id = studentMatch.student_id;
+                    const searchName = mapped.name.toLowerCase().trim();
+                    let studentMatch = result.students.find(s => s.name && s.name.toLowerCase().trim() === searchName);
+                    
+                    if (!studentMatch) {
+                        // Fallback to database search if not in current CSV
+                        studentMatch = existingStudents.find(s => s.name && s.name.toLowerCase().trim() === searchName);
+                    }
+                    
+                    if (studentMatch) {
+                        mapped.student_id = studentMatch.student_id;
+                    }
                 }
 
                 // Default Fallbacks & Primary Key Generation (POST-LOOP)
