@@ -749,7 +749,7 @@ export const UI = {
                                                 <div style="display:flex; align-items:center; gap:0.5rem; color:#64748b; font-size:0.75rem; font-weight:700; text-transform:uppercase; margin-bottom:0.75rem;">
                                                     <i data-lucide="user-check" style="width:14px;"></i> Form Master
                                                 </div>
-                                                <div style="font-weight: 800; color: #1e293b;">${getFormMasterName(s.name)}</div>
+                                                <div class="form-master-field" data-class-name="${s.name}" style="font-weight: 800; color: #2563eb; cursor: pointer; text-decoration: underline; text-decoration-style: dotted;">${getFormMasterName(s.name)}</div>
                                             </div>
                                             <div style="background: white; padding: 1.25rem; border-radius: 16px; border: 1px solid #e2e8f0;">
                                                 <div style="display:flex; align-items:center; gap:0.5rem; color:#64748b; font-size:0.75rem; font-weight:700; text-transform:uppercase; margin-bottom:0.75rem;">
@@ -801,6 +801,36 @@ export const UI = {
                         this.renderClasses();
                     }
                 }
+            });
+        });
+
+        // Form Master Selection Logic
+        document.querySelectorAll('.form-master-field').forEach(field => {
+            field.addEventListener('click', async () => {
+                if (isTeacher) return; // Teachers cannot reassign themselves
+                
+                const className = field.dataset.className;
+                const profiles = await db.profiles.toArray();
+                const teachers = profiles.filter(p => (p.role || '').toLowerCase() === 'teacher' || (p.role || '').toLowerCase() === 'admin');
+                
+                const currentFT = await db.form_teachers.where('class_name').equals(className).first();
+                
+                const modalHtml = `
+                    <div style="margin-bottom: 1.5rem;">
+                        <label style="display: block; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem;">Select Form Master for ${className}</label>
+                        <select id="select-form-master" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: white; color: #1e293b; border: 1px solid #cbd5e1; font-weight: 600;">
+                            <option value="">-- Unassigned --</option>
+                            ${teachers.map(t => `<option value="${t.id}" ${currentFT && currentFT.teacher_id === t.id ? 'selected' : ''}>${t.full_name}</option>`).join('')}
+                        </select>
+                        <p style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.5rem;">Choose a faculty member to manage academic records and attendance for this stream.</p>
+                    </div>
+                `;
+                
+                this.showModal('Form Master Assignment', modalHtml, async () => {
+                    const newTeacherId = document.getElementById('select-form-master').value;
+                    await this.updateFormMaster(className, newTeacherId);
+                    this.renderClasses();
+                }, 'Assign Master', 'user-check');
             });
         });
 
@@ -3249,6 +3279,55 @@ export const UI = {
         syncToCloud();
     },
 
+    async updateAttendanceStatus(studentId, status) {
+        const dateInput = document.getElementById('att-date');
+        const date = dateInput ? dateInput.value : new Date().toISOString().split('T')[0];
+        
+        // Lock Validation: School Closed
+        const allSettings = await db.settings.toArray();
+        const termStatus = allSettings.find(s => s.key === 'termStatus')?.value || 'Active';
+        const holidayStr = allSettings.find(s => s.key === 'holidays')?.value || '';
+        const holidays = holidayStr.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
+        
+        const selectedDateObj = new Date(date);
+        const isWeekend = selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6;
+        const isClosedDay = holidays.includes(date);
+        const isTermInactive = termStatus === 'Inactive';
+        
+        if (isWeekend || isClosedDay || isTermInactive) {
+            const reason = isTermInactive ? 'School is Closed (Holiday Period)' : (isWeekend ? 'it is a Weekend' : 'it is a Public Holiday');
+            Notifications.show(`Access Denied: Attendance cannot be marked because ${reason}.`, 'warning');
+            return;
+        }
+
+        const id = `SCH_${studentId}_${date}`;
+        await db.attendance_records.put(prepareForSync({
+            id: id,
+            student_id: studentId,
+            date: date,
+            status: status,
+            check_in: status === 'Absent' ? null : new Date().toISOString(),
+            is_subject_based: false
+        }));
+        
+        Notifications.show(`Attendance logged: ${status}`, 'success');
+        
+        // Quick update UI without full refresh if possible, or just re-render row
+        const card = document.querySelector(`.attendance-card input#toggle-att-${studentId}`)?.parentElement;
+        if (card) {
+            const statusBadge = card.querySelector('span[style*="font-size: 0.6rem"]');
+            if (statusBadge) {
+                const color = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : '#ef4444');
+                statusBadge.style.color = color;
+                statusBadge.style.background = `${color}15`;
+                statusBadge.style.border = `1px solid ${color}20`;
+                statusBadge.innerHTML = `<span style="width: 4px; height: 4px; background: ${color}; border-radius: 50%;"></span> ${status.toUpperCase()}`;
+            }
+        }
+        
+        syncToCloud();
+    },
+
 
     async renderAttendance() {
         const students = await db.students.filter(s => s.is_active !== false).toArray();
@@ -3588,20 +3667,20 @@ export const UI = {
                                 ` : `
                                 <div class="att-detail-item">
                                     <label style="display: block; font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Period</label>
-                                    <div style="font-weight: 700; color: #2563eb; font-size: 0.9rem;">P ${document.getElementById('att-period').value}</div>
+                                    <div style="font-weight: 700; color: #2563eb; font-size: 0.9rem;">P ${document.getElementById('att-period')?.value || 1}</div>
                                 </div>
                                 `}
                                 
                                 <div style="grid-column: 1 / -1; margin-top: 0.25rem;">
-                                    <label style="display: block; font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Manual Override</label>
+                                    <label style="display: block; font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Manual Override ${isOffDay ? '(LOCKED)' : ''}</label>
                                     ${currentTab === 'school' ? `
                                         <div style="display: flex; gap: 0.4rem;">
-                                            <button class="btn att-status-btn ${status === 'Present' ? 'active' : ''}" style="flex: 1; height: 36px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: ${status === 'Present' ? '#10b981' : 'white'}; color: ${status === 'Present' ? 'white' : '#64748b'}; border: 1px solid ${status === 'Present' ? '#10b981' : '#e2e8f0'};" onclick="UI.updateAttendanceStatus('${s.student_id}', 'Present')">Present</button>
-                                            <button class="btn att-status-btn ${status === 'Late' ? 'active' : ''}" style="flex: 1; height: 36px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: ${status === 'Late' ? '#f59e0b' : 'white'}; color: ${status === 'Late' ? 'white' : '#64748b'}; border: 1px solid ${status === 'Late' ? '#f59e0b' : '#e2e8f0'};" onclick="UI.updateAttendanceStatus('${s.student_id}', 'Late')">Late</button>
-                                            <button class="btn att-status-btn ${status === 'Absent' ? 'active' : ''}" style="flex: 1; height: 36px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: ${status === 'Absent' ? '#ef4444' : 'white'}; color: ${status === 'Absent' ? 'white' : '#64748b'}; border: 1px solid ${status === 'Absent' ? '#ef4444' : '#e2e8f0'};" onclick="UI.updateAttendanceStatus('${s.student_id}', 'Absent')">Absent</button>
+                                            <button class="btn att-status-btn ${status === 'Present' ? 'active' : ''}" ${isOffDay ? 'disabled' : ''} style="flex: 1; height: 36px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: ${status === 'Present' ? '#10b981' : 'white'}; color: ${status === 'Present' ? 'white' : (isOffDay ? '#cbd5e1' : '#64748b')}; border: 1px solid ${status === 'Present' ? '#10b981' : '#e2e8f0'}; cursor: ${isOffDay ? 'not-allowed' : 'pointer'}; opacity: ${isOffDay && status !== 'Present' ? '0.5' : '1'};" onclick="UI.updateAttendanceStatus('${s.student_id}', 'Present')">Present</button>
+                                            <button class="btn att-status-btn ${status === 'Late' ? 'active' : ''}" ${isOffDay ? 'disabled' : ''} style="flex: 1; height: 36px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: ${status === 'Late' ? '#f59e0b' : 'white'}; color: ${status === 'Late' ? 'white' : (isOffDay ? '#cbd5e1' : '#64748b')}; border: 1px solid ${status === 'Late' ? '#f59e0b' : '#e2e8f0'}; cursor: ${isOffDay ? 'not-allowed' : 'pointer'}; opacity: ${isOffDay && status !== 'Late' ? '0.5' : '1'};" onclick="UI.updateAttendanceStatus('${s.student_id}', 'Late')">Late</button>
+                                            <button class="btn att-status-btn ${status === 'Absent' ? 'active' : ''}" ${isOffDay ? 'disabled' : ''} style="flex: 1; height: 36px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; background: ${status === 'Absent' ? '#ef4444' : 'white'}; color: ${status === 'Absent' ? 'white' : (isOffDay ? '#cbd5e1' : '#64748b')}; border: 1px solid ${status === 'Absent' ? '#ef4444' : '#e2e8f0'}; cursor: ${isOffDay ? 'not-allowed' : 'pointer'}; opacity: ${isOffDay && status !== 'Absent' ? '0.5' : '1'};" onclick="UI.updateAttendanceStatus('${s.student_id}', 'Absent')">Absent</button>
                                         </div>
                                     ` : `
-                                        <select class="input subject-status-select" data-student-id="${s.student_id}" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: white; border: 1px solid #e2e8f0; font-size: 0.8rem;">
+                                        <select class="input subject-status-select" ${isOffDay ? 'disabled' : ''} data-student-id="${s.student_id}" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: ${isOffDay ? '#f8fafc' : 'white'}; border: 1px solid #e2e8f0; font-size: 0.8rem; cursor: ${isOffDay ? 'not-allowed' : 'default'}; color: ${isOffDay ? '#94a3b8' : '#1e293b'};">
                                             <option value="Absent" ${status === 'Absent' ? 'selected' : ''}>Absent</option>
                                             <option value="Present" ${status === 'Present' ? 'selected' : ''}>Present</option>
                                         </select>
@@ -3726,11 +3805,28 @@ export const UI = {
         document.getElementById('btn-save-subject-att').onclick = async () => {
             const subject = subjectFilter.value;
             const period = document.getElementById('att-period').value;
-            if (!subject) return Notifications.show('Please select a subject first', 'warning');
-
-            const selects = document.querySelectorAll('.subject-status-select');
             const date = dateInput.value;
             
+            if (!subject) return Notifications.show('Please select a subject first', 'warning');
+
+            // Lock Validation: School Closed
+            const allSettings = await db.settings.toArray();
+            const termStatus = allSettings.find(s => s.key === 'termStatus')?.value || 'Active';
+            const holidayStr = allSettings.find(s => s.key === 'holidays')?.value || '';
+            const holidays = holidayStr.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
+            
+            const selectedDateObj = new Date(date);
+            const isWeekend = selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6;
+            const isClosedDay = holidays.includes(date);
+            const isTermInactive = termStatus === 'Inactive';
+            
+            if (isWeekend || isClosedDay || isTermInactive) {
+                const reason = isTermInactive ? 'School is Closed (Holiday Period)' : (isWeekend ? 'it is a Weekend' : 'it is a Public Holiday');
+                Notifications.show(`Access Denied: Subject attendance cannot be marked because ${reason}.`, 'warning');
+                return;
+            }
+
+            const selects = document.querySelectorAll('.subject-status-select');
             Notifications.show(`Saving attendance for ${subject} (Period ${period})...`, 'info');
 
             for (const sel of selects) {
@@ -3747,7 +3843,6 @@ export const UI = {
                     is_subject_based: true
                 }));
             }
-
 
             Notifications.show('Attendance committed successfully', 'success');
             syncToCloud();
