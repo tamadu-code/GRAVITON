@@ -3205,19 +3205,27 @@ export const UI = {
             
             const totalArrived = presentCount + lateCount;
             
-            // Check if selected date is a holiday/closed day
+            // Check Environment: Term Status, Holidays, Weekends
             const allSettings = await db.settings.toArray();
+            const termStatus = allSettings.find(s => s.key === 'termStatus')?.value || 'Active';
             const holidayStr = allSettings.find(s => s.key === 'holidays')?.value || '';
             const holidays = holidayStr.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
-            const isHoliday = holidays.includes(date);
+            
+            const selectedDateObj = new Date(date);
+            const isWeekend = selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6; // 0=Sun, 6=Sat
+            const isClosedDay = holidays.includes(date);
+            const isTermInactive = termStatus === 'Inactive';
+            
+            const isOffDay = isWeekend || isClosedDay || isTermInactive;
+            const offReason = isTermInactive ? 'On Holiday' : (isWeekend ? 'Weekend' : 'Closed Day');
 
             const turnout = students.length > 0 ? Math.round((totalArrived / students.length) * 100) : 0;
-            const absentCount = isHoliday ? 0 : Math.max(0, students.length - totalArrived);
+            const absentCount = isOffDay ? 0 : Math.max(0, students.length - totalArrived);
             
             document.getElementById('stat-present').textContent = totalArrived;
             document.getElementById('stat-late').textContent = lateCount;
-            document.getElementById('stat-absent').textContent = isHoliday ? 'School Closed' : absentCount;
-            document.getElementById('stat-turnout').textContent = isHoliday ? 'N/A' : `${turnout}%`;
+            document.getElementById('stat-absent').textContent = isOffDay ? offReason : absentCount;
+            document.getElementById('stat-turnout').textContent = isOffDay ? 'N/A' : `${turnout}%`;
             document.getElementById('stat-turnout-bar').style.width = `${turnout}%`;
 
             // Render Rows
@@ -3229,13 +3237,20 @@ export const UI = {
                     record = records.find(r => r.student_id === s.student_id && r.is_subject_based && r.subject_name === subjectName);
                 }
                 
-                // Get holiday status for the row
-                const holidayStr = allSettings.find(s => s.key === 'holidays')?.value || '';
-                const holidays = holidayStr.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
-                const isHoliday = holidays.includes(date);
+                // Determine Row Status
+                const selectedDateObj = new Date(date);
+                const isWeekend = selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6;
+                const isClosedDay = holidays.includes(date);
+                const isTermInactive = termStatus === 'Inactive';
+                
+                let defaultStatus = 'Absent';
+                let statusLabel = 'Absent';
+                if (isTermInactive) { defaultStatus = 'Holiday'; statusLabel = 'Holiday'; }
+                else if (isWeekend) { defaultStatus = 'Weekend'; statusLabel = 'Weekend'; }
+                else if (isClosedDay) { defaultStatus = 'Closed'; statusLabel = 'Closed'; }
 
-                const status = record ? record.status : (isHoliday ? 'Closed' : 'Absent');
-                const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : (status === 'Closed' ? '#64748b' : '#ef4444'));
+                const status = record ? record.status : defaultStatus;
+                const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : (['Holiday', 'Weekend', 'Closed'].includes(status) ? '#64748b' : '#ef4444'));
                 
                 const formatTime = (iso) => {
                     if (!iso) return '--:--';
@@ -5339,7 +5354,8 @@ export const UI = {
             principalSignature: settings.principalSignature || null,
             schoolLogo: settings.schoolLogo || null,
             themeColor: settings.themeColor || '#060495',
-            holidays: settings.holidays || ''
+            holidays: settings.holidays || '',
+            termStatus: settings.termStatus || 'Active'
         };
 
         this.contentArea.innerHTML = `
@@ -5455,6 +5471,13 @@ export const UI = {
                                 <option value="Third Term" ${config.currentTerm === 'Third Term' ? 'selected' : ''}>Third Term</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label>Term Status</label>
+                            <select id="set-term-status" class="input" style="font-weight: 800; color: ${config.termStatus === 'Active' ? '#10b981' : '#ef4444'};">
+                                <option value="Active" ${config.termStatus === 'Active' ? 'selected' : ''}>In Session (Active)</option>
+                                <option value="Inactive" ${config.termStatus === 'Inactive' ? 'selected' : ''}>On Holiday (Inactive)</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div class="form-group" style="margin-bottom: 2rem;">
@@ -5479,12 +5502,29 @@ export const UI = {
 
                     <div style="background: #fff7ed; border: 1px solid #ffedd5; padding: 1.5rem; border-radius: 20px; margin-top: 1.5rem;">
                         <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
-                            <i data-lucide="palmtree" style="color: #f97316;"></i>
-                            <h4 style="font-weight: 800; color: #9a3412; margin: 0;">School Holidays & Closed Days</h4>
+                            <i data-lucide="calendar-off" style="color: #f97316;"></i>
+                            <h4 style="font-weight: 800; color: #9a3412; margin: 0;">Closed Days Manager (Public Holidays)</h4>
                         </div>
-                        <p style="font-size: 0.85rem; color: #c2410c; margin-bottom: 1rem;">List dates (YYYY-MM-DD) when the school is closed. Attendance will not be recorded as 'Absent' on these days.</p>
-                        <textarea id="set-school-holidays" class="input" style="width: 100%; min-height: 100px; border-radius: 12px; padding: 1rem; font-family: monospace; font-size: 0.85rem;" placeholder="e.g. 2026-05-01, 2026-12-25">${config.holidays}</textarea>
-                        <p style="font-size: 0.7rem; color: #9a3412; margin-top: 0.5rem; font-style: italic;">Separate multiple dates with commas or new lines.</p>
+                        <p style="font-size: 0.85rem; color: #c2410c; margin-bottom: 1rem;">Select specific dates during the active term when the school is closed for events or public holidays.</p>
+                        
+                        <div style="display: flex; gap: 1rem; align-items: flex-start;">
+                            <div style="flex: 1;">
+                                <input type="date" id="add-closed-day" class="input" style="width: 100%; height: 48px; border-radius: 12px;">
+                            </div>
+                            <button class="btn btn-secondary" style="height: 48px; border-radius: 12px; padding: 0 1.5rem;" onclick="UI.addClosedDay()">
+                                <i data-lucide="plus"></i> Add Day
+                            </button>
+                        </div>
+
+                        <div id="closed-days-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">
+                            ${config.holidays.split(/[\n,]+/).map(d => d.trim()).filter(d => d).map(date => `
+                                <div class="badge" style="background: white; border: 1px solid #ffedd5; color: #9a3412; padding: 0.5rem 0.75rem; border-radius: 10px; display: flex; align-items: center; gap: 0.5rem; font-family: monospace;">
+                                    ${date}
+                                    <i data-lucide="x" style="width: 14px; cursor: pointer;" onclick="UI.removeClosedDay('${date}')"></i>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <input type="hidden" id="set-school-holidays" value="${config.holidays}">
                     </div>
                     </div>
                 </div>
@@ -5567,6 +5607,47 @@ export const UI = {
                 reader.readAsDataURL(file);
             }
         };
+        };
+    },
+
+    addClosedDay() {
+        const input = document.getElementById('add-closed-day');
+        const hidden = document.getElementById('set-school-holidays');
+        const list = document.getElementById('closed-days-list');
+        const date = input.value;
+        if (!date) return;
+
+        let holidays = hidden.value.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
+        if (holidays.includes(date)) return;
+        
+        holidays.push(date);
+        holidays.sort();
+        hidden.value = holidays.join(',');
+        
+        this.refreshClosedDaysList();
+        input.value = '';
+    },
+
+    removeClosedDay(date) {
+        const hidden = document.getElementById('set-school-holidays');
+        let holidays = hidden.value.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
+        holidays = holidays.filter(d => d !== date);
+        hidden.value = holidays.join(',');
+        this.refreshClosedDaysList();
+    },
+
+    refreshClosedDaysList() {
+        const hidden = document.getElementById('set-school-holidays');
+        const list = document.getElementById('closed-days-list');
+        const holidays = hidden.value.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
+        
+        list.innerHTML = holidays.map(date => `
+            <div class="badge" style="background: white; border: 1px solid #ffedd5; color: #9a3412; padding: 0.5rem 0.75rem; border-radius: 10px; display: flex; align-items: center; gap: 0.5rem; font-family: monospace;">
+                ${date}
+                <i data-lucide="x" style="width: 14px; cursor: pointer;" onclick="UI.removeClosedDay('${date}')"></i>
+            </div>
+        `).join('');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     async saveSettings() {
@@ -5584,7 +5665,8 @@ export const UI = {
             { key: 'currentTerm', value: document.getElementById('set-current-term').value },
             { key: 'gradingSystem', value: document.getElementById('set-grading-system').value },
             { key: 'themeColor', value: document.getElementById('set-theme-color').value },
-            { key: 'holidays', value: document.getElementById('set-school-holidays').value }
+            { key: 'holidays', value: document.getElementById('set-school-holidays').value },
+            { key: 'termStatus', value: document.getElementById('set-term-status').value }
         ];
 
         if (this.pendingSignature) {
