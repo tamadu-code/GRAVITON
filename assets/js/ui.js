@@ -6704,33 +6704,39 @@ export const UI = {
     },
 
     async renderNoticeBoard() {
-        const announcements = await db.announcements.toArray().catch(() => []);
-        announcements.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+        const notices = await db.notices.toArray().catch(() => []);
+        notices.sort((a,b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 
         this.contentArea.innerHTML = `
             <div class="view-container" style="padding: 1.5rem;">
-                <div class="page-banner" style="background: linear-gradient(135deg, #db2777 0%, #9d174d 100%);">
+                <div class="page-banner" style="background: linear-gradient(135deg, #db2777 0%, #9d174d 100%); border-radius: 20px; padding: 2rem; color: white; box-shadow: var(--shadow-lg);">
                     <div class="banner-content">
-                        <h1 class="banner-title"><i data-lucide="megaphone"></i> Notice Board</h1>
-                        <p class="banner-subtitle">Official school announcements and broadcasts.</p>
+                        <h1 class="banner-title" style="margin: 0; font-size: 2rem; display: flex; align-items: center; gap: 0.75rem;"><i data-lucide="megaphone"></i> Notice Board</h1>
+                        <p class="banner-subtitle" style="margin-top: 0.5rem; opacity: 0.9;">Official school announcements and broadcasts.</p>
                     </div>
                 </div>
 
-                <div class="grid" style="gap: 1.5rem; margin-top: 2rem;">
-                    ${announcements.length === 0 ? `
-                        <div class="card text-center" style="padding: 4rem;">
+                <div class="notice-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem; margin-top: 2rem;">
+                    ${notices.length === 0 ? `
+                        <div class="card text-center" style="padding: 4rem; grid-column: 1 / -1; border-radius: 20px; background: white;">
                             <i data-lucide="info" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 1rem;"></i>
-                            <p style="color: #64748b;">No active announcements at this time.</p>
+                            <p style="color: #64748b; font-weight: 600;">No active announcements at this time.</p>
                         </div>
-                    ` : announcements.map(a => `
-                        <div class="card" style="padding: 1.5rem; border-left: 4px solid #db2777;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                                <h3 style="margin: 0; color: #1e293b;">${a.title}</h3>
-                                <span style="font-size: 0.75rem; color: #94a3b8;">${new Date(a.created_at).toLocaleDateString()}</span>
+                    ` : notices.map(a => `
+                        <div class="card animate-fade-in-up" style="padding: 2rem; border-radius: 20px; background: white; border: 1px solid #e2e8f0; border-left: 6px solid #db2777; box-shadow: var(--shadow-sm); transition: transform 0.2s;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem;">
+                                <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: #1e293b;">${a.title}</h3>
+                                <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${new Date(a.updated_at).toLocaleDateString()}</span>
                             </div>
-                            <p style="color: #475569; line-height: 1.6;">${a.content}</p>
-                            <div style="margin-top: 1rem; font-size: 0.75rem; color: #64748b; font-weight: 600;">
-                                Posted by: ${a.posted_by || 'School Administration'}
+                            <p style="color: #475569; line-height: 1.7; font-size: 0.95rem; margin-bottom: 1.5rem;">${a.content}</p>
+                            <div style="display: flex; align-items: center; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid #f1f5f9;">
+                                <div style="width: 32px; height: 32px; background: #fce7f3; color: #db2777; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.7rem;">
+                                    ${(a.author || 'S').charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <div style="font-size: 0.8rem; font-weight: 700; color: #1e293b;">${a.author || 'School Administration'}</div>
+                                    <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 600;">Authorized Personnel</div>
+                                </div>
                             </div>
                         </div>
                     `).join('')}
