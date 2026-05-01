@@ -111,8 +111,8 @@ export async function syncToCloud() {
                     }
                     recordsToSync = recordsToSync.filter(record => {
                         if (record.subject_id && !validSubjectIds.has(record.subject_id)) {
-                            console.warn(`[Data Integrity] Dropping ${table} record ${record.id} due to invalid subject_id: ${record.subject_id}`);
-                            db[table].delete(record.id || record.student_id); // Auto-clean orphaned local records
+                            console.warn(`[Data Integrity] Flagging ${table} record ${record.id} due to invalid subject_id: ${record.subject_id}`);
+                            db[table].update(record.id || record.student_id, { is_synced: -1 }); // Flag as error, do not delete
                             return false;
                         }
                         return true;
@@ -127,8 +127,8 @@ export async function syncToCloud() {
                     }
                     recordsToSync = recordsToSync.filter(record => {
                         if (record.student_id && !validStudentIds.has(record.student_id)) {
-                            console.warn(`[Data Integrity] Dropping ${table} record ${record.id} due to invalid student_id: ${record.student_id}`);
-                            db[table].delete(record.id || record.student_id); // Auto-clean orphaned local records
+                            console.warn(`[Data Integrity] Flagging ${table} record ${record.id} due to invalid student_id: ${record.student_id}`);
+                            db[table].update(record.id || record.student_id, { is_synced: -1 }); // Flag as error, do not delete
                             return false;
                         }
                         return true;
