@@ -2714,41 +2714,85 @@ label {
 @media (max-width: 1024px) {
     .desktop-only { display: none !important; }
     .mobile-only { display: block !important; }
-    
-    .score-card {
+
+    /* Hide the middle action bar on tablet/mobile (duplicates exist at bottom) */
+    .action-bar-container { display: none !important; }
+
+    /* ── Unified Collapsible Card Pattern ── */
+    .score-card,
+    .mobile-collapse-card {
         background: white;
         border-radius: 12px;
         border: 1px solid var(--border-color);
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
         box-shadow: var(--shadow-sm);
         transition: all 0.3s ease;
+        overflow: hidden;
+    }
+
+    .score-card:not(.collapsed),
+    .mobile-collapse-card:not(.collapsed) {
+        border-color: #2563eb;
+        box-shadow: 0 4px 16px rgba(37,99,235,0.10);
     }
     
-    .score-card.collapsed .score-card-content {
+    .score-card.collapsed .score-card-content,
+    .mobile-collapse-card.collapsed .collapse-card-content {
         display: none;
     }
     
-    .score-card-header {
+    .score-card-header,
+    .collapse-card-header {
         padding: 1rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
         cursor: pointer;
         background: #f8fafc;
+        border-radius: 12px;
+        transition: background 0.2s ease;
+    }
+
+    .score-card:not(.collapsed) .score-card-header,
+    .mobile-collapse-card:not(.collapsed) .collapse-card-header {
+        background: #eff6ff;
+        border-radius: 12px 12px 0 0;
     }
     
-    .score-card-title {
+    .score-card-title,
+    .collapse-card-title {
         font-weight: 700;
         font-size: 0.95rem;
         color: var(--text-primary);
     }
+
+    /* Chevron rotation on expand */
+    .score-card-header i[data-lucide="chevron-down"],
+    .collapse-card-header i[data-lucide="chevron-down"] {
+        transition: transform 0.3s ease;
+        opacity: 0.5;
+    }
+
+    .score-card:not(.collapsed) .score-card-header i[data-lucide="chevron-down"],
+    .mobile-collapse-card:not(.collapsed) .collapse-card-header i[data-lucide="chevron-down"] {
+        transform: rotate(180deg);
+        opacity: 1;
+        color: #2563eb;
+    }
     
-    .score-card-content {
+    .score-card-content,
+    .collapse-card-content {
         padding: 1.25rem;
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 1.25rem;
         border-top: 1px solid var(--border-color);
+        animation: slideDown 0.25s ease-out;
+    }
+
+    @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-8px); }
+        to   { opacity: 1; transform: translateY(0); }
     }
     
     .score-field {
@@ -2773,6 +2817,13 @@ label {
         font-weight: 700;
         font-size: 1rem;
         text-align: center;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .score-field input:focus {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+        outline: none;
     }
 
     .action-bar-mobile {
