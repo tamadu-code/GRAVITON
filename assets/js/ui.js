@@ -2149,11 +2149,11 @@ export const UI = {
                     </div>
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="clock" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Term Closure</span></div>
-                        <input type="date" id="grade-term-closure" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;" onclick="this.showPicker()">
+                        <input type="text" id="grade-term-closure" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;" onclick="this.showPicker()">
                     </div>
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="calendar-plus" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Next Term</span></div>
-                        <input type="date" id="grade-next-term" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;" onclick="this.showPicker()">
+                        <input type="text" id="grade-next-term" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;" onclick="this.showPicker()">
                     </div>
                 </div>
                 <!-- Status Indicator -->
@@ -2230,8 +2230,14 @@ export const UI = {
         const currentSettings = await db.settings.toArray();
         const settingsMap = {};
         currentSettings.forEach(s => settingsMap[s.key] = s.value);
-        if (closureInput) closureInput.value = settingsMap.termClosure || '';
-        if (nextTermInput) nextTermInput.value = settingsMap.nextTermBegins || '';
+        if (closureInput) {
+            closureInput.value = settingsMap.termClosure || '';
+            if (closureInput.value) closureInput.type = 'date';
+        }
+        if (nextTermInput) {
+            nextTermInput.value = settingsMap.nextTermBegins || '';
+            if (nextTermInput.value) nextTermInput.type = 'date';
+        }
 
         const saveDates = async () => {
             const closureValue = closureInput.value;
@@ -3814,13 +3820,13 @@ export const UI = {
                              <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="clock"></i> Term Closure</div>
                                 <div class="console-input-wrapper">
-                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" value="${settings.termClosure || ''}" onclick="this.showPicker()">
+                                    <input type="${settings.termClosure ? 'date' : 'text'}" id="report-closure" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="console-input" style="font-size: 0.85rem;" value="${settings.termClosure || ''}" onclick="this.showPicker()">
                                 </div>
                             </div>
                             <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="calendar-plus"></i> Next Term Begins</div>
                                 <div class="console-input-wrapper">
-                                    <input type="date" id="report-next-term" class="console-input" style="font-size: 0.85rem;" value="${settings.nextTermBegins || ''}" onclick="this.showPicker()">
+                                    <input type="${settings.nextTermBegins ? 'date' : 'text'}" id="report-next-term" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="console-input" style="font-size: 0.85rem;" value="${settings.nextTermBegins || ''}" onclick="this.showPicker()">
                                 </div>
                             </div>
                             <button id="btn-sync-generate" class="btn-sync-generate" style="width: 100%; border-radius: 12px; height: 50px;">
@@ -5808,11 +5814,11 @@ export const UI = {
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
                             <label>Term Closure Date</label>
-                            <input type="date" id="set-term-closure" class="input" value="${settings.termClosure || ''}" onclick="this.showPicker()">
+                            <input type="${settings.termClosure ? 'date' : 'text'}" id="set-term-closure" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="input" value="${settings.termClosure || ''}" onclick="this.showPicker()">
                         </div>
                         <div class="form-group">
                             <label>Next Term Resumption</label>
-                            <input type="date" id="set-next-term" class="input" value="${settings.nextTermBegins || ''}" onclick="this.showPicker()">
+                            <input type="${settings.nextTermBegins ? 'date' : 'text'}" id="set-next-term" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="input" value="${settings.nextTermBegins || ''}" onclick="this.showPicker()">
                         </div>
                     </div>
 
