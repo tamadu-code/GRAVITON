@@ -2075,6 +2075,13 @@ export const UI = {
         let subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         
         // --- Teacher Specific Filtering ---
+        const settingsArray = await db.settings.toArray();
+        const settings = {};
+        settingsArray.forEach(s => settings[s.key] = s.value);
+        const currentTerm = settings.currentTerm || '1st Term';
+        const currentSession = settings.currentSession || '2025/2026';
+        
+        // --- Teacher Specific Filtering ---
         if (isTeacher) {
             const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
             const assignedClassNames = [...new Set(assignments.map(a => a.class_name))];
@@ -2134,17 +2141,17 @@ export const UI = {
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="hash" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Term</span></div>
                         <select id="grade-term-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
-                            <option value="1st Term">1st Term / First Term</option>
-                            <option value="2nd Term">2nd Term / Second Term</option>
-                            <option value="3rd Term">3rd Term / Third Term</option>
+                            <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term / First Term</option>
+                            <option value="2nd Term" ${currentTerm === '2nd Term' ? 'selected' : ''}>2nd Term / Second Term</option>
+                            <option value="3rd Term" ${currentTerm === '3rd Term' ? 'selected' : ''}>3rd Term / Third Term</option>
                         </select>
                     </div>
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="calendar" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Session</span></div>
                         <select id="grade-session-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
-                            <option value="2023/2024">2023/2024</option>
-                            <option value="2024/2025">2024/2025</option>
-                            <option value="2025/2026" selected>2025/2026</option>
+                            <option value="2023/2024" ${currentSession === '2023/2024' ? 'selected' : ''}>2023/2024</option>
+                            <option value="2024/2025" ${currentSession === '2024/2025' ? 'selected' : ''}>2024/2025</option>
+                            <option value="2025/2026" ${currentSession === '2025/2026' ? 'selected' : ''}>2025/2026</option>
                         </select>
                     </div>
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
@@ -4017,6 +4024,7 @@ export const UI = {
                             principalSignature: settings.principalSignature || null,
                             logo: settings.schoolLogo || null,
                             themeColor: settings.themeColor || '#060495',
+                            schoolManager: settings.schoolManager || 'TAMADU CODE',
                             nextTermBegins: closureDate // Dynamic date passed from UI
                         };
 
@@ -5557,8 +5565,8 @@ export const UI = {
                     </div>
 
                     <div id="timetable-grid-container" style="display: none;">
-                        <div class="table-container" style="border: 1px solid #f1f5f9; border-radius: 16px; overflow: hidden;">
-                            <table class="data-table" style="border-collapse: collapse; width: 100%;">
+                        <div class="table-container" style="border: 1px solid #f1f5f9; border-radius: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                            <table class="data-table" style="border-collapse: collapse; width: 100%; min-width: 800px;">
                                 <thead style="background: #f8fafc;">
                                     <tr>
                                         <th style="width: 100px; background: #f1f5f9; text-align: center; font-weight: 800; color: #1e293b; border-bottom: 2px solid #e2e8f0;">PERIOD</th>
@@ -5618,12 +5626,23 @@ export const UI = {
                 emptyState.style.display = 'block';
                 return;
             }
-
             gridContainer.style.display = 'block';
             emptyState.style.display = 'none';
 
-            // Reset all selects
-            slots.forEach(s => s.value = "");
+            // Filter subjects for this class to only show what is assigned
+            const assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
+            const classSubjectIds = new Set(assignments.map(a => a.subject_id));
+            const classSubjects = subjects.filter(s => classSubjectIds.has(s.id));
+            
+            // If no assignments, fallback to all (safeguard)
+            const availableSubjects = classSubjects.length > 0 ? classSubjects : subjects;
+            const optionsHtml = `<option value="">-- Free Slot --</option>` + 
+                               availableSubjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+            
+            slots.forEach(s => {
+                s.innerHTML = optionsHtml;
+                s.value = "";
+            });
 
             // Load existing timetable for this class
             const existing = await db.timetable.where('class_name').equals(cls).toArray();
@@ -5642,12 +5661,14 @@ export const UI = {
             const newEntries = [];
             slots.forEach(select => {
                 if (select.value) {
+                    const assignment = assignments.find(a => a.subject_id === select.value);
                     newEntries.push(prepareForSync({
                         id: `TT_${cls}_${select.dataset.day}_P${select.dataset.period}`,
                         class_name: cls,
                         day_of_week: select.dataset.day,
                         period_number: parseInt(select.dataset.period),
                         subject_id: select.value,
+                        teacher_id: assignment ? assignment.teacher_id : null,
                         updated_at: new Date().toISOString()
                     }));
                 }
@@ -6030,7 +6051,7 @@ export const UI = {
             }
             await this.updateInstitutionalBranding();
             Notifications.show('Settings saved successfully!', 'success');
-            syncToCloud();
+            await syncToCloud();
         } catch (e) {
             console.error(e);
             Notifications.show('Failed to save settings.', 'error');

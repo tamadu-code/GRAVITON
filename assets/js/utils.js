@@ -148,11 +148,16 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.setFontSize(8);
     doc.setTextColor(0, 0, 0);
     doc.text(schoolInfo.address.toUpperCase(), pageWidth / 2 + 10, 20, { align: 'center' });
-    doc.text(`Tel: ${schoolInfo.phone} | Email: ${schoolInfo.email}`, pageWidth / 2 + 10, 24, { align: 'center' });
+    doc.text(`Tel: ${schoolInfo.phone} | Email: ${schoolInfo.email}`, pageWidth / 2 + 10, 23.5, { align: 'center' });
+    if (schoolInfo.schoolManager) {
+        doc.setFont('helvetica', 'bold');
+        doc.text(`MANAGEMENT: ${schoolInfo.schoolManager.toUpperCase()}`, pageWidth / 2 + 10, 27, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+    }
     
     doc.setFont('helvetica', 'bolditalic');
     doc.setTextColor(theme.r, theme.g, theme.b);
-    doc.text(`Motto: ${schoolInfo.motto}`, pageWidth / 2 + 10, 28, { align: 'center' });
+    doc.text(`Motto: ${schoolInfo.motto}`, pageWidth / 2 + 10, schoolInfo.schoolManager ? 30.5 : 28, { align: 'center' });
     
     // Report Title Box
     doc.setFillColor(theme.r, theme.g, theme.b);
