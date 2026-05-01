@@ -205,6 +205,7 @@ export async function syncFromCloud(forceAll = false) {
             }
         } catch (e) {
             console.error(`Skipping sync for ${table} due to error:`, e);
+        }
     }
 
     localStorage.setItem('last_sync_timestamp', new Date().toISOString());
