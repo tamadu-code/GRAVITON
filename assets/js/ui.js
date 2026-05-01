@@ -702,85 +702,143 @@ export const UI = {
                     ` : ''}
                 </div>
 
-                <div class="stream-list" style="display: flex; flex-direction: column; gap: 1rem;">
-                    ${streams.map((s, index) => {
-                        const enrollment = getEnrollment(s.name);
-                        const capacity = 40;
-                        const pct = Math.min(100, (enrollment / capacity) * 100);
-                        const statusColor = enrollment >= capacity ? '#ef4444' : '#2563eb';
-                        
-                        return `
-                        <div class="glass-collapse-card" style="margin: 0; border: 1px solid #e2e8f0; background: white;">
-                            <input type="checkbox" id="toggle-stream-${index}" class="glass-collapse-checkbox">
-                            <label for="toggle-stream-${index}" class="glass-collapse-header" style="padding: 1.25rem 1.5rem;">
-                                <div style="display: flex; align-items: center; gap: 1.25rem;">
-                                    <div style="width: 48px; height: 48px; background: #eff6ff; color: #2563eb; border-radius: 14px; display: flex; align-items: center; justify-content: center;">
-                                        <i data-lucide="graduation-cap" style="width:24px; height:24px;"></i>
-                                    </div>
-                                    <div>
-                                        <h3 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 1.2rem;">${s.name}</h3>
-                                        <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.25rem;">
-                                            <span style="font-size: 0.7rem; color: #64748b; font-weight: 700; text-transform: uppercase; background:#f1f5f9; padding:2px 6px; border-radius:4px;">STRM ${index + 1}</span>
-                                            <span style="font-size: 0.7rem; color: #059669; font-weight: 700; text-transform: uppercase; background:#ecfdf5; padding:2px 6px; border-radius:4px;">${s.level || 'Unspecified'}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div style="display: flex; align-items: center; gap: 2rem;">
-                                    <div style="text-align: right;">
-                                        <div style="font-size: 1.25rem; font-weight: 800; color: #1e293b;">${enrollment}</div>
-                                        <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Enrollment</div>
-                                    </div>
-                                    <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
-                                </div>
-                            </label>
-                            <div class="glass-collapse-content" style="padding: 2rem; background: #f8fafc; border-top: 1px solid #f1f5f9;">
-                                <div style="display: grid; grid-template-columns: 1fr 300px; gap: 2.5rem;">
-                                    <div>
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                                            <span style="font-weight: 700; color: #475569; font-size: 0.9rem;">Population Density</span>
-                                            <span style="font-weight: 800; color: ${statusColor}; font-size: 0.9rem;">${enrollment} / ${capacity} Students</span>
-                                        </div>
-                                        <div style="width: 100%; background: #e2e8f0; height: 10px; border-radius: 5px; overflow: hidden; margin-bottom: 2rem;">
-                                            <div style="height: 100%; width: ${pct}%; background: ${statusColor}; transition: width 0.6s ease;"></div>
-                                        </div>
-                                        
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-                                            <div style="background: white; padding: 1.25rem; border-radius: 16px; border: 1px solid #e2e8f0;">
-                                                <div style="display:flex; align-items:center; gap:0.5rem; color:#64748b; font-size:0.75rem; font-weight:700; text-transform:uppercase; margin-bottom:0.75rem;">
-                                                    <i data-lucide="user-check" style="width:14px;"></i> Form Master
-                                                </div>
-                                                <div class="form-master-field" data-class-name="${s.name}" style="font-weight: 800; color: #2563eb; cursor: pointer; text-decoration: underline; text-decoration-style: dotted;">${getFormMasterName(s.name)}</div>
+                <div id="streams-display-container">
+                    ${window.innerWidth >= 1024 ? `
+                        <!-- Desktop Grid Layout -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 1.5rem;">
+                            ${streams.map((s, index) => {
+                                const enrollment = getEnrollment(s.name);
+                                const capacity = 40;
+                                const pct = Math.min(100, (enrollment / capacity) * 100);
+                                const statusColor = enrollment >= capacity ? '#ef4444' : '#2563eb';
+                                
+                                return `
+                                <div class="glass-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.75rem; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+                                        <div style="display: flex; align-items: center; gap: 1rem;">
+                                            <div style="width: 52px; height: 52px; background: #eff6ff; color: #2563eb; border-radius: 16px; display: flex; align-items: center; justify-content: center;">
+                                                <i data-lucide="graduation-cap" style="width:26px; height:26px;"></i>
                                             </div>
-                                            <div style="background: white; padding: 1.25rem; border-radius: 16px; border: 1px solid #e2e8f0;">
-                                                <div style="display:flex; align-items:center; gap:0.5rem; color:#64748b; font-size:0.75rem; font-weight:700; text-transform:uppercase; margin-bottom:0.75rem;">
-                                                    <i data-lucide="radio" style="width:14px;"></i> Stream Status
-                                                </div>
-                                                <div style="display: flex; align-items: center; gap: 0.5rem; color: #10b981; font-weight: 800;">
-                                                    <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span> ONLINE
+                                            <div>
+                                                <h3 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 1.25rem;">${s.name}</h3>
+                                                <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.35rem;">
+                                                    <span style="font-size: 0.65rem; color: #64748b; font-weight: 800; text-transform: uppercase; background:#f1f5f9; padding:3px 8px; border-radius:6px; letter-spacing: 0.05em;">STRM ${index + 1}</span>
+                                                    <span style="font-size: 0.65rem; color: #059669; font-weight: 800; text-transform: uppercase; background:#ecfdf5; padding:3px 8px; border-radius:6px; letter-spacing: 0.05em;">${s.level || 'Unspecified'}</span>
                                                 </div>
                                             </div>
                                         </div>
+                                        <div style="text-align: right;">
+                                            <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b;">${enrollment}</div>
+                                            <div style="font-size: 0.6rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">STUDENTS</div>
+                                        </div>
                                     </div>
-                                    
-                                    <div style="display: flex; flex-direction: column; justify-content: center; gap: 0.75rem;">
+
+                                    <div style="margin-bottom: 2rem;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.65rem;">
+                                            <span style="font-weight: 700; color: #64748b; font-size: 0.8rem;">Utilization</span>
+                                            <span style="font-weight: 800; color: ${statusColor}; font-size: 0.8rem;">${Math.round(pct)}% Capacity</span>
+                                        </div>
+                                        <div style="width: 100%; background: #f1f5f9; height: 8px; border-radius: 4px; overflow: hidden;">
+                                            <div style="height: 100%; width: ${pct}%; background: ${statusColor}; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                                        </div>
+                                    </div>
+
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                                        <div style="background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px solid #f1f5f9;">
+                                            <label style="display:block; color:#94a3b8; font-size:0.6rem; font-weight:800; text-transform:uppercase; margin-bottom:0.5rem;">Form Master</label>
+                                            <div class="form-master-field" data-class-name="${s.name}" style="font-weight: 800; color: #2563eb; cursor: pointer; text-decoration: underline; text-decoration-style: dotted; font-size: 0.9rem;">${getFormMasterName(s.name)}</div>
+                                        </div>
+                                        <div style="background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px solid #f1f5f9;">
+                                            <label style="display:block; color:#94a3b8; font-size:0.6rem; font-weight:800; text-transform:uppercase; margin-bottom:0.5rem;">Stream Health</label>
+                                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #10b981; font-weight: 800; font-size: 0.9rem;">
+                                                <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span> ACTIVE
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
                                         ${!isTeacher ? `
-                                        <button class="btn btn-secondary w-full rename-class-btn" data-id="${s.id}" data-name="${s.name}" style="height: 52px; border-radius: 14px; font-weight: 700; background: white; border: 1.5px solid #e2e8f0; display:flex; align-items:center; justify-content:center; gap:0.75rem; color:#475569;">
-                                            <i data-lucide="edit-3" style="width:18px;"></i> Modify Identity
+                                        <button class="btn btn-secondary rename-class-btn" data-id="${s.id}" data-name="${s.name}" data-level="${s.level || ''}" style="height: 44px; border-radius: 12px; font-weight: 700; background: white; border: 1px solid #e2e8f0; color:#475569; font-size: 0.8rem;">
+                                            <i data-lucide="settings" style="width:14px;"></i> Configure
                                         </button>
-                                        <button class="btn btn-secondary delete-class-btn" data-id="${s.id}" data-name="${s.name}" data-count="${enrollment}" style="height: 52px; border-radius: 14px; color: #ef4444; background: #fff1f2; border: 1.5px solid #fee2e2; font-weight: 700; display:flex; align-items:center; justify-content:center; gap:0.75rem;">
-                                            <i data-lucide="trash-2" style="width:18px;"></i> Decommission
+                                        <button class="btn btn-secondary delete-class-btn" data-id="${s.id}" data-name="${s.name}" data-count="${enrollment}" style="height: 44px; border-radius: 12px; color: #ef4444; background: #fef2f2; border: 1px solid #fee2e2; font-weight: 700; font-size: 0.8rem;">
+                                            <i data-lucide="trash-2" style="width:14px;"></i> Remove
                                         </button>
                                         ` : `
-                                        <button class="btn btn-primary w-full" onclick="UI.renderView('attendance')" style="height: 52px; border-radius: 14px; font-weight: 700; display:flex; align-items:center; justify-content:center; gap:0.75rem;">
-                                            <i data-lucide="check-square" style="width:18px;"></i> Take Attendance
+                                        <button class="btn btn-primary" onclick="UI.renderView('attendance')" style="grid-column: 1 / -1; height: 44px; border-radius: 12px; font-weight: 700; background: #2563eb; color: white; border: none;">
+                                            <i data-lucide="check-square" style="width:16px;"></i> Take Attendance
                                         </button>
                                         `}
                                     </div>
                                 </div>
-                            </div>
+                                `;
+                            }).join('')}
                         </div>
-                        `;
-                    }).join('')}
+                    ` : `
+                        <!-- Mobile Accordion Layout -->
+                        <div class="stream-list" style="display: flex; flex-direction: column; gap: 1rem;">
+                            ${streams.map((s, index) => {
+                                const enrollment = getEnrollment(s.name);
+                                const capacity = 40;
+                                const pct = Math.min(100, (enrollment / capacity) * 100);
+                                const statusColor = enrollment >= capacity ? '#ef4444' : '#2563eb';
+                                
+                                return `
+                                <div class="glass-collapse-card" style="margin: 0; border: 1px solid #e2e8f0; background: white;">
+                                    <input type="checkbox" id="toggle-stream-${index}" class="glass-collapse-checkbox">
+                                    <label for="toggle-stream-${index}" class="glass-collapse-header" style="padding: 1.25rem 1.5rem;">
+                                        <div style="display: flex; align-items: center; gap: 1.25rem;">
+                                            <div style="width: 44px; height: 44px; background: #eff6ff; color: #2563eb; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                                                <i data-lucide="graduation-cap" style="width:22px; height:22px;"></i>
+                                            </div>
+                                            <div>
+                                                <h3 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 1.1rem;">${s.name}</h3>
+                                                <div style="display:flex; align-items:center; gap:0.4rem; margin-top:0.15rem;">
+                                                    <span style="font-size: 0.6rem; color: #059669; font-weight: 800; text-transform: uppercase; background:#ecfdf5; padding:2px 6px; border-radius:4px;">${s.level || 'N/A'}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 1.5rem;">
+                                            <div style="text-align: right;">
+                                                <div style="font-size: 1.1rem; font-weight: 800; color: #1e293b;">${enrollment}</div>
+                                            </div>
+                                            <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                                        </div>
+                                    </label>
+                                    <div class="glass-collapse-content" style="padding: 1.5rem; background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                                        <div style="margin-bottom: 1.5rem;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                                <span style="font-weight: 700; color: #475569; font-size: 0.8rem;">Students</span>
+                                                <span style="font-weight: 800; color: ${statusColor}; font-size: 0.8rem;">${enrollment} / ${capacity}</span>
+                                            </div>
+                                            <div style="width: 100%; background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden;">
+                                                <div style="height: 100%; width: ${pct}%; background: ${statusColor};"></div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style="background: white; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 1rem;">
+                                            <div style="color:#64748b; font-size:0.65rem; font-weight:800; text-transform:uppercase; margin-bottom:0.5rem;">Form Master</div>
+                                            <div class="form-master-field" data-class-name="${s.name}" style="font-weight: 800; color: #2563eb; cursor: pointer; text-decoration: underline; font-size: 0.9rem;">${getFormMasterName(s.name)}</div>
+                                        </div>
+
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            ${!isTeacher ? `
+                                            <button class="btn btn-secondary rename-class-btn" data-id="${s.id}" data-name="${s.name}" data-level="${s.level || ''}" style="flex: 1; height: 44px; border-radius: 10px; font-weight: 700;">
+                                                <i data-lucide="settings" style="width:16px;"></i>
+                                            </button>
+                                            <button class="btn btn-secondary delete-class-btn" data-id="${s.id}" data-name="${s.name}" data-count="${enrollment}" style="flex: 1; height: 44px; border-radius: 10px; color: #ef4444; background: #fff1f2; border: none;">
+                                                <i data-lucide="trash-2" style="width:16px;"></i>
+                                            </button>
+                                            ` : `
+                                            <button class="btn btn-primary" onclick="UI.renderView('attendance')" style="flex: 1; height: 44px; border-radius: 10px; font-weight: 700;">Take Attendance</button>
+                                            `}
+                                        </div>
+                                    </div>
+                                </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `}
                 </div>
             </div>
         `;
@@ -834,22 +892,54 @@ export const UI = {
             });
         });
 
-        // Rename Class Logic
+        // Rename/Configure Class Logic
         document.querySelectorAll('.rename-class-btn').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const oldName = btn.dataset.name;
+                const oldLevel = btn.dataset.level;
                 const id = btn.dataset.id;
-                const newName = prompt(`Rename stream "${oldName}" to:`, oldName);
-                if (newName && newName !== oldName) {
-                    await db.classes.update(id, { name: newName });
-                    // Update all students in this class too? Yes, to maintain consistency.
-                    const students = await db.students.where('class_name').equals(oldName).toArray();
-                    for (const std of students) {
-                        await db.students.update(std.student_id, { class_name: newName });
+                
+                const modalHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div>
+                            <label>Stream Name</label>
+                            <input type="text" id="edit-stream-name" class="input" value="${oldName}" style="width: 100%;">
+                        </div>
+                        <div>
+                            <label>Academic Level</label>
+                            <select id="edit-stream-level" class="input" style="width: 100%;">
+                                <option value="Nursery" ${oldLevel === 'Nursery' ? 'selected' : ''}>Nursery Section</option>
+                                <option value="Primary" ${oldLevel === 'Primary' ? 'selected' : ''}>Primary Section</option>
+                                <option value="Junior Secondary" ${oldLevel === 'Junior Secondary' || oldLevel === 'Junior' ? 'selected' : ''}>Junior Secondary</option>
+                                <option value="Senior Secondary" ${oldLevel === 'Senior Secondary' || oldLevel === 'Senior' ? 'selected' : ''}>Senior Secondary</option>
+                                <option value="Vocational" ${oldLevel === 'Vocational' ? 'selected' : ''}>Vocational Training</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+
+                this.showModal('Stream Configuration', modalHtml, async () => {
+                    const newName = document.getElementById('edit-stream-name').value.trim();
+                    const newLevel = document.getElementById('edit-stream-level').value;
+                    
+                    if (!newName) {
+                        Notifications.show('Name is required', 'error');
+                        throw new Error('Validation failed');
                     }
-                    Notifications.show(`Stream renamed to "${newName}". ${students.length} students updated.`, 'success');
+
+                    await db.classes.update(id, { name: newName, level: newLevel });
+                    
+                    if (newName !== oldName) {
+                        const students = await db.students.where('class_name').equals(oldName).toArray();
+                        for (const std of students) {
+                            await db.students.update(std.student_id, { class_name: newName });
+                        }
+                        Notifications.show(`Stream updated. ${students.length} students reassigned to "${newName}".`, 'success');
+                    } else {
+                        Notifications.show(`Stream configuration saved.`, 'success');
+                    }
                     this.renderClasses();
-                }
+                }, 'Save Changes', 'save');
             });
         });
 
@@ -858,16 +948,30 @@ export const UI = {
         if (btnAddStream) {
             btnAddStream.addEventListener('click', () => {
                 const modalHtml = `
-                    <div style="margin-bottom: 1rem;">
-                        <label>Stream Designation</label>
-                        <div style="position: relative;">
-                            <i data-lucide="layout" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #64748b; width: 16px;"></i>
-                            <input type="text" id="stream-name-input" class="input" placeholder="e.g. SSS 2 Science" style="padding-left: 2.5rem; width: 100%; box-sizing: border-box; background: white; color: #1e293b; border: 1px solid #cbd5e1;">
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div>
+                            <label>Stream Designation</label>
+                            <div style="position: relative;">
+                                <i data-lucide="layout" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #64748b; width: 16px;"></i>
+                                <input type="text" id="stream-name-input" class="input" placeholder="e.g. SSS 2 Science" style="padding-left: 2.5rem; width: 100%; box-sizing: border-box;">
+                            </div>
+                        </div>
+                        <div>
+                            <label>Academic Level</label>
+                            <select id="stream-level-input" class="input" style="width: 100%;">
+                                <option value="Nursery">Nursery Section</option>
+                                <option value="Primary">Primary Section</option>
+                                <option value="Junior Secondary">Junior Secondary</option>
+                                <option value="Senior Secondary">Senior Secondary</option>
+                                <option value="Vocational">Vocational Training</option>
+                            </select>
                         </div>
                     </div>
                 `;
                 this.showModal('New Stream Entry', modalHtml, async () => {
                     const nameInput = document.getElementById('stream-name-input').value.trim();
+                    const levelInput = document.getElementById('stream-level-input').value;
+
                     if (!nameInput) {
                         Notifications.show('Stream designation is required', 'error');
                         throw new Error('Validation failed');
@@ -879,15 +983,10 @@ export const UI = {
                         throw new Error('Duplicate');
                     }
                     
-                    // Determine level
-                    let level = 'Junior';
-                    if (nameInput.toLowerCase().includes('ss') || nameInput.toLowerCase().includes('senior')) level = 'Senior';
-                    if (nameInput.toLowerCase().includes('primary')) level = 'Primary';
-                    
                     await db.classes.add({
                         id: `C${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
                         name: nameInput,
-                        level: level,
+                        level: levelInput,
                         is_synced: 0,
                         updated_at: new Date().toISOString()
                     });
@@ -1479,6 +1578,10 @@ export const UI = {
                             viewProfileBtn.addEventListener('click', async (btnEv) => {
                                 btnEv.stopPropagation();
                                 await this.renderStudentDetail(student.student_id);
+                                // Smooth scroll on mobile
+                                if (window.innerWidth < 1024) {
+                                    document.getElementById('student-detail-view').scrollIntoView({ behavior: 'smooth' });
+                                }
                             });
                         }
 
@@ -1487,6 +1590,10 @@ export const UI = {
                                 btnEv.stopPropagation();
                                 await this.renderStudentDetail(student.student_id);
                                 document.getElementById('btn-modify-student')?.click();
+                                // Smooth scroll on mobile
+                                if (window.innerWidth < 1024) {
+                                    document.getElementById('student-detail-view').scrollIntoView({ behavior: 'smooth' });
+                                }
                             });
                         }
                     }
@@ -1723,59 +1830,105 @@ export const UI = {
                 </div>
 
                 <div class="profile-tabs" style="border-bottom: 2px solid #f1f5f9; display: flex; gap: 3rem; margin-bottom: 2rem;">
-                    <button style="background: none; border: none; border-bottom: 2px solid #2563eb; padding: 1rem 0; font-weight: 800; color: #1e293b; cursor: pointer;">General Profile</button>
-                    <button style="background: none; border: none; padding: 1rem 0; font-weight: 600; color: #64748b; cursor: pointer;">Academic Records</button>
+                    <button class="profile-tab-btn active" data-tab="general" style="background: none; border: none; border-bottom: 2px solid #2563eb; padding: 1rem 0; font-weight: 800; color: #1e293b; cursor: pointer; transition: all 0.3s;">General Profile</button>
+                    <button class="profile-tab-btn" data-tab="academic" style="background: none; border: none; padding: 1rem 0; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.3s;">Academic Records</button>
                 </div>
 
-                <div class="info-grid">
-                    <div class="info-section">
-                        <h4 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
-                            <i data-lucide="info" style="width: 18px; color: #2563eb;"></i> Bio-Data
-                        </h4>
-                        <div style="display: flex; flex-direction: column; gap: 1rem;">
-                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600;">Gender</span>
-                                <span style="font-weight: 700; color: #475569;">${student.gender || 'Not Specified'}</span>
+                <div id="profile-tab-content">
+                    <div id="tab-general" class="tab-pane active">
+                        <div class="info-grid">
+                            <div class="info-section">
+                                <h4 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                                    <i data-lucide="info" style="width: 18px; color: #2563eb;"></i> Bio-Data
+                                </h4>
+                                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                        <span style="color: #94a3b8; font-weight: 600;">Gender</span>
+                                        <span style="font-weight: 700; color: #475569;">${student.gender || 'Not Specified'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                        <span style="color: #94a3b8; font-weight: 600;">Status</span>
+                                        <span class="badge" style="background: ${student.is_active !== false ? '#ecfdf5' : '#fef2f2'}; color: ${student.is_active !== false ? '#10b981' : '#ef4444'}; font-weight: 700; border-radius: 8px; padding: 2px 8px;">${student.is_active !== false ? 'Active' : 'Deactivated'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                        <span style="color: #94a3b8; font-weight: 600;">Blood Group</span>
+                                        <span style="font-weight: 700; color: #475569;">${student.blood_group || 'N/A'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                        <span style="color: #94a3b8; font-weight: 600;">Genotype</span>
+                                        <span style="font-weight: 700; color: #475569;">${student.genotype || 'N/A'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                        <span style="color: #94a3b8; font-weight: 600;">Date of Birth</span>
+                                        <span style="font-weight: 700; color: #475569;">${student.dob || 'N/A'}</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600;">Status</span>
-                                <span class="badge" style="background: ${student.is_active !== false ? '#ecfdf5' : '#fef2f2'}; color: ${student.is_active !== false ? '#10b981' : '#ef4444'}; font-weight: 700; border-radius: 8px; padding: 2px 8px;">${student.is_active !== false ? 'Active' : 'Deactivated'}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600;">Blood Group</span>
-                                <span style="font-weight: 700; color: #475569;">${student.blood_group || 'N/A'}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600;">Genotype</span>
-                                <span style="font-weight: 700; color: #475569;">${student.genotype || 'N/A'}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600;">Date of Birth</span>
-                                <span style="font-weight: 700; color: #475569;">${student.dob || 'N/A'}</span>
+                            
+                            <div class="info-section">
+                                <h4 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                                    <i data-lucide="map-pin" style="width: 18px; color: #2563eb;"></i> Contact & Guardians
+                                </h4>
+                                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                                    <div style="display: flex; flex-direction: column; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                        <span style="color: #94a3b8; font-weight: 600; font-size: 0.8rem; margin-bottom: 4px;">Residential Address</span>
+                                        <span style="font-weight: 700; color: #475569;">${student.address || 'No address provided'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                        <span style="color: #94a3b8; font-weight: 600;">Parent/Guardian Name</span>
+                                        <span style="font-weight: 700; color: #475569;">${student.parent_name || 'N/A'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                        <span style="color: #94a3b8; font-weight: 600;">Parent Email</span>
+                                        <span style="font-weight: 700; color: #475569;">${student.parent_email || 'N/A'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                        <span style="color: #94a3b8; font-weight: 600;">Emergency Contact</span>
+                                        <span style="font-weight: 700; color: #475569;">${student.parent_phone || 'N/A'}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="info-section">
-                        <h4 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
-                            <i data-lucide="map-pin" style="width: 18px; color: #2563eb;"></i> Contact & Guardians
-                        </h4>
-                        <div style="display: flex; flex-direction: column; gap: 1rem;">
-                            <div style="display: flex; flex-direction: column; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600; font-size: 0.8rem; margin-bottom: 4px;">Residential Address</span>
-                                <span style="font-weight: 700; color: #475569;">${student.address || 'No address provided'}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600;">Parent/Guardian Name</span>
-                                <span style="font-weight: 700; color: #475569;">${student.parent_name || 'N/A'}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600;">Parent Email</span>
-                                <span style="font-weight: 700; color: #475569;">${student.parent_email || 'N/A'}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
-                                <span style="color: #94a3b8; font-weight: 600;">Emergency Contact</span>
-                                <span style="font-weight: 700; color: #475569;">${student.parent_phone || 'N/A'}</span>
+                    <div id="tab-academic" class="tab-pane" style="display: none;">
+                        <div class="card" style="padding: 1.5rem; background: white; border-radius: 20px; border: 1px solid #f1f5f9;">
+                            <h4 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                                <i data-lucide="award" style="width: 18px; color: #2563eb;"></i> Performance Summary
+                            </h4>
+                            <div style="overflow-x: auto;">
+                                <table style="width: 100%; border-collapse: collapse; min-width: 600px;">
+                                    <thead>
+                                        <tr style="border-bottom: 2px solid #f1f5f9;">
+                                            <th style="text-align: left; padding: 1rem; color: #64748b; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">Subject</th>
+                                            <th style="text-align: center; padding: 1rem; color: #64748b; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">CA 1</th>
+                                            <th style="text-align: center; padding: 1rem; color: #64748b; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">CA 2</th>
+                                            <th style="text-align: center; padding: 1rem; color: #64748b; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">Exam</th>
+                                            <th style="text-align: center; padding: 1rem; color: #64748b; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">Total</th>
+                                            <th style="text-align: center; padding: 1rem; color: #64748b; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">Grade</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${scores.length === 0 ? `<tr><td colspan="6" style="padding: 3rem; text-align: center; color: #94a3b8; font-weight: 600;">No academic records found for this student.</td></tr>` : 
+                                            scores.map(score => {
+                                                const total = (score.ca1 || 0) + (score.ca2 || 0) + (score.exam || 0);
+                                                const grade = total >= 70 ? 'A' : (total >= 60 ? 'B' : (total >= 50 ? 'C' : (total >= 40 ? 'D' : 'F')));
+                                                const gradeColor = total >= 50 ? '#10b981' : '#ef4444';
+                                                return `
+                                                    <tr style="border-bottom: 1px solid #f8fafc;">
+                                                        <td style="padding: 1rem; font-weight: 700; color: #1e293b;">${score.subject_name || score.subject_id}</td>
+                                                        <td style="padding: 1rem; text-align: center; font-weight: 600; color: #475569;">${score.ca1 || 0}</td>
+                                                        <td style="padding: 1rem; text-align: center; font-weight: 600; color: #475569;">${score.ca2 || 0}</td>
+                                                        <td style="padding: 1rem; text-align: center; font-weight: 600; color: #475569;">${score.exam || 0}</td>
+                                                        <td style="padding: 1rem; text-align: center; font-weight: 800; color: #2563eb;">${total}</td>
+                                                        <td style="padding: 1rem; text-align: center;">
+                                                            <span style="display: inline-block; padding: 4px 10px; border-radius: 8px; background: ${gradeColor}15; color: ${gradeColor}; font-weight: 800;">${grade}</span>
+                                                        </td>
+                                                    </tr>
+                                                `;
+                                            }).join('')
+                                        }
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -1826,12 +1979,28 @@ export const UI = {
                 
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1rem;">
-                        <div><label>Full Name</label><input type="text" id="edit-std-name" class="input" value="${student.name}" style="width:100%;"></div>
-                        <div><label>Class</label><select id="edit-std-class" class="input" style="width:100%;">${classOptions}</select></div>
-                        <div><label>Gender</label><select id="edit-std-gender" class="input" style="width:100%;"><option value="Male" ${student.gender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${student.gender === 'Female' ? 'selected' : ''}>Female</option></select></div>
-                        <div><label>Parent Email</label><input type="text" id="edit-std-parent-email" class="input" value="${student.parent_email || ''}" style="width:100%;"></div>
-                        <div><label>Phone</label><input type="text" id="edit-std-phone" class="input" value="${student.phone || ''}" style="width:100%;"></div>
-                        <div><label>Address</label><textarea id="edit-std-address" class="input" style="width:100%; min-height:80px;">${student.address || ''}</textarea></div>
+                        <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div><label>Full Name</label><input type="text" id="edit-std-name" class="input" value="${student.name}" style="width:100%;"></div>
+                            <div><label>Class</label><select id="edit-std-class" class="input" style="width:100%;">${classOptions}</select></div>
+                            <div><label>Gender</label><select id="edit-std-gender" class="input" style="width:100%;"><option value="Male" ${student.gender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${student.gender === 'Female' ? 'selected' : ''}>Female</option></select></div>
+                            <div><label>Date of Birth</label><input type="date" id="edit-std-dob" class="input" value="${student.dob || ''}" style="width:100%;"></div>
+                        </div>
+                        <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div><label>Blood Group</label><select id="edit-std-blood" class="input" style="width:100%;">
+                                <option value="">Select...</option>
+                                <option value="A+" ${student.blood_group === 'A+' ? 'selected' : ''}>A+</option><option value="O+" ${student.blood_group === 'O+' ? 'selected' : ''}>O+</option><option value="B+" ${student.blood_group === 'B+' ? 'selected' : ''}>B+</option><option value="AB+" ${student.blood_group === 'AB+' ? 'selected' : ''}>AB+</option>
+                                <option value="A-" ${student.blood_group === 'A-' ? 'selected' : ''}>A-</option><option value="O-" ${student.blood_group === 'O-' ? 'selected' : ''}>O-</option><option value="B-" ${student.blood_group === 'B-' ? 'selected' : ''}>B-</option><option value="AB-" ${student.blood_group === 'AB-' ? 'selected' : ''}>AB-</option>
+                            </select></div>
+                            <div><label>Genotype</label><select id="edit-std-geno" class="input" style="width:100%;">
+                                <option value="">Select...</option>
+                                <option value="AA" ${student.genotype === 'AA' ? 'selected' : ''}>AA</option><option value="AS" ${student.genotype === 'AS' ? 'selected' : ''}>AS</option><option value="SS" ${student.genotype === 'SS' ? 'selected' : ''}>SS</option><option value="SC" ${student.genotype === 'SC' ? 'selected' : ''}>SC</option>
+                            </select></div>
+                        </div>
+                        <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div><label>Parent Email</label><input type="text" id="edit-std-parent-email" class="input" value="${student.parent_email || ''}" style="width:100%;"></div>
+                            <div><label>Phone</label><input type="text" id="edit-std-phone" class="input" value="${student.phone || ''}" style="width:100%;"></div>
+                        </div>
+                        <div><label>Residential Address</label><textarea id="edit-std-address" class="input" style="width:100%; min-height:80px;">${student.address || ''}</textarea></div>
                     </div>
                 `;
 
@@ -1840,6 +2009,9 @@ export const UI = {
                         name: document.getElementById('edit-std-name').value,
                         class_name: document.getElementById('edit-std-class').value,
                         gender: document.getElementById('edit-std-gender').value,
+                        dob: document.getElementById('edit-std-dob').value,
+                        blood_group: document.getElementById('edit-std-blood').value,
+                        genotype: document.getElementById('edit-std-geno').value,
                         parent_email: document.getElementById('edit-std-parent-email').value,
                         phone: document.getElementById('edit-std-phone').value,
                         address: document.getElementById('edit-std-address').value,
@@ -1851,6 +2023,27 @@ export const UI = {
                 }, 'Update Profile', 'save');
             };
         }
+
+        // Tab Switching Logic
+        const tabBtns = document.querySelectorAll('.profile-tab-btn');
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                tabBtns.forEach(b => {
+                    b.classList.remove('active');
+                    b.style.borderBottom = 'none';
+                    b.style.color = '#64748b';
+                    b.style.fontWeight = '600';
+                });
+                btn.classList.add('active');
+                btn.style.borderBottom = '2px solid #2563eb';
+                btn.style.color = '#1e293b';
+                btn.style.fontWeight = '800';
+
+                document.getElementById('tab-general').style.display = tab === 'general' ? 'block' : 'none';
+                document.getElementById('tab-academic').style.display = tab === 'academic' ? 'block' : 'none';
+            });
+        });
     },
 
     generateStudentListItems(students) {
