@@ -3487,3 +3487,84 @@ label {
 .avg-pass { color: #10b981; font-weight: 800; }
 .avg-fail { color: #ef4444; font-weight: 800; }
 
+/* ==========================================================================
+   GLASSMORPHISM COLLAPSIBLE CONTAINER (Mobile/Tablet Friendly)
+   ========================================================================== */
+
+.glass-collapse-card {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+    transition: all 0.2s ease;
+    margin-bottom: 1.5rem;
+}
+
+/* Hide checkbox */
+.glass-collapse-checkbox {
+    display: none;
+}
+
+/* Header label – clickable */
+.glass-collapse-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.2rem 1.5rem;
+    cursor: pointer;
+    border-radius: 1.5rem;
+    user-select: none;
+    transition: background 0.2s;
+}
+
+.glass-collapse-header:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.glass-collapse-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Chevron icon */
+.glass-collapse-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+    color: var(--text-secondary);
+}
+
+.glass-collapse-chevron svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Content wrapper – collapsible part */
+.glass-collapse-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.45s ease-out, padding 0.3s ease, opacity 0.3s ease;
+    padding: 0 1.5rem;
+    opacity: 0;
+    border-top: 1px solid transparent;
+}
+
+/* CHECKED STATE: expand content + rotate chevron */
+.glass-collapse-checkbox:checked ~ .glass-collapse-content {
+    max-height: 1000px;
+    padding: 0 1.5rem 1.5rem 1.5rem;
+    opacity: 1;
+    border-top: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.glass-collapse-checkbox:checked + .glass-collapse-header .glass-collapse-chevron {
+    transform: rotate(180deg);
+}

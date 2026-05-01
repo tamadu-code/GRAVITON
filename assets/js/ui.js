@@ -1311,18 +1311,26 @@ export const UI = {
 
                 <div class="directory-container">
                     <div class="directory-sidebar" style="border-radius: 16px; background: white; border: 1px solid #e2e8f0;">
-                        <div class="sidebar-search-wrap" style="padding: 1.25rem; background: #f8fafc; border-bottom: 2px solid #f1f5f9;">
-                            <div style="position: relative; margin-bottom: 1rem;">
-                                <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 16px;"></i>
-                                <input type="text" id="directory-search" placeholder="Search by name or serial..." class="input" style="padding-left: 2.75rem; border-radius: 10px; border: 1px solid #e2e8f0; height: 44px; background: white;">
-                            </div>
-                            <select id="class-filter" class="input" style="border-radius: 10px; height: 44px; border: 1px solid #e2e8f0; background: white; font-weight: 600; color: #475569; margin-bottom: 0.75rem;">
-                                <option value="">All Academic Streams</option>
-                                ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-                            </select>
-                            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: #64748b; cursor: pointer; padding-left: 0.5rem;">
-                                <input type="checkbox" id="show-inactive-toggle" style="accent-color: #2563eb;"> Include Deactivated Students
+                        <div class="glass-collapse-card" style="margin: 0; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border: none; border-bottom: 2px solid #f1f5f9; border-radius: 16px 16px 0 0;">
+                            <input type="checkbox" id="toggle-students-filter" class="glass-collapse-checkbox" checked>
+                            <label for="toggle-students-filter" class="glass-collapse-header" style="background: rgba(248, 250, 252, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 16px 16px 0 0;">
+                                <span class="glass-collapse-title"><i data-lucide="filter" style="width: 18px; color: #2563eb;"></i> Directory Filters</span>
+                                <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                             </label>
+                            
+                            <div class="glass-collapse-content" style="padding: 0 1.25rem 1.25rem 1.25rem; background: #f8fafc;">
+                                <div style="position: relative; margin-bottom: 1rem;">
+                                    <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 16px;"></i>
+                                    <input type="text" id="directory-search" placeholder="Search by name or serial..." class="input" style="padding-left: 2.75rem; border-radius: 10px; border: 1px solid #e2e8f0; height: 44px; background: white;">
+                                </div>
+                                <select id="class-filter" class="input" style="border-radius: 10px; height: 44px; border: 1px solid #e2e8f0; background: white; font-weight: 600; color: #475569; margin-bottom: 0.75rem;">
+                                    <option value="">All Academic Streams</option>
+                                    ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                </select>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: #64748b; cursor: pointer; padding-left: 0.5rem;">
+                                    <input type="checkbox" id="show-inactive-toggle" style="accent-color: #2563eb;"> Include Deactivated Students
+                                </label>
+                            </div>
                         </div>
                         <div class="sidebar-list" id="student-sidebar-list" style="padding: 1rem;">
                             ${this.generateStudentListItems(activeStudents)}
@@ -1914,10 +1922,9 @@ export const UI = {
                         if (cleanKey.includes('class')) mapped.class_name = cleanVal;
                         if (cleanKey.includes('address')) mapped.address = cleanVal;
                         if (cleanKey.includes('status')) mapped.status = cleanVal;
-                        if (!mapped.status) mapped.status = 'Active';
-                        if (!mapped.student_id) mapped.student_id = `TEMP/${Math.random().toString(36).substr(2,5).toUpperCase()}`;
                     }
                     else if (target === 'scores') {
+                        if (cleanKey.includes('name')) mapped.name = cleanVal; // For smart matching
                         if (cleanKey.includes('id')) mapped.student_id = cleanVal;
                         if (cleanKey.includes('subject') || cleanKey.includes('course')) mapped.subject_id = cleanVal;
                         if (cleanKey.includes('term')) mapped.term = cleanVal;
@@ -1927,36 +1934,53 @@ export const UI = {
                         if (cleanKey.includes('test2') || cleanKey === 't2') mapped.test2 = parseFloat(cleanVal) || 0;
                         if (cleanKey.includes('project') || cleanKey === 'prj') mapped.project = parseFloat(cleanVal) || 0;
                         if (cleanKey.includes('exam')) mapped.exam = parseFloat(cleanVal) || 0;
-                        
-                        // ID is a composite for scores to prevent duplicates
-                        if (mapped.student_id && mapped.subject_id && mapped.term) {
-                            mapped.id = `${mapped.student_id}_${mapped.subject_id}_${mapped.term}_${mapped.session || 'current'}`;
-                        }
                     }
                     else if (target === 'subjects') {
                         if (cleanKey.includes('name') || cleanKey.includes('title')) mapped.name = cleanVal;
                         if (cleanKey.includes('type')) mapped.type = cleanVal;
                         if (cleanKey.includes('id')) mapped.id = cleanVal;
-                        if (!mapped.id) mapped.id = `SUB-${cleanVal.substring(0,3).toUpperCase()}`;
-                        if (!mapped.type) mapped.type = 'Core';
-                        mapped.credits = 1;
                     }
                     else if (target === 'classes') {
                         if (cleanKey.includes('name') || cleanKey.includes('stream')) mapped.name = cleanVal;
                         if (cleanKey.includes('level')) mapped.level = cleanVal;
-                        if (!mapped.id) mapped.id = `CLS-${cleanVal.replace(/\s+/g,'-').toUpperCase()}`;
                     }
                     else if (target === 'subject_assignments') {
                         if (cleanKey.includes('subject') || cleanKey.includes('course')) mapped.subject_id = cleanVal;
                         if (cleanKey.includes('class')) mapped.class_name = cleanVal;
-                        if (!mapped.id) mapped.id = `ASGN-${Math.random().toString(36).substr(2,6).toUpperCase()}`;
-                        mapped.teacher_id = 'unassigned';
                     }
                 }
+
                 // Smart Student ID resolution for scores
                 if (target === 'scores' && !mapped.student_id && mapped.name) {
-                    const studentMatch = result.students.find(s => s.name.toLowerCase().trim() === mapped.name.toLowerCase().trim());
+                    const studentMatch = result.students.find(s => s.name && s.name.toLowerCase().trim() === mapped.name.toLowerCase().trim());
                     if (studentMatch) mapped.student_id = studentMatch.student_id;
+                }
+
+                // Default Fallbacks & Primary Key Generation (POST-LOOP)
+                if (target === 'students') {
+                    if (!mapped.status) mapped.status = 'Active';
+                    if (!mapped.student_id) mapped.student_id = `TEMP/${Math.random().toString(36).substr(2,5).toUpperCase()}`;
+                }
+                else if (target === 'scores') {
+                    if (mapped.student_id && mapped.subject_id && mapped.term) {
+                        mapped.id = `${mapped.student_id}_${mapped.subject_id}_${mapped.term}_${mapped.session || 'current'}`;
+                    } else {
+                        mapped.id = `SCR_${Math.random().toString(36).substr(2,9).toUpperCase()}`;
+                    }
+                }
+                else if (target === 'subjects') {
+                    if (!mapped.id && mapped.name) mapped.id = `SUB-${mapped.name.substring(0,3).toUpperCase()}`;
+                    else if (!mapped.id) mapped.id = `SUB-${Math.random().toString(36).substr(2,5).toUpperCase()}`;
+                    if (!mapped.type) mapped.type = 'Core';
+                    mapped.credits = 1;
+                }
+                else if (target === 'classes') {
+                    if (!mapped.id && mapped.name) mapped.id = `CLS-${mapped.name.replace(/\s+/g,'-').toUpperCase()}`;
+                    else if (!mapped.id) mapped.id = `CLS-${Math.random().toString(36).substr(2,5).toUpperCase()}`;
+                }
+                else if (target === 'subject_assignments') {
+                    if (!mapped.id) mapped.id = `ASGN-${Math.random().toString(36).substr(2,6).toUpperCase()}`;
+                    if (!mapped.teacher_id) mapped.teacher_id = 'unassigned';
                 }
                 
                 result[target].push(mapped);
@@ -3486,45 +3510,55 @@ export const UI = {
                 </div>
 
                 <!-- Control Console -->
-                <div class="control-console-cards">
-                    <div class="console-card">
-                        <div class="console-card-header"><i data-lucide="target"></i> Stream Target</div>
-                        <div class="console-input-wrapper">
-                            <select id="report-class" class="console-input">
-                                <option value="" disabled selected>Select a Stream</option>
-                                ${accessibleClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-                            </select>
+                <div class="glass-collapse-card" style="margin: 0 1.5rem; width: auto; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border: none;">
+                    <input type="checkbox" id="toggle-reports-console" class="glass-collapse-checkbox" checked>
+                    <label for="toggle-reports-console" class="glass-collapse-header" style="background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.5); box-shadow: 0 4px 15px -3px rgba(0, 0, 0, 0.05); margin-bottom: 0.5rem; display: flex;">
+                        <span class="glass-collapse-title"><i data-lucide="sliders" style="width: 18px; color: #2563eb;"></i> Configuration Console</span>
+                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                    </label>
+                    
+                    <div class="glass-collapse-content" style="padding: 0; max-height: auto;">
+                        <div class="control-console-cards" style="margin: 0;">
+                            <div class="console-card">
+                                <div class="console-card-header"><i data-lucide="target"></i> Stream Target</div>
+                                <div class="console-input-wrapper">
+                                    <select id="report-class" class="console-input">
+                                        <option value="" disabled selected>Select a Stream</option>
+                                        ${accessibleClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="console-card">
+                                <div class="console-card-header"><i data-lucide="calendar"></i> Session</div>
+                                <div class="console-input-wrapper">
+                                    <select id="report-session" class="console-input">
+                                        <option value="2025/2026" ${currentSession === '2025/2026' ? 'selected' : ''}>2025/2026</option>
+                                        <option value="2024/2025" ${currentSession === '2024/2025' ? 'selected' : ''}>2024/2025</option>
+                                        <option value="2023/2024" ${currentSession === '2023/2024' ? 'selected' : ''}>2023/2024</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="console-card">
+                                <div class="console-card-header"><i data-lucide="bookmark"></i> Academic Term</div>
+                                <div class="console-input-wrapper">
+                                    <select id="report-term" class="console-input">
+                                        <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
+                                        <option value="2nd Term" ${currentTerm === '2nd Term' ? 'selected' : ''}>2nd Term</option>
+                                        <option value="3rd Term" ${currentTerm === '3rd Term' ? 'selected' : ''}>3rd Term</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="console-card" style="flex: 0.8;">
+                                <div class="console-card-header"><i data-lucide="clock"></i> Term Closure</div>
+                                <div class="console-input-wrapper">
+                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" title="Next Term Begins">
+                                </div>
+                            </div>
+                            <button id="btn-sync-generate" class="btn-sync-generate">
+                                <i data-lucide="refresh-cw"></i> Sync & Generate
+                            </button>
                         </div>
                     </div>
-                    <div class="console-card">
-                        <div class="console-card-header"><i data-lucide="calendar"></i> Session</div>
-                        <div class="console-input-wrapper">
-                            <select id="report-session" class="console-input">
-                                <option value="2025/2026" ${currentSession === '2025/2026' ? 'selected' : ''}>2025/2026</option>
-                                <option value="2024/2025" ${currentSession === '2024/2025' ? 'selected' : ''}>2024/2025</option>
-                                <option value="2023/2024" ${currentSession === '2023/2024' ? 'selected' : ''}>2023/2024</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="console-card">
-                        <div class="console-card-header"><i data-lucide="bookmark"></i> Academic Term</div>
-                        <div class="console-input-wrapper">
-                            <select id="report-term" class="console-input">
-                                <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
-                                <option value="2nd Term" ${currentTerm === '2nd Term' ? 'selected' : ''}>2nd Term</option>
-                                <option value="3rd Term" ${currentTerm === '3rd Term' ? 'selected' : ''}>3rd Term</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="console-card" style="flex: 0.8;">
-                        <div class="console-card-header"><i data-lucide="clock"></i> Term Closure</div>
-                        <div class="console-input-wrapper">
-                            <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" title="Next Term Begins">
-                        </div>
-                    </div>
-                    <button id="btn-sync-generate" class="btn-sync-generate">
-                        <i data-lucide="refresh-cw"></i> Sync & Generate
-                    </button>
                 </div>
 
                 <!-- Main Content Area -->
@@ -5303,10 +5337,13 @@ export const UI = {
                 </header>
 
                 <!-- Section: Institutional Identity -->
-                <div class="card" style="padding: 2rem; border-radius: 24px; margin-bottom: 2rem; border: 1px solid #f1f5f9;">
-                    <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
-                        <i data-lucide="building" style="color: #2563eb;"></i> School Identity (Report Card Header)
-                    </h3>
+                <div class="glass-collapse-card" style="border: none;">
+                    <input type="checkbox" id="toggle-settings-identity" class="glass-collapse-checkbox" checked>
+                    <label for="toggle-settings-identity" class="glass-collapse-header" style="background: rgba(248, 250, 252, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 16px 16px 0 0;">
+                        <span class="glass-collapse-title"><i data-lucide="building" style="width: 18px; color: #2563eb;"></i> School Identity (Report Card Header)</span>
+                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                    </label>
+                    <div class="glass-collapse-content" style="padding: 1.5rem; background: rgba(255, 255, 255, 0.5);">
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
@@ -5380,13 +5417,17 @@ export const UI = {
                             </div>
                         </div>
                     </div>
+                    </div>
                 </div>
 
                 <!-- Section: Academic Session Operations -->
-                <div class="card" style="padding: 2rem; border-radius: 24px; margin-bottom: 2rem; border: 1px solid #f1f5f9;">
-                    <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
-                        <i data-lucide="calendar" style="color: #10b981;"></i> Academic Session Operations
-                    </h3>
+                <div class="glass-collapse-card" style="border: none;">
+                    <input type="checkbox" id="toggle-settings-session" class="glass-collapse-checkbox" checked>
+                    <label for="toggle-settings-session" class="glass-collapse-header" style="background: rgba(248, 250, 252, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 16px 16px 0 0;">
+                        <span class="glass-collapse-title"><i data-lucide="calendar" style="width: 18px; color: #10b981;"></i> Academic Session Operations</span>
+                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                    </label>
+                    <div class="glass-collapse-content" style="padding: 1.5rem; background: rgba(255, 255, 255, 0.5);">
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
@@ -5422,13 +5463,17 @@ export const UI = {
                             Execute School-Wide Promotion
                         </button>
                     </div>
+                    </div>
                 </div>
 
                 <!-- Section: Data Management -->
-                <div class="card" style="padding: 2rem; border-radius: 24px; margin-bottom: 2rem; border: 1px solid #f1f5f9;">
-                    <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
-                        <i data-lucide="database" style="color: #f59e0b;"></i> Data Management
-                    </h3>
+                <div class="glass-collapse-card" style="border: none;">
+                    <input type="checkbox" id="toggle-settings-data" class="glass-collapse-checkbox" checked>
+                    <label for="toggle-settings-data" class="glass-collapse-header" style="background: rgba(248, 250, 252, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 16px 16px 0 0;">
+                        <span class="glass-collapse-title"><i data-lucide="database" style="width: 18px; color: #f59e0b;"></i> Data Management</span>
+                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                    </label>
+                    <div class="glass-collapse-content" style="padding: 1.5rem; background: rgba(255, 255, 255, 0.5);">
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 20px;">
@@ -5461,6 +5506,7 @@ export const UI = {
                         <button class="btn btn-danger" style="width: 100%; height: 44px; border-radius: 10px; background: #fee2e2; color: #e11d48; border: 1px solid #fecdd3;" onclick="document.getElementById('restore-file').click()">
                             Upload & Restore (.json)
                         </button>
+                    </div>
                     </div>
                 </div>
 

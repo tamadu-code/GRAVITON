@@ -205,10 +205,14 @@ export async function syncFromCloud(forceAll = false) {
             }
         } catch (e) {
             console.error(`Skipping sync for ${table} due to error:`, e);
-        }
     }
 
     localStorage.setItem('last_sync_timestamp', new Date().toISOString());
+    
+    // Auto-update UI branding if settings were synced
+    if (window.UI && typeof window.UI.updateInstitutionalBranding === 'function') {
+        window.UI.updateInstitutionalBranding();
+    }
 }
 
 /**
