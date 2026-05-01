@@ -3204,13 +3204,20 @@ export const UI = {
             const lateCount = uniqueArrived.filter(r => r.status === 'Late').length;
             
             const totalArrived = presentCount + lateCount;
+            
+            // Check if selected date is a holiday/closed day
+            const allSettings = await db.settings.toArray();
+            const holidayStr = allSettings.find(s => s.key === 'holidays')?.value || '';
+            const holidays = holidayStr.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
+            const isHoliday = holidays.includes(date);
+
             const turnout = students.length > 0 ? Math.round((totalArrived / students.length) * 100) : 0;
-            const absentCount = Math.max(0, students.length - totalArrived);
+            const absentCount = isHoliday ? 0 : Math.max(0, students.length - totalArrived);
             
             document.getElementById('stat-present').textContent = totalArrived;
             document.getElementById('stat-late').textContent = lateCount;
-            document.getElementById('stat-absent').textContent = absentCount;
-            document.getElementById('stat-turnout').textContent = `${turnout}%`;
+            document.getElementById('stat-absent').textContent = isHoliday ? 'School Closed' : absentCount;
+            document.getElementById('stat-turnout').textContent = isHoliday ? 'N/A' : `${turnout}%`;
             document.getElementById('stat-turnout-bar').style.width = `${turnout}%`;
 
             // Render Rows
@@ -3221,9 +3228,14 @@ export const UI = {
                 } else {
                     record = records.find(r => r.student_id === s.student_id && r.is_subject_based && r.subject_name === subjectName);
                 }
+                
+                // Get holiday status for the row
+                const holidayStr = allSettings.find(s => s.key === 'holidays')?.value || '';
+                const holidays = holidayStr.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
+                const isHoliday = holidays.includes(date);
 
-                const status = record ? record.status : 'Absent';
-                const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : '#ef4444');
+                const status = record ? record.status : (isHoliday ? 'Closed' : 'Absent');
+                const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : (status === 'Closed' ? '#64748b' : '#ef4444'));
                 
                 const formatTime = (iso) => {
                     if (!iso) return '--:--';
@@ -5326,7 +5338,8 @@ export const UI = {
             principalName: settings.principalName || 'Mr. Lartey Sampson',
             principalSignature: settings.principalSignature || null,
             schoolLogo: settings.schoolLogo || null,
-            themeColor: settings.themeColor || '#060495'
+            themeColor: settings.themeColor || '#060495',
+            holidays: settings.holidays || ''
         };
 
         this.contentArea.innerHTML = `
@@ -5463,6 +5476,16 @@ export const UI = {
                             Execute School-Wide Promotion
                         </button>
                     </div>
+
+                    <div style="background: #fff7ed; border: 1px solid #ffedd5; padding: 1.5rem; border-radius: 20px; margin-top: 1.5rem;">
+                        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                            <i data-lucide="palmtree" style="color: #f97316;"></i>
+                            <h4 style="font-weight: 800; color: #9a3412; margin: 0;">School Holidays & Closed Days</h4>
+                        </div>
+                        <p style="font-size: 0.85rem; color: #c2410c; margin-bottom: 1rem;">List dates (YYYY-MM-DD) when the school is closed. Attendance will not be recorded as 'Absent' on these days.</p>
+                        <textarea id="set-school-holidays" class="input" style="width: 100%; min-height: 100px; border-radius: 12px; padding: 1rem; font-family: monospace; font-size: 0.85rem;" placeholder="e.g. 2026-05-01, 2026-12-25">${config.holidays}</textarea>
+                        <p style="font-size: 0.7rem; color: #9a3412; margin-top: 0.5rem; font-style: italic;">Separate multiple dates with commas or new lines.</p>
+                    </div>
                     </div>
                 </div>
 
@@ -5560,7 +5583,8 @@ export const UI = {
             { key: 'currentSession', value: document.getElementById('set-current-session').value },
             { key: 'currentTerm', value: document.getElementById('set-current-term').value },
             { key: 'gradingSystem', value: document.getElementById('set-grading-system').value },
-            { key: 'themeColor', value: document.getElementById('set-theme-color').value }
+            { key: 'themeColor', value: document.getElementById('set-theme-color').value },
+            { key: 'holidays', value: document.getElementById('set-school-holidays').value }
         ];
 
         if (this.pendingSignature) {
