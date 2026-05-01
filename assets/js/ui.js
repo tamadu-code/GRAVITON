@@ -3513,16 +3513,6 @@ export const UI = {
 
                 const signIn = formatTime(record?.check_in);
                 const signOut = formatTime(record?.check_out);
-                
-                if (record && (record.check_in || record.check_out)) {
-                    console.log(`Time data for ${s.name}: In=${record.check_in}, Out=${record.check_out}`);
-                } else if (record) {
-                    console.log(`Record found for ${s.name} but no times. Status: ${record.status}`);
-                } else {
-                    console.log(`No record found for ${s.name}`);
-                }
-                
-                console.log(`Student Data for ${s.name}: ID=${s.student_id}, Code=${s.attendance_code}, Class=${s.class_name}`);
 
                 return `
                     <div class="glass-collapse-card attendance-card ${record ? 'active' : ''}" style="margin: 0; background: white; border: 1px solid #e2e8f0; border-radius: 16px; transition: all 0.3s ease;">
@@ -3824,13 +3814,13 @@ export const UI = {
                              <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="clock"></i> Term Closure</div>
                                 <div class="console-input-wrapper">
-                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" value="${settings.termClosure || ''}" onclick="this.showPicker()" onfocus="this.showPicker()">
+                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" value="${settings.termClosure || ''}" onclick="this.showPicker()">
                                 </div>
                             </div>
                             <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="calendar-plus"></i> Next Term Begins</div>
                                 <div class="console-input-wrapper">
-                                    <input type="date" id="report-next-term" class="console-input" style="font-size: 0.85rem;" value="${settings.nextTermBegins || ''}" onclick="this.showPicker()" onfocus="this.showPicker()">
+                                    <input type="date" id="report-next-term" class="console-input" style="font-size: 0.85rem;" value="${settings.nextTermBegins || ''}" onclick="this.showPicker()">
                                 </div>
                             </div>
                             <button id="btn-sync-generate" class="btn-sync-generate" style="width: 100%; border-radius: 12px; height: 50px;">
