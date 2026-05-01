@@ -3436,181 +3436,307 @@ export const UI = {
 
 
     async renderReports() {
-        const students = await db.students.toArray();
-        const classes = await db.classes.toArray();
+        // RBAC: Get classes. Teachers only see assigned classes.
+        const allClasses = await db.classes.toArray();
+        let accessibleClasses = allClasses;
+        const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
         
+        if (isTeacher) {
+            const formAssignments = await db.form_teachers.where('teacher_id').equals(this.currentUser.id || this.currentUser.username).toArray();
+            const subjectAssignments = await db.subject_assignments.where('teacher_id').equals(this.currentUser.id || this.currentUser.username).toArray();
+            
+            const allowedClassNames = new Set([
+                ...formAssignments.map(f => f.class_name),
+                ...subjectAssignments.map(s => s.class_name)
+            ]);
+            accessibleClasses = allClasses.filter(c => allowedClassNames.has(c.name));
+        }
+        accessibleClasses.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+
+        // Pre-fill settings
+        const settingsArray = await db.settings.toArray();
+        const settings = {};
+        settingsArray.forEach(s => settings[s.key] = s.value);
+        const currentSession = settings.currentSession || '2025/2026';
+        const currentTerm = settings.currentTerm || '1st Term';
+
         this.contentArea.innerHTML = `
-            <div class="view-container">
-                <header class="view-header">
-                    <h1 class="text-2xl font-bold">Reports Intelligence</h1>
-                    <p class="text-secondary">Generate academic report cards and master results sheets.</p>
-                </header>
-
-                <div class="tabs mb-2">
-                    <button class="tab-btn active" data-report-tab="individual">Individual Reports</button>
-                    <button class="tab-btn" data-report-tab="mastersheet">Master Sheets</button>
-                </div>
-
-                <div id="report-tab-content">
-                    <!-- Individual Reports -->
-                    <div id="individual-reports" class="report-section">
-                        <div class="actions-bar mb-2">
-                            <input type="text" id="report-search" placeholder="Search student for report..." class="input" style="width: 100%; max-width: 400px;">
-                        </div>
-                        
-                        <div class="grid" id="report-list">
-                            ${students.filter(s => s.is_active !== false)
-                                .sort((a, b) => a.name.localeCompare(b.name))
-                                .map(s => `
-                                <div class="card student-report-card" data-student-name="${s.name.toLowerCase()}">
-                                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
-                                        <div class="user-avatar-small" style="background: #eff6ff; color: #2563eb;">${s.name.charAt(0)}</div>
-                                        <div>
-                                            <h3 style="font-size: 1rem; margin: 0;">${s.name}</h3>
-                                            <p class="text-secondary" style="font-size: 0.8rem; margin: 0;">${s.student_id} | ${s.class_name}${s.sub_class ? ' ' + s.sub_class : ''}</p>
-                                        </div>
-                                    </div>
-                                    <button class="btn btn-primary w-full generate-pdf" data-id="${s.student_id}">
-                                        <i data-lucide="file-down"></i> Generate Report
-                                    </button>
-                                </div>
-                            `).join('')}
-                        </div>
+            <div class="view-container" style="padding: 0; background: transparent;">
+                
+                <!-- Premium Header -->
+                <div class="biodata-header-premium">
+                    <div>
+                        <h1 class="report-header-title"><i data-lucide="bar-chart-2"></i> Report Intelligence</h1>
+                        <p class="report-header-subtitle" id="report-subtitle">Performance auditing and result generation for School.</p>
                     </div>
-
-                    <!-- Master Sheets -->
-                    <div id="mastersheet-reports" class="report-section" style="display: none;">
-                        <div class="card" style="max-width: 600px; margin: 0 auto;">
-                            <h3 class="mb-1">Generate Master Result Sheet</h3>
-                            <p class="text-secondary mb-2">Generate a comprehensive results matrix for an entire class.</p>
-                            
-                            <div class="form-group mb-1">
-                                <label>Select Stream</label>
-                                <select id="master-class-filter" class="input w-100">
-                                    <option value="">Choose a class...</option>
-                                    ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-                                </select>
-                            </div>
-                            
-                            <div class="grid grid-cols-2 gap-1 mb-2">
-                                <div>
-                                    <label>Term</label>
-                                    <select id="master-term-filter" class="input w-100">
-                                        <option value="1st Term">1st Term</option>
-                                        <option value="2nd Term">2nd Term</option>
-                                        <option value="3rd Term">3rd Term</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label>Session</label>
-                                    <select id="master-session-filter" class="input w-100">
-                                        <option value="2025/2026">2025/2026</option>
-                                        <option value="2024/2025">2024/2025</option>
-                                    </select>
-                                </div>
-                            </div>
-                            
-                            <button id="btn-generate-mastersheet" class="btn btn-primary w-full py-1">
-                                <i data-lucide="layout-grid"></i> Generate Mastersheet Matrix
-                            </button>
+                    <div class="analytics-container">
+                        <div class="analytics-box">
+                            <div class="analytics-value" id="stat-qualified">0</div>
+                            <div class="analytics-label">Qualified Pass</div>
+                        </div>
+                        <div class="analytics-box">
+                            <div class="analytics-value" id="stat-elite">0</div>
+                            <div class="analytics-label">Elite (A1/B2)</div>
+                        </div>
+                        <div class="analytics-box">
+                            <div class="analytics-value" id="stat-records">0</div>
+                            <div class="analytics-label">Records Synced</div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Control Console -->
+                <div class="control-console-cards">
+                    <div class="console-card">
+                        <div class="console-card-header"><i data-lucide="target"></i> Stream Target</div>
+                        <div class="console-input-wrapper">
+                            <select id="report-class" class="console-input">
+                                <option value="" disabled selected>Select a Stream</option>
+                                ${accessibleClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="console-card">
+                        <div class="console-card-header"><i data-lucide="calendar"></i> Session</div>
+                        <div class="console-input-wrapper">
+                            <select id="report-session" class="console-input">
+                                <option value="2025/2026" ${currentSession === '2025/2026' ? 'selected' : ''}>2025/2026</option>
+                                <option value="2024/2025" ${currentSession === '2024/2025' ? 'selected' : ''}>2024/2025</option>
+                                <option value="2023/2024" ${currentSession === '2023/2024' ? 'selected' : ''}>2023/2024</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="console-card">
+                        <div class="console-card-header"><i data-lucide="bookmark"></i> Academic Term</div>
+                        <div class="console-input-wrapper">
+                            <select id="report-term" class="console-input">
+                                <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
+                                <option value="2nd Term" ${currentTerm === '2nd Term' ? 'selected' : ''}>2nd Term</option>
+                                <option value="3rd Term" ${currentTerm === '3rd Term' ? 'selected' : ''}>3rd Term</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="console-card" style="flex: 0.8;">
+                        <div class="console-card-header"><i data-lucide="clock"></i> Term Closure</div>
+                        <div class="console-input-wrapper">
+                            <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" title="Next Term Begins">
+                        </div>
+                    </div>
+                    <button id="btn-sync-generate" class="btn-sync-generate">
+                        <i data-lucide="refresh-cw"></i> Sync & Generate
+                    </button>
+                </div>
+
+                <!-- Main Content Area -->
+                <div id="reports-main-content">
+                    <div class="archive-standby animate-fade-in-up">
+                        <i data-lucide="file-box"></i>
+                        <h3 class="archive-standby-title">Reports Archive Standby</h3>
+                        <p class="archive-standby-text">Select a stream target and academic term from the control console above, then click 'Sync & Generate' to compile the master broadsheet.</p>
+                    </div>
+                </div>
+
             </div>
         `;
 
-        // Search logic
-        const searchInput = document.getElementById('report-search');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                const term = e.target.value.toLowerCase();
-                document.querySelectorAll('.student-report-card').forEach(card => {
-                    const name = card.dataset.studentName;
-                    card.style.display = name.includes(term) ? 'block' : 'none';
-                });
-            });
-        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
 
-        // Tab logic
-        document.querySelectorAll('[data-report-tab]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('[data-report-tab]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                
-                const tab = btn.dataset.reportTab;
-                document.getElementById('individual-reports').style.display = tab === 'individual' ? 'block' : 'none';
-                document.getElementById('mastersheet-reports').style.display = tab === 'mastersheet' ? 'block' : 'none';
-            });
+        const classSelect = document.getElementById('report-class');
+        const subtitle = document.getElementById('report-subtitle');
+        const btnSyncGenerate = document.getElementById('btn-sync-generate');
+        const mainContent = document.getElementById('reports-main-content');
+        
+        let loadedStudents = [];
+        let loadedSubjects = [];
+        let loadedScores = [];
+        let loadedAttendance = [];
+
+        classSelect.addEventListener('change', () => {
+            if (classSelect.value) {
+                subtitle.innerHTML = `Performance auditing and result generation for <strong style="color: #60a5fa;">${classSelect.value}</strong>.`;
+            }
         });
 
-        // Individual PDF Generation
-        document.querySelectorAll('.generate-pdf').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const id = btn.dataset.id;
-                const student = await db.students.get(id);
-                const scores = await db.scores.where('student_id').equals(id).toArray();
-                const attendance = await db.attendance_records.where('student_id').equals(id).toArray();
-                
-                // Fetch System Settings
-                const allSettings = await db.settings.toArray();
-                const settings = {};
-                allSettings.forEach(s => settings[s.key] = s.value);
+        btnSyncGenerate.addEventListener('click', async () => {
+            const className = classSelect.value;
+            const session = document.getElementById('report-session').value;
+            const term = document.getElementById('report-term').value;
+            const closureDate = document.getElementById('report-closure').value;
 
-                const schoolInfo = {
-                    name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
-                    address: settings.schoolAddress || '123 Education Street, Academic City',
-                    phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
-                    email: settings.schoolEmail || 'info@school.com',
-                    motto: settings.schoolMotto || 'Knowledge is Power',
-                    principalName: settings.principalName || 'Mr. Lartey Sampson',
-                    principalSignature: settings.principalSignature || null,
-                    logo: settings.schoolLogo || null,
-                    themeColor: settings.themeColor || '#060495'
-                };
-                
-                for (const score of scores) {
-                    const sub = await db.subjects.get(score.subject_id);
-                    score.subject_name = sub ? sub.name : 'Unknown Subject';
-                }
+            if (!className) return Notifications.show('Please select a Stream Target.', 'warning');
 
-                Notifications.show(`Generating report for ${student.name}...`, 'info');
-                await generateReportCard(student, scores, schoolInfo, attendance);
-            });
-        });
+            // Sync simulation / Loading state
+            btnSyncGenerate.innerHTML = `<i data-lucide="loader" class="spin"></i> Compiling...`;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            btnSyncGenerate.disabled = true;
 
-        // Mastersheet Generation
-        const btnMaster = document.getElementById('btn-generate-mastersheet');
-        if (btnMaster) {
-            btnMaster.addEventListener('click', async () => {
-                const className = document.getElementById('master-class-filter').value;
-                const term = document.getElementById('master-term-filter').value;
-                const session = document.getElementById('master-session-filter').value;
+            try {
+                // Fetch Data
+                loadedStudents = await db.students.where('class_name').equals(className).filter(s => s.is_active !== false).toArray();
+                loadedStudents.sort((a,b) => a.name.localeCompare(b.name));
                 
-                if (!className) return Notifications.show('Please select a class', 'warning');
-                
-                Notifications.show('Compiling mastersheet data...', 'info');
-                
-                const classStudents = await db.students.where('class_name').equals(className).filter(s => s.is_active !== false).toArray();
                 const classScores = await db.scores.where('class_name').equals(className).toArray();
-                const termScores = classScores.filter(s => s.term === term && s.session === session);
+                loadedScores = classScores.filter(s => s.term === term && s.session === session);
                 
-                // Get unique subjects for this class
-                const subjectIds = [...new Set(termScores.map(s => s.subject_id))];
-                const classSubjects = [];
+                loadedAttendance = await db.attendance_records.filter(a => a.term === term && a.session === session).toArray();
+
+                const subjectIds = [...new Set(loadedScores.map(s => s.subject_id))];
+                loadedSubjects = [];
                 for (const sid of subjectIds) {
                     const sub = await db.subjects.get(sid);
-                    if (sub) classSubjects.push(sub);
+                    if (sub) loadedSubjects.push(sub);
                 }
-                
-                if (classStudents.length === 0) return Notifications.show('No students found in this class', 'error');
-                
-                await generateMastersheet(className, classStudents, classSubjects, termScores, term, session);
-                Notifications.show('Mastersheet generated!', 'success');
-            });
-        }
 
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+                // Analytics Calculation
+                let qualifiedPass = 0;
+                let eliteCount = 0;
+                
+                const studentStats = loadedStudents.map(student => {
+                    const studentScores = loadedScores.filter(s => s.student_id === student.student_id);
+                    let totalScore = 0;
+                    let subjectCount = studentScores.length;
+                    
+                    studentScores.forEach(s => {
+                        totalScore += Number(s.total) || 0;
+                    });
+                    
+                    const average = subjectCount > 0 ? (totalScore / subjectCount).toFixed(1) : 0;
+                    
+                    if (average >= 50) qualifiedPass++;
+                    if (average >= 75) eliteCount++; // 75+ is generally A1/B2 range
+                    
+                    return {
+                        ...student,
+                        totalScore,
+                        average: Number(average)
+                    };
+                });
+
+                // Update Header
+                document.getElementById('stat-qualified').textContent = qualifiedPass;
+                document.getElementById('stat-elite').textContent = eliteCount;
+                document.getElementById('stat-records').textContent = loadedScores.length;
+
+                // Render Table
+                mainContent.innerHTML = `
+                    <div class="card animate-fade-in-up" style="margin: 0 1.5rem; padding: 1.5rem; border-radius: 16px; box-shadow: var(--shadow-sm);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800;">Academic Roster</h3>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button id="btn-batch-print" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; border-radius: 8px;">
+                                    <i data-lucide="printer" style="width: 14px; height: 14px;"></i> Batch Print
+                                </button>
+                                <button id="btn-matrix-view" class="btn btn-primary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; border-radius: 8px;">
+                                    <i data-lucide="layout-grid" style="width: 14px; height: 14px;"></i> Matrix View
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table w-100" style="font-size: 0.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>S/N</th>
+                                        <th>Student Name</th>
+                                        <th>Total Score</th>
+                                        <th>Average</th>
+                                        <th>Status</th>
+                                        <th style="text-align: right;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${studentStats.map((s, idx) => {
+                                        let badgeClass = 'grade-danger';
+                                        let statusText = 'Fail';
+                                        let avgClass = 'avg-fail';
+                                        
+                                        if (s.average >= 75) { badgeClass = 'grade-gold'; statusText = 'Elite (A)'; avgClass = 'avg-pass'; }
+                                        else if (s.average >= 60) { badgeClass = 'grade-silver'; statusText = 'Credit (B/C)'; avgClass = 'avg-pass'; }
+                                        else if (s.average >= 50) { badgeClass = 'grade-bronze'; statusText = 'Pass (D/E)'; avgClass = 'avg-pass'; }
+                                        
+                                        return `
+                                        <tr>
+                                            <td>${idx + 1}</td>
+                                            <td style="font-weight: 600;">${s.name}</td>
+                                            <td>${s.totalScore}</td>
+                                            <td class="${avgClass}">${s.average}%</td>
+                                            <td><span class="grade-badge ${badgeClass}">${statusText}</span></td>
+                                            <td style="text-align: right;">
+                                                <button class="btn btn-secondary btn-sm generate-individual-pdf" data-id="${s.student_id}" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
+                                                    <i data-lucide="file-text" style="width: 12px; height: 12px;"></i> View
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `}).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+                
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                // Attach Table Listeners
+                document.querySelectorAll('.generate-individual-pdf').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const id = e.currentTarget.dataset.id;
+                        const student = loadedStudents.find(st => st.student_id === id);
+                        if (!student) return;
+
+                        const sScores = loadedScores.filter(sc => sc.student_id === id);
+                        const sAtt = loadedAttendance.filter(a => a.student_id === id);
+                        
+                        // Populate subject names for PDF generator
+                        for (const score of sScores) {
+                            const sub = loadedSubjects.find(sb => sb.id === score.subject_id);
+                            score.subject_name = sub ? sub.name : 'Unknown Subject';
+                        }
+                        
+                        // Inject Term Closure into schoolInfo specifically for this run
+                        const allSettings = await db.settings.toArray();
+                        const settings = {};
+                        allSettings.forEach(s => settings[s.key] = s.value);
+                        
+                        const schoolInfo = {
+                            name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
+                            address: settings.schoolAddress || '123 Education Street, Academic City',
+                            phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
+                            email: settings.schoolEmail || 'info@school.com',
+                            motto: settings.schoolMotto || 'Knowledge is Power',
+                            principalName: settings.principalName || 'Mr. Lartey Sampson',
+                            principalSignature: settings.principalSignature || null,
+                            logo: settings.schoolLogo || null,
+                            themeColor: settings.themeColor || '#060495',
+                            nextTermBegins: closureDate // Dynamic date passed from UI
+                        };
+
+                        Notifications.show(`Generating report for ${student.name}...`, 'info');
+                        await generateReportCard(student, sScores, schoolInfo, sAtt);
+                    });
+                });
+
+                document.getElementById('btn-matrix-view').addEventListener('click', async () => {
+                    if (loadedStudents.length === 0) return Notifications.show('No students to generate mastersheet', 'error');
+                    Notifications.show('Compiling matrix view...', 'info');
+                    await generateMastersheet(className, loadedStudents, loadedSubjects, loadedScores, term, session);
+                    Notifications.show('Mastersheet generated!', 'success');
+                });
+
+                document.getElementById('btn-batch-print').addEventListener('click', async () => {
+                    Notifications.show('Batch PDF generation requires desktop client support.', 'warning');
+                });
+
+            } catch (err) {
+                console.error("Report Generation Error:", err);
+                Notifications.show('An error occurred during compilation.', 'error');
+            } finally {
+                btnSyncGenerate.innerHTML = `<i data-lucide="refresh-cw"></i> Sync & Generate`;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                btnSyncGenerate.disabled = false;
+            }
+        });
     },
+
 
     async renderStaff() {
         const profiles = await db.profiles.toArray();

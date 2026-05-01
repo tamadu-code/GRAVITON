@@ -3299,3 +3299,191 @@ label {
 .sidebar.collapsed #sidebar-school-name {
     display: none;
 }
+
+/* ==========================================================================
+   REPORTS INTELLIGENCE DASHBOARD
+   ========================================================================== */
+.biodata-header-premium {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: white;
+    padding: 2rem 1.5rem 3rem 1.5rem;
+    border-radius: 0 0 24px 24px;
+    margin-bottom: -2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    box-shadow: var(--shadow-md);
+}
+
+.report-header-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.5rem;
+    font-weight: 800;
+    margin-bottom: 0.25rem;
+}
+
+.report-header-subtitle {
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+
+.analytics-container {
+    display: flex;
+    gap: 1rem;
+}
+
+.analytics-box {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 0.75rem 1.5rem;
+    text-align: center;
+    backdrop-filter: blur(8px);
+}
+
+.analytics-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    margin-bottom: 0.25rem;
+}
+
+.analytics-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    opacity: 0.9;
+}
+
+.control-console-cards {
+    display: flex;
+    gap: 1rem;
+    padding: 0 1.5rem;
+    margin-bottom: 2rem;
+    position: relative;
+    z-index: 10;
+}
+
+.console-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1rem;
+    flex: 1;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border: 1px solid var(--border-color);
+}
+
+.console-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.console-card-header i {
+    width: 14px;
+    height: 14px;
+    color: var(--accent-primary);
+}
+
+.console-input {
+    border: none;
+    background: transparent;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    width: 100%;
+    outline: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.console-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.console-input-wrapper::after {
+    content: '\\25BC';
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    position: absolute;
+    right: 0;
+    pointer-events: none;
+}
+
+.btn-sync-generate {
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 0 1.5rem;
+    font-weight: 800;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
+    transition: all 0.2s;
+}
+
+.btn-sync-generate:hover {
+    background: #1d4ed8;
+    transform: translateY(-1px);
+}
+
+.archive-standby {
+    border: 1px dashed var(--border-color);
+    border-radius: 24px;
+    padding: 4rem 2rem;
+    text-align: center;
+    background: white;
+    margin: 0 1.5rem;
+}
+
+.archive-standby i {
+    width: 48px;
+    height: 48px;
+    color: var(--border-color);
+    margin-bottom: 1rem;
+}
+
+.archive-standby-title {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.archive-standby-text {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    max-width: 300px;
+    margin: 0 auto;
+}
+
+.grade-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.grade-gold { background: #fef3c7; color: #d97706; }
+.grade-silver { background: #f1f5f9; color: #475569; }
+.grade-bronze { background: #ffedd5; color: #c2410c; }
+.grade-danger { background: #fee2e2; color: #b91c1c; }
+
+.avg-pass { color: #10b981; font-weight: 800; }
+.avg-fail { color: #ef4444; font-weight: 800; }
+
