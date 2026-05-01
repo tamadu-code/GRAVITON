@@ -175,14 +175,15 @@ async function loadAuthenticatedApp(authUser) {
     if (footerAvatarEl) footerAvatarEl.textContent = currentName.charAt(0).toUpperCase();
 
     // Role-Based UI Filtering (Sidebar)
-    const restrictedForTeacher = ['academic', 'promotion', 'config', 'staff', 'keys', 'finances', 'security', 'pins', 'bulkimport', 'parents'];
-    const restrictedForParent = ['academic', 'promotion', 'config', 'students', 'staff', 'bulkimport', 'keys', 'finances', 'security', 'pins'];
+    // Requested Teacher Nav: dashboard, active students, classes, subjects, attendance, gradebook, cbt hub, notice board
+    const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights'];
+    const parentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt'];
 
     document.querySelectorAll('.nav-item').forEach(item => {
         const view = item.getAttribute('data-view');
-        if (currentRole === 'Teacher' && restrictedForTeacher.includes(view)) {
+        if (currentRole === 'Teacher' && !teacherAllowed.includes(view)) {
             item.style.display = 'none';
-        } else if (currentRole === 'Parent' && restrictedForParent.includes(view)) {
+        } else if (currentRole === 'Parent' && !parentAllowed.includes(view)) {
             item.style.display = 'none';
         } else {
             item.style.display = 'flex';
@@ -476,16 +477,10 @@ navItems.forEach(item => {
 
         // Strict Role-Based Protection
         const role = UI.currentUser?.role;
-        const restrictedForTeacher = ['academic', 'promotion', 'config', 'staff', 'keys', 'finances', 'security', 'pins', 'bulkimport', 'parents'];
-        const restrictedForParent = ['academic', 'promotion', 'config', 'students', 'staff', 'bulkimport', 'keys', 'finances', 'security', 'pins'];
+        const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights'];
 
-        if (role === 'Teacher' && restrictedForTeacher.includes(view)) {
+        if (role === 'Teacher' && !teacherAllowed.includes(view)) {
             if (window.Notifications) Notifications.show('Access Denied: Admin privileges required.', 'error');
-            return;
-        }
-        
-        if (role === 'Parent' && restrictedForParent.includes(view)) {
-            if (window.Notifications) Notifications.show('Access Denied', 'error');
             return;
         }
 

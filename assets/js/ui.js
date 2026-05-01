@@ -67,7 +67,8 @@ export const UI = {
 
             // RBAC: Check Teacher Restrictions
             const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
-            const restrictedForTeachers = ['classes', 'subjects', 'academic', 'bulkimport', 'staff', 'promotion', 'config'];
+            // Teachers are allowed into classes, subjects, and students now, but with filtered data
+            const restrictedForTeachers = ['academic', 'bulkimport', 'staff', 'promotion', 'config', 'reports'];
             
             if (isTeacher && restrictedForTeachers.includes(viewName)) {
                 this.contentArea.innerHTML = `
@@ -104,6 +105,8 @@ export const UI = {
                 case 'promotion': await this.renderPromotionEngine(); break;
 
                 case 'config': await this.renderSettings(); break;
+                case 'insights': await this.renderInsights(); break;
+                case 'noticeboard': await this.renderNoticeBoard(); break;
                 default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
             }
         } catch (error) {
@@ -137,11 +140,12 @@ export const UI = {
         const adminSectionHeaders = document.querySelectorAll('.nav-section-header');
         
         // Modules strictly restricted to Admin only
-        const adminOnlyViews = ['staff', 'keys', 'parents', 'lessons', 'roster', 'curriculum', 'reports', 'insights', 'finances', 'timetables', 'noticeboard'];
+        // Requested Teacher Nav: dashboard, active students, classes, subjects, attendance, gradebook, cbt hub, notice board
+        const teacherAllowedViews = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
         
         navItems.forEach(item => {
             const view = item.dataset.view;
-            if (role !== 'admin' && adminOnlyViews.includes(view)) {
+            if (role !== 'admin' && !teacherAllowedViews.includes(view)) {
                 item.setAttribute('style', 'display: none !important');
             } else {
                 item.style.display = 'flex';
@@ -385,8 +389,8 @@ export const UI = {
         // Filter students that the teacher actually teaches
         const myStudents = allStudents.filter(s => assignedClasses.includes(s.class_name));
         
-        const session = (await db.settings.get('current_session'))?.value || '2023/2024';
-        const term = (await db.settings.get('current_term'))?.value || 'First Term';
+        const session = (await db.settings.get('currentSession'))?.value || (await db.settings.get('current_session'))?.value || '2025/2026';
+        const term = (await db.settings.get('currentTerm'))?.value || (await db.settings.get('current_term'))?.value || '1st Term';
         
         // Active Learners: Students with at least one score this term
         const termScores = await db.scores.where('term').equals(term).and(s => s.session === session).toArray();
@@ -422,9 +426,15 @@ export const UI = {
                             <h1 style="font-size: 2.25rem; font-weight: 900; color: #1e293b; letter-spacing: -0.02em; font-family: 'Outfit', sans-serif;">Academic Command Center</h1>
                             <p style="color: #64748b; font-weight: 500;">Hello, <span style="color: #2563eb; font-weight: 700;">${this.currentUser.name}</span>. Reviewing your ${term} status.</p>
                         </div>
-                        <div style="text-align: right; background: white; padding: 0.75rem 1.25rem; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm);">
-                            <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Current Session</div>
-                            <div style="font-weight: 800; color: #1e293b;">${session} • ${term}</div>
+                        <div style="text-align: right; background: white; padding: 0.75rem 1.25rem; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm); display: flex; align-items: center; gap: 1rem;">
+                            <button id="teacher-sync-btn" class="btn btn-primary" style="height: 40px; border-radius: 10px; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; background: #2563eb; color: white; border: none; padding: 0 1rem; cursor: pointer;">
+                                <i data-lucide="refresh-cw" style="width: 14px;"></i> Sync Data
+                            </button>
+                            <div style="height: 30px; width: 1px; background: #e2e8f0;"></div>
+                            <div>
+                                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Current Session</div>
+                                <div style="font-weight: 800; color: #1e293b;">${session} • ${term}</div>
+                            </div>
                         </div>
                     </div>
 
@@ -606,6 +616,26 @@ export const UI = {
                     this.renderTeacherDashboard(); // Refresh
                 } catch (e) {
                     console.error('Broadcast Error:', e);
+                }
+            });
+        }
+
+        const syncBtn = document.getElementById('teacher-sync-btn');
+        if (syncBtn) {
+            syncBtn.addEventListener('click', async () => {
+                const icon = syncBtn.querySelector('i');
+                if (icon) icon.classList.add('spinning');
+                
+                try {
+                    Notifications.show('Syncing with cloud...', 'info');
+                    await syncFromCloud(true);
+                    await syncToCloud();
+                    Notifications.show('Cloud Synchronization Complete!', 'success');
+                    this.renderTeacherDashboard(); // Refresh
+                } catch (err) {
+                    Notifications.show('Sync failed. Check connection.', 'error');
+                } finally {
+                    if (icon) icon.classList.remove('spinning');
                 }
             });
         }
@@ -799,7 +829,7 @@ export const UI = {
         // Alphabetical sort (Natural sort)
         streams.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
         
-        const studentCounts = await db.students.toArray();
+        const activeStudents = await db.students.filter(s => s.is_active !== false).toArray();
         const formTeachers = await db.form_teachers.toArray().catch(() => []);
         const profiles = await db.profiles.toArray().catch(() => []);
 
@@ -811,7 +841,7 @@ export const UI = {
             streams = streams.filter(s => assignedClasses.has(s.name));
         }
         
-        const getEnrollment = (className) => studentCounts.filter(s => s.class_name === className).length;
+        const getEnrollment = (className) => activeStudents.filter(s => s.class_name === className).length;
         
         const getFormMasterName = (className) => {
             const ft = formTeachers.find(f => f.class_name === className);
@@ -833,8 +863,8 @@ export const UI = {
                             <span class="stat-label">Streams</span>
                         </div>
                         <div class="banner-stat-item">
-                            <span class="stat-value">${studentCounts.length}</span>
-                            <span class="stat-label">Total Students</span>
+                            <span class="stat-value">${activeStudents.length}</span>
+                            <span class="stat-label">Active Students</span>
                         </div>
                     </div>
                     ${!isTeacher ? `
@@ -1069,7 +1099,8 @@ export const UI = {
                         throw new Error('Validation failed');
                     }
 
-                    await db.classes.update(id, { name: newName, level: newLevel });
+                    await db.classes.update(id, prepareForSync({ name: newName, level: newLevel }));
+                    await syncToCloud(); // Immediate push for class configuration
                     
                     if (newName !== oldName) {
                         const students = await db.students.where('class_name').equals(oldName).toArray();
@@ -1565,9 +1596,24 @@ export const UI = {
 
     async renderStudents() {
         const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
-        let students = (await db.students.toArray()).sort((a,b) => a.name.localeCompare(b.name));
-        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+        const teacherId = this.currentUser.id;
         
+        let students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        const classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+        
+        // --- Teacher Specific Filtering ---
+        if (isTeacher) {
+            const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
+            const assignedClasses = [...new Set(assignments.map(a => a.class_name))];
+            
+            // Also include form teacher classes
+            const formAssignments = await db.form_teachers.where('teacher_id').equals(teacherId).toArray();
+            formAssignments.forEach(fa => assignedClasses.push(fa.class_name));
+            
+            const teacherClasses = [...new Set(assignedClasses)];
+            students = students.filter(s => teacherClasses.includes(s.class_name));
+        }
+
         // Default: Only show active students
         let showAll = false;
         let activeStudents = students.filter(s => s.is_active !== false);
@@ -1718,11 +1764,13 @@ export const UI = {
 
                         if (viewProfileBtn) {
                             viewProfileBtn.addEventListener('click', async (btnEv) => {
+                                btnEv.preventDefault();
                                 btnEv.stopPropagation();
-                                await this.renderStudentDetail(student.student_id);
+                                const studentId = viewProfileBtn.dataset.id;
+                                await this.renderStudentDetail(studentId);
                                 // Smooth scroll on mobile
                                 if (window.innerWidth < 1024) {
-                                    document.getElementById('student-detail-view').scrollIntoView({ behavior: 'smooth' });
+                                    document.getElementById('student-detail-view')?.scrollIntoView({ behavior: 'smooth' });
                                 }
                             });
                         }
@@ -1918,8 +1966,8 @@ export const UI = {
         const avgScore = scores.length > 0 ? Math.round(scores.reduce((acc, s) => acc + (s.total || 0), 0) / scores.length) : 0;
         
         // Get global settings for the student profile context
-        const session = (await db.settings.get('current_session'))?.value || '2023/2024';
-        const term = (await db.settings.get('current_term'))?.value || 'First Term';
+        const session = (await db.settings.get('currentSession'))?.value || (await db.settings.get('current_session'))?.value || '2025/2026';
+        const term = (await db.settings.get('currentTerm'))?.value || (await db.settings.get('current_term'))?.value || '1st Term';
 
         detailView.innerHTML = `
             <div style="padding: 1.5rem;">
@@ -2531,26 +2579,11 @@ export const UI = {
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="hash" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Term</span></div>
                         <select id="grade-term-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
-                            <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term / First Term</option>
+                            <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
                             <option value="2nd Term" ${currentTerm === '2nd Term' ? 'selected' : ''}>2nd Term / Second Term</option>
                             <option value="3rd Term" ${currentTerm === '3rd Term' ? 'selected' : ''}>3rd Term / Third Term</option>
                         </select>
                     </div>
-                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
-                        <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="calendar" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Session</span></div>
-                        <select id="grade-session-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
-                            <option value="2023/2024" ${currentSession === '2023/2024' ? 'selected' : ''}>2023/2024</option>
-                            <option value="2024/2025" ${currentSession === '2024/2025' ? 'selected' : ''}>2024/2025</option>
-                            <option value="2025/2026" ${currentSession === '2025/2026' ? 'selected' : ''}>2025/2026</option>
-                        </select>
-                    </div>
-                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
-                        <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="clock" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Term Closure</span></div>
-                        <input type="text" id="grade-term-closure" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;" onclick="this.showPicker()">
-                    </div>
-                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
-                        <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="calendar-plus" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Next Term</span></div>
-                        <input type="text" id="grade-next-term" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;" onclick="this.showPicker()">
                     </div>
                 </div>
                 <!-- Status Indicator -->
@@ -2620,43 +2653,11 @@ export const UI = {
         const classFilter = document.getElementById('grade-class-filter');
         const termFilter = document.getElementById('grade-term-filter');
         const sessionFilter = document.getElementById('grade-session-filter');
-        const closureInput = document.getElementById('grade-term-closure');
-        const nextTermInput = document.getElementById('grade-next-term');
 
-        // Pre-fill dates from settings
+        // Pre-fill session from settings
         const currentSettings = await db.settings.toArray();
         const settingsMap = {};
         currentSettings.forEach(s => settingsMap[s.key] = s.value);
-        if (closureInput) {
-            closureInput.value = settingsMap.termClosure || '';
-            if (closureInput.value) closureInput.type = 'date';
-        }
-        if (nextTermInput) {
-            nextTermInput.value = settingsMap.nextTermBegins || '';
-            if (nextTermInput.value) nextTermInput.type = 'date';
-        }
-
-        const saveDates = async () => {
-            const closureValue = closureInput.value;
-            const nextTermValue = nextTermInput.value;
-            
-            const toUpdate = [
-                { key: 'termClosure', value: closureValue },
-                { key: 'nextTermBegins', value: nextTermValue }
-            ];
-
-            for (const s of toUpdate) {
-                const existing = await db.settings.where('key').equals(s.key).first();
-                if (existing) {
-                    await db.settings.update(existing.id, prepareForSync(s));
-                } else {
-                    await db.settings.add(prepareForSync({ id: `SET_${s.key.toUpperCase()}`, ...s }));
-                }
-            }
-        };
-
-        closureInput?.addEventListener('change', saveDates);
-        nextTermInput?.addEventListener('change', saveDates);
 
         const loadAcademicLedger = async () => {
             const cls = classFilter.value;
@@ -3074,8 +3075,13 @@ export const UI = {
                 }));
             }
 
-            syncToCloud();
-            Notifications.show('Ledger committed and syncing!', 'success');
+            try {
+                await syncToCloud();
+                Notifications.show('Grades committed and synced to cloud!', 'success');
+            } catch (e) {
+                Notifications.show('Grades saved locally. Sync will complete when online.', 'info');
+            }
+            
             loadAcademicLedger(); // Refresh to show ranks
         });
 
@@ -3718,10 +3724,12 @@ export const UI = {
                 <!-- Main Control Panel -->
                 <div class="card" style="border-radius: 24px; padding: 0; overflow: hidden; border: 1px solid #f1f5f9; box-shadow: var(--shadow-lg);">
                     <div class="card-tabs" style="display: flex; background: #f8fafc; border-bottom: 1px solid #f1f5f9;">
+                        ${!isTeacher ? `
                         <button class="att-tab-btn active" data-tab="school" style="flex: 1; padding: 1.25rem; border: none; background: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.2s;">
                             <i data-lucide="building-2"></i> School Arrival
                         </button>
-                        <button class="att-tab-btn" data-tab="subject" style="flex: 1; padding: 1.25rem; border: none; background: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.2s; color: #94a3b8;">
+                        ` : ''}
+                        <button class="att-tab-btn ${isTeacher ? 'active' : ''}" data-tab="subject" style="flex: 1; padding: 1.25rem; border: none; background: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.2s; ${!isTeacher ? 'color: #94a3b8;' : ''}">
                             <i data-lucide="book-marked"></i> Subject Periods
                         </button>
                     </div>
@@ -4265,7 +4273,7 @@ export const UI = {
                                     <select id="report-session" class="console-input">
                                         <option value="2025/2026" ${currentSession === '2025/2026' ? 'selected' : ''}>2025/2026</option>
                                         <option value="2024/2025" ${currentSession === '2024/2025' ? 'selected' : ''}>2024/2025</option>
-                                        <option value="2023/2024" ${currentSession === '2023/2024' ? 'selected' : ''}>2023/2024</option>
+                                        <option value="2026/2027" ${currentSession === '2026/2027' ? 'selected' : ''}>2026/2027</option>
                                     </select>
                                 </div>
                             </div>
@@ -4282,13 +4290,13 @@ export const UI = {
                              <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="clock"></i> Term Closure</div>
                                 <div class="console-input-wrapper">
-                                    <input type="${settings.termClosure ? 'date' : 'text'}" id="report-closure" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="console-input" style="font-size: 0.85rem;" value="${settings.termClosure || ''}" onclick="this.showPicker()">
+                                    <input type="date" id="report-closure" class="console-input" style="font-size: 0.85rem;" value="${settings.termClosure || ''}" onclick="this.showPicker()">
                                 </div>
                             </div>
                             <div class="console-card">
                                 <div class="console-card-header"><i data-lucide="calendar-plus"></i> Next Term Begins</div>
                                 <div class="console-input-wrapper">
-                                    <input type="${settings.nextTermBegins ? 'date' : 'text'}" id="report-next-term" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="console-input" style="font-size: 0.85rem;" value="${settings.nextTermBegins || ''}" onclick="this.showPicker()">
+                                    <input type="date" id="report-next-term" class="console-input" style="font-size: 0.85rem;" value="${settings.nextTermBegins || ''}" onclick="this.showPicker()">
                                 </div>
                             </div>
                             <button id="btn-sync-generate" class="btn-sync-generate" style="width: 100%; border-radius: 12px; height: 50px;">
@@ -4334,6 +4342,12 @@ export const UI = {
             const term = document.getElementById('report-term').value;
             const closureDate = document.getElementById('report-closure').value;
             const nextTermDate = document.getElementById('report-next-term').value;
+
+            // NEW: Persist these to global settings
+            await db.settings.put({ key: 'termClosure', value: closureDate });
+            await db.settings.put({ key: 'nextTermBegins', value: nextTermDate });
+            await db.settings.put({ key: 'currentSession', value: session });
+            await db.settings.put({ key: 'currentTerm', value: term });
 
             if (!className) return Notifications.show('Please select a Stream Target.', 'warning');
 
@@ -6154,8 +6168,8 @@ export const UI = {
             schoolAddress: settings.schoolAddress || '123 Education Street, Academic City',
             schoolPhone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
             schoolEmail: settings.schoolEmail || 'info@school.com',
-            currentSession: settings.currentSession || '2025/2026',
-            currentTerm: settings.currentTerm || 'First Term',
+            currentSession: settings.currentSession || settings.current_session || '2025/2026',
+            currentTerm: settings.currentTerm || settings.current_term || '1st Term',
             gradingSystem: settings.gradingSystem || 'Grade-Based (A1, B2, etc.)',
             principalName: settings.principalName || 'Mr. Lartey Sampson',
             principalSignature: settings.principalSignature || null,
@@ -6273,9 +6287,9 @@ export const UI = {
                         <div class="form-group">
                             <label>Current Term</label>
                             <select id="set-current-term" class="input">
-                                <option value="First Term" ${config.currentTerm === 'First Term' ? 'selected' : ''}>First Term</option>
-                                <option value="Second Term" ${config.currentTerm === 'Second Term' ? 'selected' : ''}>Second Term</option>
-                                <option value="Third Term" ${config.currentTerm === 'Third Term' ? 'selected' : ''}>Third Term</option>
+                                <option value="1st Term" ${config.currentTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
+                                <option value="2nd Term" ${config.currentTerm === '2nd Term' ? 'selected' : ''}>2nd Term</option>
+                                <option value="3rd Term" ${config.currentTerm === '3rd Term' ? 'selected' : ''}>3rd Term</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -6597,6 +6611,123 @@ export const UI = {
             }
         };
         reader.readAsText(file);
+    },
+
+    async renderInsights() {
+        const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
+        const teacherId = this.currentUser.id;
+        
+        let scores = await db.scores.toArray();
+        let students = await db.students.filter(s => s.is_active !== false).toArray();
+        let subjects = await db.subjects.toArray();
+        
+        if (isTeacher) {
+            const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
+            const assignedSubIds = new Set(assignments.map(a => a.subject_id));
+            const assignedClasses = new Set(assignments.map(a => a.class_name));
+            
+            scores = scores.filter(s => assignedSubIds.has(s.subject_id) && assignedClasses.has(students.find(std => std.student_id === s.student_id)?.class_name));
+            subjects = subjects.filter(s => assignedSubIds.has(s.id));
+        }
+
+        const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + (s.total || 0), 0) / scores.length) : 0;
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container" style="padding: 1.5rem;">
+                <div class="page-banner" style="background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);">
+                    <div class="banner-content">
+                        <h1 class="banner-title"><i data-lucide="activity"></i> Score Insights</h1>
+                        <p class="banner-subtitle">Performance trends and academic auditing.</p>
+                    </div>
+                </div>
+                
+                <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                    <div class="card stat-card">
+                        <div class="stat-info">
+                            <h3>Average Score</h3>
+                            <p class="stat-value">${avgScore}%</p>
+                        </div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-info">
+                            <h3>Total Records</h3>
+                            <p class="stat-value">${scores.length}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Subject Performance Matrix</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Subject</th>
+                                    <th>Average</th>
+                                    <th>Highest</th>
+                                    <th>Pass Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${subjects.map(sub => {
+                                    const subScores = scores.filter(s => s.subject_id === sub.id);
+                                    if (subScores.length === 0) return '';
+                                    const avg = Math.round(subScores.reduce((a, s) => a + (s.total || 0), 0) / subScores.length);
+                                    const high = Math.max(...subScores.map(s => s.total || 0));
+                                    const passRate = Math.round((subScores.filter(s => (s.total || 0) >= 50).length / subScores.length) * 100);
+                                    return `
+                                        <tr>
+                                            <td>${sub.name}</td>
+                                            <td>${avg}%</td>
+                                            <td>${high}%</td>
+                                            <td>${passRate}%</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async renderNoticeBoard() {
+        const announcements = await db.announcements.toArray().catch(() => []);
+        announcements.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+
+        this.contentArea.innerHTML = `
+            <div class="view-container" style="padding: 1.5rem;">
+                <div class="page-banner" style="background: linear-gradient(135deg, #db2777 0%, #9d174d 100%);">
+                    <div class="banner-content">
+                        <h1 class="banner-title"><i data-lucide="megaphone"></i> Notice Board</h1>
+                        <p class="banner-subtitle">Official school announcements and broadcasts.</p>
+                    </div>
+                </div>
+
+                <div class="grid" style="gap: 1.5rem; margin-top: 2rem;">
+                    ${announcements.length === 0 ? `
+                        <div class="card text-center" style="padding: 4rem;">
+                            <i data-lucide="info" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 1rem;"></i>
+                            <p style="color: #64748b;">No active announcements at this time.</p>
+                        </div>
+                    ` : announcements.map(a => `
+                        <div class="card" style="padding: 1.5rem; border-left: 4px solid #db2777;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                                <h3 style="margin: 0; color: #1e293b;">${a.title}</h3>
+                                <span style="font-size: 0.75rem; color: #94a3b8;">${new Date(a.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <p style="color: #475569; line-height: 1.6;">${a.content}</p>
+                            <div style="margin-top: 1rem; font-size: 0.75rem; color: #64748b; font-weight: 600;">
+                                Posted by: ${a.posted_by || 'School Administration'}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 };
 
