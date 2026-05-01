@@ -76,8 +76,23 @@ export async function syncToCloud() {
 
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'settings'];
     let syncCount = 0;
+    const failedTables = new Set();
+    
+    // Cache valid IDs for validation to prevent foreign key errors
+    let validSubjectIds = null;
+    let validStudentIds = null;
 
     for (const table of tables) {
+        // Enforce dependencies: Don't sync child tables if their parents failed
+        if ((table === 'scores' || table === 'subject_assignments' || table === 'timetable') && failedTables.has('subjects')) {
+            console.warn(`Skipping ${table} sync because subjects sync failed in this run.`);
+            continue;
+        }
+        if ((table === 'scores' || table === 'attendance' || table === 'attendance_records') && failedTables.has('students')) {
+            console.warn(`Skipping ${table} sync because students sync failed in this run.`);
+            continue;
+        }
+
         try {
             // Find records where is_synced is 0
             const unsynced = await db[table].where('is_synced').equals(0).toArray();
@@ -85,10 +100,47 @@ export async function syncToCloud() {
             if (unsynced.length > 0 && sb) {
                 console.log(`Syncing ${unsynced.length} records for ${table}...`);
                 
+                // --- Data Integrity Validation ---
+                let recordsToSync = unsynced;
+                
+                // Validate subject_id
+                if (table === 'scores' || table === 'subject_assignments' || table === 'timetable') {
+                    if (!validSubjectIds) {
+                        const allSubjects = await db.subjects.toArray();
+                        validSubjectIds = new Set(allSubjects.map(s => s.id));
+                    }
+                    recordsToSync = recordsToSync.filter(record => {
+                        if (record.subject_id && !validSubjectIds.has(record.subject_id)) {
+                            console.warn(`[Data Integrity] Dropping ${table} record ${record.id} due to invalid subject_id: ${record.subject_id}`);
+                            db[table].delete(record.id || record.student_id); // Auto-clean orphaned local records
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+
+                // Validate student_id
+                if (table === 'scores' || table === 'attendance' || table === 'attendance_records') {
+                    if (!validStudentIds) {
+                        const allStudents = await db.students.toArray();
+                        validStudentIds = new Set(allStudents.map(s => s.student_id));
+                    }
+                    recordsToSync = recordsToSync.filter(record => {
+                        if (record.student_id && !validStudentIds.has(record.student_id)) {
+                            console.warn(`[Data Integrity] Dropping ${table} record ${record.id} due to invalid student_id: ${record.student_id}`);
+                            db[table].delete(record.id || record.student_id); // Auto-clean orphaned local records
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+                
+                if (recordsToSync.length === 0) continue; // All were invalid
+
                 // Chunk size of 50 to avoid payload limits
                 const CHUNK_SIZE = 50;
-                for (let i = 0; i < unsynced.length; i += CHUNK_SIZE) {
-                    const chunk = unsynced.slice(i, i + CHUNK_SIZE);
+                for (let i = 0; i < recordsToSync.length; i += CHUNK_SIZE) {
+                    const chunk = recordsToSync.slice(i, i + CHUNK_SIZE);
                     
                     // Only send columns that are known to exist in the database
                     const dataToSync = chunk.map(item => {
@@ -106,7 +158,6 @@ export async function syncToCloud() {
                             timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
                             notices: ['id', 'title', 'is_active', 'updated_at'],
                             settings: ['id', 'key', 'value', 'updated_at']
-
                         };
 
                         const columns = allowedColumns[table] || Object.keys(item);
@@ -126,6 +177,7 @@ export async function syncToCloud() {
                         }
                         syncCount += chunk.length;
                     } else {
+                        failedTables.add(table);
                         console.error(`Sync error for ${table} [Batch ${i/CHUNK_SIZE + 1}]:`, error);
                         // Trigger event with full error context
                         window.dispatchEvent(new CustomEvent('sync-error', { 
@@ -141,6 +193,7 @@ export async function syncToCloud() {
                 }
             }
         } catch (e) {
+            failedTables.add(table);
             console.error(`Local sync error for ${table}:`, e);
         }
     }
