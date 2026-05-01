@@ -5607,7 +5607,6 @@ export const UI = {
                 reader.readAsDataURL(file);
             }
         };
-        };
     },
 
     addClosedDay() {
