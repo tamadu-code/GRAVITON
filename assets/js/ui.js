@@ -2287,7 +2287,7 @@ export const UI = {
                 const score = filteredScores.find(sc => {
                     const scId = String(sc.student_id || '').trim().toLowerCase();
                     const sId = String(s.student_id || '').trim().toLowerCase();
-                    return scId === sId || scId.includes(sId) || sId.includes(scId);
+                    return scId && sId && (scId === sId || scId.includes(sId) || sId.includes(scId));
                 });
                 
                 // Helper to check if a value is effectively null/empty
@@ -2323,7 +2323,11 @@ export const UI = {
             const mobileContainer = document.getElementById('mobile-score-entry');
             if (mobileContainer) {
                 mobileContainer.innerHTML = targetStudents.map(s => {
-                    const score = filteredScores.find(sc => String(sc.student_id) === String(s.student_id));
+                    const score = filteredScores.find(sc => {
+                        const scId = String(sc.student_id || '').trim().toLowerCase();
+                        const sId = String(s.student_id || '').trim().toLowerCase();
+                        return scId && sId && (scId === sId || scId.includes(sId) || sId.includes(scId));
+                    });
                     
                     const isN = (v) => v === null || v === undefined || v === '';
                     const assignment = isN(score?.assignment) ? null : parseFloat(score.assignment);
