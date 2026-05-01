@@ -1411,25 +1411,87 @@ export const UI = {
                     db.students.get(studentId).then(async student => {
                         const scores = await db.scores.where('student_id').equals(studentId).toArray();
                         const avg = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + (s.total || 0), 0) / scores.length) : 0;
+                        const gradeLabel = avg >= 70 ? 'A' : avg >= 60 ? 'B' : avg >= 50 ? 'C' : avg >= 40 ? 'D' : avg > 0 ? 'F' : '-';
                         
                         detailArea.innerHTML = `
-                            <div class="accordion-inner-content" style="padding: 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px; font-size: 0.85rem;">
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
-                                    <div class="stat-box-sm"><strong>AVG SCORE</strong><br>${avg}%</div>
-                                    <div class="stat-box-sm"><strong>GENDER</strong><br>${student.gender || 'N/A'}</div>
-                                    <div class="stat-box-sm"><strong>STATUS</strong><br>${student.status}</div>
-                                    <div class="stat-box-sm"><strong>SUBJECTS</strong><br>${scores.length}</div>
+                            <div style="padding: 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+                                <div class="student-biodata-grid">
+                                    <div class="student-biodata-field">
+                                        <label>Student ID</label>
+                                        <span>${student.student_id || 'N/A'}</span>
+                                    </div>
+                                    <div class="student-biodata-field">
+                                        <label>Class / Stream</label>
+                                        <span>${student.class_name || 'N/A'}${student.sub_class ? ' ' + student.sub_class : ''}</span>
+                                    </div>
+                                    <div class="student-biodata-field">
+                                        <label>Gender</label>
+                                        <span>${student.gender || 'N/A'}</span>
+                                    </div>
+                                    <div class="student-biodata-field">
+                                        <label>Status</label>
+                                        <span style="color: ${student.is_active !== false ? '#10b981' : '#ef4444'};">${student.is_active !== false ? 'Active' : 'Inactive'}</span>
+                                    </div>
+                                    <div class="student-biodata-field">
+                                        <label>Admission Year</label>
+                                        <span>${student.admission_year || 'N/A'}</span>
+                                    </div>
+                                    <div class="student-biodata-field">
+                                        <label>Biometric Code</label>
+                                        <span>${student.attendance_code || 'Not Linked'}</span>
+                                    </div>
+                                    <div class="student-biodata-field">
+                                        <label>Date of Birth</label>
+                                        <span>${student.dob || 'N/A'}</span>
+                                    </div>
+                                    <div class="student-biodata-field">
+                                        <label>Avg Score</label>
+                                        <span style="color: ${avg >= 50 ? '#15803d' : '#ef4444'};">${avg > 0 ? avg + '% (' + gradeLabel + ')' : 'No scores'}</span>
+                                    </div>
+                                    <div class="student-biodata-field" style="grid-column: 1 / -1;">
+                                        <label>Subjects Registered</label>
+                                        <span>${scores.length > 0 ? scores.length + ' subjects' : 'None yet'}</span>
+                                    </div>
+                                    <div class="student-biodata-field" style="grid-column: 1 / -1;">
+                                        <label>Residential Address</label>
+                                        <span>${student.address || 'No address provided'}</span>
+                                    </div>
+                                    <div class="student-biodata-field">
+                                        <label>Parent / Guardian</label>
+                                        <span>${student.parent_name || 'N/A'}</span>
+                                    </div>
+                                    <div class="student-biodata-field">
+                                        <label>Parent Phone</label>
+                                        <span>${student.parent_phone || 'N/A'}</span>
+                                    </div>
+                                    ${student.parent_email ? `
+                                    <div class="student-biodata-field" style="grid-column: 1 / -1;">
+                                        <label>Parent Email</label>
+                                        <span>${student.parent_email}</span>
+                                    </div>
+                                    ` : ''}
                                 </div>
-                                <div style="margin-bottom: 0.75rem;">
-                                    <strong style="color: #64748b; font-size: 0.7rem;">RESIDENTIAL ADDRESS</strong>
-                                    <p style="margin: 2px 0; color: #1e293b;">${student.address || 'No address provided'}</p>
-                                </div>
-                                <div>
-                                    <strong style="color: #64748b; font-size: 0.7rem;">PARENT/GUARDIAN</strong>
-                                    <p style="margin: 2px 0; color: #1e293b;">${student.parent_name || 'N/A'} (${student.parent_phone || 'N/A'})</p>
+                                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                                    <button class="btn btn-secondary mobile-edit-std-btn" data-id="${student.student_id}" style="flex: 1; border-radius: 8px; font-size: 0.8rem; height: 40px; font-weight: 700;">
+                                        <i data-lucide="edit-3" style="width: 14px;"></i> Edit Profile
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="UI.renderStudentDetail('${student.student_id}')" style="flex: 1; border-radius: 8px; font-size: 0.8rem; height: 40px; background: #2563eb; color: white; border: none; font-weight: 700;">
+                                        <i data-lucide="user" style="width: 14px;"></i> Full View
+                                    </button>
                                 </div>
                             </div>
                         `;
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                        
+                        // Attach edit button handler
+                        const editBtn = detailArea.querySelector('.mobile-edit-std-btn');
+                        if (editBtn) {
+                            editBtn.addEventListener('click', async (e) => {
+                                e.stopPropagation();
+                                await this.renderStudentDetail(student.student_id);
+                                document.getElementById('btn-modify-student')?.click();
+                            });
+                        }
                     });
                 }
             }
