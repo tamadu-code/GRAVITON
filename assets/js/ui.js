@@ -600,6 +600,7 @@ export const UI = {
                         updated_at: new Date().toISOString(),
                         is_synced: 0
                     });
+                    syncToCloud();
                     document.getElementById('broadcast-content').value = '';
                     Notifications.show('Announcement broadcasted successfully!', 'success');
                     this.renderTeacherDashboard(); // Refresh
