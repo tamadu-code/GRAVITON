@@ -103,20 +103,38 @@ export async function syncToCloud() {
                 // --- Data Integrity Validation ---
                 let recordsToSync = unsynced;
                 
-                // Validate subject_id
+                // Validate and Auto-Migrate subject_id
                 if (table === 'scores' || table === 'subject_assignments' || table === 'timetable') {
                     if (!validSubjectIds) {
                         const allSubjects = await db.subjects.toArray();
                         validSubjectIds = new Set(allSubjects.map(s => s.id));
+                        // Create a map of subject names to IDs for recovery
+                        window._subjectNameMap = new Map(allSubjects.map(s => [(s.name || '').toLowerCase().trim(), s.id]));
                     }
-                    recordsToSync = recordsToSync.filter(record => {
+                    
+                    // Auto-Migration & Validation Pass
+                    const updatedRecords = [];
+                    for (const record of recordsToSync) {
                         if (record.subject_id && !validSubjectIds.has(record.subject_id)) {
-                            console.warn(`[Data Integrity] Flagging ${table} record ${record.id} due to invalid subject_id: ${record.subject_id}`);
-                            db[table].update(record.id || record.student_id, { is_synced: -1 }); // Flag as error, do not delete
-                            return false;
+                            // Attempt to rescue the record by mapping the old string name to the new UUID
+                            const oldNameKey = record.subject_id.toLowerCase().trim();
+                            if (window._subjectNameMap && window._subjectNameMap.has(oldNameKey)) {
+                                const newCorrectId = window._subjectNameMap.get(oldNameKey);
+                                console.log(`[Auto-Migration] Rescued ${table} record ${record.id}: Mapped "${record.subject_id}" to ${newCorrectId}`);
+                                record.subject_id = newCorrectId;
+                                record.is_synced = 0;
+                                // Save the corrected record back to local DB
+                                await db[table].put(record);
+                                updatedRecords.push(record);
+                            } else {
+                                console.warn(`[Data Integrity] Flagging ${table} record ${record.id} due to invalid subject_id: ${record.subject_id}`);
+                                db[table].update(record.id || record.student_id, { is_synced: -1 }); // Flag as error
+                            }
+                        } else {
+                            updatedRecords.push(record); // It's valid
                         }
-                        return true;
-                    });
+                    }
+                    recordsToSync = updatedRecords;
                 }
 
                 // Validate student_id
