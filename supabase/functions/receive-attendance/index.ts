@@ -77,15 +77,15 @@ serve(async (req) => {
           const attStudent = attStudents[0];
           console.log(`Discovered student in Attendance System: ${attStudent.name}`);
           
-          // Split Class arm if exists (e.g. "JSS 1A" -> "JSS 1" and "A")
-          const fullClass = attStudent.class || 'Unknown';
-          let className = fullClass;
+          // Do not split class arm (Keep "JSS 1A" as "JSS 1A")
+          let className = attStudent.class || 'Unknown';
           let subClass = null;
-          
-          const classMatch = fullClass.match(/^(.+?)\s?([A-Z])$/i);
+
+          // Note: If you still want to parse the subclass for the `sub_class` field without modifying the main class_name, you could do it here:
+          const classMatch = className.match(/^(.+?)\s?([A-Z])$/i);
           if (classMatch) {
-            className = classMatch[1].trim();
             subClass = classMatch[2].toUpperCase();
+            // We NO LONGER reassign className to classMatch[1] to ensure JSS 1A remains JSS 1A in the dropdowns.
           }
 
           // Create the student in SMS
