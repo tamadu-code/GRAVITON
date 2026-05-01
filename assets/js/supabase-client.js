@@ -94,8 +94,8 @@ export async function syncToCloud() {
         }
 
         try {
-            // Find records where is_synced is 0
-            const unsynced = await db[table].where('is_synced').equals(0).toArray();
+            // Find records where is_synced is 0 or -1 (to retry flagged records if subjects have now downloaded)
+            const unsynced = await db[table].filter(r => r.is_synced === 0 || r.is_synced === -1).toArray();
             
             if (unsynced.length > 0 && sb) {
                 console.log(`Syncing ${unsynced.length} records for ${table}...`);
@@ -143,6 +143,10 @@ export async function syncToCloud() {
                                 await db[table].put(record);
                                 updatedRecords.push(record);
                             } else {
+                                if (!window._debugPrintedSubjects && window._subjectNameMap) {
+                                    console.warn(`[Debug] Migration failed. Available subjects in Map:`, Array.from(window._subjectNameMap.keys()));
+                                    window._debugPrintedSubjects = true;
+                                }
                                 console.warn(`[Data Integrity] Flagging ${table} record ${record.id} due to invalid subject_id: ${record.subject_id}`);
                                 db[table].update(record.id || record.student_id, { is_synced: -1 }); // Flag as error
                             }
