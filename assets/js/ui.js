@@ -2580,8 +2580,16 @@ export const UI = {
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="hash" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Term</span></div>
                         <select id="grade-term-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
                             <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
-                            <option value="2nd Term" ${currentTerm === '2nd Term' ? 'selected' : ''}>2nd Term / Second Term</option>
-                            <option value="3rd Term" ${currentTerm === '3rd Term' ? 'selected' : ''}>3rd Term / Third Term</option>
+                            <option value="2nd Term" ${currentTerm === '2nd Term' ? 'selected' : ''}>2nd Term</option>
+                            <option value="3rd Term" ${currentTerm === '3rd Term' ? 'selected' : ''}>3rd Term</option>
+                        </select>
+                    </div>
+                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="calendar" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Session</span></div>
+                        <select id="grade-session-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
+                            <option value="2025/2026" ${currentSession === '2025/2026' ? 'selected' : ''}>2025/2026</option>
+                            <option value="2024/2025" ${currentSession === '2024/2025' ? 'selected' : ''}>2024/2025</option>
+                            <option value="2026/2027" ${currentSession === '2026/2027' ? 'selected' : ''}>2026/2027</option>
                         </select>
                     </div>
                     </div>
@@ -2973,7 +2981,9 @@ export const UI = {
             }
         });
 
-        [subjectFilter, termFilter, sessionFilter].forEach(f => f.addEventListener('change', loadAcademicLedger));
+        [subjectFilter, termFilter, sessionFilter].forEach(f => {
+            if (f) f.addEventListener('change', loadAcademicLedger);
+        });
 
         // Action Listeners
         const btnSync = document.getElementById('btn-sync-ledger');
