@@ -405,16 +405,28 @@ export async function registerUser(email, password, fullName, role) {
             id: data.user.id,
             full_name: fullName,
             role: role,
+            email: email,
+            status: 'Active',
             updated_at: new Date().toISOString()
         };
-
-        const { error: profileError } = await client.from('profiles').upsert(profileData);
-        if (profileError) {
-            console.warn('Profile insert warning (may already exist via trigger):', profileError.message);
-        }
+        await client.from('profiles').upsert(profileData);
     }
 
-    return { data, error: null };
+    return { data, error };
+}
+
+/**
+ * Update user password
+ */
+export async function updateUserPassword(newPassword) {
+    const client = getSupabase();
+    if (!client) return { error: { message: 'Database connection failed' } };
+
+    const { data, error } = await client.auth.updateUser({
+        password: newPassword
+    });
+
+    return { data, error };
 }
 
 /**

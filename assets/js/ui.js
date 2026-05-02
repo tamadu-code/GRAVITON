@@ -6,7 +6,7 @@ console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet } from './utils.js';
-import { syncToCloud, syncFromCloud, registerUser } from './supabase-client.js';
+import { syncToCloud, syncFromCloud, registerUser, updateUserPassword } from './supabase-client.js';
 
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
@@ -123,6 +123,7 @@ export const UI = {
                 case 'config': await this.renderSettings(); break;
                 case 'insights': await this.renderInsights(); break;
                 case 'noticeboard': await this.renderNoticeBoard(); break;
+                case 'profile': await this.renderProfile(); break;
                 default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
             }
         } catch (error) {
@@ -7723,6 +7724,94 @@ export const UI = {
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async renderProfile() {
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in" style="max-width: 800px; margin: 0 auto;">
+                <div class="view-header" style="margin-bottom: 2rem;">
+                    <h1 class="text-2xl font-bold text-slate-800">My Profile & Security</h1>
+                    <p class="text-slate-500">Manage your account information and login credentials</p>
+                </div>
+
+                <div class="grid" style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 2rem;">
+                    <!-- User Info Card -->
+                    <div class="card" style="padding: 2rem; background: white; border-radius: 24px; text-align: center; border: 1px solid #f1f5f9; box-shadow: var(--shadow-sm);">
+                        <div style="width: 100px; height: 100px; background: #e0e7ff; border-radius: 50%; margin: 0 auto 1.5rem; display: flex; align-items: center; justify-content: center; color: #4338ca;">
+                            <i data-lucide="user" style="width: 50px; height: 50px;"></i>
+                        </div>
+                        <h2 style="font-weight: 800; color: #1e293b; margin-bottom: 0.25rem;">${this.currentUser.name}</h2>
+                        <span class="badge" style="background: #eef2ff; color: #4338ca; font-weight: 800; font-size: 0.75rem; text-transform: uppercase;">${this.currentUser.role}</span>
+                        
+                        <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #f1f5f9; text-align: left;">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">User ID</div>
+                            <div style="font-family: monospace; color: #334155; font-size: 0.85rem;">${this.currentUser.id}</div>
+                        </div>
+                    </div>
+
+                    <!-- Security Card -->
+                    <div class="card" style="padding: 2rem; background: white; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: var(--shadow-sm);">
+                        <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                            <i data-lucide="shield-check" style="color: #10b981;"></i> Update Password
+                        </h3>
+                        
+                        <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 2rem; line-height: 1.6;">To keep your account secure, we recommend using a unique password that you don't use elsewhere.</p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                            <div class="form-group">
+                                <label style="font-weight: 700; font-size: 0.75rem; color: #475569;">NEW PASSWORD</label>
+                                <input type="password" id="new-password" class="input w-100" placeholder="Minimum 6 characters" style="border-radius: 12px; height: 48px;">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label style="font-weight: 700; font-size: 0.75rem; color: #475569;">CONFIRM PASSWORD</label>
+                                <input type="password" id="confirm-password" class="input w-100" placeholder="Re-enter new password" style="border-radius: 12px; height: 48px;">
+                            </div>
+                            
+                            <button id="btn-update-password" class="btn btn-primary" style="margin-top: 1rem; border-radius: 12px; height: 52px; font-weight: 800; background: #1e293b;">
+                                <i data-lucide="save"></i> Update Security Credentials
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        document.getElementById('btn-update-password').onclick = async () => {
+            const newPw = document.getElementById('new-password').value;
+            const confirmPw = document.getElementById('confirm-password').value;
+
+            if (newPw.length < 6) {
+                return Notifications.show('Password must be at least 6 characters', 'error');
+            }
+            if (newPw !== confirmPw) {
+                return Notifications.show('Passwords do not match', 'error');
+            }
+
+            const btn = document.getElementById('btn-update-password');
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader" class="spin"></i> Updating...';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            try {
+                const { error } = await updateUserPassword(newPw);
+                if (error) {
+                    Notifications.show(error.message, 'error');
+                } else {
+                    Notifications.show('Password updated successfully!', 'success');
+                    document.getElementById('new-password').value = '';
+                    document.getElementById('confirm-password').value = '';
+                }
+            } catch (err) {
+                Notifications.show('Failed to update password', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="save"></i> Update Security Credentials';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        };
     },
 
     async factoryReset() {
