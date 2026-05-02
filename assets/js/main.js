@@ -93,42 +93,50 @@ async function initApp() {
     
     console.log('Graviton CMS: Initializing App...');
     
-    // Run icon creation first
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    // Fast-path: If no session token is found in localStorage, show login immediately
+    // This avoids waiting for a Supabase network round-trip just to be told no session exists.
+    const hasPotentialSession = Object.keys(localStorage).some(key => key.startsWith('sb-') && key.endsWith('-auth-token'));
     
-    // Show a small loader on login button if we are still checking session
+    if (!hasPotentialSession) {
+        console.log('No local session token found, skipping session check.');
+        showLoginScreen();
+        isInitializing = false;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        return;
+    }
+
+    // Show a small loader on login button if we are actually checking a real session
     if (loginBtn) {
-        console.log('Disabling login button for session check...');
+        console.log('Verifying existing session...');
         loginBtn.disabled = true;
-        loginBtn.innerHTML = '<span>Verifying Session...</span><div class="loader" style="width:14px; height:14px; border:2px solid white; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></div>';
+        loginBtn.innerHTML = '<span>Resuming Session...</span><div class="loader" style="width:14px; height:14px; border:2px solid white; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></div>';
     }
 
     try {
-        // Add a timeout to session check to prevent permanent "Verifying Session" state
+        // Add a timeout to session check
         const sessionPromise = getCurrentSession();
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Session check timed out')), 5000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Session check timed out')), 4000));
         
         const session = await Promise.race([sessionPromise, timeoutPromise]);
         
         if (session) {
-            console.log('Session found, loading app...');
+            console.log('Session verified, loading app...');
             await loadAuthenticatedApp(session.user);
         } else {
-            console.log('No session found, showing login.');
+            console.log('No active session found, showing login.');
             showLoginScreen();
         }
     } catch (e) {
-        console.warn('Initialization notice/error:', e.message);
+        console.warn('Initialization notice:', e.message);
         showLoginScreen();
     } finally {
         isInitializing = false;
-        // ALWAYS ensure the login button is re-enabled if we are still on the login screen
+        // Re-enable login button if we ended up on the login screen
         if (loginBtn) {
             const isLoginVisible = window.getComputedStyle(loginScreen).display !== 'none';
             if (isLoginVisible) {
-                console.log('Re-enabling login button...');
                 loginBtn.disabled = false;
-                loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
+                loginBtn.innerHTML = 'Sign In to Dashboard <i data-lucide="arrow-right"></i>';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             }
         }
