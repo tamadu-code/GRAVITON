@@ -6,7 +6,7 @@ console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet } from './utils.js';
-import { syncToCloud, syncFromCloud } from './supabase-client.js';
+import { syncToCloud, syncFromCloud, registerUser } from './supabase-client.js';
 
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
@@ -4536,118 +4536,251 @@ export const UI = {
 
     async renderStaff() {
         const profiles = await db.profiles.toArray();
-        const teachers = profiles.filter(p => p.role === 'Teacher' || p.role === 'Admin');
-        
-        this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in-up">
-                <header class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-                    <div>
-                        <h1 class="text-2xl font-bold" style="display: flex; align-items: center; gap: 0.75rem;"><i data-lucide="user-circle"></i> Faculty Directory</h1>
-                        <p class="text-secondary">Manage school staff and instructional assignments.</p>
-                    </div>
-                    <button id="btn-add-staff" class="btn btn-primary" style="border-radius: 14px; padding: 0.8rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; background: #2563eb;">
-                        <i data-lucide="user-plus"></i> Add Staff Member
-                    </button>
-                </header>
+        const teachers = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated');
+        const formerStaff = profiles.filter(p => p.status === 'Terminated' || p.role === 'Former Staff');
 
-                <div class="faculty-grid">
-                    ${teachers.length === 0 ? '<div class="text-center p-4 w-100">No staff members found.</div>' : 
-                        teachers.map(t => `
-                        <div class="faculty-card" onclick="UI.renderStaffDetail('${t.id}')" style="cursor: pointer;">
-                            <div class="faculty-avatar">
-                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${t.full_name || t.username}" alt="${t.full_name}">
+        // Get assignment counts per teacher
+        const allAssignments = await db.subject_assignments.toArray();
+        const assignmentCounts = {};
+        allAssignments.forEach(a => {
+            assignmentCounts[a.teacher_id] = (assignmentCounts[a.teacher_id] || 0) + 1;
+        });
+
+        // Form teacher mapping
+        const formTeachers = await db.form_teachers.toArray();
+        const formTeacherMap = {};
+        formTeachers.forEach(ft => { formTeacherMap[ft.teacher_id] = ft.class_name; });
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in" style="padding: 1.5rem; background: #f8fafc; min-height: 100vh;">
+                <!-- Premium Header -->
+                <div class="page-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 24px; padding: 2.5rem; color: white; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15); margin-bottom: 2rem; position: relative; overflow: hidden;">
+                    <div style="position: absolute; right: -30px; top: -30px; width: 180px; height: 180px; background: rgba(99,102,241,0.15); border-radius: 50%;"></div>
+                    <div style="position: absolute; right: 80px; bottom: -40px; width: 120px; height: 120px; background: rgba(99,102,241,0.1); border-radius: 50%;"></div>
+                    <div style="position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h1 style="margin: 0; font-size: 2.25rem; font-weight: 900; letter-spacing: -0.03em; display: flex; align-items: center; gap: 1rem;">
+                                <i data-lucide="users" style="width: 36px; height: 36px;"></i> Faculty Command Center
+                            </h1>
+                            <p style="margin-top: 0.5rem; opacity: 0.7; font-size: 1rem;">Manage staff accounts, assignments, and access credentials.</p>
+                        </div>
+                        <div style="display: flex; gap: 1rem; align-items: center;">
+                            <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 0.75rem 1.5rem; border-radius: 16px;">
+                                <div style="font-size: 1.75rem; font-weight: 900;">${teachers.length}</div>
+                                <div style="font-size: 0.65rem; font-weight: 700; text-transform: uppercase; opacity: 0.7;">Active Staff</div>
                             </div>
-                            <div class="faculty-details">
-                                <h3 style="font-weight: 700; color: #1e293b;">${t.full_name || t.username}</h3>
-                                <span class="badge" style="background: #eff6ff; color: #2563eb; font-weight: 700; border-radius: 8px; font-size: 0.7rem; padding: 2px 8px; display: inline-block; margin: 4px 0;">${t.role}</span>
-                                <div class="faculty-meta">
-                                    <div class="meta-item">
-                                        <i data-lucide="mail" style="width: 14px; color: #94a3b8;"></i>
-                                        <span class="meta-value">${t.username}@school.com</span>
-                                    </div>
-                                    <div class="meta-item">
-                                        <i data-lucide="fingerprint" style="width: 14px; color: #94a3b8;"></i>
-                                        <span class="meta-value">${t.assigned_id || t.id.substring(0, 8)}</span>
-                                    </div>
+                            <button id="btn-add-staff" style="height: 52px; border-radius: 16px; padding: 0 1.75rem; display: flex; align-items: center; gap: 0.75rem; background: #6366f1; color: white; font-weight: 800; font-size: 1rem; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(99,102,241,0.4); transition: all 0.2s;">
+                                <i data-lucide="user-plus" style="width: 20px;"></i> Onboard Staff
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search Bar -->
+                <div style="margin-bottom: 1.5rem;">
+                    <div style="position: relative; max-width: 400px;">
+                        <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px;"></i>
+                        <input type="text" id="staff-search" class="input" placeholder="Search by name or email..." style="width: 100%; padding-left: 3rem; height: 48px; border-radius: 14px; font-weight: 600; border: 2px solid #e2e8f0;">
+                    </div>
+                </div>
+
+                <!-- Staff Grid -->
+                <div id="staff-grid" class="faculty-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem;">
+                    ${teachers.length === 0 ? `
+                        <div style="grid-column: 1 / -1; text-align: center; padding: 5rem 2rem; background: white; border-radius: 24px; border: 2px dashed #e2e8f0;">
+                            <div style="width: 80px; height: 80px; background: #f1f5f9; color: #94a3b8; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+                                <i data-lucide="user-x" style="width: 40px; height: 40px;"></i>
+                            </div>
+                            <h3 style="color: #1e293b; font-weight: 700; margin-bottom: 0.5rem;">No Staff Members Found</h3>
+                            <p style="color: #64748b;">Click "Onboard Staff" to register your first faculty member.</p>
+                        </div>
+                    ` : teachers.map(t => `
+                        <div class="faculty-card" data-name="${(t.full_name || '').toLowerCase()}" data-email="${(t.email || '').toLowerCase()}" onclick="UI.renderStaffDetail('${t.id}')" style="cursor: pointer; background: white; border-radius: 20px; padding: 1.75rem; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm); transition: all 0.3s ease; position: relative; overflow: hidden;">
+                            <div style="display: flex; gap: 1.25rem; align-items: flex-start;">
+                                <div style="width: 60px; height: 60px; border-radius: 18px; overflow: hidden; background: #f1f5f9; flex-shrink: 0; border: 3px solid #e0e7ff;">
+                                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${t.full_name || t.id}" alt="${t.full_name}" style="width: 100%; height: 100%; object-fit: cover;">
                                 </div>
-                                <div class="faculty-actions" style="margin-top: 1rem; display: flex; gap: 0.5rem;">
-                                    <button class="btn btn-secondary btn-sm" style="flex: 1; border-radius: 8px; font-size: 0.75rem;"><i data-lucide="mail" style="width: 14px;"></i> Message</button>
-                                    <button class="btn btn-primary btn-sm" style="flex: 1; border-radius: 8px; font-size: 0.75rem; background: #2563eb;" onclick="event.stopPropagation(); UI.renderStaffDetail('${t.id}')"><i data-lucide="user-cog" style="width: 14px;"></i> Profile</button>
+                                <div style="flex: 1; min-width: 0;">
+                                    <h3 style="font-weight: 800; color: #1e293b; font-size: 1.1rem; margin: 0 0 0.25rem 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.full_name || 'Unnamed Staff'}</h3>
+                                    <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap;">
+                                        <span style="background: ${t.role === 'Admin' ? '#fef3c7' : '#e0e7ff'}; color: ${t.role === 'Admin' ? '#92400e' : '#4338ca'}; font-weight: 800; border-radius: 8px; font-size: 0.65rem; padding: 3px 10px; text-transform: uppercase;">${t.role}</span>
+                                        ${formTeacherMap[t.id] ? `<span style="background: #ecfdf5; color: #065f46; font-weight: 700; border-radius: 8px; font-size: 0.65rem; padding: 3px 10px;">Form: ${formTeacherMap[t.id]}</span>` : ''}
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #64748b;">
+                                            <i data-lucide="mail" style="width: 14px; color: #94a3b8;"></i>
+                                            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.email || 'No email set'}</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #64748b;">
+                                            <i data-lucide="book-open" style="width: 14px; color: #94a3b8;"></i>
+                                            <span>${assignmentCounts[t.id] || 0} subject assignments</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     `).join('')}
                 </div>
+
+                <!-- Former Staff Section -->
+                ${formerStaff.length > 0 ? `
+                    <details style="margin-top: 2rem;">
+                        <summary style="cursor: pointer; font-weight: 800; color: #94a3b8; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 1rem 0;">
+                            Former Staff (${formerStaff.length})
+                        </summary>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                            ${formerStaff.map(t => `
+                                <div style="background: #f8fafc; border-radius: 16px; padding: 1.25rem; border: 1px solid #e2e8f0; opacity: 0.7;">
+                                    <div style="display: flex; align-items: center; gap: 1rem;">
+                                        <div style="width: 40px; height: 40px; border-radius: 12px; overflow: hidden; background: #e2e8f0;">
+                                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${t.full_name || t.id}" style="width: 100%; height: 100%;">
+                                        </div>
+                                        <div>
+                                            <div style="font-weight: 700; color: #64748b;">${t.full_name || 'Unknown'}</div>
+                                            <div style="font-size: 0.75rem; color: #94a3b8;">Contract Terminated</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </details>
+                ` : ''}
             </div>
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        
+
+        // Search functionality
+        const searchInput = document.getElementById('staff-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase();
+                document.querySelectorAll('.faculty-card').forEach(card => {
+                    const name = card.dataset.name || '';
+                    const email = card.dataset.email || '';
+                    card.style.display = (name.includes(query) || email.includes(query)) ? '' : 'none';
+                });
+            });
+        }
+
+        // Add Staff Button
         document.getElementById('btn-add-staff').onclick = async () => {
             const modalHtml = `
-                <div style="display: flex; flex-direction: column; gap: 1rem; max-height: 70vh; overflow-y: auto; padding-right: 0.5rem;">
+                <div style="display: flex; flex-direction: column; gap: 1.25rem; max-height: 70vh; overflow-y: auto; padding-right: 0.5rem;">
+                    <div style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 12px; padding: 1rem; font-size: 0.85rem; color: #1e40af; display: flex; align-items: center; gap: 0.75rem;">
+                        <i data-lucide="info" style="width: 18px; flex-shrink: 0;"></i>
+                        <span>A login account will be created automatically. Default password: <strong>Staff123!</strong></span>
+                    </div>
                     <div class="form-group">
-                        <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">FULL LEGAL NAME</label>
-                        <input type="text" id="staff-name" class="input" placeholder="e.g. Dr. John Doe" style="width: 100%; height: 50px; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
+                        <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">FULL LEGAL NAME *</label>
+                        <input type="text" id="staff-name" class="input" placeholder="e.g. Dr. John Doe" style="width: 100%; height: 50px;">
                     </div>
                     <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 1rem;">
                         <div class="form-group">
-                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">CONTACT EMAIL</label>
-                            <input type="email" id="staff-email" class="input" placeholder="john.doe@school.edu" style="width: 100%; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">LOGIN EMAIL *</label>
+                            <input type="email" id="staff-email" class="input" placeholder="john.doe@school.edu" style="width: 100%;">
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">SYSTEM ROLE *</label>
+                            <select id="staff-role" class="input" style="width: 100%;">
+                                <option value="Teacher">Teacher</option>
+                                <option value="Admin">Administrator</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PHONE NUMBER</label>
+                            <input type="text" id="staff-phone" class="input" placeholder="080XXXXXXXX" style="width: 100%;">
                         </div>
                         <div class="form-group">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">EMPLOYMENT TYPE</label>
-                            <select id="staff-type" class="input" style="width: 100%; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
+                            <select id="staff-type" class="input" style="width: 100%;">
                                 <option value="Full-Time">Full-Time</option>
                                 <option value="Part-Time">Part-Time</option>
                                 <option value="Contract">Contract</option>
                             </select>
                         </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div class="form-group">
-                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">DATE OF BIRTH</label>
-                            <input type="date" id="staff-dob" class="input" style="width: 100%; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
-                        </div>
-                        <div class="form-group">
-                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PHONE NUMBER</label>
-                            <input type="text" id="staff-phone" class="input" placeholder="080XXXXXXXX" style="width: 100%; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
-                        </div>
-                    </div>
                     <div class="form-group">
                         <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">ACADEMIC DEPARTMENT</label>
-                        <input type="text" id="staff-dept" class="input" placeholder="e.g. Sciences, Arts, Languages" style="width: 100%; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;">
+                        <input type="text" id="staff-dept" class="input" placeholder="e.g. Sciences, Arts, Languages" style="width: 100%;">
                     </div>
                     <div class="form-group">
                         <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PROFESSIONAL QUALIFICATIONS</label>
-                        <textarea id="staff-quals" class="input" placeholder="Degrees, certifications, etc." style="width: 100%; height: 60px; resize: none; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">RESIDENTIAL ADDRESS</label>
-                        <textarea id="staff-address" class="input" placeholder="Current home address" style="width: 100%; height: 60px; resize: none; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: white;"></textarea>
+                        <textarea id="staff-quals" class="input" placeholder="Degrees, certifications, etc." style="width: 100%; height: 60px; resize: none;"></textarea>
                     </div>
                 </div>
             `;
             
-            this.showModal('Register Faculty Member', modalHtml, async () => {
-                const name = document.getElementById('staff-name').value;
-                const email = document.getElementById('staff-email').value;
+            this.showModal('Onboard New Staff Member', modalHtml, async () => {
+                const name = document.getElementById('staff-name').value.trim();
+                const email = document.getElementById('staff-email').value.trim();
+                const role = document.getElementById('staff-role').value;
+                const phone = document.getElementById('staff-phone')?.value.trim() || '';
+                const empType = document.getElementById('staff-type')?.value || 'Full-Time';
+                const dept = document.getElementById('staff-dept')?.value.trim() || '';
+                const quals = document.getElementById('staff-quals')?.value.trim() || '';
                 
-                if (!name || !email) return Notifications.show('Name and Email are required', 'error');
+                if (!name || !email) {
+                    Notifications.show('Full name and login email are required', 'error');
+                    throw new Error('Validation failed');
+                }
 
-                const newStaff = prepareForSync({
-                    id: `STF${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
-                    username: email.split('@')[0],
-                    full_name: name,
-                    role: 'Teacher',
-                    assigned_id: `SCH/STF/${Math.floor(Math.random()*9000)+1000}`
-                });
+                // Validate email format
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    Notifications.show('Please enter a valid email address', 'error');
+                    throw new Error('Validation failed');
+                }
 
-                await db.profiles.add(newStaff);
-                Notifications.show('Faculty member registered!', 'success');
-                this.renderStaff();
-                syncToCloud();
-            }, 'Finalize Registration', 'user-plus');
+                const DEFAULT_PASSWORD = 'Staff123!';
+
+                try {
+                    // 1. Create Supabase auth account
+                    Notifications.show('Creating login account...', 'info');
+                    const { data: authData, error: authError } = await registerUser(email, DEFAULT_PASSWORD, name, role);
+
+                    if (authError) {
+                        // If it's a "user already registered" error, still create the local profile
+                        if (authError.message && authError.message.includes('already registered')) {
+                            Notifications.show('Email already has an account. Adding to local directory.', 'warning');
+                        } else {
+                            console.error('Auth creation error:', authError);
+                            Notifications.show(`Auth error: ${authError.message}. Creating local record only.`, 'warning');
+                        }
+                    }
+
+                    // 2. Create local profile record
+                    const userId = authData?.user?.id || `STF${Math.random().toString(36).substr(2, 7).toUpperCase()}`;
+                    
+                    const newStaff = prepareForSync({
+                        id: userId,
+                        full_name: name,
+                        email: email,
+                        role: role,
+                        phone: phone,
+                        employment_type: empType,
+                        department: dept,
+                        qualifications: quals,
+                        assigned_id: `SCH/STF/${Math.floor(Math.random()*9000)+1000}`
+                    });
+
+                    await db.profiles.put(newStaff); // Use put in case auth trigger already created it
+                    
+                    Notifications.show(`${name} onboarded successfully! They can log in with: ${email} / ${DEFAULT_PASSWORD}`, 'success');
+                    this.renderStaff();
+                    syncToCloud();
+                } catch (err) {
+                    if (err.message !== 'Validation failed') {
+                        console.error('Staff creation error:', err);
+                        Notifications.show('Failed to create staff account', 'error');
+                    }
+                    throw err;
+                }
+            }, 'Create Account & Register', 'user-plus');
+
+            // Re-render icons inside modal
+            setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); }, 100);
         };
     },
 
@@ -4691,8 +4824,8 @@ export const UI = {
                                     <i data-lucide="mail" style="width: 18px;"></i>
                                 </div>
                                 <div>
-                                    <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 700;">EMAIL ADDRESS</div>
-                                    <div style="font-weight: 600; color: #475569;">${staff.username}@school.com</div>
+                                    <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 700;">EMAIL / LOGIN</div>
+                                    <div style="font-weight: 600; color: #475569;">${staff.email || staff.username || 'Not Set'}</div>
                                 </div>
                             </div>
                         </div>
@@ -6887,7 +7020,4 @@ export const UI = {
             });
         }
     }
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    }
 };
-

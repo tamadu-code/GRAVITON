@@ -74,7 +74,7 @@ export async function syncToCloud() {
     } catch (e) { console.error('Migration error:', e); }
     // ----------------------------------------
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'settings'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings'];
     let syncCount = 0;
     const failedTables = new Set();
     
@@ -185,7 +185,7 @@ export async function syncToCloud() {
                         const sanitized = {};
                         const allowedColumns = {
                             students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'passport_url', 'updated_at'],
-                            profiles: ['id', 'full_name', 'role', 'assigned_id', 'updated_at'],
+                            profiles: ['id', 'full_name', 'email', 'role', 'assigned_id', 'phone', 'employment_type', 'department', 'qualifications', 'status', 'updated_at'],
                             classes: ['id', 'name', 'level', 'updated_at'],
                             subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
                             subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'updated_at'],
@@ -194,7 +194,7 @@ export async function syncToCloud() {
                             attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
                             attendance_records: ['id', 'student_id', 'date', 'status', 'check_in', 'check_out', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
                             timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
-                            notices: ['id', 'title', 'is_active', 'updated_at'],
+                            notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'updated_at'],
                             settings: ['id', 'key', 'value', 'updated_at']
                         };
 
@@ -246,7 +246,7 @@ export async function syncFromCloud(forceAll = false) {
     const client = getSupabase();
     if (!client) return;
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'settings'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings'];
     
     // If forceAll is true, we look back to beginning of time
     const lastSyncTime = localStorage.getItem('last_sync_timestamp');
