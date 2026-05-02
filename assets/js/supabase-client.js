@@ -77,181 +77,128 @@ export async function syncToCloud() {
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results'];
     let syncCount = 0;
     const failedTables = new Set();
-    
-    // Cache valid IDs for validation to prevent foreign key errors
-    let validSubjectIds = null;
-    let validStudentIds = null;
 
-    for (const table of tables) {
-        // Enforce dependencies: Don't sync child tables if their parents failed
-        if ((table === 'scores' || table === 'subject_assignments' || table === 'timetable') && failedTables.has('subjects')) {
-            console.warn(`Skipping ${table} sync because subjects sync failed in this run.`);
-            continue;
-        }
-        if ((table === 'scores' || table === 'attendance' || table === 'attendance_records' || table === 'pins' || table === 'payments' || table === 'student_analytics') && failedTables.has('students')) {
-            console.warn(`Skipping ${table} sync because students sync failed in this run.`);
-            continue;
-        }
+    if (window._isSyncingToCloud) return { success: false, message: 'Sync already in progress' };
+    window._isSyncingToCloud = true;
 
-        try {
-            // Find records where is_synced is 0 or -1 (to retry flagged records if subjects have now downloaded)
-            const unsynced = await db[table].filter(r => r.is_synced === 0 || r.is_synced === -1).toArray();
-            
-            if (unsynced.length > 0 && sb) {
-                // Table-level field whitelists for Supabase insertion
-                const whitelist = {
-                    profiles: ['id', 'full_name', 'role', 'assigned_id', 'email', 'phone', 'department', 'qualification', 'emp_type', 'is_archived', 'updated_at'],
-                    students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'dob', 'phone', 'parent_name', 'parent_phone', 'parent_email', 'blood_group', 'genotype', 'passport_url', 'updated_at'],
-                    classes: ['id', 'name', 'level', 'updated_at'],
-                    subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
-                    subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'updated_at'],
-                    form_teachers: ['id', 'teacher_id', 'class_name', 'updated_at'],
-                    scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
-                    attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
-                    attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
-                    timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
-                    notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'updated_at'],
-                    settings: ['id', 'key', 'value', 'updated_at'],
-                    pins: ['id', 'pin_code', 'serial', 'status', 'student_id', 'term', 'session', 'used_count', 'usage_limit', 'updated_at'],
-                    payments: ['id', 'student_id', 'amount', 'category', 'term', 'session', 'reference', 'status', 'date', 'updated_at'],
-                    fee_structures: ['id', 'class_name', 'amount', 'term', 'session', 'category', 'updated_at'],
-                    student_analytics: ['student_id', 'average', 'rank', 'fee_balance', 'attendance_rate', 'updated_at']
-                };console.log(`Syncing ${unsynced.length} records for ${table}...`);
+    try {
+        for (const table of tables) {
+            // Enforce dependencies: Don't sync child tables if their parents failed
+            if ((table === 'scores' || table === 'subject_assignments' || table === 'timetable') && failedTables.has('subjects')) {
+                console.warn(`Skipping ${table} sync because subjects sync failed in this run.`);
+                continue;
+            }
+            if ((table === 'scores' || table === 'attendance' || table === 'attendance_records' || table === 'pins' || table === 'payments' || table === 'student_analytics') && failedTables.has('students')) {
+                console.warn(`Skipping ${table} sync because students sync failed in this run.`);
+                continue;
+            }
+
+            try {
+                // Find records where is_synced is 0 or -1 (to retry flagged records if subjects have now downloaded)
+                const unsynced = await db[table].filter(r => r.is_synced === 0 || r.is_synced === -1).toArray();
                 
-                // --- Data Integrity Validation ---
-                let recordsToSync = unsynced;
-                
-                // Validate and Auto-Migrate subject_id
-                if (table === 'scores' || table === 'subject_assignments' || table === 'timetable') {
-                    if (!validSubjectIds) {
-                        const allSubjects = await db.subjects.toArray();
-                        validSubjectIds = new Set(allSubjects.map(s => s.id));
-                        // Create a map of subject names to IDs for recovery
-                        window._subjectNameMap = new Map(allSubjects.map(s => [(s.name || '').toLowerCase().trim(), s.id]));
-                    }
+                if (unsynced.length > 0 && client) {
+                    // Table-level field whitelists for Supabase insertion
+                    const whitelist = {
+                        profiles: ['id', 'full_name', 'role', 'assigned_id', 'email', 'phone', 'department', 'qualification', 'emp_type', 'is_archived', 'updated_at'],
+                        students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'dob', 'phone', 'parent_name', 'parent_phone', 'parent_email', 'blood_group', 'genotype', 'passport_url', 'updated_at'],
+                        classes: ['id', 'name', 'level', 'updated_at'],
+                        subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
+                        subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'updated_at'],
+                        form_teachers: ['id', 'teacher_id', 'class_name', 'updated_at'],
+                        scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
+                        attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
+                        attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
+                        timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
+                        notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'updated_at'],
+                        settings: ['id', 'key', 'value', 'updated_at'],
+                        pins: ['id', 'pin_code', 'serial', 'status', 'student_id', 'term', 'session', 'used_count', 'usage_limit', 'updated_at'],
+                        payments: ['id', 'student_id', 'amount', 'category', 'term', 'session', 'reference', 'status', 'date', 'updated_at'],
+                        fee_structures: ['id', 'class_name', 'amount', 'term', 'session', 'category', 'updated_at'],
+                        student_analytics: ['student_id', 'average', 'rank', 'fee_balance', 'attendance_rate', 'updated_at']
+                    };
                     
-                    // Auto-Migration & Validation Pass
-                    const updatedRecords = [];
-                    for (const record of recordsToSync) {
-                        if (record.subject_id && !validSubjectIds.has(record.subject_id)) {
-                            // Attempt to rescue the record by mapping the old string name to the new UUID
-                            const oldNameKey = record.subject_id.toLowerCase().trim();
-                            let newCorrectId = window._subjectNameMap && window._subjectNameMap.get(oldNameKey);
-                            
-                            // Fuzzy Fallback
-                            if (!newCorrectId && window._subjectNameMap) {
-                                const oldAlpha = oldNameKey.replace(/[^a-z0-9]/g, '');
-                                for (const [subjName, subjId] of window._subjectNameMap.entries()) {
-                                    const subjAlpha = subjName.replace(/[^a-z0-9]/g, '');
-                                    // Match if they are identical alphanumerically, or if one is a significant substring of the other (>5 chars)
-                                    if (subjAlpha === oldAlpha || 
-                                       (oldAlpha.length > 5 && subjAlpha.includes(oldAlpha)) || 
-                                       (subjAlpha.length > 5 && oldAlpha.includes(subjAlpha))) {
-                                        newCorrectId = subjId;
-                                        break;
+                    console.log(`Syncing ${unsynced.length} records for ${table}...`);
+                    
+                    // --- Data Integrity Validation ---
+                    let recordsToSync = unsynced;
+                    
+                    // Validate and Auto-Migrate subject_id
+                    if (table === 'scores' || table === 'subject_assignments' || table === 'timetable') {
+                        const allSubjects = await db.subjects.toArray();
+                        const validSubjectIds = new Set(allSubjects.map(s => s.id));
+                        const subjectNameMap = new Map(allSubjects.map(s => [(s.name || '').toLowerCase().trim(), s.id]));
+                        
+                        const updatedRecords = [];
+                        for (const record of recordsToSync) {
+                            if (record.subject_id && !validSubjectIds.has(record.subject_id)) {
+                                const oldNameKey = record.subject_id.toLowerCase().trim();
+                                let newCorrectId = subjectNameMap.get(oldNameKey);
+                                
+                                if (!newCorrectId) {
+                                    const oldAlpha = oldNameKey.replace(/[^a-z0-9]/g, '');
+                                    for (const [subjName, subjId] of subjectNameMap.entries()) {
+                                        const subjAlpha = subjName.replace(/[^a-z0-9]/g, '');
+                                        if (subjAlpha === oldAlpha) {
+                                            newCorrectId = subjId;
+                                            break;
+                                        }
                                     }
                                 }
-                            }
 
-                            if (newCorrectId) {
-                                console.log(`[Auto-Migration] Rescued ${table} record ${record.id}: Mapped "${record.subject_id}" to ${newCorrectId}`);
-                                record.subject_id = newCorrectId;
-                                record.is_synced = 0;
-                                // Save the corrected record back to local DB
-                                await db[table].put(record);
-                                updatedRecords.push(record);
-                            } else {
-                                if (!window._debugPrintedSubjects && window._subjectNameMap) {
-                                    console.warn(`[Debug] Migration failed. Available subjects in Map:`, Array.from(window._subjectNameMap.keys()));
-                                    window._debugPrintedSubjects = true;
+                                if (newCorrectId) {
+                                    record.subject_id = newCorrectId;
+                                    record.is_synced = 0;
+                                    await db[table].put(record);
+                                    updatedRecords.push(record);
+                                } else {
+                                    db[table].update(record.id || record.student_id, { is_synced: -1 });
                                 }
-                                console.warn(`[Data Integrity] Flagging ${table} record ${record.id} due to invalid subject_id: ${record.subject_id}`);
-                                db[table].update(record.id || record.student_id, { is_synced: -1 }); // Flag as error
+                            } else {
+                                updatedRecords.push(record);
                             }
-                        } else {
-                            updatedRecords.push(record); // It's valid
                         }
+                        recordsToSync = updatedRecords;
                     }
-                    recordsToSync = updatedRecords;
-                }
 
-                // Validate student_id
-                if (table === 'scores' || table === 'attendance' || table === 'attendance_records') {
-                    if (!validStudentIds) {
-                        const allStudents = await db.students.toArray();
-                        validStudentIds = new Set(allStudents.map(s => s.student_id));
-                    }
-                    recordsToSync = recordsToSync.filter(record => {
-                        if (record.student_id && !validStudentIds.has(record.student_id)) {
-                            console.warn(`[Data Integrity] Flagging ${table} record ${record.id} due to invalid student_id: ${record.student_id}`);
-                            db[table].update(record.id || record.student_id, { is_synced: -1 }); // Flag as error, do not delete
-                            return false;
-                        }
-                        return true;
-                    });
-                }
-                
-                if (recordsToSync.length === 0) continue; // All were invalid
-
-                // Chunk size of 50 to avoid payload limits
-                const CHUNK_SIZE = 50;
-                for (let i = 0; i < recordsToSync.length; i += CHUNK_SIZE) {
-                    const chunk = recordsToSync.slice(i, i + CHUNK_SIZE);
-                    
-                    // Only send columns that are known to exist in the database
-                    const dataToSync = chunk.map(item => {
-                        const sanitized = {};
-                        const allowedColumns = {
-                            students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'passport_url', 'updated_at'],
-                            profiles: ['id', 'full_name', 'email', 'role', 'assigned_id', 'phone', 'employment_type', 'department', 'qualifications', 'status', 'updated_at'],
-                            classes: ['id', 'name', 'level', 'updated_at'],
-                            subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
-                            subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'updated_at'],
-                            form_teachers: ['id', 'teacher_id', 'class_name', 'updated_at'],
-                            scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
-                            attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
-                            attendance_records: ['id', 'student_id', 'date', 'status', 'check_in', 'check_out', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
-                            timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
-                            notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'updated_at'],
-                            settings: ['id', 'key', 'value', 'updated_at']
-                        };
-
-                        const columns = allowedColumns[table] || Object.keys(item);
-                        columns.forEach(col => {
-                            if (item[col] !== undefined) sanitized[col] = item[col];
+                    // Chunk size of 50 to avoid payload limits
+                    const CHUNK_SIZE = 50;
+                    for (let i = 0; i < recordsToSync.length; i += CHUNK_SIZE) {
+                        const chunk = recordsToSync.slice(i, i + CHUNK_SIZE);
+                        const dataToSync = chunk.map(item => {
+                            const sanitized = {};
+                            const columns = whitelist[table] || Object.keys(item);
+                            columns.forEach(col => {
+                                if (item[col] !== undefined) sanitized[col] = item[col];
+                            });
+                            return sanitized;
                         });
-                        return sanitized;
-                    });
 
-                    const { error } = await sb.from(table).upsert(dataToSync);
+                        const { error } = await client.from(table).upsert(dataToSync);
 
-                    if (!error) {
-                        // Mark as synced locally
-                        const pk = table === 'students' ? 'student_id' : 'id';
-                        for (const item of chunk) {
-                            await db[table].update(item[pk], { is_synced: 1 });
+                        if (!error) {
+                            const pk = table === 'students' ? 'student_id' : 'id';
+                            for (const item of chunk) {
+                                await db[table].update(item[pk], { is_synced: 1 });
+                            }
+                            syncCount += chunk.length;
+                        } else {
+                            if (error.code === '42P01') {
+                                console.warn(`Table ${table} not found in Supabase during upload. Skipping...`);
+                                break; 
+                            }
+                            failedTables.add(table);
+                            console.error(`Sync error for ${table}:`, error);
                         }
-                        syncCount += chunk.length;
-                    } else {
-                        failedTables.add(table);
-                        console.error(`Sync error for ${table} [Batch ${i/CHUNK_SIZE + 1}]:`, error);
-                        // Trigger event with full error context
-                        window.dispatchEvent(new CustomEvent('sync-error', { 
-                            detail: { 
-                                table, 
-                                error: error.message || 'Unknown error',
-                                code: error.code,
-                                hint: error.hint,
-                                details: error.details
-                            } 
-                        }));
                     }
                 }
+            } catch (e) {
+                failedTables.add(table);
+                console.error(`Local sync error for ${table}:`, e);
             }
-        } catch (e) {
-            failedTables.add(table);
-            console.error(`Local sync error for ${table}:`, e);
         }
+    } finally {
+        window._isSyncingToCloud = false;
     }
 
     return { success: true, count: syncCount };
@@ -264,57 +211,64 @@ export async function syncFromCloud(forceAll = false) {
     const client = getSupabase();
     if (!client) return;
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results'];
     
+    if (window._isSyncingFromCloud) return;
+    window._isSyncingFromCloud = true;
+
     // If forceAll is true, we look back to beginning of time
     const lastSyncTime = localStorage.getItem('last_sync_timestamp');
     const lastSync = (lastSyncTime && !forceAll) ? new Date(new Date(lastSyncTime).getTime() - 300000).toISOString() : new Date(0).toISOString();
 
-    for (const table of tables) {
-        try {
-            let hasMore = true;
-            let offset = 0;
-            const BATCH_SIZE = 1000;
+    try {
+        for (const table of tables) {
+            try {
+                let hasMore = true;
+                let offset = 0;
+                const BATCH_SIZE = 1000;
 
-            while (hasMore) {
-                let query = sb.from(table).select('*').range(offset, offset + BATCH_SIZE - 1);
-                
-                if (!forceAll) {
-                    query = query.gt('updated_at', lastSync);
-                }
-
-                const { data, error } = await query;
-
-                if (error) {
-                    // If table doesn't exist, skip it instead of failing
-                    if (error.code === '42P01' || error.message.includes('not exist')) {
-                        console.warn(`Table ${table} not found in Supabase, skipping...`);
-                        hasMore = false;
-                        continue;
-                    }
-                    console.error(`Pull error for ${table}:`, error);
-                    throw error;
-                }
-
-                if (data && data.length > 0) {
-                    await db[table].bulkPut(data.map(item => ({ 
-                        ...item, 
-                        is_synced: 1 
-                    })));
-                    console.log(`Synced ${data.length} records for ${table} (Offset: ${offset})...`);
+                while (hasMore) {
+                    let query = client.from(table).select('*').range(offset, offset + BATCH_SIZE - 1);
                     
-                    if (data.length < BATCH_SIZE) {
-                        hasMore = false;
-                    } else {
-                        offset += BATCH_SIZE;
+                    if (!forceAll) {
+                        query = query.gt('updated_at', lastSync);
                     }
-                } else {
-                    hasMore = false;
+
+                    const { data, error } = await query;
+
+                    if (error) {
+                        // If table doesn't exist, skip it instead of failing
+                        if (error.code === '42P01' || error.message.includes('not exist')) {
+                            console.warn(`Table ${table} not found in Supabase, skipping...`);
+                            hasMore = false;
+                            continue;
+                        }
+                        console.error(`Pull error for ${table}:`, error);
+                        throw error;
+                    }
+
+                    if (data && data.length > 0) {
+                        await db[table].bulkPut(data.map(item => ({ 
+                            ...item, 
+                            is_synced: 1 
+                        })));
+                        console.log(`Synced ${data.length} records for ${table} (Offset: ${offset})...`);
+                        
+                        if (data.length < BATCH_SIZE) {
+                            hasMore = false;
+                        } else {
+                            offset += BATCH_SIZE;
+                        }
+                    } else {
+                        hasMore = false;
+                    }
                 }
+            } catch (e) {
+                console.error(`Skipping sync for ${table} due to error:`, e);
             }
-        } catch (e) {
-            console.error(`Skipping sync for ${table} due to error:`, e);
         }
+    } finally {
+        window._isSyncingFromCloud = false;
     }
 
     localStorage.setItem('last_sync_timestamp', new Date().toISOString());

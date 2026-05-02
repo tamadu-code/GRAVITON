@@ -8,6 +8,10 @@ import { loginUser, logoutUser, getCurrentSession, getUserProfile, registerUser,
 import db from './db.js';
 import { Notifications } from './utils.js';
 
+// Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
+window.Notifications = Notifications;
+window.db = db;
+
 
 // Initialize Lucide Icons safely
 if (typeof lucide !== 'undefined') {
@@ -218,10 +222,8 @@ async function loadAuthenticatedApp(authUser) {
     try {
         const studentCount = await db.students.count();
         if (studentCount === 0 && navigator.onLine) {
-            if (Notifications) Notifications.show('Detecting fresh environment... Restoring data from cloud.', 'info');
-            await syncFromCloud(true);
-            // Re-render current view to show restored data
-            UI.renderView(window.location.hash.substring(1) || 'dashboard');
+            if (window.Notifications) window.Notifications.show('Detecting fresh environment... Syncing academic data.', 'info');
+            // initial sync is already triggered by startSyncLoop()
         }
     } catch (dbErr) {
         console.warn('Auto-hydration deferred: Database initializing...', dbErr);
