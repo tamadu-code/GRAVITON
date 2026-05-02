@@ -2130,7 +2130,8 @@ export const UI = {
                         const email = `${s.student_id.toLowerCase()}@student.school`;
                         const { data: authData, error: authError } = await registerUser(email, s.student_id, s.name, 'Student');
                         
-                        // Sync profile
+                        // If user already exists, authData might be empty or restricted
+                        // We still try to upsert the profile to link them
                         const client = window.getSupabase ? window.getSupabase() : null;
                         if (client && (authData?.user || s.id)) {
                             await client.from('profiles').upsert({
@@ -2141,6 +2142,9 @@ export const UI = {
                                 email: email
                             });
                         }
+                        
+                        // Small delay to prevent rate limiting (Supabase default is 3/min, we should be careful)
+                        await new Promise(resolve => setTimeout(resolve, 500)); 
                     } catch (err) {
                         console.warn(`Failed to repair ${s.student_id}:`, err);
                     }
@@ -5119,6 +5123,9 @@ export const UI = {
                                 email: s.email
                             });
                         }
+                        
+                        // Small delay to prevent rate limiting
+                        await new Promise(resolve => setTimeout(resolve, 500));
                     } catch (err) {
                         console.warn(`Failed to repair staff ${s.email}:`, err);
                     }
