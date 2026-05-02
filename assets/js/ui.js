@@ -65,21 +65,31 @@ export const UI = {
                 if (extraHeader) extraHeader.innerHTML = '';
             } catch (e) { console.warn('Failed to clear extra header:', e); }
 
-            // RBAC: Check Teacher Restrictions
-            const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
-            // Teachers are allowed into classes, subjects, and students now, but with filtered data
+            // Role-Based Access Control
+            const role = (this.currentUser.role || '').toLowerCase();
+            const isTeacher = role === 'teacher';
+            const isStudent = role === 'student';
+            const isParent = role === 'parent';
+
             const restrictedForTeachers = ['academic', 'bulkimport', 'staff', 'promotion', 'config', 'reports'];
+            const allowedForStudents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
+            const allowedForParents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
             
-            if (isTeacher && restrictedForTeachers.includes(viewName)) {
+            let isRestricted = false;
+            if (isTeacher && restrictedForTeachers.includes(viewName)) isRestricted = true;
+            if (isStudent && !allowedForStudents.includes(viewName)) isRestricted = true;
+            if (isParent && !allowedForParents.includes(viewName)) isRestricted = true;
+
+            if (isRestricted) {
                 this.contentArea.innerHTML = `
-                    <div class="view-container" style="display: flex; align-items: center; justify-content: center; height: 70vh;">
-                        <div class="text-center" style="max-width: 400px;">
-                            <div style="background: #fee2e2; color: #ef4444; width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+                    <div class="view-container animate-fade-in" style="display: flex; align-items: center; justify-content: center; height: 70vh;">
+                        <div class="text-center" style="max-width: 400px; padding: 2rem; background: white; border-radius: 24px; box-shadow: var(--shadow-lg);">
+                            <div style="background: #fee2e2; color: #ef4444; width: 80px; height: 80px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; transform: rotate(-10deg);">
                                 <i data-lucide="shield-alert" style="width: 40px; height: 40px;"></i>
                             </div>
-                            <h2 class="text-2xl font-bold mb-1">Access Restricted</h2>
-                            <p class="text-secondary">Teachers are not authorized to access the <strong>${viewName}</strong> module. Please contact the administrator for assistance.</p>
-                            <button class="btn btn-primary mt-3" onclick="UI.renderView('dashboard')">Back to Dashboard</button>
+                            <h2 style="font-weight: 900; font-size: 1.5rem; color: #1e293b; margin-bottom: 0.5rem;">Access Restricted</h2>
+                            <p style="color: #64748b; font-size: 0.9rem; line-height: 1.6;">You are not authorized to access the <strong>${viewName}</strong> module. Please contact the administrator if you believe this is an error.</p>
+                            <button class="btn btn-primary" onclick="UI.renderView('dashboard')" style="margin-top: 2rem; border-radius: 12px; height: 48px; padding: 0 2rem; font-weight: 700;">Back to Universe</button>
                         </div>
                     </div>
                 `;
@@ -645,141 +655,381 @@ export const UI = {
     async renderStudentDashboard() {
         const studentId = this.currentUser.assigned_id || '';
         const student = await db.students.get(studentId);
-        const results = await db.cbt_results.where('student_id').equals(studentId).toArray();
-        const attendance = await db.attendance.where('student_id').equals(studentId).toArray();
         
-        // Find live exams
-        const now = new Date();
-        const allExams = await db.cbt_exams.toArray();
-        const liveExams = allExams.filter(exam => {
-            if (exam.status !== 'Active') return false;
-            if (exam.class_name !== student?.class_name) return false;
-            
-            const start = exam.start_time ? new Date(exam.start_time) : null;
-            const end = exam.end_time ? new Date(exam.end_time) : null;
-            
-            if (start && now < start) return false;
-            if (end && now > end) return false;
-            
-            // Check if already taken
-            const alreadyTaken = results.some(r => r.exam_id === exam.id);
-            return !alreadyTaken;
-        });
+        // ─── Data Gathering ───
+        const analytics = await db.student_analytics.get(studentId) || {
+            average: 0, rank: 'N/A', fee_balance: 0, attendance_rate: 0
+        };
+        const allNotices = await db.notices.toArray();
+        const activeNotices = allNotices.filter(n => n.is_active !== 0 && (n.target === 'All' || n.target === 'Students' || n.target === student?.class_name));
+        const liveTickerMsg = activeNotices.length > 0 ? activeNotices.map(n => `[ ${n.category.toUpperCase()} ] ${n.title}: ${n.content}`).join(' ••• ') : "Welcome to the Graviton Student Universe. Stay focused on your goals.";
+        
+        const results = await db.cbt_results ? await db.cbt_results.where('student_id').equals(studentId).toArray() : [];
+        const attendance = await db.attendance_records ? await db.attendance_records.where('student_id').equals(studentId).toArray() : [];
+        
+        const hasFeeBalance = analytics.fee_balance > 0;
+        const displayAvg = hasFeeBalance ? '???' : (analytics.average || 0).toFixed(1) + '%';
+        const displayRank = hasFeeBalance ? '???' : analytics.rank || 'N/A';
 
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in-up">
-                <header class="view-header" style="margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: flex-end;">
+            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1.5rem; min-height: 100vh;">
+                <!-- ─── Live Announcement Ticker ─── -->
+                <div class="live-ticker-container">
+                    <div class="ticker-content">${liveTickerMsg}</div>
+                </div>
+
+                <!-- ─── Sophisticated Header ─── -->
+                <header class="glass-header" style="margin-bottom: 2.5rem; padding: 2rem; border-radius: 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow-lg);">
                     <div>
-                        <h1 class="text-3xl font-extrabold tracking-tight" style="color: #1e293b;">Student Universe</h1>
-                        <p class="text-secondary">Track your progress, take exams, and monitor your academic growth.</p>
+                        <h1 style="font-size: 2.5rem; font-weight: 900; color: #1e293b; letter-spacing: -1.5px; margin: 0;">Student Universe</h1>
+                        <p style="color: #64748b; font-size: 1.1rem; font-weight: 500; margin-top: 0.5rem;">Academic & Financial Command Center</p>
                     </div>
                     <div style="text-align: right;">
-                        <span class="badge" style="background: #f1f5f9; color: #4338ca; font-weight: 800; font-size: 0.8rem; padding: 0.6rem 1.2rem; border-radius: 12px;">
+                        <div class="badge" style="background: rgba(79, 70, 229, 0.1); color: #4f46e5; font-weight: 900; font-size: 1rem; padding: 0.8rem 1.5rem; border-radius: 16px; border: 1px solid rgba(79, 70, 229, 0.2);">
                             ${student?.class_name || 'Unassigned'}
-                        </span>
+                        </div>
                     </div>
                 </header>
 
-                <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 2rem;">
-                    <!-- Left: Profile & Stats -->
+                <!-- ─── KPI Visualization ─── -->
+                <div class="kpi-grid">
+                    <div class="kpi-card" style="border-left: 6px solid #4f46e5;">
+                        <div class="kpi-icon-wrapper" style="background: rgba(79, 70, 229, 0.1); color: #4f46e5;">
+                            <i data-lucide="award"></i>
+                        </div>
+                        <div class="kpi-info">
+                            <div class="kpi-value">${displayAvg}</div>
+                            <div class="kpi-label">Average Score</div>
+                        </div>
+                        ${hasFeeBalance ? `<div class="locked-overlay"><i data-lucide="lock" class="lock-icon"></i><span style="font-size:0.6rem; font-weight:900; color:#ef4444;">CLEAR FEES TO VIEW</span></div>` : ''}
+                    </div>
+
+                    <div class="kpi-card" style="border-left: 6px solid #8b5cf6;">
+                        <div class="kpi-icon-wrapper" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6;">
+                            <i data-lucide="trending-up"></i>
+                        </div>
+                        <div class="kpi-info">
+                            <div class="kpi-value">${displayRank}</div>
+                            <div class="kpi-label">Class Position</div>
+                        </div>
+                        ${hasFeeBalance ? `<div class="locked-overlay"><i data-lucide="lock" class="lock-icon"></i><span style="font-size:0.6rem; font-weight:900; color:#ef4444;">LOCKED</span></div>` : ''}
+                    </div>
+
+                    <div class="kpi-card" style="border-left: 6px solid #10b981;">
+                        <div class="kpi-icon-wrapper" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
+                            <i data-lucide="calendar-check"></i>
+                        </div>
+                        <div class="kpi-info">
+                            <div class="kpi-value">${analytics.attendance_rate || 0}%</div>
+                            <div class="kpi-label">Attendance</div>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card" style="border-left: 6px solid ${hasFeeBalance ? '#ef4444' : '#10b981'};">
+                        <div class="kpi-icon-wrapper" style="background: ${hasFeeBalance ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${hasFeeBalance ? '#ef4444' : '#10b981'};">
+                            <i data-lucide="credit-card"></i>
+                        </div>
+                        <div class="kpi-info">
+                            <div class="kpi-value">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
+                            <div class="kpi-label">Fee Balance</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+                    <!-- ─── Main Content Column ─── -->
                     <div style="display: flex; flex-direction: column; gap: 2rem;">
-                        <div class="card" style="padding: 2rem; text-align: center; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
-                            <div style="width: 100px; height: 100px; border-radius: 50%; border: 4px solid #eef2ff; overflow: hidden; margin: 0 auto 1.5rem; background: #f8fafc; display: flex; align-items: center; justify-content: center;">
-                                ${student?.passport_url ? `<img src="${student.passport_url}" style="width:100%; height:100%; object-fit:cover;">` : `<i data-lucide="user" style="width:48px; height:48px; color:#cbd5e1;"></i>`}
+                        <!-- Financial Management -->
+                        <div class="card" style="border-radius: 24px; padding: 2rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                <h3 style="font-weight: 900; color: #1e293b; display: flex; align-items: center; gap: 0.75rem;">
+                                    <i data-lucide="wallet" style="color: #4f46e5;"></i> Financial Management
+                                </h3>
+                                ${hasFeeBalance ? `<button class="btn btn-primary" onclick="UI.handlePaystackPayment()" style="background: #10b981; border: none; border-radius: 12px; height: 44px; padding: 0 1.5rem; font-weight: 800;">Pay Balance Online</button>` : `<span class="badge success">CLEARANCE GRANTED</span>`}
                             </div>
-                            <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 0.25rem;">${student?.name || this.currentUser.name}</h3>
-                            <p style="color: #64748b; font-size: 0.85rem; font-weight: 600; margin-bottom: 1.5rem;">ID: ${studentId}</p>
                             
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; border-top: 1px solid #f1f5f9; padding-top: 1.5rem;">
-                                <div>
-                                    <div style="font-size: 1.25rem; font-weight: 800; color: #4338ca;">${attendance.filter(a => a.status === 'Present').length}</div>
-                                    <div style="font-size: 0.65rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Days Present</div>
-                                </div>
-                                <div>
-                                    <div style="font-size: 1.25rem; font-weight: 800; color: #10b981;">${results.length}</div>
-                                    <div style="font-size: 0.65rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Exams Done</div>
-                                </div>
+                            <div class="table-container" style="border: 1px solid #f1f5f9; border-radius: 16px; background: #f8fafc;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Reference</th>
+                                            <th>Date</th>
+                                            <th>Amount</th>
+                                            <th>Status</th>
+                                            <th style="text-align: right;">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="payment-history-body">
+                                        <!-- Will be populated via JS -->
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
 
-                        <div class="card" style="border-radius: 24px; padding: 1.5rem;">
-                            <h4 style="font-weight: 800; color: #1e293b; font-size: 0.9rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                                <i data-lucide="zap" style="width: 18px; color: #f59e0b;"></i> Quick Hub
-                            </h4>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                                <button class="action-btn" onclick="UI.renderView('cbt')" style="background: #eef2ff; color: #4338ca; border: none; border-radius: 16px; padding: 1.5rem 1rem;">
-                                    <i data-lucide="monitor" style="margin-bottom: 0.5rem;"></i>
-                                    <span style="font-size: 0.8rem; font-weight: 700;">Take Exam</span>
-                                </button>
-                                <button class="action-btn" onclick="UI.renderView('gradebook')" style="background: #f0fdf4; color: #16a34a; border: none; border-radius: 16px; padding: 1.5rem 1rem;">
-                                    <i data-lucide="file-text" style="margin-bottom: 0.5rem;"></i>
-                                    <span style="font-size: 0.8rem; font-weight: 700;">Results</span>
-                                </button>
+                        <!-- Academic Life: Timetable -->
+                        <div class="card" style="border-radius: 24px; padding: 2rem;">
+                            <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                                <i data-lucide="calendar" style="color: #8b5cf6;"></i> Academic Life & Scheduling
+                            </h3>
+                            <div id="timetable-visualizer-container" style="background: #f8fafc; border-radius: 16px; padding: 1.5rem; border: 1px solid #f1f5f9; min-height: 200px; display: flex; align-items: center; justify-content: center;">
+                                <div style="text-align: center; opacity: 0.5;">
+                                    <i data-lucide="loader-2" class="spin-animation" style="width: 32px; height: 32px; margin-bottom: 1rem;"></i>
+                                    <p>Assembling Timetable...</p>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Right: Live Exams & Growth -->
+                    <!-- ─── Side Bar Column ─── -->
                     <div style="display: flex; flex-direction: column; gap: 2rem;">
-                        <div class="card" style="border-radius: 24px; padding: 2rem; border: 1px solid #f1f5f9; background: #fff;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-                                <h3 style="font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 0.75rem;">
-                                    <div style="width: 40px; height: 40px; background: #fff1f2; color: #e11d48; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
-                                        <i data-lucide="clock"></i>
-                                    </div>
-                                    Live CBT Assignments
-                                </h3>
-                                <span class="badge" style="background: #fee2e2; color: #e11d48;">${liveExams.length} OPEN</span>
-                            </div>
+                        <!-- Bio-Data Profile -->
+                        <div class="card" style="border-radius: 24px; padding: 2rem; text-align: center; position: relative; overflow: hidden;">
+                             <div style="position: absolute; top: 0; left: 0; width: 100%; height: 6px; background: linear-gradient(to right, #4f46e5, #8b5cf6);"></div>
+                             <div style="width: 120px; height: 120px; border-radius: 50%; border: 4px solid #f1f5f9; overflow: hidden; margin: 0 auto 1.5rem; box-shadow: var(--shadow-md);">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student?.student_id || student?.name}" style="width: 100%; height: 100%; object-fit: cover;">
+                             </div>
+                             <h3 style="font-weight: 900; color: #1e293b; margin: 0;">${student?.name || this.currentUser.name}</h3>
+                             <p style="color: #94a3b8; font-weight: 800; font-size: 0.75rem; margin-top: 0.25rem;">SERIAL: ${student?.student_id || 'PENDING'}</p>
+                             
+                             <div style="text-align: left; margin-top: 2rem; display: flex; flex-direction: column; gap: 1rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Admission Date</span>
+                                    <span style="font-size: 0.8rem; font-weight: 700; color: #1e293b;">${student?.admission_year || 'N/A'}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Account Status</span>
+                                    <span class="badge success" style="font-size: 0.6rem;">ACTIVE</span>
+                                </div>
+                             </div>
 
-                            ${liveExams.length === 0 ? `
-                                <div style="text-align: center; padding: 3rem 1rem;">
-                                    <i data-lucide="check-circle-2" style="width: 48px; height: 48px; color: #10b981; margin-bottom: 1rem; opacity: 0.2;"></i>
-                                    <p style="color: #64748b; font-weight: 600;">You are all caught up! No active exams at the moment.</p>
-                                </div>
-                            ` : `
-                                <div style="display: grid; gap: 1rem;">
-                                    ${liveExams.map(exam => `
-                                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1.5rem; background: #f8fafc; border-radius: 16px; border: 1px solid #f1f5f9;">
-                                            <div style="display: flex; align-items: center; gap: 1.5rem;">
-                                                <div style="background: white; width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; color: #4338ca; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-                                                    ${exam.duration}m
-                                                </div>
-                                                <div>
-                                                    <h4 style="font-weight: 800; color: #1e293b; margin: 0;">${exam.title}</h4>
-                                                    <p style="font-size: 0.75rem; color: #64748b; font-weight: 600;">Mode: ${exam.mode}</p>
-                                                </div>
-                                            </div>
-                                            <button class="btn btn-primary" onclick="UI.startCBTExam('${exam.id}')" style="border-radius: 10px; height: 44px; padding: 0 1.5rem; background: #4338ca;">
-                                                Start <i data-lucide="play" style="width: 16px; margin-left: 0.25rem;"></i>
-                                            </button>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            `}
+                             <button class="btn btn-primary w-100" onclick="UI.openResultPinModal()" style="margin-top: 2rem; border-radius: 12px; height: 48px; font-weight: 900; background: #1e293b; border: none; box-shadow: 0 10px 20px -5px rgba(30, 41, 59, 0.4);" ${hasFeeBalance ? 'disabled' : ''}>
+                                ${hasFeeBalance ? '<i data-lucide="lock" style="width:16px;"></i> Clear Fees First' : 'View Full Report Card'}
+                             </button>
                         </div>
 
-                        <div class="card" style="border-radius: 24px; padding: 2rem; border: 1px solid #f1f5f9;">
-                            <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem;">
-                                <i data-lucide="bar-chart-2" style="color: #10b981;"></i> Performance Velocity
-                            </h3>
-                            <div style="height: 150px; display: flex; align-items: flex-end; gap: 10px; padding: 0 1rem;">
-                                ${[60, 45, 80, 55, 95, 70, 85].map(h => `
-                                    <div style="flex: 1; height: ${h}%; background: linear-gradient(to top, #4338ca, #6366f1); border-radius: 6px 6px 0 0; opacity: ${h/100}; position: relative;" class="hover-grow">
-                                        <div style="position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 0.6rem; font-weight: 800; color: #64748b;">${h}%</div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-top: 1rem; font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; padding: 0 1rem;">
-                                <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                            </div>
+                        <!-- Result Checkout Policy -->
+                        <div class="card" style="background: #1e293b; color: white; border-radius: 24px; padding: 1.5rem; border: none;">
+                            <h4 style="font-weight: 800; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+                                <i data-lucide="shield-check" style="color: #10b981;"></i> Gatekeeping Policy
+                            </h4>
+                            <p style="font-size: 0.75rem; color: #94a3b8; line-height: 1.6; margin: 0;">
+                                Access to full academic reports is strictly regulated. Ensure all financial obligations are met to enable result checking via Scratch Card PINs.
+                            </p>
                         </div>
                     </div>
                 </div>
             </div>
         `;
 
+        // ─── Post-Render Logic ───
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        this.renderPaymentHistory(studentId);
+        this.renderTimetableVisualizer(student?.class_name);
+    },
+
+    async renderPaymentHistory(studentId) {
+        const historyBody = document.getElementById('payment-history-body');
+        if (!historyBody) return;
+
+        const payments = await db.payments.where('student_id').equals(studentId).toArray();
+        if (payments.length === 0) {
+            historyBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem; opacity: 0.5;">No transaction history found.</td></tr>';
+            return;
+        }
+
+        historyBody.innerHTML = payments.map(p => `
+            <tr>
+                <td style="font-family: monospace; font-weight: 700; color: #4f46e5;">#${p.reference || p.id}</td>
+                <td style="color: #64748b; font-size: 0.8rem;">${new Date(p.date || p.updated_at).toLocaleDateString()}</td>
+                <td style="font-weight: 800; color: #1e293b;">₦${(p.amount || 0).toLocaleString()}</td>
+                <td><span class="badge ${p.status === 'Success' ? 'success' : 'warning'}">${p.status}</span></td>
+                <td style="text-align: right;">
+                    <button class="btn btn-xs" onclick="UI.printReceipt('${p.id}')">
+                        <i data-lucide="printer" style="width: 12px;"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async renderTimetableVisualizer(className) {
+        const container = document.getElementById('timetable-visualizer-container');
+        if (!container) return;
+
+        if (!className) {
+            container.innerHTML = '<div style="text-align: center; opacity: 0.5;">Select a class to view timetable.</div>';
+            return;
+        }
+
+        const entries = await db.timetable.where('class_name').equals(className).toArray();
+        if (entries.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; opacity: 0.5;">
+                    <i data-lucide="calendar-off" style="width: 32px; height: 32px; margin-bottom: 1rem;"></i>
+                    <p>No timetable published for ${className} yet.</p>
+                </div>
+            `;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            return;
+        }
+
+        // Simple Visualizer
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        container.innerHTML = `
+            <div style="width: 100%; overflow-x: auto;">
+                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; min-width: 600px;">
+                    ${days.map(day => `
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="font-weight: 800; color: #1e293b; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.5rem; text-align: center; border-bottom: 2px solid #eef2ff; padding-bottom: 4px;">${day}</div>
+                            ${entries.filter(e => e.day_of_week === day).sort((a,b) => a.period_number - b.period_number).map(e => `
+                                <div style="background: white; padding: 0.75rem; border-radius: 12px; border: 1px solid #f1f5f9; box-shadow: var(--shadow-sm); text-align: center;">
+                                    <div style="font-weight: 800; color: #4f46e5; font-size: 0.75rem;">${e.subject_id}</div>
+                                    <div style="font-size: 0.6rem; color: #94a3b8; font-weight: 700; margin-top: 2px;">Period ${e.period_number}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async openResultPinModal() {
+        const modalHtml = `
+            <div style="display: flex; flex-direction: column; gap: 1.5rem; text-align: center;">
+                <div style="width: 64px; height: 64px; background: #eef2ff; color: #4f46e5; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                    <i data-lucide="key" style="width: 32px; height: 32px;"></i>
+                </div>
+                <div>
+                    <h3 style="font-weight: 900; color: #1e293b;">Result Verification</h3>
+                    <p style="color: #64748b; font-size: 0.85rem;">Enter your scratch card PIN to unlock this term's report card.</p>
+                </div>
+                <div>
+                    <label style="text-align: left; display: block; font-weight: 800; color: #1e293b; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.5rem;">Card PIN Code</label>
+                    <input type="text" id="result-pin-input" class="input" placeholder="e.g. 1234-5678-9012" style="width: 100%; text-align: center; font-size: 1.25rem; font-weight: 900; letter-spacing: 2px; height: 56px; border-radius: 16px;">
+                </div>
+                <div style="background: #fff8eb; border: 1px solid #fee2e2; padding: 1rem; border-radius: 12px; display: flex; gap: 0.75rem; align-items: center; text-align: left;">
+                    <i data-lucide="alert-circle" style="color: #f59e0b; flex-shrink: 0;"></i>
+                    <p style="font-size: 0.7rem; color: #92400e; margin: 0; line-height: 1.4;">
+                        Cards have a usage limit. Ensure you are viewing the correct Term/Session before activating.
+                    </p>
+                </div>
+            </div>
+        `;
+
+        this.showModal('Security Clearance', modalHtml, async () => {
+            const pinCode = document.getElementById('result-pin-input').value.trim();
+            if (!pinCode) throw new Error('Please enter a PIN');
+            
+            await this.verifyResultPin(pinCode);
+        }, 'Unlock Report Card', 'key');
+    },
+
+    async verifyResultPin(pinCode) {
+        Notifications.show('Verifying clearance...', 'info');
+        
+        try {
+            const pinRecord = await db.pins.where('pin_code').equals(pinCode).first();
+            if (!pinRecord) {
+                Notifications.show('Invalid PIN code. Please check your card.', 'error');
+                return;
+            }
+
+            if (pinRecord.status !== 'Active') {
+                Notifications.show('This card has already been exhausted or deactivated.', 'error');
+                return;
+            }
+
+            if (pinRecord.used_count >= pinRecord.usage_limit) {
+                Notifications.show('Usage limit exceeded for this card.', 'error');
+                return;
+            }
+
+            // Success: Open Report Card
+            Notifications.show('Security clearance granted!', 'success');
+            
+            // Update PIN usage
+            await db.pins.update(pinRecord.id, {
+                used_count: (pinRecord.used_count || 0) + 1,
+                student_id: this.currentUser.assigned_id,
+                updated_at: new Date().toISOString(),
+                is_synced: 0
+            });
+            syncToCloud();
+
+            // Generate and show report
+            await generateReportCard(this.currentUser.assigned_id, 'First', '2023/2024'); // Example hardcoded
+        } catch (err) {
+            console.error('PIN Verification Error:', err);
+            Notifications.show('Verification failed. Try again later.', 'error');
+        }
+    },
+
+    handlePaystackPayment() {
+        const studentId = this.currentUser.assigned_id;
+        const email = this.currentUser.email || 'student@school.com';
+        
+        // Mocking balance for Paystack
+        const amount = 5000 * 100; // N5000 in kobo
+
+        const handler = PaystackPop.setup({
+            key: 'pk_test_xxxxxxxxxxxxxxxxxxxxxxxx', // Replace with real key
+            email: email,
+            amount: amount,
+            currency: 'NGN',
+            ref: 'PAY-' + Math.floor((Math.random() * 1000000000) + 1),
+            metadata: {
+                student_id: studentId,
+                custom_fields: [
+                    { display_name: "Student ID", variable_name: "student_id", value: studentId }
+                ]
+            },
+            callback: async (response) => {
+                Notifications.show('Payment confirmed! Finalizing receipt...', 'success');
+                await this.processOnlinePayment(response);
+            },
+            onClose: () => {
+                Notifications.show('Payment cancelled.', 'warning');
+            }
+        });
+
+        handler.openIframe();
+    },
+
+    async processOnlinePayment(response) {
+        try {
+            const newPayment = prepareForSync({
+                id: response.reference,
+                student_id: this.currentUser.assigned_id,
+                amount: 5000, // Hardcoded for demo
+                category: 'Tuition Fee',
+                term: 'First',
+                session: '2023/2024',
+                reference: response.reference,
+                status: 'Success',
+                date: new Date().toISOString()
+            });
+
+            await db.payments.add(newPayment);
+            
+            // Update analytics balance (simplified)
+            const analytics = await db.student_analytics.get(this.currentUser.assigned_id);
+            if (analytics) {
+                await db.student_analytics.update(this.currentUser.assigned_id, {
+                    fee_balance: Math.max(0, analytics.fee_balance - 5000),
+                    updated_at: new Date().toISOString(),
+                    is_synced: 0
+                });
+            }
+
+            syncToCloud();
+            Notifications.show('Receipt generated. Refreshing dashboard...', 'success');
+            setTimeout(() => this.renderStudentDashboard(), 2000);
+        } catch (err) {
+            console.error('Payment Processing Error:', err);
+        }
     },
 
     async renderParentDashboard() {
@@ -1928,11 +2178,12 @@ export const UI = {
                         name: name,
                         class_name: className,
                         gender: gender,
+                        role: 'Student', // Explicitly set role
                         status: 'Active',
                         is_active: true,
                         attendance_code: attendanceCode,
                         admission_year: admissionYear,
-                        sub_class: className.charAt(0).toUpperCase(), // Default first char of class
+                        sub_class: className.charAt(0).toUpperCase(),
                         parent_email: document.getElementById('std-parent-email').value.trim(),
                         dob: document.getElementById('std-dob').value,
                         phone: document.getElementById('std-phone').value.trim(),
@@ -1944,10 +2195,46 @@ export const UI = {
                         timetable: document.getElementById('std-timetable').value.trim()
                     });
 
-                    console.log('Registering Student with ID:', serial);
-                    await db.students.add(newStudent);
-                    syncToCloud(); 
-                    Notifications.show(`Student ${name} registered with ID ${serial}.`, 'success');
+                    try {
+                        // 1. Create Auth Account for Student
+                        // Email: student_id@student.school, Password: student_id
+                        const studentEmail = `${serial.toLowerCase()}@student.school`;
+                        Notifications.show(`Provisioning dashboard for ${serial}...`, 'info');
+                        
+                        const { data: authData, error: authError } = await registerUser(studentEmail, serial, name, 'Student');
+                        
+                        if (authError) {
+                            if (authError.message.includes('already registered')) {
+                                console.warn('Student auth already exists');
+                            } else {
+                                console.error('Student auth error:', authError);
+                            }
+                        }
+
+                        // Use Supabase ID if available, else use generated serial
+                        if (authData?.user) newStudent.id = authData.user.id;
+
+                        console.log('Registering Student with ID:', serial);
+                        await db.students.add(newStudent);
+                        
+                        // Also add to profiles table for role-based login detection
+                        await db.profiles.put({
+                            id: newStudent.id || serial,
+                            full_name: name,
+                            email: studentEmail,
+                            role: 'Student',
+                            assigned_id: serial,
+                            updated_at: new Date().toISOString()
+                        });
+
+                        syncToCloud(); 
+                        Notifications.show(`Student ${name} registered! Login: ${serial} / ${serial}`, 'success');
+                    } catch (err) {
+                        console.error('Enrollment error:', err);
+                        // Still save locally even if auth fails
+                        await db.students.add(newStudent);
+                        Notifications.show(`Registered ${name} locally. Cloud account pending.`, 'warning');
+                    }
                     this.renderStudents();
                 }, 'Finalize Registration', 'save');
             });
@@ -2504,7 +2791,15 @@ export const UI = {
     },
 
     async renderGrades() {
-        const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
+        const role = (this.currentUser.role || '').toLowerCase();
+        const isStudent = role === 'student';
+        const isParent = role === 'parent';
+
+        if (isStudent || isParent) {
+            return this.renderStudentGradesView();
+        }
+        
+        const isTeacher = role === 'teacher';
         const teacherId = this.currentUser.id;
         
         let students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
@@ -3678,13 +3973,18 @@ export const UI = {
         syncToCloud();
     },
 
-
     async renderAttendance() {
+        const role = (this.currentUser.role || '').toLowerCase();
+        const isStudent = role === 'student';
+        const isParent = role === 'parent';
+
+        if (isStudent || isParent) {
+            return this.renderStudentAttendanceView();
+        }
+        
         const students = await db.students.filter(s => s.is_active !== false).toArray();
         const classes = await db.classes.toArray();
         const subjects = await db.subjects.toArray();
-        const role = (this.currentUser.role || '').toLowerCase();
-        const isTeacher = role === 'teacher';
         
         // Initial State
         const today = new Date().toISOString().split('T')[0];
@@ -6880,7 +7180,7 @@ export const UI = {
 
                 <div style="display: grid; grid-template-columns: ${isAdmin || isTeacher ? '1fr 350px' : '1fr'}; gap: 2rem; align-items: start;">
                     <!-- Notice Feed -->
-                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    <div class="student-notices-container" style="display: flex; flex-direction: column; gap: 1.5rem;">
                         ${notices.length === 0 ? `
                             <div style="text-align: center; padding: 5rem 2rem; background: white; border-radius: 24px; border: 2px dashed #e2e8f0;">
                                 <div style="width: 80px; height: 80px; background: #f1f5f9; color: #94a3b8; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
@@ -7020,4 +7320,122 @@ export const UI = {
             });
         }
     }
+    async renderStudentAttendanceView() {
+        const studentId = this.currentUser.assigned_id;
+        const attendance = await db.attendance_records.where('student_id').equals(studentId).toArray();
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1.5rem; min-height: 100vh;">
+                <header class="glass-header" style="margin-bottom: 2rem; padding: 2rem; border-radius: 24px;">
+                    <h1 style="font-size: 2rem; font-weight: 900; color: #1e293b;">Participation Record</h1>
+                    <p style="color: #64748b;">Your official attendance history and engagement metrics.</p>
+                </header>
+
+                <div class="card" style="border-radius: 24px; padding: 2rem;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Subject / Period</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${attendance.length === 0 ? '<tr><td colspan="3" style="text-align:center; padding:3rem;">No attendance records found.</td></tr>' : attendance.map(a => `
+                                    <tr>
+                                        <td style="font-weight: 700;">${new Date(a.date).toLocaleDateString()}</td>
+                                        <td><span class="badge ${a.status === 'Present' ? 'success' : 'warning'}">${a.status}</span></td>
+                                        <td style="color: #64748b; font-size: 0.85rem;">${a.subject_name || 'General School'} ${a.period_number ? `(Period ${a.period_number})` : ''}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async renderStudentGradesView() {
+        const studentId = this.currentUser.assigned_id;
+        const analytics = await db.student_analytics.get(studentId);
+        const hasFeeBalance = analytics?.fee_balance > 0;
+        
+        if (hasFeeBalance) {
+            this.contentArea.innerHTML = `
+                <div class="view-container animate-fade-in student-universe-bg" style="display: flex; align-items: center; justify-content: center; min-height: 80vh;">
+                    <div class="card" style="max-width: 450px; text-align: center; padding: 3rem; border-radius: 32px;">
+                        <div style="background: #fee2e2; color: #ef4444; width: 80px; height: 80px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; transform: rotate(-10deg);">
+                            <i data-lucide="lock" style="width: 40px; height: 40px;"></i>
+                        </div>
+                        <h2 style="font-weight: 900; font-size: 1.75rem; color: #1e293b;">Results Locked</h2>
+                        <p style="color: #64748b; line-height: 1.6; margin-top: 1rem;">
+                            Access to your academic transcript is restricted due to an outstanding fee balance of <strong>₦${analytics.fee_balance.toLocaleString()}</strong>.
+                        </p>
+                        <button class="btn btn-primary" onclick="UI.renderView('dashboard')" style="margin-top: 2rem; border-radius: 12px; height: 48px; padding: 0 2rem; font-weight: 800;">Pay Balance Now</button>
+                    </div>
+                </div>
+            `;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            return;
+        }
+
+        const scores = await db.scores.where('student_id').equals(studentId).toArray();
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1.5rem; min-height: 100vh;">
+                <header class="glass-header" style="margin-bottom: 2rem; padding: 2rem; border-radius: 24px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h1 style="font-size: 2rem; font-weight: 900; color: #1e293b;">Academic Transcript</h1>
+                        <p style="color: #64748b;">Comprehensive breakdown of your learning achievements.</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="UI.openResultPinModal()" style="border-radius: 12px; height: 48px; font-weight: 800;">
+                        <i data-lucide="printer"></i> Print Report Card
+                    </button>
+                </header>
+
+                <div class="card" style="border-radius: 24px; padding: 2rem;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Subject</th>
+                                    <th style="text-align:center;">C.A</th>
+                                    <th style="text-align:center;">Exam</th>
+                                    <th style="text-align:center;">Total</th>
+                                    <th style="text-align:center;">Grade</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${scores.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding:3rem;">No score records found for current term.</td></tr>' : scores.map(s => `
+                                    <tr>
+                                        <td style="font-weight: 700;">${s.subject_id}</td>
+                                        <td style="text-align:center;">${(parseFloat(s.assignment || 0) + parseFloat(s.test1 || 0) + parseFloat(s.test2 || 0) + parseFloat(s.project || 0)).toFixed(1)}</td>
+                                        <td style="text-align:center;">${s.exam || 0}</td>
+                                        <td style="text-align:center; font-weight: 900; color: #4f46e5;">${s.total || 0}</td>
+                                        <td style="text-align:center;"><span class="badge" style="background: #f1f5f9; color: #1e293b;">${s.grade || 'N/A'}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async printReceipt(paymentId) {
+        Notifications.show('Generating secure receipt...', 'info');
+        const payment = await db.payments.get(paymentId);
+        const student = await db.students.get(payment.student_id);
+        const settings = await db.settings.toArray();
+        const schoolInfo = {};
+        settings.forEach(s => schoolInfo[s.key] = s.value);
+        
+        const { generatePaymentReceipt } = await import('./utils.js');
+        await generatePaymentReceipt(payment, student, schoolInfo);
+    },
 };

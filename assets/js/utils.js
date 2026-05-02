@@ -486,3 +486,74 @@ export async function generateMastersheet(className, students, subjects, scores,
     doc.save(`Mastersheet_${className}_${term}_${session.replace(/\//g, '-')}.pdf`);
 }
 
+/**
+ * Generate Secure Payment Receipt
+ */
+export async function generatePaymentReceipt(payment, student, schoolInfo = {}) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('p', 'mm', [100, 150]); // Smaller receipt format
+    
+    const themeColor = schoolInfo.themeColor || '#4f46e5';
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 79, g: 70, b: 229 };
+    };
+    const rgb = hexToRgb(themeColor);
+
+    // Border
+    doc.setDrawColor(rgb.r, rgb.g, rgb.b);
+    doc.rect(2, 2, 96, 146);
+
+    // Header
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(rgb.r, rgb.g, rgb.b);
+    doc.text(schoolInfo.name || "GRAVITON ACADEMY", 50, 15, { align: 'center' });
+    
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Official Payment Receipt", 50, 20, { align: 'center' });
+    
+    doc.line(10, 25, 90, 25);
+
+    // Body
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    let y = 35;
+    const row = (label, value) => {
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, 12, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(String(value), 90, y, { align: 'right' });
+        y += 8;
+    };
+
+    row("Receipt Date:", new Date(payment.date).toLocaleDateString());
+    row("Reference:", payment.reference);
+    row("Student ID:", student.student_id);
+    row("Student Name:", student.name);
+    row("Class:", student.class_name);
+    row("Payment Type:", payment.type || "School Fees");
+    
+    y += 5;
+    doc.setFillColor(rgb.r, rgb.g, rgb.b);
+    doc.rect(10, y, 80, 10, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`AMOUNT: ₦${payment.amount.toLocaleString()}`, 50, y + 6.5, { align: 'center' });
+
+    y += 20;
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'italic');
+    doc.text("Thank you for your payment.", 50, y, { align: 'center' });
+    
+    y += 10;
+    doc.setFont('helvetica', 'normal');
+    doc.text("Authorized Digital Signature", 50, y, { align: 'center' });
+    doc.line(35, y + 2, 65, y + 2);
+
+    doc.save(`Receipt_${payment.reference}.pdf`);
+}
+

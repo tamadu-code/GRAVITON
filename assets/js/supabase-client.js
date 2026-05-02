@@ -74,7 +74,7 @@ export async function syncToCloud() {
     } catch (e) { console.error('Migration error:', e); }
     // ----------------------------------------
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics'];
     let syncCount = 0;
     const failedTables = new Set();
     
@@ -88,7 +88,7 @@ export async function syncToCloud() {
             console.warn(`Skipping ${table} sync because subjects sync failed in this run.`);
             continue;
         }
-        if ((table === 'scores' || table === 'attendance' || table === 'attendance_records') && failedTables.has('students')) {
+        if ((table === 'scores' || table === 'attendance' || table === 'attendance_records' || table === 'pins' || table === 'payments' || table === 'student_analytics') && failedTables.has('students')) {
             console.warn(`Skipping ${table} sync because students sync failed in this run.`);
             continue;
         }
@@ -98,7 +98,25 @@ export async function syncToCloud() {
             const unsynced = await db[table].filter(r => r.is_synced === 0 || r.is_synced === -1).toArray();
             
             if (unsynced.length > 0 && sb) {
-                console.log(`Syncing ${unsynced.length} records for ${table}...`);
+                // Table-level field whitelists for Supabase insertion
+                const whitelist = {
+                    profiles: ['id', 'full_name', 'role', 'assigned_id', 'email', 'phone', 'department', 'qualification', 'emp_type', 'is_archived', 'updated_at'],
+                    students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'dob', 'phone', 'parent_name', 'parent_phone', 'parent_email', 'blood_group', 'genotype', 'passport_url', 'updated_at'],
+                    classes: ['id', 'name', 'level', 'updated_at'],
+                    subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
+                    subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'updated_at'],
+                    form_teachers: ['id', 'teacher_id', 'class_name', 'updated_at'],
+                    scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
+                    attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
+                    attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
+                    timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
+                    notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'updated_at'],
+                    settings: ['id', 'key', 'value', 'updated_at'],
+                    pins: ['id', 'pin_code', 'serial', 'status', 'student_id', 'term', 'session', 'used_count', 'usage_limit', 'updated_at'],
+                    payments: ['id', 'student_id', 'amount', 'category', 'term', 'session', 'reference', 'status', 'date', 'updated_at'],
+                    fee_structures: ['id', 'class_name', 'amount', 'term', 'session', 'category', 'updated_at'],
+                    student_analytics: ['student_id', 'average', 'rank', 'fee_balance', 'attendance_rate', 'updated_at']
+                };console.log(`Syncing ${unsynced.length} records for ${table}...`);
                 
                 // --- Data Integrity Validation ---
                 let recordsToSync = unsynced;
@@ -344,10 +362,25 @@ export function startSyncLoop(intervalMs = 60000) {
 /**
  * Sign in with email and password
  */
-export async function loginUser(email, password) {
+export async function loginUser(identifier, password) {
     const client = getSupabase();
     if (!client) return { data: null, error: { message: 'Supabase not initialized' } };
-    const { data, error } = await client.auth.signInWithPassword({ email, password });
+
+    let email = identifier;
+    let loginPassword = password;
+
+    // Check if the identifier is a Student ID (Format: NKQMS-YEAR-CODE)
+    const studentIdRegex = /^NKQMS-\d{4}-\d+/i;
+    if (studentIdRegex.test(identifier) && !identifier.includes('@')) {
+        // Transform to synthetic email
+        email = `${identifier.toLowerCase()}@student.school`;
+        // If password is not provided (or matches identifier), use identifier as password
+        if (!password || password === identifier) {
+            loginPassword = identifier;
+        }
+    }
+
+    const { data, error } = await client.auth.signInWithPassword({ email: email, password: loginPassword });
     return { data, error };
 }
 

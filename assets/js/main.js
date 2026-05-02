@@ -174,14 +174,15 @@ async function loadAuthenticatedApp(authUser) {
     if (footerRoleEl) footerRoleEl.textContent = currentRole;
     if (footerAvatarEl) footerAvatarEl.textContent = currentName.charAt(0).toUpperCase();
 
-    // Role-Based UI Filtering (Sidebar)
-    // Requested Teacher Nav: dashboard, active students, classes, subjects, attendance, gradebook, cbt hub, notice board
     const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights'];
-    const parentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt'];
+    const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
+    const parentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
 
     document.querySelectorAll('.nav-item').forEach(item => {
         const view = item.getAttribute('data-view');
         if (currentRole === 'Teacher' && !teacherAllowed.includes(view)) {
+            item.style.display = 'none';
+        } else if (currentRole === 'Student' && !studentAllowed.includes(view)) {
             item.style.display = 'none';
         } else if (currentRole === 'Parent' && !parentAllowed.includes(view)) {
             item.style.display = 'none';
@@ -244,16 +245,7 @@ if (loginForm) {
             loginError.style.display = 'none';
 
             // --- Student ID Login Translation ---
-            if (!email.includes('@')) {
-                // Potential Student ID or Staff ID
-                const student = await db.students.get(email);
-                if (student) {
-                    // Translate ID to virtual email
-                    // Format: student_ID@school.graviton.com (ID slashes replaced by underscores)
-                    const virtualEmail = `${email.replace(/\//g, '_').toLowerCase()}@student.graviton.com`;
-                    email = virtualEmail;
-                }
-            }
+            // Now handled inside loginUser in supabase-client.js
             // ------------------------------------
 
             const { data, error } = await loginUser(email, password);
