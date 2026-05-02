@@ -7325,7 +7325,7 @@ export const UI = {
                 }
             });
         }
-    }
+    },
     async renderStudentAttendanceView() {
         const studentId = this.currentUser.assigned_id;
         const attendance = await db.attendance_records.where('student_id').equals(studentId).toArray();
