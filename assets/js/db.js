@@ -84,11 +84,20 @@ db.version(17).stores({
  * Format: NKQMS-{year}-{attendance_code}
  */
 export async function generateStudentId() {
-    const timestamp = Date.now();
+    const year = new Date().getFullYear();
+    const prefix = 'NKQMS';
+    
+    // Get count of students for this year to generate sequential suffix
+    const count = await db.students.where('admission_year').equals(year).count();
+    const sequence = (count + 1).toString().padStart(4, '0');
+    
+    const studentId = `${prefix}-${year}-${sequence}`;
+    const attendanceCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
+    
     return {
-        student_id: `PENDING-${timestamp}`,
-        attendance_code: null,
-        admission_year: new Date().getFullYear()
+        student_id: studentId,
+        attendance_code: attendanceCode,
+        admission_year: year
     };
 }
 

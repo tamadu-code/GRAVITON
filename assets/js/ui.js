@@ -2134,8 +2134,9 @@ export const UI = {
                             </select>
                         </div>
                         <div>
-                            <label>System ID / Serial (Optional)</label>
-                            <input type="text" id="std-serial" class="input" placeholder="Auto-generated if left blank" autocomplete="off" style="width: 100%; box-sizing: border-box;">
+                            <label>Attendance System Code (4-digits)</label>
+                            <input type="text" id="std-attendance-code" class="input" placeholder="e.g. 5703" maxlength="4" style="width: 100%; box-sizing: border-box; font-weight: 800; border: 2px solid #3b82f6;">
+                            <span style="font-size: 0.7rem; color: #3b82f6; display: block; margin-top: 4px;">Get this from the biometric/attendance terminal.</span>
                         </div>
                         <div>
                             <label>Parent Email / Username</label>
@@ -2190,22 +2191,25 @@ export const UI = {
                     const name = document.getElementById('std-name').value.trim();
                     const className = document.getElementById('std-class').value;
                     const gender = document.getElementById('std-gender').value;
-                    let serial = document.getElementById('std-serial').value.trim();
+                    const attendanceCodeInput = document.getElementById('std-attendance-code').value.trim();
+                    const year = new Date().getFullYear();
+                    
+                    let serial;
                     let attendanceCode = null;
-                    let admissionYear = new Date().getFullYear();
+                    let admissionYear = year;
 
                     if (!name || !className) {
                         Notifications.show('Name and Class are required', 'error');
                         throw new Error('Validation failed');
                     }
 
-                    // Force generate if serial is empty OR doesn't look like a final ID
-                    if (!serial || serial.startsWith('PENDING-')) {
-                        const idData = await generateStudentId();
-                        serial = idData.student_id;
-                        attendanceCode = idData.attendance_code;
-                        admissionYear = idData.admission_year;
+                    if (!attendanceCodeInput || attendanceCodeInput.length !== 4) {
+                        Notifications.show('A valid 4-digit Attendance Code is required', 'error');
+                        throw new Error('Validation failed');
                     }
+
+                    serial = `NKQMS-${year}-${attendanceCodeInput}`;
+                    attendanceCode = attendanceCodeInput;
                     
                     const newStudent = prepareForSync({
                         student_id: serial,
@@ -2305,15 +2309,16 @@ export const UI = {
                                 <h1 style="font-size: 2rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em; line-height: 1.1;">${student.name}</h1>
                                 <p style="font-size: 1.1rem; color: #64748b; margin-top: 0.25rem;">${student.class_name} • ${student.sub_class || 'General Stream'}</p>
                             </div>
-                             <div style="display: flex; gap: 1rem;">
+                              <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
                                  ${!((this.currentUser.role || '').toLowerCase() === 'teacher') ? `
+                                 <button id="btn-repair-auth" class="btn btn-secondary" title="Fix Login Issues" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a;"><i data-lucide="shield-alert"></i> Repair Auth</button>
                                  <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
                                  ${student.is_active !== false ? 
                                     `<button id="btn-deactivate-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="user-x"></i> Deactivate</button>` :
                                     `<button id="btn-reactivate-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #10b981; background: #ecfdf5; border: none;"><i data-lucide="user-check"></i> Reactivate</button>`
                                  }
                                  ` : ''}
-                             </div>
+                              </div>
                         </div>
                     </div>
                 </div>
@@ -2446,6 +2451,48 @@ export const UI = {
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Repair Auth Logic
+        const repairBtn = document.getElementById('btn-repair-auth');
+        if (repairBtn) {
+            repairBtn.onclick = async () => {
+                if (!confirm(`This will attempt to reset and re-provision the login dashboard for ${student.name}. Use this if the student cannot log in. Proceed?`)) return;
+                
+                repairBtn.disabled = true;
+                repairBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Repairing...';
+                
+                try {
+                    const studentEmail = `${student.student_id.toLowerCase()}@student.school`;
+                    const { data: authData, error: authError } = await registerUser(studentEmail, student.student_id, student.name, 'Student');
+                    
+                    if (authError && !authError.message.includes('already registered')) {
+                        throw authError;
+                    }
+                    
+                    // Force update profile in Supabase to ensure everything is linked
+                    const client = window.getSupabase ? window.getSupabase() : null;
+                    if (client) {
+                        const { error: pError } = await client.from('profiles').upsert({
+                            id: authData?.user?.id || student.id || student.student_id,
+                            full_name: student.name,
+                            role: 'Student',
+                            assigned_id: student.student_id,
+                            email: studentEmail
+                        });
+                        if (pError) console.warn('Profile sync warning during repair:', pError);
+                    }
+
+                    Notifications.show(`Authentication dashboard repaired for ${student.name}.`, 'success');
+                } catch (err) {
+                    console.error('Repair error:', err);
+                    Notifications.show(`Failed to repair auth: ${err.message}`, 'error');
+                } finally {
+                    repairBtn.disabled = false;
+                    repairBtn.innerHTML = '<i data-lucide="shield-alert"></i> Repair Auth';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        }
 
         // CRUD: Deactivate/Reactivate Student
         const deactivateBtn = document.getElementById('btn-deactivate-student');
@@ -5162,6 +5209,9 @@ export const UI = {
                                     <div style="font-weight: 600; color: #475569;">${staff.email || staff.username || 'Not Set'}</div>
                                 </div>
                             </div>
+                            <button id="btn-staff-repair-auth" class="btn btn-secondary" style="width: 100%; border-radius: 12px; margin-top: 1rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; font-weight: 800; font-size: 0.75rem;">
+                                <i data-lucide="shield-alert"></i> Repair Auth dashboard
+                            </button>
                         </div>
                     </div>
 
@@ -5195,6 +5245,52 @@ export const UI = {
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Repair Staff Auth Logic
+        const repairBtn = document.getElementById('btn-staff-repair-auth');
+        if (repairBtn) {
+            repairBtn.onclick = async () => {
+                const staffEmail = staff.email;
+                if (!staffEmail) return Notifications.show('Staff has no email set.', 'error');
+                
+                if (!confirm(`This will re-provision the login dashboard for ${staff.full_name}. Password will be reset to "Staff123!". Proceed?`)) return;
+                
+                repairBtn.disabled = true;
+                repairBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Repairing...';
+                
+                try {
+                    const DEFAULT_STAFF_PASSWORD = 'Staff123!';
+                    const { data: authData, error: authError } = await registerUser(staffEmail, DEFAULT_STAFF_PASSWORD, staff.full_name, staff.role);
+                    
+                    if (authError && !authError.message.includes('already registered')) {
+                        throw authError;
+                    }
+                    
+                    // Sync profile to Supabase
+                    const client = window.getSupabase ? window.getSupabase() : null;
+                    if (client) {
+                        const { error: pError } = await client.from('profiles').upsert({
+                            id: authData?.user?.id || staff.id,
+                            full_name: staff.full_name,
+                            role: staff.role,
+                            email: staffEmail,
+                            assigned_id: staff.assigned_id,
+                            updated_at: new Date().toISOString()
+                        });
+                        if (pError) console.warn('Staff profile repair warning:', pError);
+                    }
+
+                    Notifications.show(`Staff login repaired. Use Staff123! as password.`, 'success');
+                } catch (err) {
+                    console.error('Staff Repair error:', err);
+                    Notifications.show(`Repair failed: ${err.message}`, 'error');
+                } finally {
+                    repairBtn.disabled = false;
+                    repairBtn.innerHTML = '<i data-lucide="shield-alert"></i> Repair Auth dashboard';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        }
 
         // Update Records Button
         const btnUpdate = this.contentArea.querySelector('button[style*="background: #2563eb;"]');
