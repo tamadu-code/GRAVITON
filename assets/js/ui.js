@@ -113,7 +113,13 @@ export const UI = {
                 case 'lessons': await this.renderLessons(); break;
                 case 'timetables': await this.renderTimetable(); break;
                 case 'promotion': await this.renderPromotionEngine(); break;
-
+                case 'keys': await this.renderKeys(); break;
+                case 'parents': await this.renderParents(); break;
+                case 'roster': await this.renderRoster(); break;
+                case 'curriculum': await this.renderCurriculum(); break;
+                case 'finances': await this.renderFinances(); break;
+                case 'security': await this.renderSecurityLog(); break;
+                case 'pins': await this.renderPins(); break;
                 case 'config': await this.renderSettings(); break;
                 case 'insights': await this.renderInsights(); break;
                 case 'noticeboard': await this.renderNoticeBoard(); break;
@@ -7437,5 +7443,784 @@ export const UI = {
         
         const { generatePaymentReceipt } = await import('./utils.js');
         await generatePaymentReceipt(payment, student, schoolInfo);
+    },
+
+    async renderSecurityLog() {
+        const logs = await db.audit_logs.orderBy('timestamp').reverse().limit(100).toArray();
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-800">Security & Audit Logs</h1>
+                        <p class="text-slate-500">Track system activity and manage database integrity</p>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn" style="background: #fee2e2; color: #ef4444; border: 1px solid #fecaca; display: flex; align-items: center; gap: 0.5rem;" onclick="UI.factoryReset()">
+                            <i data-lucide="trash-2"></i> Factory Reset
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm" style="background: white; border-radius: 1.5rem; overflow: hidden;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>TIMESTAMP</th>
+                                    <th>OPERATION</th>
+                                    <th>TABLE</th>
+                                    <th>RECORD ID</th>
+                                    <th>USER</th>
+                                    <th>SYNC STATUS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${logs.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding: 4rem;">No security logs recorded yet.</td></tr>' : logs.map(log => `
+                                    <tr>
+                                        <td class="text-slate-500 text-xs">${new Date(log.timestamp).toLocaleString()}</td>
+                                        <td>
+                                            <span class="badge" style="background: ${log.operation === 'delete' ? '#fee2e2; color: #ef4444' : log.operation === 'update' ? '#fef3c7; color: #d97706' : '#dcfce7; color: #16a34a'}; font-weight: 700; text-transform: uppercase;">
+                                                ${log.operation}
+                                            </span>
+                                        </td>
+                                        <td class="font-mono text-xs">${log.table}</td>
+                                        <td class="text-slate-500 text-xs">${log.record_id}</td>
+                                        <td class="font-medium">${log.user_id || 'System'}</td>
+                                        <td>
+                                            <i data-lucide="${log.is_synced ? 'check-circle' : 'clock'}" style="width:16px; height:16px; color: ${log.is_synced ? '#16a34a' : '#94a3b8'};"></i>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async factoryReset() {
+        if (confirm('CRITICAL WARNING: This will PERMANENTLY ERASE all local data from this browser. This cannot be undone. Are you absolutely sure?')) {
+            const secondChance = confirm('FINAL CONFIRMATION: Are you REALLY sure? All unsynced records will be lost.');
+            if (secondChance) {
+                Notifications.show('Purging local database...', 'warning');
+                await db.delete();
+                localStorage.clear();
+                window.location.reload();
+            }
+        }
+    },
+
+    async renderKeys() {
+        const students = await db.students.where('is_active').equals(1).toArray();
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-800">Student Access Keys</h1>
+                        <p class="text-slate-500">Manage student credentials and portal login information</p>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <div class="search-box" style="position: relative;">
+                            <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 18px; color: #94a3b8;"></i>
+                            <input type="text" id="keys-search" class="form-control" placeholder="Search ID or Name..." style="padding-left: 3rem; border-radius: 12px; width: 300px;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm" style="background: white; border-radius: 1.5rem; overflow: hidden;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>STUDENT</th>
+                                    <th>CLASS</th>
+                                    <th>USERNAME (ID)</th>
+                                    <th>PASSWORD</th>
+                                    <th style="text-align: right;">ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="keys-table-body">
+                                ${students.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem;">No active students found.</td></tr>' : students.map(s => `
+                                    <tr>
+                                        <td>
+                                            <div style="display: flex; align-items: center; gap: 1rem;">
+                                                <div style="width: 40px; height: 40px; border-radius: 12px; background: #eff6ff; color: #1d4ed8; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">
+                                                    ${s.name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div style="display: flex; flex-direction: column;">
+                                                    <span class="font-bold text-slate-800">${s.name}</span>
+                                                    <span class="text-xs text-slate-400">#${s.student_id}</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}</span></td>
+                                        <td>
+                                            <div style="display: flex; align-items: center; gap: 0.5rem; font-family: monospace; color: #1e293b; background: #f8fafc; padding: 0.25rem 0.5rem; border-radius: 6px; width: fit-content;">
+                                                ${s.student_id}
+                                                <button onclick="navigator.clipboard.writeText('${s.student_id}'); Notifications.show('Copied Username!', 'info')" style="background: none; border: none; padding: 0; color: #94a3b8; cursor: pointer;">
+                                                    <i data-lucide="copy" style="width:14px; height:14px;"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div style="display: flex; align-items: center; gap: 0.5rem; font-family: monospace; color: #1e293b; background: #f8fafc; padding: 0.25rem 0.5rem; border-radius: 6px; width: fit-content;">
+                                                ${s.student_id}
+                                                <button onclick="navigator.clipboard.writeText('${s.student_id}'); Notifications.show('Copied Password!', 'info')" style="background: none; border: none; padding: 0; color: #94a3b8; cursor: pointer;">
+                                                    <i data-lucide="copy" style="width:14px; height:14px;"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td style="text-align: right;">
+                                            <button class="btn btn-secondary btn-sm" onclick="UI.printSingleCredential('${s.student_id}')" style="background: #f1f5f9; color: #475569;">
+                                                <i data-lucide="printer"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Search logic
+        const searchInput = document.getElementById('keys-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                const rows = document.querySelectorAll('#keys-table-body tr');
+                rows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(term) ? '' : 'none';
+                });
+            });
+        }
+    },
+
+    async printSingleCredential(studentId) {
+        const student = await db.students.get(studentId);
+        if (!student) return;
+        Notifications.show(`Generating login slip for ${student.name}...`, 'info');
+        await generateCredentialsPDF([student]);
+    },
+
+    async renderPins() {
+        const pins = await db.pins.orderBy('updated_at').reverse().toArray();
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-800">Result Checker Pins</h1>
+                        <p class="text-slate-500">Generate and manage access codes for student results</p>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-primary" onclick="UI.showPinBatchModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem;">
+                            <i data-lucide="plus-circle"></i> Generate Batch
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm" style="background: white; border-radius: 1.5rem; overflow: hidden;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>SERIAL NUMBER</th>
+                                    <th>PIN CODE</th>
+                                    <th>STATUS</th>
+                                    <th>USED BY</th>
+                                    <th>USAGE</th>
+                                    <th style="text-align: right;">ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${pins.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding: 4rem;">No pins generated yet.</td></tr>' : pins.map(p => `
+                                    <tr>
+                                        <td class="font-mono font-bold text-slate-800">${p.serial}</td>
+                                        <td class="font-mono" style="background: #f8fafc; padding: 0.25rem 0.5rem; border-radius: 4px;">${p.pin_code}</td>
+                                        <td>
+                                            <span class="badge" style="background: ${p.status === 'EXHAUSTED' ? '#fee2e2; color: #ef4444' : p.status === 'USED' ? '#fef3c7; color: #d97706' : '#dcfce7; color: #16a34a'}">
+                                                ${p.status}
+                                            </span>
+                                        </td>
+                                        <td>${p.student_id ? `<span class="text-xs font-medium">#${p.student_id}</span>` : '<span class="text-slate-400">Not Bound</span>'}</td>
+                                        <td>
+                                            <div style="width: 100px; height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; position: relative;">
+                                                <div style="width: ${(p.used_count / p.usage_limit) * 100}%; height: 100%; background: #4f46e5;"></div>
+                                            </div>
+                                            <span class="text-xs text-slate-400">${p.used_count}/${p.usage_limit}</span>
+                                        </td>
+                                        <td style="text-align: right;">
+                                            <button class="btn btn-secondary btn-sm" onclick="Notifications.show('Printing single pin slip...', 'info')" style="background: #f1f5f9; color: #475569;">
+                                                <i data-lucide="printer"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    showPinBatchModal() {
+        this.showModal('Generate Pin Batch', `
+            <div class="form-group">
+                <label class="form-label">Batch Size</label>
+                <input type="number" id="pin-batch-size" class="form-control" value="50" min="1" max="500">
+            </div>
+            <div class="form-group mt-3">
+                <label class="form-label">Usage Limit (Views)</label>
+                <input type="number" id="pin-usage-limit" class="form-control" value="5" min="1">
+            </div>
+        `, async () => {
+            const size = parseInt(document.getElementById('pin-batch-size').value);
+            const limit = parseInt(document.getElementById('pin-usage-limit').value);
+            
+            Notifications.show(`Generating ${size} cryptographic pins...`, 'info');
+            
+            const newPins = [];
+            for (let i = 0; i < size; i++) {
+                const serial = Math.floor(10000000 + Math.random() * 90000000).toString();
+                const pin = Math.floor(100000 + Math.random() * 900000).toString();
+                newPins.push(prepareForSync({
+                    id: crypto.randomUUID(),
+                    serial,
+                    pin_code: pin,
+                    status: 'UNASSIGNED',
+                    student_id: null,
+                    used_count: 0,
+                    usage_limit: limit
+                }));
+            }
+            
+            await db.pins.bulkAdd(newPins);
+            document.getElementById('ui-modal').remove();
+            Notifications.show(`${size} pins successfully generated and logged.`, 'success');
+            this.renderPins();
+        }, 'Generate Batch', 'zap');
+    },
+
+    async renderFinances() {
+        const payments = await db.payments.orderBy('date').reverse().toArray();
+        const structures = await db.fee_structures.toArray();
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-800">Financial Management</h1>
+                        <p class="text-slate-500">Track revenue, payments, and fee configurations</p>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-secondary" onclick="UI.renderFeeStructures()" style="background: white; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem;">
+                            <i data-lucide="settings"></i> Fee Structures
+                        </button>
+                        <button class="btn btn-primary" onclick="UI.showManualPaymentModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem;">
+                            <i data-lucide="plus-circle"></i> Record Payment
+                        </button>
+                    </div>
+                </div>
+
+                <div class="stats-grid mb-2">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: #dcfce7; color: #16a34a;"><i data-lucide="trending-up"></i></div>
+                        <div class="stat-content">
+                            <div class="stat-label">Total Revenue</div>
+                            <div class="stat-value">₦${payments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0).toLocaleString()}</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: #fef3c7; color: #d97706;"><i data-lucide="clock"></i></div>
+                        <div class="stat-content">
+                            <div class="stat-label">Pending Verifications</div>
+                            <div class="stat-value">${payments.filter(p => p.status !== 'success').length}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm" style="background: white; border-radius: 1.5rem; overflow: hidden;">
+                    <div class="card-header" style="padding: 1.5rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 class="font-bold text-slate-800">Payment Ledger</h3>
+                        <div class="search-box" style="position: relative;">
+                            <i data-lucide="search" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); width: 14px; color: #94a3b8;"></i>
+                            <input type="text" placeholder="Search reference..." style="padding-left: 2.25rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.8rem;">
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>DATE</th>
+                                    <th>STUDENT</th>
+                                    <th>REFERENCE</th>
+                                    <th>CATEGORY</th>
+                                    <th>AMOUNT</th>
+                                    <th>STATUS</th>
+                                    <th style="text-align: right;">RECEIPT</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${payments.length === 0 ? '<tr><td colspan="7" style="text-align:center; padding: 4rem;">No financial records found.</td></tr>' : payments.map(p => `
+                                    <tr>
+                                        <td class="text-slate-500 text-xs">${new Date(p.date).toLocaleDateString()}</td>
+                                        <td><span class="font-medium text-slate-800">#${p.student_id}</span></td>
+                                        <td class="font-mono text-xs text-slate-400">${p.reference}</td>
+                                        <td><span class="badge" style="background: #f1f5f9; color: #64748b;">${p.category || 'School Fees'}</span></td>
+                                        <td class="font-bold text-slate-800">₦${parseFloat(p.amount).toLocaleString()}</td>
+                                        <td>
+                                            <span class="badge" style="background: ${p.status === 'success' ? '#dcfce7; color: #16a34a' : '#fee2e2; color: #ef4444'}">
+                                                ${p.status === 'success' ? 'Verified' : 'Pending'}
+                                            </span>
+                                        </td>
+                                        <td style="text-align: right;">
+                                            <button class="btn btn-secondary btn-sm" onclick="UI.printReceipt('${p.id}')" style="background: #f1f5f9; color: #4f46e5;">
+                                                <i data-lucide="file-text"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async renderFeeStructures() {
+        const structures = await db.fee_structures.toArray();
+        this.showModal('Fee Structures', `
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table class="data-table" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th>CLASS</th>
+                            <th>CATEGORY</th>
+                            <th>AMOUNT</th>
+                            <th>ACTION</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${structures.length === 0 ? '<tr><td colspan="4" style="text-align:center;">No structures defined.</td></tr>' : structures.map(s => `
+                            <tr>
+                                <td>${s.class_name}</td>
+                                <td>${s.category}</td>
+                                <td>₦${parseFloat(s.amount).toLocaleString()}</td>
+                                <td><button onclick="UI.deleteFeeStructure('${s.id}')" style="color:#ef4444; background:none; border:none;"><i data-lucide="trash-2" style="width:14px;"></i></button></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid #e2e8f0;">
+            <div class="grid grid-cols-2 gap-3">
+                <div class="form-group">
+                    <label class="form-label">Class</label>
+                    <input type="text" id="new-fee-class" class="form-control" placeholder="JSS 1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Category</label>
+                    <input type="text" id="new-fee-cat" class="form-control" value="School Fees">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Amount (₦)</label>
+                    <input type="number" id="new-fee-amount" class="form-control" placeholder="50000">
+                </div>
+                <div class="form-group" style="display:flex; align-items:flex-end;">
+                    <button class="btn btn-primary w-100" onclick="UI.saveFeeStructure()">Add Fee</button>
+                </div>
+            </div>
+        `, null, 'Close', 'check');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async saveFeeStructure() {
+        const className = document.getElementById('new-fee-class').value;
+        const category = document.getElementById('new-fee-cat').value;
+        const amount = document.getElementById('new-fee-amount').value;
+        
+        if (!className || !amount) return Notifications.show('Please fill all fields', 'warning');
+        
+        await db.fee_structures.add(prepareForSync({
+            id: crypto.randomUUID(),
+            class_name: className,
+            category: category,
+            amount: parseFloat(amount),
+            term: 'FIRST TERM',
+            session: '2025/2026'
+        }));
+        
+        Notifications.show('Fee structure saved', 'success');
+        this.renderFeeStructures();
+    },
+
+    async deleteFeeStructure(id) {
+        if (confirm('Delete this fee structure?')) {
+            await db.fee_structures.delete(id);
+            this.renderFeeStructures();
+        }
+    },
+
+    showManualPaymentModal() {
+        this.showModal('Record Manual Payment', `
+            <div class="form-group">
+                <label class="form-label">Student ID</label>
+                <input type="text" id="pay-student-id" class="form-control" placeholder="NKQMS-2024-001">
+            </div>
+            <div class="form-group mt-2">
+                <label class="form-label">Amount (₦)</label>
+                <input type="number" id="pay-amount" class="form-control">
+            </div>
+            <div class="form-group mt-2">
+                <label class="form-label">Category</label>
+                <select id="pay-category" class="form-control">
+                    <option value="School Fees">School Fees</option>
+                    <option value="Bus">Bus</option>
+                    <option value="Uniform">Uniform</option>
+                    <option value="Books">Books</option>
+                </select>
+            </div>
+        `, async () => {
+            const studentId = document.getElementById('pay-student-id').value;
+            const amount = document.getElementById('pay-amount').value;
+            const category = document.getElementById('pay-category').value;
+            
+            if (!studentId || !amount) return;
+            
+            const student = await db.students.get(studentId);
+            if (!student) return Notifications.show('Student not found!', 'error');
+            
+            const reference = 'MAN-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+            
+            await db.payments.add(prepareForSync({
+                id: crypto.randomUUID(),
+                student_id: studentId,
+                amount: parseFloat(amount),
+                category,
+                reference,
+                status: 'success',
+                date: new Date().toISOString(),
+                term: 'FIRST TERM',
+                session: '2025/2026'
+            }));
+            
+            // Trigger analytics update
+            await this.refreshStudentFinancials(studentId);
+            
+            document.getElementById('ui-modal').remove();
+            Notifications.show('Payment recorded successfully', 'success');
+            this.renderFinances();
+        }, 'Record Payment', 'save');
+    },
+
+    async refreshStudentFinancials(studentId) {
+        // Simple balance calculation logic
+        const payments = await db.payments.where('student_id').equals(studentId).toArray();
+        const totalPaid = payments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+        
+        const student = await db.students.get(studentId);
+        const structures = await db.fee_structures.where('class_name').equals(student.class_name).toArray();
+        const totalExpected = structures.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+        
+        const analytics = await db.student_analytics.get(studentId) || { student_id: studentId };
+        analytics.fee_balance = Math.max(0, totalExpected - totalPaid);
+        
+        await db.student_analytics.put(prepareForSync(analytics));
+    },
+
+    async renderParents() {
+        const links = await db.parent_links.toArray();
+        const profiles = await db.profiles.where('role').equalsIgnoreCase('Parent').toArray();
+        const students = await db.students.toArray();
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-800">Parent Link Registry</h1>
+                        <p class="text-slate-500">Connect parents to their children for portal access</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="UI.showParentLinkModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem;">
+                        <i data-lucide="link"></i> Create New Link
+                    </button>
+                </div>
+
+                <div class="card shadow-sm" style="background: white; border-radius: 1.5rem; overflow: hidden;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>PARENT NAME</th>
+                                    <th>PARENT ID</th>
+                                    <th>STUDENT(S)</th>
+                                    <th>RELATIONSHIP</th>
+                                    <th style="text-align: right;">ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${links.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem;">No parent links established yet.</td></tr>' : links.map(link => {
+                                    const parent = profiles.find(p => p.id === link.parent_id);
+                                    const student = students.find(s => s.student_id === link.student_id);
+                                    return `
+                                        <tr>
+                                            <td class="font-bold text-slate-800">${parent ? parent.full_name : 'Unknown Parent'}</td>
+                                            <td class="text-xs font-mono text-slate-400">${link.parent_id}</td>
+                                            <td>
+                                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                    <span class="badge" style="background: #eff6ff; color: #1d4ed8;">${student ? student.name : link.student_id}</span>
+                                                </div>
+                                            </td>
+                                            <td><span class="badge" style="background: #f1f5f9; color: #64748b;">${link.relationship}</span></td>
+                                            <td style="text-align: right;">
+                                                <button class="btn btn-secondary btn-sm" onclick="UI.deleteParentLink('${link.id}')" style="background: #fee2e2; color: #ef4444; border: none;">
+                                                    <i data-lucide="trash-2"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async showParentLinkModal() {
+        const parents = await db.profiles.where('role').equalsIgnoreCase('Parent').toArray();
+        const students = await db.students.where('is_active').equals(1).toArray();
+
+        this.showModal('Create Parent-Student Link', `
+            <div class="form-group">
+                <label class="form-label">Select Parent</label>
+                <select id="link-parent-id" class="form-control">
+                    ${parents.map(p => `<option value="${p.id}">${p.full_name} (${p.assigned_id || 'No ID'})</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-group mt-3">
+                <label class="form-label">Select Student</label>
+                <select id="link-student-id" class="form-control">
+                    ${students.map(s => `<option value="${s.student_id}">${s.name} (${s.class_name})</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-group mt-3">
+                <label class="form-label">Relationship</label>
+                <select id="link-rel" class="form-control">
+                    <option value="Father">Father</option>
+                    <option value="Mother">Mother</option>
+                    <option value="Guardian">Guardian</option>
+                </select>
+            </div>
+        `, async () => {
+            const parentId = document.getElementById('link-parent-id').value;
+            const studentId = document.getElementById('link-student-id').value;
+            const rel = document.getElementById('link-rel').value;
+
+            await db.parent_links.add(prepareForSync({
+                id: crypto.randomUUID(),
+                parent_id: parentId,
+                student_id: studentId,
+                relationship: rel
+            }));
+
+            document.getElementById('ui-modal').remove();
+            Notifications.show('Link established successfully', 'success');
+            this.renderParents();
+        }, 'Establish Link', 'link');
+    },
+
+    async deleteParentLink(id) {
+        if (confirm('Sever this parent-student connection?')) {
+            await db.parent_links.delete(id);
+            this.renderParents();
+        }
+    },
+
+    async renderRoster() {
+        const roster = await db.duty_assignments.toArray();
+        const staff = await db.profiles.where('role').equalsIgnoreCase('Teacher').toArray();
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-800">Staff Duty Roster</h1>
+                        <p class="text-slate-500">Weekly administrative and supervisory assignments</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="UI.showRosterModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem;">
+                        <i data-lucide="calendar-plus"></i> Assign Duty
+                    </button>
+                </div>
+
+                <div class="card shadow-sm" style="background: white; border-radius: 1.5rem; overflow: hidden;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>STAFF MEMBER</th>
+                                    <th>DUTY TYPE</th>
+                                    <th>WEEK START</th>
+                                    <th>WEEK END</th>
+                                    <th style="text-align: right;">ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${roster.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem;">No duty assignments scheduled.</td></tr>' : roster.map(r => {
+                                    const member = staff.find(s => s.id === r.staff_id);
+                                    return `
+                                        <tr>
+                                            <td>
+                                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                                    <div style="width: 32px; height: 32px; border-radius: 8px; background: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.7rem;">
+                                                        ${member ? member.full_name.charAt(0) : '?'}
+                                                    </div>
+                                                    <span class="font-medium">${member ? member.full_name : 'Unknown Staff'}</span>
+                                                </div>
+                                            </td>
+                                            <td><span class="badge" style="background: #fef3c7; color: #d97706; font-weight: 700;">${r.duty_type}</span></td>
+                                            <td>${new Date(r.week_start).toLocaleDateString()}</td>
+                                            <td>${new Date(r.week_end).toLocaleDateString()}</td>
+                                            <td style="text-align: right;">
+                                                <button class="btn btn-secondary btn-sm" onclick="UI.deleteRosterEntry('${r.id}')" style="background: none; color: #94a3b8;">
+                                                    <i data-lucide="trash-2"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async showRosterModal() {
+        const staff = await db.profiles.where('role').equalsIgnoreCase('Teacher').toArray();
+        this.showModal('Assign Weekly Duty', `
+            <div class="form-group">
+                <label class="form-label">Staff Member</label>
+                <select id="duty-staff-id" class="form-control">
+                    ${staff.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-group mt-3">
+                <label class="form-label">Duty Type</label>
+                <select id="duty-type" class="form-control">
+                    <option value="Teacher on Duty (TOD)">Teacher on Duty (TOD)</option>
+                    <option value="Assembly Supervisor">Assembly Supervisor</option>
+                    <option value="Gate Monitor">Gate Monitor</option>
+                    <option value="Lunch Supervisor">Lunch Supervisor</option>
+                </select>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mt-3">
+                <div class="form-group">
+                    <label class="form-label">Week Start</label>
+                    <input type="date" id="duty-start" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Week End</label>
+                    <input type="date" id="duty-end" class="form-control">
+                </div>
+            </div>
+        `, async () => {
+            const staffId = document.getElementById('duty-staff-id').value;
+            const type = document.getElementById('duty-type').value;
+            const start = document.getElementById('duty-start').value;
+            const end = document.getElementById('duty-end').value;
+
+            if (!staffId || !start || !end) return;
+
+            await db.duty_assignments.add(prepareForSync({
+                id: crypto.randomUUID(),
+                staff_id: staffId,
+                duty_type: type,
+                week_start: start,
+                week_end: end
+            }));
+
+            document.getElementById('ui-modal').remove();
+            Notifications.show('Duty assigned successfully', 'success');
+            this.renderRoster();
+        }, 'Assign Duty', 'calendar-check');
+    },
+
+    async deleteRosterEntry(id) {
+        if (confirm('Remove this duty assignment?')) {
+            await db.duty_assignments.delete(id);
+            this.renderRoster();
+        }
+    },
+
+    async renderCurriculum() {
+        const subjects = await db.subjects.toArray();
+        const classes = await db.classes.toArray();
+        const assignments = await db.subject_assignments.toArray();
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-800">Academic Curriculum</h1>
+                        <p class="text-slate-500">Manage institutional subjects and class assignments</p>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-secondary" onclick="UI.renderSubjects()" style="background: white; border: 1px solid #e2e8f0;">
+                            <i data-lucide="book-open"></i> Global Subjects
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    ${classes.length === 0 ? '<div class="col-span-full text-center p-12 bg-white rounded-3xl">No classes found. Please set up classes first.</div>' : classes.map(cls => {
+                        const classSubjects = assignments.filter(a => a.class_name === cls.name);
+                        return `
+                            <div class="card shadow-sm h-100" style="background: white; border-radius: 1.5rem; display: flex; flex-direction: column;">
+                                <div class="card-header" style="padding: 1.5rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border-radius: 1.5rem 1.5rem 0 0;">
+                                    <h3 class="font-bold text-slate-800">${cls.name}</h3>
+                                    <span class="badge" style="background: #4f46e5; color: white;">${classSubjects.length} Subjects</span>
+                                </div>
+                                <div class="card-body" style="padding: 1.5rem; flex: 1;">
+                                    <ul style="list-style: none; padding: 0; margin: 0;">
+                                        ${classSubjects.length === 0 ? '<li class="text-slate-400 text-sm italic">No subjects assigned yet.</li>' : classSubjects.map(a => `
+                                            <li style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #f8fafc;">
+                                                <span class="text-sm font-medium text-slate-700">${a.subject_id}</span>
+                                                <span class="text-xs text-slate-400">${a.specialization || 'General'}</span>
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                </div>
+                                <div class="card-footer" style="padding: 1rem; border-top: 1px solid #f1f5f9;">
+                                    <button class="btn btn-secondary w-100 btn-sm" onclick="UI.renderClassCurriculum('${cls.name}')" style="background: #f1f5f9; color: #475569; border: none;">Manage Subjects</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    renderClassCurriculum(className) {
+        // Direct them to the Academic module but filtered (or just show the modal)
+        Notifications.show(`Redirecting to Academic Manager for ${className}...`, 'info');
+        this.renderView('academic');
     },
 };

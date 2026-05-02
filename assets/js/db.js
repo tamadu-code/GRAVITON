@@ -43,10 +43,6 @@ db.version(8).stores({
     exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
 });
 
-db.version(13).stores({
-    notices: 'id, title, target, category, is_active, updated_at, is_synced'
-});
-
 db.version(12).stores({
     students: 'student_id, name, gender, address, class_name, status, is_active, attendance_code, admission_year, sub_class, updated_at, is_synced',
     attendance_records: 'id, student_id, date, status, subject_name, period_number, is_subject_based, updated_at, is_synced',
@@ -54,7 +50,15 @@ db.version(12).stores({
     settings: 'id, key, value, updated_at, is_synced'
 });
 
-db.version(14).stores({
+db.version(13).stores({
+    notices: 'id, title, target, category, is_active, updated_at, is_synced',
+    students: 'student_id, name, gender, address, class_name, status, is_active, attendance_code, admission_year, sub_class, updated_at, is_synced',
+    attendance_records: 'id, student_id, date, status, subject_name, period_number, is_subject_based, updated_at, is_synced',
+    timetable: 'id, class_name, day_of_week, period_number, subject_id, teacher_id, [class_name+day_of_week+period_number], updated_at, is_synced',
+    settings: 'id, key, value, updated_at, is_synced'
+});
+
+db.version(16).stores({
     notices: 'id, title, target, category, is_active, updated_at, is_synced',
     students: 'student_id, name, gender, address, class_name, status, is_active, attendance_code, admission_year, sub_class, updated_at, is_synced',
     attendance_records: 'id, student_id, date, status, subject_name, period_number, is_subject_based, updated_at, is_synced',
@@ -63,7 +67,10 @@ db.version(14).stores({
     pins: 'id, pin_code, serial, status, student_id, term, session, used_count, usage_limit, updated_at, is_synced',
     payments: 'id, student_id, amount, category, term, session, reference, status, date, updated_at, is_synced',
     fee_structures: 'id, class_name, amount, term, session, category, updated_at, is_synced',
-    student_analytics: 'student_id, average, rank, fee_balance, attendance_rate, updated_at, is_synced'
+    student_analytics: 'student_id, average, rank, fee_balance, attendance_rate, updated_at, is_synced',
+    audit_logs: 'id, operation, table, record_id, timestamp, user_id, is_synced',
+    duty_assignments: 'id, staff_id, week_start, week_end, duty_type, updated_at, is_synced',
+    parent_links: 'id, parent_id, student_id, relationship, updated_at, is_synced'
 });
 
 

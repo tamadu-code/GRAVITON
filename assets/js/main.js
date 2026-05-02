@@ -94,6 +94,7 @@ async function initApp() {
     
     // Show a small loader on login button if we are still checking session
     if (loginBtn) {
+        console.log('Disabling login button for session check...');
         loginBtn.disabled = true;
         loginBtn.innerHTML = '<span>Verifying Session...</span><div class="loader" style="width:14px; height:14px; border:2px solid white; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></div>';
     }
@@ -116,11 +117,16 @@ async function initApp() {
         console.warn('Initialization notice/error:', e.message);
         showLoginScreen();
     } finally {
+        isInitializing = false;
         // ALWAYS ensure the login button is re-enabled if we are still on the login screen
-        if (loginBtn && loginScreen.style.display !== 'none') {
-            loginBtn.disabled = false;
-            loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
-            if (typeof lucide !== 'undefined') lucide.createIcons();
+        if (loginBtn) {
+            const isLoginVisible = window.getComputedStyle(loginScreen).display !== 'none';
+            if (isLoginVisible) {
+                console.log('Re-enabling login button...');
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
         }
     }
 }
@@ -237,8 +243,14 @@ if (loginForm) {
         e.preventDefault();
 
         try {
+            console.log('Login form submitted...');
             let email = document.getElementById('login-email').value.trim();
             const password = document.getElementById('login-password').value;
+
+            if (!email || !password) {
+                Notifications.show('Please enter both ID/Email and password.', 'warning');
+                return;
+            }
 
             loginBtn.disabled = true;
             loginBtn.innerHTML = '<div class="loader" style="width:16px; height:16px; border-width:2px;"></div>';
