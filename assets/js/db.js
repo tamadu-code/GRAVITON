@@ -43,6 +43,10 @@ db.version(8).stores({
     exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
 });
 
+db.version(13).stores({
+    notices: 'id, title, target, category, is_active, updated_at, is_synced'
+});
+
 db.version(12).stores({
     students: 'student_id, name, gender, address, class_name, status, is_active, attendance_code, admission_year, sub_class, updated_at, is_synced',
     attendance_records: 'id, student_id, date, status, subject_name, period_number, is_subject_based, updated_at, is_synced',

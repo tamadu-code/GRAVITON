@@ -600,16 +600,15 @@ export const UI = {
                 if (!content) return Notifications.show('Please enter announcement content', 'warning');
                 
                 try {
-                    await db.notices.add({
+                    await db.notices.add(prepareForSync({
                         id: `N${Date.now()}`,
                         title: `Broadcast from ${this.currentUser.name}`,
                         content: content,
-                        is_active: 1,
+                        category: 'News',
                         target: 'Students',
                         author: this.currentUser.name,
-                        updated_at: new Date().toISOString(),
-                        is_synced: 0
-                    });
+                        is_active: 1
+                    }));
                     syncToCloud();
                     document.getElementById('broadcast-content').value = '';
                     Notifications.show('Announcement broadcasted successfully!', 'success');
@@ -6704,45 +6703,190 @@ export const UI = {
     },
 
     async renderNoticeBoard() {
-        const notices = await db.notices.toArray().catch(() => []);
+        const userRole = (this.currentUser.role || '').toLowerCase();
+        const isAdmin = userRole === 'admin' || userRole === 'principal';
+        const isTeacher = userRole === 'teacher';
+        
+        // 1. Fetch and Filter Notices
+        let notices = await db.notices.toArray().catch(() => []);
+        
+        // Filter based on role
+        if (!isAdmin) {
+            let teacherClasses = [];
+            if (isTeacher) {
+                const assignments = await db.subject_assignments.where('teacher_id').equals(this.currentUser.id).toArray();
+                teacherClasses = [...new Set(assignments.map(a => a.class_name))];
+            }
+
+            notices = notices.filter(n => {
+                if (n.target === 'All') return true;
+                if (isTeacher && n.target === 'Staff') return true;
+                if (isTeacher && teacherClasses.includes(n.target)) return true;
+                if (this.currentUser.class_name && n.target === this.currentUser.class_name) return true;
+                return false;
+            });
+        }
+        
         notices.sort((a,b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 
+        // 2. Component Logic for Composer
+        const classes = await db.classes.toArray();
+
         this.contentArea.innerHTML = `
-            <div class="view-container" style="padding: 1.5rem;">
-                <div class="page-banner" style="background: linear-gradient(135deg, #db2777 0%, #9d174d 100%); border-radius: 20px; padding: 2rem; color: white; box-shadow: var(--shadow-lg);">
-                    <div class="banner-content">
-                        <h1 class="banner-title" style="margin: 0; font-size: 2rem; display: flex; align-items: center; gap: 0.75rem;"><i data-lucide="megaphone"></i> Notice Board</h1>
-                        <p class="banner-subtitle" style="margin-top: 0.5rem; opacity: 0.9;">Official school announcements and broadcasts.</p>
+            <div class="view-container animate-fade-in" style="padding: 1.5rem; background: #f8fafc; min-height: 100vh;">
+                <!-- Premium Header -->
+                <div class="page-banner" style="background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); border-radius: 24px; padding: 2.5rem; color: white; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); margin-bottom: 2rem; position: relative; overflow: hidden;">
+                    <div style="position: absolute; right: -50px; top: -50px; width: 200px; height: 200px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+                    <div class="banner-content" style="position: relative; z-index: 1;">
+                        <h1 style="margin: 0; font-size: 2.5rem; font-weight: 900; letter-spacing: -0.03em; display: flex; align-items: center; gap: 1rem;">
+                            <i data-lucide="megaphone" style="width: 40px; height: 40px;"></i> Broadcast Center
+                        </h1>
+                        <p style="margin-top: 0.75rem; opacity: 0.9; font-size: 1.1rem; font-weight: 500;">Official communications and academic announcements.</p>
                     </div>
                 </div>
 
-                <div class="notice-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem; margin-top: 2rem;">
-                    ${notices.length === 0 ? `
-                        <div class="card text-center" style="padding: 4rem; grid-column: 1 / -1; border-radius: 20px; background: white;">
-                            <i data-lucide="info" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 1rem;"></i>
-                            <p style="color: #64748b; font-weight: 600;">No active announcements at this time.</p>
-                        </div>
-                    ` : notices.map(a => `
-                        <div class="card animate-fade-in-up" style="padding: 2rem; border-radius: 20px; background: white; border: 1px solid #e2e8f0; border-left: 6px solid #db2777; box-shadow: var(--shadow-sm); transition: transform 0.2s;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem;">
-                                <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: #1e293b;">${a.title}</h3>
-                                <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${new Date(a.updated_at).toLocaleDateString()}</span>
-                            </div>
-                            <p style="color: #475569; line-height: 1.7; font-size: 0.95rem; margin-bottom: 1.5rem;">${a.content}</p>
-                            <div style="display: flex; align-items: center; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid #f1f5f9;">
-                                <div style="width: 32px; height: 32px; background: #fce7f3; color: #db2777; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.7rem;">
-                                    ${(a.author || 'S').charAt(0).toUpperCase()}
+                <div style="display: grid; grid-template-columns: ${isAdmin || isTeacher ? '1fr 350px' : '1fr'}; gap: 2rem; align-items: start;">
+                    <!-- Notice Feed -->
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        ${notices.length === 0 ? `
+                            <div style="text-align: center; padding: 5rem 2rem; background: white; border-radius: 24px; border: 2px dashed #e2e8f0;">
+                                <div style="width: 80px; height: 80px; background: #f1f5f9; color: #94a3b8; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+                                    <i data-lucide="inbox" style="width: 40px; height: 40px;"></i>
                                 </div>
+                                <h3 style="color: #1e293b; font-weight: 700; margin-bottom: 0.5rem;">Quiet on the Airwaves</h3>
+                                <p style="color: #64748b;">No active broadcasts found in your feed.</p>
+                            </div>
+                        ` : notices.map(n => {
+                            const colors = {
+                                'Urgent': { border: '#ef4444', bg: '#fef2f2', icon: 'alert-triangle', text: '#991b1b' },
+                                'Event': { border: '#3b82f6', bg: '#eff6ff', icon: 'calendar', text: '#1e40af' },
+                                'News': { border: '#10b981', bg: '#ecfdf5', icon: 'info', text: '#065f46' }
+                            };
+                            const theme = colors[n.category] || colors['News'];
+                            
+                            return `
+                                <div class="card notice-card animate-fade-in-up" style="background: white; border-radius: 24px; padding: 2rem; border: 1px solid #e2e8f0; border-left: 8px solid ${theme.border}; box-shadow: var(--shadow-sm); transition: all 0.3s ease;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+                                        <div style="display: flex; gap: 0.75rem; align-items: center;">
+                                            <div style="background: ${theme.bg}; color: ${theme.border}; padding: 0.5rem 1rem; border-radius: 12px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; display: flex; align-items: center; gap: 0.5rem;">
+                                                <i data-lucide="${theme.icon}" style="width: 14px; height: 14px;"></i> ${n.category || 'News'}
+                                            </div>
+                                            <div style="background: #f1f5f9; color: #64748b; padding: 0.5rem 1rem; border-radius: 12px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase;">
+                                                To: ${n.target || 'All'}
+                                            </div>
+                                        </div>
+                                        <span style="font-size: 0.85rem; color: #94a3b8; font-weight: 600;">${new Date(n.updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+                                    </div>
+                                    <h2 style="margin: 0 0 1rem 0; font-size: 1.4rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em;">${n.title}</h2>
+                                    <div style="color: #475569; line-height: 1.8; font-size: 1.05rem; margin-bottom: 2rem; white-space: pre-wrap;">${n.content}</div>
+                                    <div style="display: flex; align-items: center; gap: 1rem; padding-top: 1.5rem; border-top: 1px solid #f1f5f9;">
+                                        <div style="width: 40px; height: 40px; background: #e0e7ff; color: #4338ca; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.9rem;">
+                                            ${(n.author || 'S').charAt(0).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 0.95rem; font-weight: 800; color: #1e293b;">${n.author || 'School Administration'}</div>
+                                            <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">Verified Broadcaster</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+
+                    <!-- Composer Sidebar -->
+                    ${isAdmin || isTeacher ? `
+                    <div style="position: sticky; top: 1.5rem;">
+                        <div class="card" style="background: white; border-radius: 24px; padding: 2rem; border: 1px solid #e2e8f0; box-shadow: var(--shadow-md);">
+                            <h3 style="margin: 0 0 1.5rem 0; font-size: 1.2rem; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 0.75rem;">
+                                <i data-lucide="pen-tool" style="color: #4f46e5;"></i> Create Notice
+                            </h3>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
                                 <div>
-                                    <div style="font-size: 0.8rem; font-weight: 700; color: #1e293b;">${a.author || 'School Administration'}</div>
-                                    <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 600;">Authorized Personnel</div>
+                                    <label style="display: block; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem;">Broadcast Title</label>
+                                    <input type="text" id="notice-title" class="input" placeholder="Enter headline..." style="width: 100%; font-weight: 600;">
                                 </div>
+                                
+                                <div>
+                                    <label style="display: block; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem;">Category</label>
+                                    <select id="notice-category" class="input" style="width: 100%; font-weight: 600;">
+                                        <option value="News">📢 General News</option>
+                                        <option value="Event">📅 School Event</option>
+                                        <option value="Urgent">⚠️ Urgent Alert</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label style="display: block; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem;">Target Audience</label>
+                                    <select id="notice-target" class="input" style="width: 100%; font-weight: 600;">
+                                        <option value="All">All Users</option>
+                                        <option value="Staff">Staff Only</option>
+                                        <option value="Students">All Students</option>
+                                        <optgroup label="Specific Streams">
+                                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                        </optgroup>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label style="display: block; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem;">Notice Content</label>
+                                    <textarea id="notice-content" class="input" placeholder="Write your message..." style="width: 100%; min-height: 150px; resize: none; line-height: 1.6;"></textarea>
+                                </div>
+
+                                <button id="btn-post-notice" class="btn btn-primary" style="width: 100%; height: 52px; border-radius: 14px; background: #4f46e5; font-weight: 800; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.2s;">
+                                    <i data-lucide="send"></i> Post Broadcast
+                                </button>
                             </div>
                         </div>
-                    `).join('')}
+                    </div>
+                    ` : ''}
                 </div>
             </div>
         `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // 3. Event Listeners
+        const btnPost = document.getElementById('btn-post-notice');
+        if (btnPost) {
+            btnPost.addEventListener('click', async () => {
+                const title = document.getElementById('notice-title').value.trim();
+                const content = document.getElementById('notice-content').value.trim();
+                const category = document.getElementById('notice-category').value;
+                const target = document.getElementById('notice-target').value;
+
+                if (!title || !content) {
+                    return Notifications.show('Please fill in both title and content', 'warning');
+                }
+
+                btnPost.disabled = true;
+                btnPost.innerHTML = '<span class="spinning">⏳</span> Posting...';
+
+                try {
+                    await db.notices.add(prepareForSync({
+                        id: `N${Date.now()}`,
+                        title,
+                        content,
+                        category,
+                        target,
+                        author: this.currentUser.name,
+                        is_active: 1
+                    }));
+
+                    Notifications.show('Broadcast posted successfully!', 'success');
+                    syncToCloud();
+                    this.renderNoticeBoard(); // Refresh view
+                } catch (err) {
+                    console.error('Notice error:', err);
+                    Notifications.show('Failed to post notice', 'error');
+                } finally {
+                    btnPost.disabled = false;
+                    btnPost.innerHTML = '<i data-lucide="send"></i> Post Broadcast';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            });
+        }
+    }
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 };
