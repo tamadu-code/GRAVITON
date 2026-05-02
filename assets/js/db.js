@@ -58,7 +58,7 @@ db.version(13).stores({
     settings: 'id, key, value, updated_at, is_synced'
 });
 
-db.version(16).stores({
+db.version(17).stores({
     notices: 'id, title, target, category, is_active, updated_at, is_synced',
     students: 'student_id, name, gender, address, class_name, status, is_active, attendance_code, admission_year, sub_class, updated_at, is_synced',
     attendance_records: 'id, student_id, date, status, subject_name, period_number, is_subject_based, updated_at, is_synced',
@@ -70,7 +70,11 @@ db.version(16).stores({
     student_analytics: 'student_id, average, rank, fee_balance, attendance_rate, updated_at, is_synced',
     audit_logs: 'id, operation, table, record_id, timestamp, user_id, is_synced',
     duty_assignments: 'id, staff_id, week_start, week_end, duty_type, updated_at, is_synced',
-    parent_links: 'id, parent_id, student_id, relationship, updated_at, is_synced'
+    parent_links: 'id, parent_id, student_id, relationship, updated_at, is_synced',
+    cbt_exams: 'id, title, subject_id, class_name, teacher_id, mode, term, session, score_field, date, start_time, end_time, duration, status, updated_at, is_synced',
+    cbt_questions: 'id, exam_id, question_text, option_a, option_b, option_c, option_d, option_e, correct_option, updated_at, is_synced',
+    cbt_results: 'id, exam_id, student_id, score, total_questions, answers, warnings, updated_at, is_synced',
+    exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
 });
 
 

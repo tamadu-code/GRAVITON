@@ -788,6 +788,34 @@ export const UI = {
 
                     <!-- ─── Side Bar Column ─── -->
                     <div style="display: flex; flex-direction: column; gap: 2rem;">
+                        <!-- CBT Hub Quick Access -->
+                        <div class="card" style="border-radius: 24px; padding: 1.5rem; background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); color: white; border: none; box-shadow: var(--shadow-lg);">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+                                <div>
+                                    <h4 style="font-weight: 800; margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i data-lucide="monitor"></i> CBT Exam Center
+                                    </h4>
+                                    <p style="font-size: 0.7rem; opacity: 0.8; margin-top: 0.25rem; font-weight: 600;">Available & Upcoming Tests</p>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.2); width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                                    <i data-lucide="zap" style="width: 20px;"></i>
+                                </div>
+                            </div>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                                ${results.length > 0 ? `
+                                    <div style="background: rgba(255,255,255,0.1); padding: 1rem; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);">
+                                        <div style="font-size: 0.65rem; font-weight: 800; text-transform: uppercase; opacity: 0.7;">Last Result</div>
+                                        <div style="font-size: 1.25rem; font-weight: 900; margin-top: 2px;">${results[results.length - 1].score} / ${results[results.length - 1].total_questions}</div>
+                                    </div>
+                                ` : ''}
+                                
+                                <button class="btn btn-primary" onclick="UI.renderView('cbt')" style="width: 100%; border-radius: 12px; height: 48px; background: white; color: #4338ca; border: none; font-weight: 800; margin-top: 0.5rem;">
+                                    Enter CBT Hub <i data-lucide="chevron-right" style="margin-left: 0.5rem;"></i>
+                                </button>
+                            </div>
+                        </div>
+
                         <!-- Bio-Data Profile -->
                         <div class="card" style="border-radius: 24px; padding: 2rem; text-align: center; position: relative; overflow: hidden;">
                              <div style="position: absolute; top: 0; left: 0; width: 100%; height: 6px; background: linear-gradient(to right, #4f46e5, #8b5cf6);"></div>
@@ -5392,6 +5420,10 @@ export const UI = {
 
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
+        // Fetch results if student
+        const studentResults = isStudent ? await db.cbt_results.where('student_id').equals(this.currentUser.assigned_id).toArray() : [];
+        const resultDict = studentResults.reduce((acc, r) => ({...acc, [r.exam_id]: r}), {});
+
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in-up">
                 <div class="page-banner" style="background: linear-gradient(135deg, #4338ca 0%, #312e81 100%);">
@@ -5408,55 +5440,65 @@ export const UI = {
 
                 <div class="cbt-list-container" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem;">
                     ${exams.length === 0 ? '<div class="card text-center p-4">No exams found.</div>' : 
-                        exams.map(e => `
-                        <div class="cbt-exam-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-                            <div class="cbt-exam-trigger" style="padding: 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: white;" onclick="const content = this.nextElementSibling; const isExpanded = content.style.maxHeight !== '0px' && content.style.maxHeight !== ''; content.style.maxHeight = isExpanded ? '0px' : '500px'; this.querySelector('.chevron-icon').style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';">
-                                <div style="display: flex; align-items: center; gap: 1rem;">
-                                    <div style="width: 45px; height: 45px; background: #eef2ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #4338ca;">
-                                        <i data-lucide="file-text"></i>
+                        exams.map(e => {
+                            const result = resultDict[e.id];
+                            return `
+                            <div class="cbt-exam-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                                <div class="cbt-exam-trigger" style="padding: 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: white;" onclick="const content = this.nextElementSibling; const isExpanded = content.style.maxHeight !== '0px' && content.style.maxHeight !== ''; content.style.maxHeight = isExpanded ? '0px' : '500px'; this.querySelector('.chevron-icon').style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';">
+                                    <div style="display: flex; align-items: center; gap: 1rem;">
+                                        <div style="width: 45px; height: 45px; background: #eef2ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #4338ca;">
+                                            <i data-lucide="file-text"></i>
+                                        </div>
+                                        <div>
+                                            <div style="font-weight: 800; color: #1e293b; font-size: 1.05rem;">${e.title}</div>
+                                            <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">${subMap[e.subject_id] || 'General Subject'} | ${e.class_name}</div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div style="font-weight: 800; color: #1e293b; font-size: 1.05rem;">${e.title}</div>
-                                        <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">${subMap[e.subject_id] || 'General Subject'} | ${e.class_name}</div>
+                                    <div style="display: flex; align-items: center; gap: 1rem;">
+                                        ${result ? '<span class="badge success">COMPLETED</span>' : `<span class="badge badge-${e.status === 'Active' ? 'success' : 'warning'}" style="padding: 6px 12px; border-radius: 8px;">${e.status}</span>`}
+                                        <i data-lucide="chevron-down" class="chevron-icon" style="width: 20px; color: #94a3b8; transition: transform 0.3s ease;"></i>
                                     </div>
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 1rem;">
-                                    <span class="badge badge-${e.status === 'Active' ? 'success' : 'warning'}" style="padding: 6px 12px; border-radius: 8px;">${e.status}</span>
-                                    <i data-lucide="chevron-down" class="chevron-icon" style="width: 20px; color: #94a3b8; transition: transform 0.3s ease;"></i>
-                                </div>
-                            </div>
-                            <div class="cbt-exam-content" style="max-height: 0; overflow: hidden; transition: max-height 0.4s ease-out; background: #f8fafc; border-top: 1px solid #f1f5f9;">
-                                <div style="padding: 1.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem;">
-                                    <div>
-                                        <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">EXAM MODE</div>
-                                        <div style="font-weight: 700; color: #334155;">${e.mode || 'Standard Exam'}</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">DURATION</div>
-                                        <div style="font-weight: 700; color: #334155;">${e.duration || 30} Minutes</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">TERM / SESSION</div>
-                                        <div style="font-weight: 700; color: #334155;">${e.term} | ${e.session}</div>
-                                    </div>
-                                    <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end;">
-                                        ${isStudent ? `
-                                            <button class="btn btn-primary btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #4338ca;">
-                                                <i data-lucide="play" style="width: 16px;"></i> Start Exam
-                                            </button>
+                                <div class="cbt-exam-content" style="max-height: 0; overflow: hidden; transition: max-height 0.4s ease-out; background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                                    <div style="padding: 1.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem;">
+                                        <div>
+                                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">EXAM MODE</div>
+                                            <div style="font-weight: 700; color: #334155;">${e.mode || 'Standard Exam'}</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">DURATION</div>
+                                            <div style="font-weight: 700; color: #334155;">${e.duration || 30} Minutes</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">TERM / SESSION</div>
+                                            <div style="font-weight: 700; color: #334155;">${e.term} | ${e.session}</div>
+                                        </div>
+                                        ${result ? `
+                                        <div>
+                                            <div style="font-size: 0.7rem; font-weight: 800; color: #10b981; margin-bottom: 0.25rem;">YOUR SCORE</div>
+                                            <div style="font-weight: 800; color: #064e3b; font-size: 1.25rem;">${result.score} / ${result.total_questions}</div>
+                                        </div>
                                         ` : `
-                                            <button class="btn btn-secondary btn-sm" onclick="UI.renderCBTEditor('${e.id}')" style="height: 40px; padding: 0 1.25rem; border-radius: 10px;">
-                                                <i data-lucide="edit-3" style="width: 16px;"></i> Edit
-                                            </button>
-                                            <button class="btn btn-danger btn-sm" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                                                <i data-lucide="trash-2" style="width: 16px;"></i>
-                                            </button>
+                                        <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end;">
+                                            ${isStudent ? `
+                                                <button class="btn btn-primary btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #4338ca;">
+                                                    <i data-lucide="play" style="width: 16px;"></i> Start Exam
+                                                </button>
+                                            ` : `
+                                                <button class="btn btn-secondary btn-sm" onclick="UI.renderCBTEditor('${e.id}')" style="height: 40px; padding: 0 1.25rem; border-radius: 10px;">
+                                                    <i data-lucide="edit-3" style="width: 16px;"></i> Edit
+                                                </button>
+                                                <button class="btn btn-danger btn-sm" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                                                    <i data-lucide="trash-2" style="width: 16px;"></i>
+                                                </button>
+                                            `}
+                                        </div>
                                         `}
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    `).join('')}
+                        `;
+                        }).join('')}
                 </div>
             </div>
         `;
