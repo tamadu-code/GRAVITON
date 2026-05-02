@@ -4106,6 +4106,7 @@ export const UI = {
         const role = (this.currentUser.role || '').toLowerCase();
         const isStudent = role === 'student';
         const isParent = role === 'parent';
+        const isTeacher = role === 'teacher';
 
         if (isStudent || isParent) {
             return this.renderStudentAttendanceView();
