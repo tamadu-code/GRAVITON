@@ -2425,6 +2425,10 @@ export const UI = {
                                         <span style="color: #94a3b8; font-weight: 600;">Date of Birth</span>
                                         <span style="font-weight: 700; color: #475569;">${student.dob || 'N/A'}</span>
                                     </div>
+                                    <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
+                                        <span style="color: #94a3b8; font-weight: 600;">Legacy ID</span>
+                                        <span style="font-weight: 700; color: #475569;">${student.legacy_id || 'Not Assigned'}</span>
+                                    </div>
                                 </div>
                             </div>
                             
@@ -2589,6 +2593,7 @@ export const UI = {
                             <div><label>Class</label><select id="edit-std-class" class="input" style="width:100%;">${classOptions}</select></div>
                             <div><label>Gender</label><select id="edit-std-gender" class="input" style="width:100%;"><option value="Male" ${student.gender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${student.gender === 'Female' ? 'selected' : ''}>Female</option></select></div>
                             <div><label>Date of Birth</label><input type="date" id="edit-std-dob" class="input" value="${student.dob || ''}" style="width:100%;"></div>
+                            <div><label>Legacy ID</label><input type="text" id="edit-std-legacy" class="input" value="${student.legacy_id || ''}" style="width:100%;" placeholder="External System ID"></div>
                         </div>
                         <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                             <div><label>Blood Group</label><select id="edit-std-blood" class="input" style="width:100%;">
@@ -2620,6 +2625,7 @@ export const UI = {
                         parent_email: document.getElementById('edit-std-parent-email').value,
                         phone: document.getElementById('edit-std-phone').value,
                         address: document.getElementById('edit-std-address').value,
+                        legacy_id: document.getElementById('edit-std-legacy').value.trim(),
                         updated_at: new Date().toISOString()
                     };
                     await db.students.update(studentId, updates);
@@ -4966,8 +4972,8 @@ export const UI = {
 
     async renderStaff() {
         const profiles = await db.profiles.toArray();
-        const teachers = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated');
-        const formerStaff = profiles.filter(p => p.status === 'Terminated' || p.role === 'Former Staff');
+        const teachers = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive');
+        const formerStaff = profiles.filter(p => p.status === 'Terminated' || p.status === 'Inactive' || p.role === 'Former Staff');
 
         // Get assignment counts per teacher
         const allAssignments = await db.subject_assignments.toArray();
@@ -5238,6 +5244,7 @@ export const UI = {
                         employment_type: empType,
                         department: dept,
                         qualifications: quals,
+                        status: 'Active',
                         assigned_id: `SCH/STF/${Math.floor(Math.random()*9000)+1000}`
                     });
 
@@ -5280,7 +5287,10 @@ export const UI = {
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
                     <button class="btn btn-secondary" onclick="UI.renderStaff()"><i data-lucide="arrow-left"></i> Back to Directory</button>
                     <div style="display: flex; gap: 1rem;">
-                        <button class="btn btn-secondary" style="color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i> Terminate Contract</button>
+                        ${staff.status === 'Terminated' || staff.status === 'Inactive' || staff.role === 'Former Staff' ? 
+                            `<button id="btn-reactivate-staff" class="btn btn-secondary" style="color: #10b981; background: #ecfdf5; border: none;"><i data-lucide="user-check"></i> Reactivate Staff</button>` :
+                            `<button id="btn-terminate-staff" class="btn btn-secondary" style="color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i> Terminate Contract</button>`
+                        }
                         <button class="btn btn-primary" style="background: #2563eb;"><i data-lucide="edit"></i> Update Records</button>
                     </div>
                 </div>
@@ -5417,8 +5427,21 @@ export const UI = {
             };
         }
 
+        // Reactivate Button
+        const btnReactivate = document.getElementById('btn-reactivate-staff');
+        if (btnReactivate) {
+            btnReactivate.onclick = async () => {
+                if (confirm(`Reactivate contract for ${staff.full_name}?`)) {
+                    await db.profiles.update(staffId, { status: 'Active', role: 'Teacher', updated_at: new Date().toISOString() });
+                    Notifications.show(`${staff.full_name} has been reactivated.`, 'success');
+                    this.renderStaffDetail(staffId);
+                    syncToCloud();
+                }
+            };
+        }
+
         // Terminate Contract Button
-        const btnTerminate = this.contentArea.querySelector('button[style*="color: #ef4444;"]');
+        const btnTerminate = document.getElementById('btn-terminate-staff');
         if (btnTerminate) {
             btnTerminate.onclick = async () => {
                 if (confirm(`Are you sure you want to terminate the contract for ${staff.full_name}? This will revoke system access.`)) {

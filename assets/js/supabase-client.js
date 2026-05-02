@@ -100,8 +100,8 @@ export async function syncToCloud() {
                 if (unsynced.length > 0 && client) {
                     // Table-level field whitelists for Supabase insertion
                     const whitelist = {
-                        profiles: ['id', 'full_name', 'role', 'assigned_id', 'email', 'phone', 'department', 'qualification', 'emp_type', 'is_archived', 'updated_at'],
-                        students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'dob', 'phone', 'parent_name', 'parent_phone', 'parent_email', 'blood_group', 'genotype', 'passport_url', 'updated_at'],
+                        profiles: ['id', 'full_name', 'role', 'assigned_id', 'email', 'phone', 'department', 'qualification', 'emp_type', 'status', 'is_archived', 'updated_at'],
+                        students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_id', 'dob', 'phone', 'parent_name', 'parent_phone', 'parent_email', 'blood_group', 'genotype', 'passport_url', 'updated_at'],
                         classes: ['id', 'name', 'level', 'updated_at'],
                         subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
                         subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'updated_at'],
