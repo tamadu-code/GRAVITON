@@ -1931,6 +1931,9 @@ export const UI = {
                         <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); font-size: 0.75rem;">
                             <i data-lucide="printer" style="width: 14px;"></i> Credentials
                         </button>
+                        <button id="btn-bulk-repair-students" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; font-size: 0.75rem; font-weight: 700;">
+                            <i data-lucide="shield-alert" style="width: 14px;"></i> Bulk Repair Auth
+                        </button>
                     </div>
                 </div>
 
@@ -2107,6 +2110,46 @@ export const UI = {
                     if (typeof lucide !== 'undefined') lucide.createIcons();
                 }
             });
+        }
+
+        const bulkRepairBtn = document.getElementById('btn-bulk-repair-students');
+        if (bulkRepairBtn) {
+            bulkRepairBtn.onclick = async () => {
+                const allStudents = await db.students.toArray();
+                if (!confirm(`This will attempt to repair login accounts for ALL ${allStudents.length} students. This may take a minute. Continue?`)) return;
+                
+                bulkRepairBtn.disabled = true;
+                let count = 0;
+                
+                for (const s of allStudents) {
+                    count++;
+                    bulkRepairBtn.innerHTML = `<i data-lucide="loader" class="spin"></i> Repairing ${count}/${allStudents.length}...`;
+                    
+                    try {
+                        const email = `${s.student_id.toLowerCase()}@student.school`;
+                        const { data: authData, error: authError } = await registerUser(email, s.student_id, s.name, 'Student');
+                        
+                        // Sync profile
+                        const client = window.getSupabase ? window.getSupabase() : null;
+                        if (client && (authData?.user || s.id)) {
+                            await client.from('profiles').upsert({
+                                id: authData?.user?.id || s.id || s.student_id,
+                                full_name: s.name,
+                                role: 'Student',
+                                assigned_id: s.student_id,
+                                email: email
+                            });
+                        }
+                    } catch (err) {
+                        console.warn(`Failed to repair ${s.student_id}:`, err);
+                    }
+                }
+                
+                Notifications.show(`Bulk repair complete! ${count} accounts processed.`, 'success');
+                bulkRepairBtn.disabled = false;
+                bulkRepairBtn.innerHTML = '<i data-lucide="shield-alert" style="width: 14px;"></i> Bulk Repair Auth';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            };
         }
 
         // Add Student Modal
@@ -4953,6 +4996,9 @@ export const UI = {
                             <button id="btn-add-staff" style="height: 52px; border-radius: 16px; padding: 0 1.75rem; display: flex; align-items: center; gap: 0.75rem; background: #6366f1; color: white; font-weight: 800; font-size: 1rem; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(99,102,241,0.4); transition: all 0.2s;">
                                 <i data-lucide="user-plus" style="width: 20px;"></i> Onboard Staff
                             </button>
+                            <button id="btn-bulk-repair-staff" style="height: 52px; border-radius: 16px; padding: 0 1.25rem; display: flex; align-items: center; gap: 0.5rem; background: #fef9c3; color: #854d0e; font-weight: 800; font-size: 0.85rem; border: 1px solid #fef08a; cursor: pointer;">
+                                <i data-lucide="shield-alert" style="width: 18px;"></i> Bulk Repair
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -5042,6 +5088,46 @@ export const UI = {
                     card.style.display = (name.includes(query) || email.includes(query)) ? '' : 'none';
                 });
             });
+        }
+
+        // Bulk Repair Staff Logic
+        const bulkStaffBtn = document.getElementById('btn-bulk-repair-staff');
+        if (bulkStaffBtn) {
+            bulkStaffBtn.onclick = async () => {
+                const allStaff = (await db.profiles.toArray()).filter(p => p.role === 'Teacher' || p.role === 'Admin');
+                if (!confirm(`This will re-provision login accounts for ALL ${allStaff.length} staff members. Password will be reset to "Staff123!". Continue?`)) return;
+                
+                bulkStaffBtn.disabled = true;
+                let count = 0;
+                
+                for (const s of allStaff) {
+                    if (!s.email) continue;
+                    count++;
+                    bulkStaffBtn.innerHTML = `<i data-lucide="loader" class="spin"></i> Repairing ${count}/${allStaff.length}...`;
+                    
+                    try {
+                        const { data: authData, error: authError } = await registerUser(s.email, 'Staff123!', s.full_name, s.role);
+                        
+                        const client = window.getSupabase ? window.getSupabase() : null;
+                        if (client && (authData?.user || s.id)) {
+                            await client.from('profiles').upsert({
+                                id: authData?.user?.id || s.id,
+                                full_name: s.full_name,
+                                role: s.role,
+                                assigned_id: s.assigned_id,
+                                email: s.email
+                            });
+                        }
+                    } catch (err) {
+                        console.warn(`Failed to repair staff ${s.email}:`, err);
+                    }
+                }
+                
+                Notifications.show(`Bulk repair complete! ${count} staff accounts processed.`, 'success');
+                bulkStaffBtn.disabled = false;
+                bulkStaffBtn.innerHTML = '<i data-lucide="shield-alert" style="width: 18px;"></i> Bulk Repair';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            };
         }
 
         // Add Staff Button
