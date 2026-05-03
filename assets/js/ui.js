@@ -6482,6 +6482,60 @@ export const UI = {
         document.body.classList.add('exam-mode');
         this.renderCBTExamInterface();
         this.startExamTimer();
+        this.attachSecurityListeners();
+    },
+
+    attachSecurityListeners() {
+        const log = (msg) => this.logViolation(msg);
+        
+        // Tab switching / Minimizing
+        window.onblur = () => log('Student left the exam interface (Switched tab/minimized)');
+        document.onvisibilitychange = () => {
+            if (document.visibilityState === 'hidden') {
+                log('Student navigated away from the exam screen');
+            }
+        };
+
+        // Right-click
+        window.oncontextmenu = (e) => {
+            e.preventDefault();
+            log('Attempted to use Right-Click / Context Menu');
+            return false;
+        };
+
+        // Shortcuts
+        window.onkeydown = (e) => {
+            if ((e.ctrlKey && (e.key === 'c' || e.key === 'v' || e.key === 'x' || e.key === 'u' || e.key === 'a' || e.key === 's' || e.key === 'p')) || e.key === 'F12') {
+                e.preventDefault();
+                log(`Attempted restricted shortcut: ${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`);
+                return false;
+            }
+        };
+    },
+
+    async logViolation(type) {
+        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const examId = this.currentExam.id;
+        const timestamp = new Date().toLocaleTimeString();
+        const entry = `[${timestamp}] ${type}`;
+
+        try {
+            const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            const violations = session.violations || [];
+            violations.push(entry);
+
+            await db.cbt_results.update(session.id, {
+                violations: violations,
+                warnings: (session.warnings || 0) + 1,
+                is_synced: 0
+            });
+            
+            // Subtle notification for student? No, keep it silent as requested "silently watch".
+            console.warn('Security violation logged:', entry);
+            syncToCloud();
+        } catch (e) {
+            console.error('Failed to log violation:', e);
+        }
     },
 
     shuffleArray(array) {
@@ -9117,6 +9171,7 @@ export const UI = {
                             <tr style="background: #f8fafc;">
                                 <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">STUDENT</th>
                                 <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">STATUS</th>
+                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">VIOLATIONS</th>
                                 <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">SCORE</th>
                                 <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">STARTED AT</th>
                                 <th style="padding: 1.5rem; color: #64748b; font-weight: 800; text-align: right;">ACTIONS</th>
@@ -9133,6 +9188,15 @@ export const UI = {
                                         <span class="badge" style="background: ${r.status === 'Completed' ? '#ecfdf5' : '#fff7ed'}; color: ${r.status === 'Completed' ? '#059669' : '#d97706'}; font-weight: 800; padding: 0.5rem 1rem; border-radius: 8px;">
                                             ${r.status}
                                         </span>
+                                    </td>
+                                    <td style="padding: 1.25rem 1.5rem;">
+                                        ${r.warnings > 0 ? `
+                                            <button class="badge" onclick="UI.showViolationLog('${r.student_id}', '${examId}')" style="background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; cursor: pointer; padding: 0.5rem 0.75rem; border-radius: 8px; font-weight: 800; display: flex; align-items: center; gap: 0.4rem;">
+                                                <i data-lucide="alert-triangle" style="width: 14px;"></i> ${r.warnings}
+                                            </button>
+                                        ` : `
+                                            <span style="color: #94a3b8; font-size: 0.85rem; font-weight: 600;">None</span>
+                                        `}
                                     </td>
                                     <td style="padding: 1.25rem 1.5rem; font-weight: 900; color: #4338ca; font-size: 1.1rem;">
                                         ${r.score} / ${r.total_questions}
@@ -9257,6 +9321,28 @@ export const UI = {
             console.error('Force submit all error:', err);
             Notifications.show('Failed to force submit all participants.', 'error');
         }
+    },
+
+    async showViolationLog(studentId, examId) {
+        const result = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+        const logs = result.violations || [];
+        
+        this.showModal('Security Violation History', `
+            <div style="max-height: 400px; overflow-y: auto;">
+                ${logs.length === 0 ? '<p class="text-center p-4">No violations recorded.</p>' : `
+                    <ul style="list-style: none; padding: 0;">
+                        ${logs.map(log => `
+                            <li style="padding: 1rem; border-bottom: 1px solid #f1f5f9; display: flex; gap: 1rem; align-items: flex-start;">
+                                <div style="background: #fee2e2; color: #ef4444; padding: 0.5rem; border-radius: 8px;">
+                                    <i data-lucide="shield-alert" style="width: 16px;"></i>
+                                </div>
+                                <div style="font-size: 0.9rem; color: #1e293b; font-weight: 600; line-height: 1.4;">${log}</div>
+                            </li>
+                        `).reverse().join('')}
+                    </ul>
+                `}
+            </div>
+        `, null, 'Close History', 'check-circle');
     },
 
     /**
