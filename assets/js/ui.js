@@ -5841,16 +5841,24 @@ export const UI = {
 
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
-        // Fetch results if student - Prioritize 'In Progress' over 'Completed' if duplicates exist
+        // Fetch results if student - Prioritize 'In Progress' and CLEAN UP duplicates
         const studentResults = isStudent ? await db.cbt_results.where('student_id').equals(this.currentUser.assigned_id).toArray() : [];
-        const resultDict = studentResults.reduce((acc, r) => {
-            const existing = acc[r.exam_id];
-            // If we find an 'In Progress' record, always keep it over 'Completed'
-            if (!existing || r.status === 'In Progress' || (existing.status !== 'In Progress' && new Date(r.updated_at) > new Date(existing.updated_at))) {
-                acc[r.exam_id] = r;
+        const resultDict = {};
+        
+        for (const r of studentResults) {
+            const existing = resultDict[r.exam_id];
+            
+            // CLEANUP: If we have an In Progress and a Completed record, delete the old Completed one
+            if (existing && ((r.status === 'In Progress' && existing.status === 'Completed') || (r.status === 'Completed' && existing.status === 'In Progress'))) {
+                const toDelete = r.status === 'Completed' ? r.id : existing.id;
+                await db.cbt_results.delete(toDelete);
+                console.log('Cleaned up duplicate exam result:', toDelete);
             }
-            return acc;
-        }, {});
+
+            if (!existing || r.status === 'In Progress' || (existing.status !== 'In Progress' && new Date(r.updated_at) > new Date(existing.updated_at))) {
+                resultDict[r.exam_id] = r;
+            }
+        }
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in-up">

@@ -149,9 +149,24 @@ async function loadAuthenticatedApp(authUser) {
     console.log('Loading authenticated app for:', authUser.email);
     
     // Fetch user profile from Supabase
-    let profile = await getUserProfile(authUser.id);
+    let profile = null;
+    try {
+        profile = await getUserProfile(authUser.id);
+        
+        // If not found in profiles (Staff), check students table
+        if (!profile && authUser.user_metadata?.role === 'Student') {
+            const studentId = authUser.email.split('@')[0].toUpperCase();
+            profile = await db.students.get(studentId);
+            if (profile) {
+                profile.full_name = profile.name;
+                profile.role = 'Student';
+                profile.assigned_id = profile.student_id;
+            }
+        }
+    } catch (e) {
+        console.warn('Profile resolution fallback:', e);
+    }
 
-    // Safety net: If profile fetch failed, build a local-only fallback.
     if (!profile) {
         console.warn('Profile fetch failed — using auth metadata as fallback. Check Supabase RLS policies on the profiles table.');
         const { full_name, role: metaRole } = authUser.user_metadata || {};
