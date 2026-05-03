@@ -5871,17 +5871,27 @@ export const UI = {
                                         </div>
                                         ` : `
                                         <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end;">
-                                            ${isStudent ? `
-                                                ${result && result.status === 'In Progress' ? `
-                                                    <button class="btn btn-warning btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #f59e0b; color: white; border: none; font-weight: 800;">
-                                                        <i data-lucide="rotate-ccw" style="width: 16px;"></i> Resume Exam
-                                                    </button>
-                                                ` : `
+                                            ${isStudent ? (() => {
+                                                if (result && result.status === 'In Progress') {
+                                                    const elapsed = (Date.now() - new Date(result.started_at).getTime()) / 1000;
+                                                    const timeLeft = (e.duration * 60) - elapsed;
+                                                    
+                                                    if (timeLeft <= 0) {
+                                                        return `<span class="badge badge-danger" style="background:#fee2e2; color:#ef4444; border:1px solid #fecdd3; padding:8px 15px; border-radius:10px; font-weight:800;">TIME EXPIRED</span>`;
+                                                    }
+                                                    
+                                                    return `
+                                                        <button class="btn btn-warning btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #f59e0b; color: white; border: none; font-weight: 800;">
+                                                            <i data-lucide="rotate-ccw" style="width: 16px;"></i> Resume Exam
+                                                        </button>
+                                                    `;
+                                                }
+                                                return `
                                                     <button class="btn btn-primary btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #4338ca;">
                                                         <i data-lucide="play" style="width: 16px;"></i> Start Exam
                                                     </button>
-                                                `}
-                                            ` : `
+                                                `;
+                                            })() : `
                                                 ${isAdmin ? `
                                                 <button class="btn btn-warning btn-sm" title="Archive Exam" onclick="UI.archiveExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #fef3c7; color: #d97706; border: none;">
                                                     <i data-lucide="archive" style="width: 18px; height: 18px;"></i>
