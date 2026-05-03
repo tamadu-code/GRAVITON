@@ -259,16 +259,23 @@ async function loadAuthenticatedApp(authUser) {
         updateSyncStatus('Offline', 'offline');
     });
 
-    // ─── Auto-Hydration Check ───
-    try {
-        const studentCount = await db.students.count();
-        if (studentCount === 0 && navigator.onLine) {
-            if (window.Notifications) window.Notifications.show('Detecting fresh environment... Syncing academic data.', 'info');
-            // initial sync is already triggered by startSyncLoop()
-        }
-    } catch (dbErr) {
-        console.warn('Auto-hydration deferred: Database initializing...', dbErr);
+    // ─── Data Health Check & Auto-Repair ───
+    async function repairCBTData() {
+        try {
+            const brokenExams = await db.cbt_exams.where('start_time').equals('').or('end_time').equals('').toArray();
+            if (brokenExams.length > 0) {
+                console.log(`Self-Heal: Fixing ${brokenExams.length} broken CBT records...`);
+                for (const exam of brokenExams) {
+                    await db.cbt_exams.update(exam.id, {
+                        start_time: exam.start_time === '' ? null : exam.start_time,
+                        end_time: exam.end_time === '' ? null : exam.end_time,
+                        is_synced: 0
+                    });
+                }
+            }
+        } catch (e) { console.warn('Self-heal deferred:', e); }
     }
+    await repairCBTData();
 
     // Handle initial route
     const hash = window.location.hash.substring(1) || 'dashboard';

@@ -5787,10 +5787,15 @@ export const UI = {
             const sClass = student ? student.class_name : '';
             
             exams = exams.filter(e => {
-                const isMyClass = e.class_name === sClass;
+                // Smart class matching (e.g. Exam for "JSS 3" should show for "JSS 3A")
+                const isMyClass = sClass.toLowerCase().includes(e.class_name.toLowerCase()) || 
+                                 e.class_name.toLowerCase().includes(sClass.toLowerCase());
                 const isActive = e.status === 'Active';
+                
+                // Safety check for dates
                 const hasStarted = !e.start_time || new Date(e.start_time) <= now;
                 const hasNotEnded = !e.end_time || new Date(e.end_time) >= now;
+                
                 return isMyClass && isActive && hasStarted && hasNotEnded;
             });
         }

@@ -132,11 +132,20 @@ export async function generateStudentId() {
 }
 
 /**
- * Mark record for synchronization
+ * Mark record for synchronization and sanitize empty fields
  */
 export function prepareForSync(data) {
+    const sanitized = { ...data };
+    
+    // Convert all empty strings to null for database compatibility
+    Object.keys(sanitized).forEach(key => {
+        if (sanitized[key] === "") {
+            sanitized[key] = null;
+        }
+    });
+
     return {
-        ...data,
+        ...sanitized,
         updated_at: new Date().toISOString(),
         is_synced: 0 // 0 for false, 1 for true (IndexedDB handles integers better for filtering)
     };
