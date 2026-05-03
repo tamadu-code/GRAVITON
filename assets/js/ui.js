@@ -6044,9 +6044,15 @@ export const UI = {
                                 </div>
                             </div>
 
-                            <div class="cbt-form-group">
-                                <label>Duration (Minutes)</label>
-                                <input type="number" id="exam-duration" class="cbt-input" value="${exam.duration}">
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                                <div class="cbt-form-group">
+                                    <label>Duration (Minutes)</label>
+                                    <input type="number" id="exam-duration" class="cbt-input" value="${exam.duration || 30}">
+                                </div>
+                                <div class="cbt-form-group">
+                                    <label>Question Limit (0 for all)</label>
+                                    <input type="number" id="exam-limit" class="cbt-input" value="${exam.question_limit || 0}">
+                                </div>
                             </div>
 
                             <div class="cbt-form-group">
@@ -6223,6 +6229,7 @@ export const UI = {
                 class_name: cls,
                 teacher_id: this.currentUser.id,
                 duration: parseInt(document.getElementById('exam-duration').value) || 30,
+                question_limit: parseInt(document.getElementById('exam-limit').value) || 0,
                 mode: document.getElementById('exam-mode').value,
                 term: document.getElementById('exam-term').value,
                 session: document.getElementById('exam-session').value,
@@ -6273,8 +6280,11 @@ export const UI = {
             return Notifications.show('This exam has no questions yet.', 'error');
         }
 
-        // 1. Shuffle Questions
+        // 1. Shuffle and Limit Questions
         questions = this.shuffleArray([...questions]);
+        if (exam.question_limit && exam.question_limit > 0) {
+            questions = questions.slice(0, exam.question_limit);
+        }
 
         // 2. Shuffle Options for each question
         questions = questions.map(q => {
