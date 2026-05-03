@@ -277,8 +277,12 @@ export const UI = {
             pct:  totalMarked > 0 ? Math.min(100, Math.round(turnoutPct + (Math.random() * 20 - 10))) : 0
         }));
 
-        // Fetch Live Notices
-        const notices = await db.notices.where('is_active').equals(1).toArray().catch(() => []);
+        // Fetch Live Notices - Support both 1/0 and true/false
+        let notices = await db.notices.toArray().catch(() => []);
+        notices = notices
+            .filter(n => n.is_active === 1 || n.is_active === true)
+            .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
         const noticeHTML = notices.length > 0 
             ? notices.map(n => `<span style="margin-right: 3rem;">🔔 <strong>${n.title}</strong>: ${n.content || ''}</span>`).join('')
             : '<span style="margin-right: 3rem;">Welcome to Graviton CMS! All systems operational.</span>';
@@ -438,13 +442,16 @@ export const UI = {
         // Form Master Check
         const formMasterAssignment = await db.form_teachers.where('teacher_id').equals(teacherId).first();
         
-        // Notices Filtering
-        const notices = await db.notices.where('is_active').equals(1).toArray().catch(() => []);
-        const filteredNotices = isAdmin ? notices : notices.filter(n => 
-            n.target === 'All' || 
-            n.target === 'Staff' || 
-            assignedClasses.includes(n.target)
-        );
+        // Notices Filtering - Support both 1/0 and true/false
+        let notices = await db.notices.toArray().catch(() => []);
+        const filteredNotices = notices
+            .filter(n => (n.is_active === 1 || n.is_active === true) && (
+                isAdmin || 
+                n.target === 'All' || 
+                n.target === 'Staff' || 
+                assignedClasses.includes(n.target)
+            ))
+            .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
         const noticeHTML = filteredNotices.length > 0 
             ? filteredNotices.map(n => `<span style="margin-right: 3rem;">🔔 <strong>${n.title}</strong>: ${n.content || ''}</span>`).join('')
@@ -692,10 +699,17 @@ export const UI = {
         const analytics = await db.student_analytics.get(studentId) || {
             average: 0, rank: 'N/A', fee_balance: 0, attendance_rate: 0
         };
-        const allNotices = await db.notices.toArray();
-        const activeNotices = allNotices.filter(n => n.is_active !== 0 && (n.target === 'All' || n.target === 'Students' || n.target === student?.class_name));
+        const allNotices = await db.notices.toArray().catch(() => []);
+        const activeNotices = allNotices
+            .filter(n => (n.is_active === 1 || n.is_active === true) && (
+                n.target === 'All' || 
+                n.target === 'Students' || 
+                n.target === student?.class_name
+            ))
+            .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
         const liveTickerMsg = activeNotices.length > 0 
-            ? activeNotices.map(n => `[ ${n.category.toUpperCase()} ] ${n.title}: ${n.content}`).join(' ••• ') 
+            ? activeNotices.map(n => `[ ${n.category?.toUpperCase() || 'NOTICE'} ] ${n.title}: ${n.content}`).join(' ••• ') 
             : "Welcome to the Graviton Student Universe. Stay focused on your goals.";
         
         const results = await db.cbt_results ? await db.cbt_results.where('student_id').equals(studentId).toArray() : [];
