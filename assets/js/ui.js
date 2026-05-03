@@ -6537,9 +6537,9 @@ export const UI = {
             <div class="form-group">
                 <label>Paste questions below in this format:</label>
                 <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.5rem; background:#f1f5f9; padding:0.5rem; border-radius:8px;">
-                    Question text? (A) Option 1 (B) Option 2 (C) Option 3 (D) Option 4 [Ans: A]
+                    Question text? (A) Option 1 (B) Option 2 (C) Option 3 (D) Option 4 [Ans: A] [Marks: 5]
                 </div>
-                <textarea id="bulk-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.8rem;" placeholder="Question 1... [Ans: B]\nQuestion 2... [Ans: C]"></textarea>
+                <textarea id="bulk-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.8rem;" placeholder="Question 1... [Ans: B] [Marks: 2]\nQuestion 2... [Ans: C]"></textarea>
             </div>
         `;
 
@@ -6552,8 +6552,10 @@ export const UI = {
 
             lines.forEach(line => {
                 try {
-                    // Basic Regex for: Question (A) Opt (B) Opt (C) Opt (D) Opt [Ans: X]
+                    // Improved Regex for: Question (A) Opt (B) Opt (C) Opt (D) Opt [Ans: X] [Marks: Y]
                     const qMatch = line.match(/(.*?)\s*\(A\)\s*(.*?)\s*\(B\)\s*(.*?)\s*\(C\)\s*(.*?)\s*\(D\)\s*(.*?)\s*\[Ans:\s*([A-E])\]/i);
+                    const marksMatch = line.match(/\[Marks:\s*(\d+)\]/i);
+                    const marks = marksMatch ? parseInt(marksMatch[1]) : 1;
                     
                     if (qMatch) {
                         this.cbtQuestions.push({
@@ -6564,7 +6566,8 @@ export const UI = {
                             option_c: qMatch[4].trim(),
                             option_d: qMatch[5].trim(),
                             option_e: '',
-                            correct_option: qMatch[6].toUpperCase()
+                            correct_option: qMatch[6].toUpperCase(),
+                            marks: marks
                         });
                         count++;
                     }
