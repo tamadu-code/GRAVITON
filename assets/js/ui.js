@@ -5398,13 +5398,20 @@ export const UI = {
         const assignments = await db.subject_assignments.where('teacher_id').equals(staffId).toArray();
         const subjects = await db.subjects.toArray();
         
-        const staffAssignments = assignments.map(a => {
+        // Group assignments by subject
+        const grouped = {};
+        assignments.forEach(a => {
             const s = subjects.find(sub => sub.id === a.subject_id);
-            return {
-                subject_name: s ? s.name : 'Unknown Subject',
-                class_name: a.class_name
-            };
+            const name = s ? s.name : 'Unknown Subject';
+            if (!grouped[name]) grouped[name] = [];
+            grouped[name].push(a.class_name);
         });
+
+        const groupedAssignments = Object.entries(grouped).map(([name, classes]) => ({
+            name,
+            classes: classes.join(', ')
+        }));
+
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in-up" style="padding-bottom: 5rem;">
@@ -5452,19 +5459,20 @@ export const UI = {
                             <div class="table-container">
                                 <table class="data-table">
                                     <thead>
-                                        <tr><th>Subject Name</th><th>Assigned Class</th></tr>
+                                        <tr><th>Subject Name</th><th>Assigned Classes</th></tr>
                                     </thead>
                                     <tbody>
-                                        ${staffAssignments.length === 0 ? '<tr><td colspan="2" class="text-center p-4">No subjects assigned yet.</td></tr>' : 
-                                            staffAssignments.map(a => `
+                                        ${groupedAssignments.length === 0 ? '<tr><td colspan="2" class="text-center p-4">No subjects assigned yet.</td></tr>' : 
+                                            groupedAssignments.map(a => `
                                             <tr>
-                                                <td style="font-weight: 700;">${a.subject_name}</td>
-                                                <td><span class="badge" style="background: #f1f5f9; color: #475569;">${a.class_name}</span></td>
+                                                <td style="font-weight: 700;">${a.name}</td>
+                                                <td><span class="badge" style="background: #f1f5f9; color: #475569; font-size: 0.75rem; white-space: normal;">${a.classes}</span></td>
                                             </tr>
                                         `).join('')}
                                     </tbody>
                                 </table>
                             </div>
+
                             <button id="btn-staff-assign-sub" class="btn btn-secondary w-100 mt-1" style="border-radius: 12px; border: 2px dashed #e2e8f0; background: #f8fafc; color: #94a3b8; font-weight: 700; padding: 1rem;">
                                 <i data-lucide="plus"></i> Assign New Subject
                             </button>
