@@ -5015,7 +5015,7 @@ export const UI = {
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="padding: 1.5rem; background: #f8fafc; min-height: 100vh;">
                 <!-- Premium Header -->
-                <div class="page-banner staff-directory-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 24px; padding: 2.5rem; color: white; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15); margin-bottom: 2rem; position: relative; overflow: hidden;">
+                <div class="page-banner staff-directory-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 24px; padding: 2.5rem; color: white; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15); margin-bottom: 2rem; position: relative;">
                     <div style="position: absolute; right: -30px; top: -30px; width: 180px; height: 180px; background: rgba(99,102,241,0.15); border-radius: 50%;"></div>
                     <div style="position: absolute; right: 80px; bottom: -40px; width: 120px; height: 120px; background: rgba(99,102,241,0.1); border-radius: 50%;"></div>
                     <div class="banner-flex-container" style="position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem;">
@@ -5030,10 +5030,10 @@ export const UI = {
                                 <div style="font-size: 1.75rem; font-weight: 900;">${teachers.length}</div>
                                 <div style="font-size: 0.65rem; font-weight: 700; text-transform: uppercase; opacity: 0.7;">Active Staff</div>
                             </div>
-                            <button id="btn-add-staff" class="btn-onboard-mobile" style="height: 52px; border-radius: 16px; padding: 0 1.75rem; display: flex; align-items: center; gap: 0.75rem; background: #6366f1; color: white; font-weight: 800; font-size: 1rem; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(99,102,241,0.4); transition: all 0.2s;">
+                            <button id="btn-add-staff" class="btn-onboard-mobile" style="min-height: 52px; border-radius: 16px; padding: 0.75rem 1.75rem; display: flex; align-items: center; gap: 0.75rem; background: #6366f1; color: white; font-weight: 800; font-size: 1rem; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(99,102,241,0.4); transition: all 0.2s;">
                                 <i data-lucide="user-plus" style="width: 20px;"></i> Onboard Staff
                             </button>
-                            <button id="btn-bulk-repair-staff" style="height: 52px; border-radius: 16px; padding: 0 1.25rem; display: flex; align-items: center; gap: 0.5rem; background: #fef9c3; color: #854d0e; font-weight: 800; font-size: 0.85rem; border: 1px solid #fef08a; cursor: pointer;">
+                            <button id="btn-bulk-repair-staff" style="min-height: 52px; border-radius: 16px; padding: 0.75rem 1.25rem; display: flex; align-items: center; gap: 0.5rem; background: #fef9c3; color: #854d0e; font-weight: 800; font-size: 0.85rem; border: 1px solid #fef08a; cursor: pointer;">
                                 <i data-lucide="shield-alert" style="width: 18px;"></i> Bulk Repair
                             </button>
                         </div>
