@@ -6753,6 +6753,13 @@ export const UI = {
         }, 1000);
     },
 
+    escapeHTML(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    },
+
     renderCBTExamInterface() {
         const q = this.currentQuestions[this.currentQuestionIndex];
         const progress = ((this.currentQuestionIndex + 1) / this.currentQuestions.length) * 100;
@@ -6762,7 +6769,7 @@ export const UI = {
                 <!-- Header: Title & Timer -->
                 <header class="cbt-exam-header">
                     <div>
-                        <h2 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 0.9rem;">${this.currentExam.title}</h2>
+                        <h2 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 0.9rem;">${this.escapeHTML(this.currentExam.title)}</h2>
                         <div style="font-size: 0.65rem; color: #64748b; font-weight: 700;">
                             Q${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}
                         </div>
@@ -6779,18 +6786,18 @@ export const UI = {
                 <main class="cbt-exam-content-area">
                     <div class="cbt-question-card">
                         <div style="font-size: 1.1rem; font-weight: 700; color: #1e293b; line-height: 1.5; margin-bottom: 1.5rem;">
-                            ${q.question_text}
+                            ${this.escapeHTML(q.question_text)}
                         </div>
 
                         <div style="display: flex; flex-direction: column; gap: 0.6rem;">
                             ${(q.shuffledOptions || []).filter(opt => opt && opt.text).map((opt, idx) => `
                                 <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 2px solid ${this.userAnswers[q.id] === opt.text ? '#4338ca' : '#f1f5f9'}; border-radius: 12px; cursor: pointer; transition: all 0.2s; background: ${this.userAnswers[q.id] === opt.text ? '#f5f7ff' : 'white'};" class="option-label">
-                                    <input type="radio" name="exam-option" value="${opt.text}" ${this.userAnswers[q.id] === opt.text ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
+                                    <input type="radio" name="exam-option" value="${this.escapeHTML(opt.text)}" ${this.userAnswers[q.id] === opt.text ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
                                     <div style="display: flex; align-items: center; gap: 0.75rem; width: 100%;">
                                         <span style="font-weight: 800; color: ${this.userAnswers[q.id] === opt.text ? '#4338ca' : '#94a3b8'}; background: ${this.userAnswers[q.id] === opt.text ? '#eef2ff' : '#f8fafc'}; width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem;">
                                             ${String.fromCharCode(64 + (idx + 1))}
                                         </span>
-                                        <span style="font-weight: 600; color: #334155; font-size: 0.9rem;">${opt.text}</span>
+                                        <span style="font-weight: 600; color: #334155; font-size: 0.9rem;">${this.escapeHTML(opt.text)}</span>
                                     </div>
                                 </label>
                             `).join('')}
