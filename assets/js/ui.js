@@ -9250,85 +9250,103 @@ export const UI = {
 
         const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
         const students = await db.students.toArray();
-        const studentMap = students.reduce((acc, s) => ({...acc, [s.assigned_id]: s.full_name}), {});
+        // Fix: students table uses 'student_id' as key and 'name' for the name field
+        const studentMap = students.reduce((acc, s) => ({...acc, [s.student_id]: s.name}), {});
 
         this.currentViewData = examId;
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in">
-                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <div class="view-header" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 2rem; gap: 1rem;">
                     <div>
                         <h1 class="text-2xl font-bold text-slate-800">Exam Participants</h1>
-                        <p class="text-slate-500">${exam.title} (${exam.subject_id})</p>
+                        <p class="text-slate-500">${exam.title} — ${exam.subject_id} (${exam.class_name || 'All Classes'})</p>
+                        <p style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; margin-top: 0.25rem;">${results.length} attempt${results.length !== 1 ? 's' : ''} recorded</p>
                     </div>
-                    <div style="display: flex; gap: 0.75rem;">
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
                         ${results.some(r => r.status === 'In Progress') ? `
-                            <button class="btn btn-danger" onclick="UI.forceSubmitAllParticipants('${examId}')" style="background: #ef4444; border: none; font-weight: 800;">
+                            <button class="btn btn-danger" onclick="UI.forceSubmitAllParticipants('${examId}')" style="background: #ef4444; border: none; font-weight: 800; border-radius: 12px; height: 44px;">
                                 <i data-lucide="stop-circle"></i> FORCE SUBMIT ALL
                             </button>
                         ` : ''}
-                        <button class="btn btn-secondary" onclick="UI.renderCBT()"><i data-lucide="arrow-left"></i> Back to Hub</button>
+                        <button class="btn btn-secondary" onclick="UI.renderCBT()" style="border-radius: 12px; height: 44px;"><i data-lucide="arrow-left"></i> Back to Hub</button>
                     </div>
                 </div>
 
-                <div class="card" style="padding: 0; overflow: hidden; border-radius: 24px; border: none; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
-                    <table class="table" style="margin-bottom: 0;">
-                        <thead>
-                            <tr style="background: #f8fafc;">
-                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">STUDENT</th>
-                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">STATUS</th>
-                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">VIOLATIONS</th>
-                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">SCORE</th>
-                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">STARTED AT</th>
-                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800; text-align: right;">ACTIONS</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${results.length === 0 ? `<tr><td colspan="5" style="text-align: center; padding: 3rem; color: #94a3b8;">No attempts recorded for this exam yet.</td></tr>` : results.map(r => `
-                                <tr style="border-bottom: 1px solid #f1f5f9;">
-                                    <td style="padding: 1.25rem 1.5rem;">
-                                        <div style="font-weight: 700; color: #1e293b;">${studentMap[r.student_id] || 'Unknown Student'}</div>
-                                        <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">ID: ${r.student_id}</div>
-                                    </td>
-                                    <td style="padding: 1.25rem 1.5rem;">
-                                        <span class="badge" style="background: ${r.status === 'Completed' ? '#ecfdf5' : '#fff7ed'}; color: ${r.status === 'Completed' ? '#059669' : '#d97706'}; font-weight: 800; padding: 0.5rem 1rem; border-radius: 8px;">
-                                            ${r.status}
-                                        </span>
-                                    </td>
-                                    <td style="padding: 1.25rem 1.5rem;">
-                                        ${r.warnings > 0 ? `
-                                            <button class="badge" onclick="UI.showViolationLog('${r.student_id}', '${examId}')" style="background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; cursor: pointer; padding: 0.5rem 0.75rem; border-radius: 8px; font-weight: 800; display: flex; align-items: center; gap: 0.4rem;">
-                                                <i data-lucide="alert-triangle" style="width: 14px;"></i> ${r.warnings}
+                ${results.length === 0 ? `
+                    <div class="card" style="text-align: center; padding: 4rem 2rem; border-radius: 24px; border: none;">
+                        <div style="color: #94a3b8; margin-bottom: 1rem;"><i data-lucide="inbox" style="width: 48px; height: 48px;"></i></div>
+                        <p style="color: #94a3b8; font-weight: 700;">No attempts recorded for this exam yet.</p>
+                    </div>
+                ` : `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${results.map((r, idx) => {
+                            const studentName = studentMap[r.student_id] || 'Unknown Student';
+                            const isCompleted = r.status === 'Completed';
+                            const statusBg = isCompleted ? '#ecfdf5' : '#fff7ed';
+                            const statusColor = isCompleted ? '#059669' : '#d97706';
+                            const violationCount = r.warnings || 0;
+
+                            return `
+                                <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04);">
+                                    <!-- Clickable Header -->
+                                    <div onclick="this.parentElement.classList.toggle('expanded')" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem;">
+                                        <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0;">
+                                            <div style="background: ${isCompleted ? '#ecfdf5' : '#e0e7ff'}; color: ${isCompleted ? '#059669' : '#4338ca'}; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; flex-shrink: 0;">
+                                                ${idx + 1}
+                                            </div>
+                                            <div style="min-width: 0;">
+                                                <div style="font-weight: 800; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${studentName}</div>
+                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${r.student_id}</div>
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
+                                            ${violationCount > 0 ? `<span style="background: #fee2e2; color: #ef4444; padding: 0.3rem 0.6rem; border-radius: 6px; font-weight: 800; font-size: 0.75rem;">⚠ ${violationCount}</span>` : ''}
+                                            <span style="background: ${statusBg}; color: ${statusColor}; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 0.75rem;">${r.status}</span>
+                                            <i data-lucide="chevron-down" style="width: 18px; color: #94a3b8; transition: transform 0.2s;"></i>
+                                        </div>
+                                    </div>
+
+                                    <!-- Expandable Details -->
+                                    <div class="participant-details" style="border-top: 1px solid #f1f5f9; padding: 0 1.5rem; max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;">
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1.25rem 0;">
+                                            <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
+                                                <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">SCORE</div>
+                                                <div style="font-weight: 900; color: #4338ca; font-size: 1.25rem;">${r.score} / ${r.total_questions}</div>
+                                            </div>
+                                            <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
+                                                <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">STARTED AT</div>
+                                                <div style="font-weight: 700; color: #1e293b; font-size: 0.85rem;">${new Date(r.started_at).toLocaleString()}</div>
+                                            </div>
+                                        </div>
+
+                                        ${violationCount > 0 ? `
+                                            <button onclick="UI.showViolationLog('${r.student_id}', '${examId}')" style="width: 100%; background: #fef2f2; color: #ef4444; border: 1px solid #fecdd3; padding: 0.75rem; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 1rem;">
+                                                <i data-lucide="shield-alert" style="width: 16px;"></i> View ${violationCount} Violation${violationCount !== 1 ? 's' : ''}
                                             </button>
-                                        ` : `
-                                            <span style="color: #94a3b8; font-size: 0.85rem; font-weight: 600;">None</span>
-                                        `}
-                                    </td>
-                                    <td style="padding: 1.25rem 1.5rem; font-weight: 900; color: #4338ca; font-size: 1.1rem;">
-                                        ${r.score} / ${r.total_questions}
-                                    </td>
-                                    <td style="padding: 1.25rem 1.5rem; color: #64748b; font-size: 0.85rem;">
-                                        ${new Date(r.started_at).toLocaleString()}
-                                    </td>
-                                    <td style="padding: 1.25rem 1.5rem; text-align: right; display: flex; gap: 0.5rem; justify-content: flex-end;">
-                                        ${r.status === 'Completed' ? `
-                                            <button class="btn btn-warning btn-sm" onclick="UI.reopenCBTExam('${r.student_id}', '${examId}')" style="border-radius: 8px; font-weight: 700; background: #fffbeb; color: #b45309; border: 1px solid #fde68a;">
-                                                <i data-lucide="refresh-ccw" style="width: 14px;"></i> Re-open
-                                            </button>
-                                        ` : `
-                                            <button class="btn btn-danger btn-sm" onclick="UI.forceSubmitCBTExam('${r.student_id}', '${examId}')" style="border-radius: 8px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3;">
-                                                <i data-lucide="log-out" style="width: 14px;"></i> Force Submit
-                                            </button>
-                                        `}
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
+                                        ` : ''}
+
+                                        <div style="display: flex; gap: 0.75rem; padding-bottom: 1.25rem;">
+                                            ${isCompleted ? `
+                                                <button class="btn btn-warning" onclick="UI.reopenCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fffbeb; color: #b45309; border: 1px solid #fde68a; height: 44px;">
+                                                    <i data-lucide="refresh-ccw" style="width: 16px;"></i> Re-open Exam
+                                                </button>
+                                            ` : `
+                                                <button class="btn btn-danger" onclick="UI.forceSubmitCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px;">
+                                                    <i data-lucide="log-out" style="width: 16px;"></i> Force Submit
+                                                </button>
+                                            `}
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `}
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
     },
 
     async reopenCBTExam(studentId, examId) {

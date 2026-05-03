@@ -4728,7 +4728,26 @@ body.exam-mode .topbar {
     display: none !important;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   CBT PARTICIPANT CARDS - COLLAPSIBLE
+   ═══════════════════════════════════════════════════════════ */
+.cbt-participant-card .participant-details {
+    max-height: 0;
+    overflow: hidden;
+    padding: 0 1.5rem;
+    transition: max-height 0.35s ease, padding 0.35s ease;
+}
 
+.cbt-participant-card.expanded .participant-details {
+    max-height: 500px;
+    padding: 0 1.5rem;
+}
 
+.cbt-participant-card.expanded [data-lucide="chevron-down"] {
+    transform: rotate(180deg);
+}
 
+.cbt-participant-card [data-lucide="chevron-down"] {
+    transition: transform 0.3s ease;
+}
 
