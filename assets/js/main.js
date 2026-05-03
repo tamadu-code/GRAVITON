@@ -7,7 +7,7 @@ import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, 
 import db from './db.js';
 import { Notifications } from './utils.js';
 
-console.log('--- GRAVITON CORE v14.0 - INITIALIZING ---');
+console.log('--- GRAVITON CORE v16.0 - INITIALIZING ---');
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -172,13 +172,16 @@ async function loadAuthenticatedApp(authUser) {
             updated_at: new Date().toISOString()
         };
 
-        // Self-provision the missing profile row in Supabase
-        const client = getSupabase();
-        if (client) {
-            client.from('profiles').upsert(profile).then(({ error }) => {
-                if (error) console.warn('Automatic profile provisioning deferred:', error.message);
-                else console.log('Profile successfully self-provisioned for:', authUser.email);
-            });
+        // Self-provision the missing profile row in Supabase (Staff/Admin only)
+        // Students and Parents are not stored in the admin profiles table.
+        if (detectedRole !== 'Student' && detectedRole !== 'Parent') {
+            const client = getSupabase();
+            if (client) {
+                client.from('profiles').upsert(profile).then(({ error }) => {
+                    if (error) console.warn('Automatic profile provisioning deferred:', error.message);
+                    else console.log('Profile successfully self-provisioned for:', authUser.email);
+                });
+            }
         }
     }
 
