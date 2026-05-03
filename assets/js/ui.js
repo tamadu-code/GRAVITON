@@ -6801,7 +6801,7 @@ export const UI = {
                 <main class="cbt-exam-content-area">
                     <div class="cbt-question-card">
                         <div style="font-size: 1.1rem; font-weight: 700; color: #1e293b; line-height: 1.5; margin-bottom: 1.5rem;">
-                            ${this.escapeHTML(q.question_text)}
+                            ${this.parseCBTContent(q.question_text)}
                         </div>
 
                         <div style="display: flex; flex-direction: column; gap: 0.6rem;">
@@ -6812,7 +6812,7 @@ export const UI = {
                                         <span style="font-weight: 800; color: ${this.userAnswers[q.id] === opt.text ? '#4338ca' : '#94a3b8'}; background: ${this.userAnswers[q.id] === opt.text ? '#eef2ff' : '#f8fafc'}; width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem;">
                                             ${String.fromCharCode(64 + (idx + 1))}
                                         </span>
-                                        <span style="font-weight: 600; color: #334155; font-size: 0.9rem;">${this.escapeHTML(opt.text)}</span>
+                                        <span style="font-weight: 600; color: #334155; font-size: 0.9rem;">${this.parseCBTContent(opt.text)}</span>
                                     </div>
                                 </label>
                             `).join('')}
@@ -6853,7 +6853,24 @@ export const UI = {
             </div>
         `;
 
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            window.MathJax.typesetPromise();
+        }
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    /**
+     * Smart Content Parser: Detects images and prepares Math
+     */
+    parseCBTContent(text) {
+        if (!text) return '';
+        
+        // 1. Detect [IMG:url] or [IMG:base64]
+        let parsed = text.replace(/\[IMG:(.*?)\]/gi, (match, url) => {
+            return `<div style="margin: 1rem 0; text-align: center;"><img src="${url.trim()}" style="max-width: 100%; max-height: 300px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\'color:#f43f5e; font-size:0.75rem; font-weight:700;\'>[⚠️ Image failed to load]</div>'"></div>`;
+        });
+        
+        return parsed;
     },
 
     async saveExamProgress(questionId, value) {
