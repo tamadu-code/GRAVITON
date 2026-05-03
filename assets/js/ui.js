@@ -9101,7 +9101,14 @@ export const UI = {
                         <h1 class="text-2xl font-bold text-slate-800">Exam Participants</h1>
                         <p class="text-slate-500">${exam.title} (${exam.subject_id})</p>
                     </div>
-                    <button class="btn btn-secondary" onclick="UI.renderCBT()"><i data-lucide="arrow-left"></i> Back to Hub</button>
+                    <div style="display: flex; gap: 0.75rem;">
+                        ${results.some(r => r.status === 'In Progress') ? `
+                            <button class="btn btn-danger" onclick="UI.forceSubmitAllParticipants('${examId}')" style="background: #ef4444; border: none; font-weight: 800;">
+                                <i data-lucide="stop-circle"></i> FORCE SUBMIT ALL
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-secondary" onclick="UI.renderCBT()"><i data-lucide="arrow-left"></i> Back to Hub</button>
+                    </div>
                 </div>
 
                 <div class="card" style="padding: 0; overflow: hidden; border-radius: 24px; border: none; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
@@ -9133,10 +9140,16 @@ export const UI = {
                                     <td style="padding: 1.25rem 1.5rem; color: #64748b; font-size: 0.85rem;">
                                         ${new Date(r.started_at).toLocaleString()}
                                     </td>
-                                    <td style="padding: 1.25rem 1.5rem; text-align: right;">
-                                        <button class="btn btn-warning btn-sm" onclick="UI.reopenCBTExam('${r.student_id}', '${examId}')" style="border-radius: 8px; font-weight: 700; background: #fffbeb; color: #b45309; border: 1px solid #fde68a;">
-                                            <i data-lucide="refresh-ccw" style="width: 14px;"></i> Re-open
-                                        </button>
+                                    <td style="padding: 1.25rem 1.5rem; text-align: right; display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                        ${r.status === 'Completed' ? `
+                                            <button class="btn btn-warning btn-sm" onclick="UI.reopenCBTExam('${r.student_id}', '${examId}')" style="border-radius: 8px; font-weight: 700; background: #fffbeb; color: #b45309; border: 1px solid #fde68a;">
+                                                <i data-lucide="refresh-ccw" style="width: 14px;"></i> Re-open
+                                            </button>
+                                        ` : `
+                                            <button class="btn btn-danger btn-sm" onclick="UI.forceSubmitCBTExam('${r.student_id}', '${examId}')" style="border-radius: 8px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3;">
+                                                <i data-lucide="log-out" style="width: 14px;"></i> Force Submit
+                                            </button>
+                                        `}
                                     </td>
                                 </tr>
                             `).join('')}
@@ -9178,6 +9191,71 @@ export const UI = {
         } catch (err) {
             console.error('Re-open error:', err);
             Notifications.show('Failed to re-open exam.', 'error');
+        }
+    },
+
+    async forceSubmitCBTExam(studentId, examId) {
+        if (!confirm('Are you sure you want to FORCE SUBMIT this student\'s exam? They will not be able to continue.')) return;
+
+        try {
+            const result = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+            
+            // Calculate score based on current answers
+            let score = 0;
+            questions.forEach(q => {
+                const correctText = q[`option_${q.correct_option.toLowerCase()}`];
+                if (result.answers && result.answers[q.id] === correctText) {
+                    score += (parseFloat(q.marks) || 1);
+                }
+            });
+
+            await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
+                status: 'Completed',
+                score: score,
+                updated_at: new Date().toISOString(),
+                is_synced: 0
+            });
+
+            Notifications.show('Exam force-submitted and scored successfully.', 'success');
+            syncToCloud();
+            this.renderCBTParticipants(examId);
+        } catch (err) {
+            console.error('Force submit error:', err);
+            Notifications.show('Failed to force submit exam.', 'error');
+        }
+    },
+
+    async forceSubmitAllParticipants(examId) {
+        if (!confirm('CRITICAL: Are you sure you want to FORCE SUBMIT ALL active participants? This will end the exam for everyone currently taking it.')) return;
+
+        try {
+            const activeResults = await db.cbt_results.where('exam_id').equals(examId).and(r => r.status === 'In Progress').toArray();
+            const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+
+            for (const r of activeResults) {
+                let score = 0;
+                questions.forEach(q => {
+                    const correctText = q[`option_${q.correct_option.toLowerCase()}`];
+                    if (r.answers && r.answers[q.id] === correctText) {
+                        score += (parseFloat(q.marks) || 1);
+                    }
+                });
+
+                await db.cbt_results.update(r.id, {
+                    status: 'Completed',
+                    score: score,
+                    updated_at: new Date().toISOString(),
+                    is_synced: 0
+                });
+            }
+
+            Notifications.show(`Successfully force-submitted ${activeResults.length} students.`, 'success');
+            syncToCloud();
+            this.renderCBTParticipants(examId);
+        } catch (err) {
+            console.error('Force submit all error:', err);
+            Notifications.show('Failed to force submit all participants.', 'error');
         }
     },
 
