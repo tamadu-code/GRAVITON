@@ -9421,16 +9421,16 @@ export const UI = {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Subject</label>
-                        <select id="bank-subject" class="cbt-input" style="height: 44px; border-radius: 10px;">
+                        <select id="bank-subject" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
                             <option value="">— Select Subject —</option>
-                            ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                            ${subjects.map(s => `<option value="${s.id}" style="color: #1e293b; background: #ffffff;">${s.name}</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Class</label>
-                        <select id="bank-class" class="cbt-input" style="height: 44px; border-radius: 10px;">
+                        <select id="bank-class" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
                             <option value="">— Select Class —</option>
-                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                            ${classes.map(c => `<option value="${c.name}" style="color: #1e293b; background: #ffffff;">${c.name}</option>`).join('')}
                         </select>
                     </div>
                 </div>
@@ -9439,7 +9439,7 @@ export const UI = {
                     <div style="font-size:0.75rem; color:#64748b; margin-bottom:0.5rem; background:#f1f5f9; padding:0.75rem; border-radius:10px; line-height: 1.6;">
                         <strong>Format:</strong> Question text? (A) Option 1 (B) Option 2 (C) Option 3 (D) Option 4 [Ans: A] [Marks: 5]
                     </div>
-                    <textarea id="bank-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.8rem; border-radius: 12px;" placeholder="Question 1... [Ans: B] [Marks: 2]\nQuestion 2... [Ans: C]"></textarea>
+                    <textarea id="bank-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.8rem; border-radius: 12px; color: #1e293b !important; background: #ffffff !important;" placeholder="Question 1... [Ans: B] [Marks: 2]\nQuestion 2... [Ans: C]"></textarea>
                 </div>
             </div>
         `;

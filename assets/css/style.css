@@ -4755,16 +4755,27 @@ body.exam-mode .topbar {
 .cbt-input {
     color: #1e293b !important;
     border: 1px solid #cbd5e1 !important;
-    background: #f8fafc !important;
+    background: #ffffff !important;
+    font-weight: 600 !important;
 }
 
 .cbt-input:focus {
-    background: white !important;
+    background: #ffffff !important;
     color: #1e293b !important;
+    border-color: #4338ca !important;
+    box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.1) !important;
 }
 
 .cbt-input option {
     color: #1e293b !important;
-    background: white !important;
+    background: #ffffff !important;
+}
+
+/* Ensure modal body text doesn't turn inputs white */
+.modal-body select.cbt-input,
+.modal-body textarea.cbt-input,
+.modal-body input.cbt-input {
+    color: #1e293b !important;
+    background-color: #ffffff !important;
 }
 
