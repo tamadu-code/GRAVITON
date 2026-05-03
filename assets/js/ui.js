@@ -6783,7 +6783,7 @@ export const UI = {
                         </div>
 
                         <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-                            ${q.shuffledOptions.map((opt, idx) => `
+                            ${(q.shuffledOptions || []).filter(opt => opt && opt.text).map((opt, idx) => `
                                 <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 2px solid ${this.userAnswers[q.id] === opt.text ? '#4338ca' : '#f1f5f9'}; border-radius: 12px; cursor: pointer; transition: all 0.2s; background: ${this.userAnswers[q.id] === opt.text ? '#f5f7ff' : 'white'};" class="option-label">
                                     <input type="radio" name="exam-option" value="${opt.text}" ${this.userAnswers[q.id] === opt.text ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
                                     <div style="display: flex; align-items: center; gap: 0.75rem; width: 100%;">
