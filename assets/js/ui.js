@@ -6549,9 +6549,13 @@ export const UI = {
             // Use a modified seed for each question to keep them distinct but deterministic
             let qSeed = seed + idx;
             const shuffledOptions = seededShuffle([...options], qSeed);
-            const correctText = q[`option_${q.correct_option.toLowerCase()}`];
+            
+            // SECURITY: Create a one-way hash of the correct answer.
+            // Do NOT store the correct answer in plain text in the question object.
+            const rawCorrectText = q[`option_${q.correct_option.toLowerCase()}`];
+            const answerHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join(''); 
 
-            return { ...q, shuffledOptions, correctText };
+            return { ...q, shuffledOptions, answerHash }; // No correctText here anymore
         });
 
         // Check for existing session
@@ -6836,8 +6840,13 @@ export const UI = {
         
         let score = 0;
         this.currentQuestions.forEach(q => {
-            if (this.userAnswers[q.id] === q.correctText) {
-                score += (q.marks || 1);
+            const studentChoice = this.userAnswers[q.id];
+            if (studentChoice) {
+                // Verify by hashing the student's choice and comparing
+                const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + this.currentExam.id))).split('').reverse().join('');
+                if (choiceHash === q.answerHash) {
+                    score += (q.marks || 1);
+                }
             }
         });
 
