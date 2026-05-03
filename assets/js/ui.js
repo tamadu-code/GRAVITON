@@ -6513,15 +6513,31 @@ export const UI = {
         const now = new Date();
         const durationSeconds = (exam.duration || 30) * 60;
 
-        // Shuffle and Limit Questions
-        questions = this.shuffleArray([...questions]);
+        // Seeded Shuffle and Limit Questions (Deterministic based on student + exam)
+        const seedStr = studentId + examId;
+        let seed = 0;
+        for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+        
+        const seededShuffle = (array, seed) => {
+            let m = array.length, t, i;
+            while (m) {
+                seed = (seed * 9301 + 49297) % 233280;
+                i = Math.floor((seed / 233280) * m--);
+                t = array[m];
+                array[m] = array[i];
+                array[i] = t;
+            }
+            return array;
+        };
+
+        questions = seededShuffle([...questions], seed);
         const limit = parseInt(exam.question_limit) || 0;
         if (limit > 0) {
             questions = questions.slice(0, limit);
         }
 
-        // Shuffle Options for each question
-        questions = questions.map(q => {
+        // Shuffle Options for each question using the same seed progression
+        questions = questions.map((q, idx) => {
             const options = [
                 { key: 'a', text: q.option_a },
                 { key: 'b', text: q.option_b },
@@ -6530,7 +6546,9 @@ export const UI = {
                 { key: 'e', text: q.option_e }
             ].filter(o => o.text);
 
-            const shuffledOptions = this.shuffleArray([...options]);
+            // Use a modified seed for each question to keep them distinct but deterministic
+            let qSeed = seed + idx;
+            const shuffledOptions = seededShuffle([...options], qSeed);
             const correctText = q[`option_${q.correct_option.toLowerCase()}`];
 
             return { ...q, shuffledOptions, correctText };
