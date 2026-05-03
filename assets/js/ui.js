@@ -6968,7 +6968,7 @@ export const UI = {
 
     async showImportFromBankModal() {
         const exams = await db.cbt_exams.toArray();
-        const subjects = await db.subjects.toArray();
+        const subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
         // Also get standalone bank categories
@@ -9312,8 +9312,8 @@ export const UI = {
     },
 
     async renderQuestionBank() {
-        const subjects = await db.subjects.toArray();
-        const classes = await db.classes.toArray();
+        const subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+        const classes = (await db.classes.toArray()).sort((a, b) => a.name.localeCompare(b.name));
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
         // Get all bank questions (exam_id starts with 'BANK-')
@@ -9420,8 +9420,8 @@ export const UI = {
     },
 
     async bulkImportToBank() {
-        const subjects = await db.subjects.toArray();
-        const classes = await db.classes.toArray();
+        const subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+        const classes = (await db.classes.toArray()).sort((a, b) => a.name.localeCompare(b.name));
 
         const modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
@@ -9527,8 +9527,8 @@ export const UI = {
 
     async editBankCategory(tag) {
         const parts = tag.split('__');
-        const subjects = await db.subjects.toArray();
-        const classes = await db.classes.toArray();
+        const subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+        const classes = (await db.classes.toArray()).sort((a, b) => a.name.localeCompare(b.name));
 
         const currentSub = parts[0];
         const currentCls = parts[1];
