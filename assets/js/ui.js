@@ -9142,6 +9142,16 @@ export const UI = {
         const exam = await db.cbt_exams.get(examId);
         if (!exam) return this.renderCBT();
 
+        // Auto-refresh logic (every 30 seconds while on this view)
+        if (this.participantsInterval) clearInterval(this.participantsInterval);
+        this.participantsInterval = setInterval(() => {
+            if (this.currentView === 'cbt_participants') {
+                this.renderCBTParticipants(examId);
+            } else {
+                clearInterval(this.participantsInterval);
+            }
+        }, 30000);
+
         const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
         const students = await db.students.toArray();
         const studentMap = students.reduce((acc, s) => ({...acc, [s.assigned_id]: s.full_name}), {});
