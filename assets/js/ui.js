@@ -9401,6 +9401,9 @@ export const UI = {
                                             `).join('')}
                                         </div>
                                         <div style="display: flex; gap: 0.75rem; padding-bottom: 1.25rem;">
+                                            <button class="btn btn-secondary" onclick="UI.editBankCategory('${tag}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; height: 44px;">
+                                                <i data-lucide="edit-3" style="width: 16px;"></i> Edit Category
+                                            </button>
                                             <button class="btn btn-danger" onclick="if(confirm('Delete all ${questions.length} questions in this category?')){UI.deleteBankCategory('BANK-${tag}')}" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px;">
                                                 <i data-lucide="trash-2" style="width: 16px;"></i> Delete Category
                                             </button>
@@ -9515,10 +9518,77 @@ export const UI = {
     },
 
     async deleteBankCategory(bankExamId) {
+        if (!confirm('Are you sure you want to permanently delete all questions in this category? This cannot be undone.')) return;
         await db.cbt_questions.where('exam_id').equals(bankExamId).delete();
         syncToCloud();
         Notifications.show('Category deleted from bank.', 'success');
         this.renderQuestionBank();
+    },
+
+    async editBankCategory(tag) {
+        const parts = tag.split('__');
+        const subjects = await db.subjects.toArray();
+        const classes = await db.classes.toArray();
+
+        const currentSub = parts[0];
+        const currentCls = parts[1];
+        const currentTerm = parts[2] ? parts[2].replace('Term', ' Term') : '1st Term';
+        const currentSess = parts[3] ? parts[3].replace('-', '/') : '2024/2025';
+
+        const modalHtml = `
+            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Subject</label>
+                        <select id="edit-bank-subject" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
+                            ${subjects.map(s => `<option value="${s.id}" ${s.id === currentSub ? 'selected' : ''} style="color: #1e293b; background: #ffffff;">${s.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Class</label>
+                        <select id="edit-bank-class" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
+                            ${classes.map(c => `<option value="${c.name}" ${c.name === currentCls ? 'selected' : ''} style="color: #1e293b; background: #ffffff;">${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Term</label>
+                        <select id="edit-bank-term" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
+                            <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
+                            <option value="2nd Term" ${currentTerm === '2nd Term' ? 'selected' : ''}>2nd Term</option>
+                            <option value="3rd Term" ${currentTerm === '3rd Term' ? 'selected' : ''}>3rd Term</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Session</label>
+                        <select id="edit-bank-session" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
+                            <option value="2024/2025" ${currentSess === '2024/2025' ? 'selected' : ''}>2024/2025</option>
+                            <option value="2025/2026" ${currentSess === '2025/2026' ? 'selected' : ''}>2025/2026</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        this.showModal('Update Bank Category', modalHtml, async () => {
+            const newSub = document.getElementById('edit-bank-subject').value;
+            const newCls = document.getElementById('edit-bank-class').value;
+            const newTerm = document.getElementById('edit-bank-term').value;
+            const newSess = document.getElementById('edit-bank-session').value;
+
+            const newBankExamId = `BANK-${newSub}__${newCls}__${newTerm.replace(/\s+/g, '')}__${newSess.replace(/\//g, '-')}`;
+
+            // Update all questions in this category
+            await db.cbt_questions.where('exam_id').equals('BANK-' + tag).modify({ 
+                exam_id: newBankExamId,
+                is_synced: 0
+            });
+
+            syncToCloud();
+            Notifications.show('Category updated successfully.', 'success');
+            this.renderQuestionBank();
+        }, 'Update Details', 'save');
     },
 
     async renderCBTParticipants(examId) {
