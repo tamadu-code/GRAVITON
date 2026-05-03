@@ -3,11 +3,12 @@
  */
 
 import { UI } from './ui.js';
-console.log('--- GRAVITON CORE v14.0 - INITIALIZING ---');
-window.UI = UI;
 import { loginUser, logoutUser, getCurrentSession, getUserProfile, registerUser, resetPassword, startSyncLoop, syncToCloud, syncFromCloud } from './supabase-client.js';
 import db from './db.js';
 import { Notifications } from './utils.js';
+
+console.log('--- GRAVITON CORE v14.0 - INITIALIZING ---');
+window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
 window.Notifications = Notifications;
