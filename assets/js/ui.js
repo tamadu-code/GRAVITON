@@ -6338,13 +6338,52 @@ export const UI = {
             };
         });
 
+        // 3. Persistent Session Check (Cloud Timer)
+        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        let session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+        
+        const now = new Date();
+        const durationSeconds = (exam.duration || 30) * 60;
+
+        if (session) {
+            if (session.status === 'Completed') {
+                return Notifications.show('You have already submitted this exam.', 'warning');
+            }
+            // Resume session
+            const startTime = new Date(session.started_at);
+            const elapsedSeconds = Math.floor((now - startTime) / 1000);
+            this.examTimeLeft = durationSeconds - elapsedSeconds;
+            
+            if (this.examTimeLeft <= 0) {
+                Notifications.show('Your exam time has expired.', 'error');
+                this.currentQuestions = questions; // Load for scoring
+                this.userAnswers = session.answers || {};
+                return this.submitExam();
+            }
+        } else {
+            // Start New Session
+            const newSession = prepareForSync({
+                id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                exam_id: examId,
+                student_id: studentId,
+                score: 0,
+                total_questions: questions.length,
+                answers: {},
+                warnings: 0,
+                started_at: now.toISOString(),
+                status: 'In Progress'
+            });
+            await db.cbt_results.add(newSession);
+            this.examTimeLeft = durationSeconds;
+            syncToCloud();
+        }
+
         // Store session state
         this.currentExam = exam;
         this.currentQuestions = questions;
         this.currentQuestionIndex = 0;
-        this.userAnswers = {};
-        this.examDurationSeconds = (exam.duration || 30) * 60;
-        this.examTimeLeft = this.examDurationSeconds;
+        this.userAnswers = session ? session.answers : {};
+        this.examDurationSeconds = durationSeconds;
 
         document.body.classList.add('exam-mode');
         this.renderCBTExamInterface();

@@ -107,7 +107,9 @@ db.version(20).stores({
     exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
 });
 
-
+db.version(21).stores({
+    cbt_results: 'id, exam_id, student_id, [student_id+exam_id], score, total_questions, started_at, status, updated_at, is_synced'
+});
 
 /**
  * Smart ID Generation
