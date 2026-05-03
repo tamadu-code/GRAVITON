@@ -7018,7 +7018,7 @@ export const UI = {
                             return `
                                 <div class="bank-item" style="padding: 1rem; border: 1px solid #e0e7ff; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; background: #f5f3ff;" onclick="this.closest('.form-group').querySelectorAll('.bank-item').forEach(b => {b.style.borderColor = '#e2e8f0'; b.style.background = b.dataset.bg || '#fff'}); this.style.borderColor = '#4338ca'; this.style.background = '#e0e7ff'; this.dataset.selected = '${key}';" data-bg="#f5f3ff">
                                     <div>
-                                        <div style="font-weight: 700;"><i data-lucide="database" style="width: 14px; display: inline; vertical-align: -2px; margin-right: 4px; color: #4338ca;"></i>${subLabel}</div>
+                                        <div style="font-weight: 800; color: #1e293b !important; text-decoration: none !important;"><i data-lucide="database" style="width: 14px; display: inline; vertical-align: -2px; margin-right: 4px; color: #4338ca;"></i>${subLabel}</div>
                                         <div style="font-size: 0.75rem; color: #64748b;">${clsLabel} ${termLabel ? `• ${termLabel}` : ''} ${sessionLabel ? `• ${sessionLabel}` : ''} • ${count} questions</div>
                                     </div>
                                     <div style="background: #e0e7ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">Bank</div>
