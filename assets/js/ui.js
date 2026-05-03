@@ -5069,8 +5069,10 @@ export const UI = {
 
     async renderStaff() {
         const profiles = await db.profiles.toArray();
-        const teachers = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive');
+        const teachers = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive' && p.full_name && p.full_name !== 'Unnamed Staff');
+        const unknownStaff = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && (!p.full_name || p.full_name === 'Unnamed Staff'));
         const formerStaff = profiles.filter(p => p.status === 'Terminated' || p.status === 'Inactive');
+
 
         // Get assignment counts per teacher
         const allAssignments = await db.subject_assignments.toArray();
@@ -5108,7 +5110,13 @@ export const UI = {
                             <button id="btn-bulk-repair-staff" style="min-height: 52px; border-radius: 16px; padding: 0.75rem 1.25rem; display: flex; align-items: center; gap: 0.5rem; background: #fef9c3; color: #854d0e; font-weight: 800; font-size: 0.85rem; border: 1px solid #fef08a; cursor: pointer;">
                                 <i data-lucide="shield-alert" style="width: 18px;"></i> Bulk Repair
                             </button>
+                            ${unknownStaff.length > 0 ? `
+                            <button id="btn-cleanup-staff" style="min-height: 52px; border-radius: 16px; padding: 0.75rem 1.25rem; display: flex; align-items: center; gap: 0.5rem; background: #fee2e2; color: #ef4444; font-weight: 800; font-size: 0.85rem; border: 1px solid #fecaca; cursor: pointer;">
+                                <i data-lucide="trash-2" style="width: 18px;"></i> Cleanup (${unknownStaff.length})
+                            </button>
+                            ` : ''}
                         </div>
+
                     </div>
                 </div>
 
@@ -5203,7 +5211,7 @@ export const UI = {
         const bulkStaffBtn = document.getElementById('btn-bulk-repair-staff');
         if (bulkStaffBtn) {
             bulkStaffBtn.onclick = async () => {
-                const allStaff = (await db.profiles.toArray()).filter(p => p.role === 'Teacher' || p.role === 'Admin');
+                const allStaff = (await db.profiles.toArray()).filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.full_name && p.full_name !== 'Unnamed Staff');
                 if (!confirm(`This will re-provision login accounts for ALL ${allStaff.length} staff members. Password will be reset to "Staff123!". Continue?`)) return;
                 
                 bulkStaffBtn.disabled = true;
@@ -5241,6 +5249,25 @@ export const UI = {
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             };
         }
+
+        // Cleanup Unknown Staff Logic
+        const cleanupBtn = document.getElementById('btn-cleanup-staff');
+        if (cleanupBtn) {
+            cleanupBtn.onclick = async () => {
+                if (confirm(`Are you sure you want to delete ${unknownStaff.length} unknown/incomplete staff records? This cannot be undone.`)) {
+                    cleanupBtn.disabled = true;
+                    cleanupBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Cleaning...';
+                    
+                    const idsToDelete = unknownStaff.map(s => s.id);
+                    await db.profiles.bulkDelete(idsToDelete);
+                    
+                    Notifications.show(`Successfully removed ${idsToDelete.length} unknown records.`, 'success');
+                    this.renderStaff();
+                    syncToCloud();
+                }
+            };
+        }
+
 
         // Add Staff Button
         document.getElementById('btn-add-staff').onclick = async () => {

@@ -4370,3 +4370,43 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
         display: none !important;
     }
 }
+
+/* Staff Detail Mobile Optimization */
+@media (max-width: 768px) {
+    .staff-detail-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+    }
+    
+    .staff-bio-card {
+        padding: 1.5rem !important;
+    }
+    
+    .staff-bio-card h2 {
+        font-size: 1.5rem !important;
+    }
+    
+    #btn-staff-repair-auth {
+        font-size: 0.7rem !important;
+        padding: 0.6rem !important;
+        white-space: normal !important;
+        height: auto !important;
+        line-height: 1.2 !important;
+    }
+
+    .banner-flex-container {
+        flex-direction: column;
+        align-items: flex-start !important;
+    }
+
+    .banner-actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .banner-actions button, .banner-actions div {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
