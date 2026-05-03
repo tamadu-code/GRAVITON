@@ -6102,11 +6102,11 @@ export const UI = {
                                 </div>
                             </div>
 
-                            <!-- Bulk Marks Tool -->
+                            <!-- Set Marks Tool -->
                             <div style="background: #f1f5f9; padding: 1rem; border-radius: 12px; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
-                                <div style="font-size: 0.8rem; font-weight: 700; color: #475569;">BULK SET MARKS:</div>
+                                <div style="font-size: 0.8rem; font-weight: 700; color: #475569;">SET MARKS:</div>
                                 <div style="display: flex; gap: 0.5rem; flex: 1;">
-                                    <input type="number" id="bulk-marks-input" class="cbt-input" style="height: 36px; padding: 0 10px;" placeholder="e.g. 1.5" step="0.1">
+                                    <input type="number" id="bulk-marks-input" class="cbt-input" style="height: 36px; padding: 0 10px;" placeholder="e.g. 1.5" step="any">
                                     <button class="btn btn-sm" onclick="UI.applyBulkMarks()" style="background: #4338ca; color: white; border: none; border-radius: 8px; padding: 0 1rem; font-weight: 700; cursor: pointer; height: 36px;">Apply to All</button>
                                 </div>
                                 <div id="exam-total-badge" style="background: #e0e7ff; color: #4338ca; padding: 6px 12px; border-radius: 8px; font-weight: 900; font-size: 0.75rem;">TOTAL: 0</div>
@@ -6324,7 +6324,11 @@ export const UI = {
     },
 
     applyBulkMarks() {
-        const val = parseFloat(document.getElementById('bulk-marks-input').value);
+        let rawVal = document.getElementById('bulk-marks-input').value;
+        // Handle localized decimals (replace comma with dot)
+        rawVal = rawVal.replace(',', '.');
+        const val = parseFloat(rawVal);
+        
         if (isNaN(val) || val <= 0) return Notifications.show('Enter a valid mark (e.g. 1.5)', 'warning');
 
         this.cbtQuestions = this.cbtQuestions.map(q => ({ ...q, marks: val }));
@@ -6907,14 +6911,14 @@ export const UI = {
 
             // Deep Scanner: Matches questions spanning multiple lines
             // Pattern: Question text -> (A) opt -> (B) opt -> (C) opt -> (D) opt -> [Ans: X] -> [Marks: Y] (optional)
-            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]?\s*([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d+)\])?/gi;
+            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]?\s*([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
             let match;
             let count = 0;
 
             while ((match = masterRegex.exec(text)) !== null) {
                 const questionText = match[1].replace(/^\d+[\.\)]\s*/, '').trim(); // Remove leading numbers like "1."
-                const marks = match[7] ? parseInt(match[7]) : 1;
+                const marks = match[7] ? parseFloat(match[7]) : 1;
 
                 this.cbtQuestions.push({
                     id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
@@ -9423,7 +9427,7 @@ export const UI = {
 
             const bankExamId = `BANK-${subjectId}__${className}`;
 
-            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d+)\])?/gi;
+            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
 
             let match;
             let count = 0;
@@ -9431,7 +9435,7 @@ export const UI = {
 
             while ((match = masterRegex.exec(text)) !== null) {
                 const questionText = match[1].replace(/^\d+[\.)\]]\s*/, '').trim();
-                const marks = match[7] ? parseInt(match[7]) : 1;
+                const marks = match[7] ? parseFloat(match[7]) : 1;
 
                 newQuestions.push(prepareForSync({
                     id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
