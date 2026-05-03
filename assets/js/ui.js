@@ -5872,9 +5872,15 @@ export const UI = {
                                         ` : `
                                         <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end;">
                                             ${isStudent ? `
-                                                <button class="btn btn-primary btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #4338ca;">
-                                                    <i data-lucide="play" style="width: 16px;"></i> Start Exam
-                                                </button>
+                                                ${result && result.status === 'In Progress' ? `
+                                                    <button class="btn btn-warning btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #f59e0b; color: white; border: none; font-weight: 800;">
+                                                        <i data-lucide="rotate-ccw" style="width: 16px;"></i> Resume Exam
+                                                    </button>
+                                                ` : `
+                                                    <button class="btn btn-primary btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #4338ca;">
+                                                        <i data-lucide="play" style="width: 16px;"></i> Start Exam
+                                                    </button>
+                                                `}
                                             ` : `
                                                 ${isAdmin ? `
                                                 <button class="btn btn-warning btn-sm" title="Archive Exam" onclick="UI.archiveExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #fef3c7; color: #d97706; border: none;">
@@ -6556,9 +6562,24 @@ export const UI = {
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
-    saveExamProgress(questionId, value) {
+    async saveExamProgress(questionId, value) {
         this.userAnswers[questionId] = value;
-        // Visual feedback
+        
+        // Save to Local Database instantly
+        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const examId = this.currentExam.id;
+        
+        try {
+            await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
+                answers: this.userAnswers,
+                is_synced: 0
+            });
+            // Background cloud sync
+            syncToCloud();
+        } catch (e) {
+            console.error('Failed to auto-save progress:', e);
+        }
+        
         this.renderCBTExamInterface();
     },
 
