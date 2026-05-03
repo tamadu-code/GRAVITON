@@ -9395,22 +9395,24 @@ export const UI = {
                                         </div>
                                     </div>
                                     <div class="bank-details-area" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
-                                        <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                                        <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; max-height: 450px; overflow-y: auto;">
                                             ${questions.map((q, i) => `
                                                 <div style="background: #f8fafc; border-radius: 12px; padding: 1rem; border: 1px solid #f1f5f9;">
                                                     <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; margin-bottom: 0.5rem;">
-                                                        <span style="color: #4338ca; font-weight: 900;">${i + 1}.</span> ${q.question_text}
+                                                        ${i + 1}. ${q.question_text}
                                                     </div>
-                                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; font-size: 0.8rem; color: #475569;">
-                                                        <div style="${q.correct_option === 'A' ? 'color: #059669; font-weight: 800;' : ''}">A) ${q.option_a}</div>
-                                                        <div style="${q.correct_option === 'B' ? 'color: #059669; font-weight: 800;' : ''}">B) ${q.option_b}</div>
-                                                        <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${q.option_c}</div>
-                                                        <div style="${q.correct_option === 'D' ? 'color: #059669; font-weight: 800;' : ''}">D) ${q.option_d}</div>
+                                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.8rem; color: #64748b;">
+                                                        <div style="${q.correct_option === 'A' ? 'color: #059669; font-weight: 800;' : ''}">A) ${q.option_a || ''}</div>
+                                                        <div style="${q.correct_option === 'B' ? 'color: #059669; font-weight: 800;' : ''}">B) ${q.option_b || ''}</div>
+                                                        <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${q.option_c || ''}</div>
+                                                        <div style="${q.correct_option === 'D' ? 'color: #059669; font-weight: 800;' : ''}">D) ${q.option_d || ''}</div>
                                                         ${q.option_e ? `<div style="${q.correct_option === 'E' ? 'color: #059669; font-weight: 800;' : ''}">E) ${q.option_e}</div>` : ''}
+                                                    </div>
+                                                </div>
                                             `).join('')}
                                         </div>
-                                        <div style="display: flex; gap: 0.75rem; padding: 1.25rem; background: #f8fafc; border-top: 1px solid #f1f5f9;">
-                                            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); UI.editBankCategory('${tag}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; height: 44px; text-decoration: none !important;">
+                                        <div style="display: flex; gap: 0.75rem; padding: 1.25rem; background: #f1f5f9; border-top: 1px solid #e2e8f0;">
+                                            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); UI.editBankCategory('${tag}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fff; color: #475569; border: 1px solid #cbd5e1; height: 44px; text-decoration: none !important;">
                                                 <i data-lucide="edit-3" style="width: 16px;"></i> Edit Category
                                             </button>
                                             <button type="button" class="btn btn-danger" onclick="event.stopPropagation(); if(confirm('Delete all ${questions.length} questions in this category?')){UI.deleteBankCategory('BANK-${tag}')}" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px; text-decoration: none !important;">
