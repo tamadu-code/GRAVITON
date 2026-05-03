@@ -394,8 +394,9 @@ export const UI = {
         const assignedSubjects = [...new Set(assignments.map(a => a.subject_id))];
         
         const allStudents = await db.students.filter(s => s.is_active !== false).toArray();
-        // Filter students that the teacher actually teaches
-        const myStudents = allStudents.filter(s => assignedClasses.includes(s.class_name));
+        // Filter students that the teacher actually teaches (Admins see all)
+        const isAdmin = (this.currentUser.role || '').toLowerCase() === 'admin' || (this.currentUser.role || '').toLowerCase() === 'principal';
+        const myStudents = isAdmin ? allStudents : allStudents.filter(s => assignedClasses.includes(s.class_name));
         
         const session = (await db.settings.get('currentSession'))?.value || (await db.settings.get('current_session'))?.value || '2025/2026';
         const term = (await db.settings.get('currentTerm'))?.value || (await db.settings.get('current_term'))?.value || '1st Term';
@@ -4294,7 +4295,15 @@ export const UI = {
         const classContainer = document.getElementById('class-filter-container');
         const periodContainer = document.getElementById('period-filter-container');
 
-        let currentTab = 'school';
+        const role = (this.currentUser.role || '').toLowerCase();
+        let currentTab = role === 'teacher' ? 'subject' : 'school';
+
+        // Auto-initialize subject filter visibility for teachers
+        if (role === 'teacher') {
+            if (subjectContainer) subjectContainer.style.display = 'block';
+            if (subjectActions) subjectActions.style.display = 'block';
+            if (periodContainer) periodContainer.style.display = 'block';
+        }
 
         const updateSubjectFilter = async () => {
             const cls = classFilter.value;
@@ -7498,7 +7507,7 @@ export const UI = {
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: ${isAdmin || isTeacher ? '1fr 350px' : '1fr'}; gap: 2rem; align-items: start;">
+                <div class="broadcast-grid" style="display: grid; grid-template-columns: ${isAdmin || isTeacher ? '1fr 350px' : '1fr'}; gap: 2rem; align-items: start;">
                     <!-- Notice Feed -->
                     <div class="student-notices-container" style="display: flex; flex-direction: column; gap: 1.5rem;">
                         ${notices.length === 0 ? `
@@ -7548,11 +7557,19 @@ export const UI = {
 
                     <!-- Composer Sidebar -->
                     ${isAdmin || isTeacher ? `
-                    <div style="position: sticky; top: 1.5rem;">
-                        <div class="card" style="background: white; border-radius: 24px; padding: 2rem; border: 1px solid #e2e8f0; box-shadow: var(--shadow-md);">
-                            <h3 style="margin: 0 0 1.5rem 0; font-size: 1.2rem; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 0.75rem;">
-                                <i data-lucide="pen-tool" style="color: #4f46e5;"></i> Create Notice
-                            </h3>
+                    <div class="notice-composer-mobile" style="position: sticky; top: 1.5rem;">
+                        <div class="card" style="background: white; border-radius: 24px; padding: 1.5rem; border: 1px solid #e2e8f0; box-shadow: var(--shadow-md);">
+                            <div id="composer-mobile-trigger" class="mobile-only" style="display: none; justify-content: space-between; align-items: center; cursor: pointer; padding-bottom: 0.5rem; border-bottom: 1px solid #f1f5f9; margin-bottom: 1rem;">
+                                <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 0.75rem;">
+                                    <i data-lucide="pen-tool" style="color: #4f46e5; width: 18px;"></i> Create Notice
+                                </h3>
+                                <i data-lucide="chevron-down" id="composer-chevron"></i>
+                            </div>
+                            
+                            <div id="notice-composer-content" class="composer-collapse-content active">
+                                <h3 class="desktop-only" style="margin: 0 0 1.5rem 0; font-size: 1.2rem; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 0.75rem;">
+                                    <i data-lucide="pen-tool" style="color: #4f46e5;"></i> Create Notice
+                                </h3>
                             
                             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
                                 <div>
@@ -7600,6 +7617,20 @@ export const UI = {
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
         // 3. Event Listeners
+        // 3. Composer Toggle (Mobile)
+        const composerTrigger = document.getElementById('composer-mobile-trigger');
+        const composerContent = document.getElementById('notice-composer-content');
+        const composerChevron = document.getElementById('composer-chevron');
+        
+        if (composerTrigger && composerContent) {
+            composerTrigger.onclick = () => {
+                composerContent.classList.toggle('active');
+                if (composerChevron) {
+                    composerChevron.style.transform = composerContent.classList.contains('active') ? 'rotate(180deg)' : 'rotate(0deg)';
+                }
+            };
+        }
+
         const btnPost = document.getElementById('btn-post-notice');
         if (btnPost) {
             btnPost.addEventListener('click', async () => {

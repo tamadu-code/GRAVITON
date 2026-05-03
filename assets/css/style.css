@@ -4134,6 +4134,17 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
     .banner-actions {
         justify-content: center !important;
         width: 100%;
+        flex-direction: column;
+    }
+    
+    .broadcast-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+    }
+    
+    .notice-composer-mobile {
+        order: -1; /* Put composer at top on mobile */
+        margin-bottom: 2rem;
     }
 
     .btn-onboard-mobile {
@@ -4168,8 +4179,43 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
         justify-content: center;
     }
 
-    .staff-detail-grid {
+    .staff-detail-grid, .attendance-filters {
         grid-template-columns: 1fr !important;
+    }
+
+    .profile-header {
+        flex-direction: column !important;
+        align-items: center !important;
+        text-align: center !important;
+        gap: 1rem !important;
+    }
+
+    .profile-title-info {
+        text-align: center !important;
+        width: 100%;
+    }
+
+    .profile-title-info > div {
+        flex-direction: column !important;
+        align-items: center !important;
+    }
+
+    .staff-bio-card {
+        align-items: center !important;
+        text-align: center !important;
+        width: 100% !important;
+    }
+
+    /* Collapsible composer logic */
+    .composer-collapse-content {
+        display: none;
+    }
+    .composer-collapse-content.active {
+        display: block;
+    }
+    
+    #composer-mobile-trigger {
+        display: flex !important;
     }
 }
 
