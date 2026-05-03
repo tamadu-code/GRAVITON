@@ -6812,8 +6812,8 @@ export const UI = {
                     </div>
                 </main>
 
-                <!-- Question Map: Quick Jump (Grid Layout) -->
-                <div class="cbt-question-map" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 0.5rem; padding: 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; max-height: 150px; overflow-y: auto;">
+                <!-- Question Map: Full Grid Layout (No Scrolling) -->
+                <div class="cbt-question-map" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 0.4rem; padding: 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; width: 100%;">
                     ${this.currentQuestions.map((cq, i) => {
                         const isAnswered = this.userAnswers[cq.id];
                         const isActive = i === this.currentQuestionIndex;
