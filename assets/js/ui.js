@@ -7012,16 +7012,16 @@ export const UI = {
             const text = document.getElementById('bulk-q-text').value;
             if (!text) return;
 
-            // Deep Scanner: Matches questions spanning multiple lines
-            // Pattern: Question text -> (A) opt -> (B) opt -> (C) opt -> (D) opt -> [Ans: X] -> [Marks: Y] (optional)
-            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]?\s*([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // Ultra-Flexible Scanner: Handles case variations, extra spaces, and up to 5 options (E)
+            // Pattern: Question text -> (A) opt -> (B) opt -> (C) opt -> (D) opt -> (E) opt? -> [Ans: X] -> [Marks: Y]?
+            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
             let match;
             let count = 0;
 
             while ((match = masterRegex.exec(text)) !== null) {
-                const questionText = match[1].replace(/^\d+[\.\)]\s*/, '').trim(); // Remove leading numbers like "1."
-                const marks = match[7] ? parseFloat(match[7]) : 1;
+                const questionText = match[1].replace(/^\d+[\.\)]\s*/, '').trim(); 
+                const marks = match[8] ? parseFloat(match[8]) : 1;
 
                 this.cbtQuestions.push({
                     id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
@@ -7030,8 +7030,8 @@ export const UI = {
                     option_b: match[3].trim(),
                     option_c: match[4].trim(),
                     option_d: match[5].trim(),
-                    option_e: '',
-                    correct_option: match[6].toUpperCase(),
+                    option_e: match[6] ? match[6].trim() : '',
+                    correct_option: match[7].toUpperCase(),
                     marks: marks
                 });
                 count++;
