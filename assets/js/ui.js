@@ -5841,9 +5841,16 @@ export const UI = {
 
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
-        // Fetch results if student
+        // Fetch results if student - Prioritize 'In Progress' over 'Completed' if duplicates exist
         const studentResults = isStudent ? await db.cbt_results.where('student_id').equals(this.currentUser.assigned_id).toArray() : [];
-        const resultDict = studentResults.reduce((acc, r) => ({...acc, [r.exam_id]: r}), {});
+        const resultDict = studentResults.reduce((acc, r) => {
+            const existing = acc[r.exam_id];
+            // If we find an 'In Progress' record, always keep it over 'Completed'
+            if (!existing || r.status === 'In Progress' || (existing.status !== 'In Progress' && new Date(r.updated_at) > new Date(existing.updated_at))) {
+                acc[r.exam_id] = r;
+            }
+            return acc;
+        }, {});
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in-up">
