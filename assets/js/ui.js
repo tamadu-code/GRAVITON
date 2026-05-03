@@ -6397,19 +6397,117 @@ export const UI = {
         const exam = await db.cbt_exams.get(examId);
         if (!exam) return;
 
-        let questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+        const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
         if (questions.length === 0) {
             return Notifications.show('This exam has no questions yet.', 'error');
         }
 
-        // 1. Shuffle and Limit Questions
+        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+
+        if (session && session.status === 'In Progress') {
+            // RESUME: Skip instructions, go straight to exam
+            return this.finalizeStartCBTExam(examId, true);
+        }
+
+        if (session && session.status === 'Completed') {
+            return Notifications.show('You have already submitted this exam.', 'warning');
+        }
+
+        // NEW ATTEMPT: Show instructions first
+        this.renderCBTInstructions(examId);
+    },
+
+    async renderCBTInstructions(examId) {
+        const exam = await db.cbt_exams.get(examId);
+        const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+        const limit = parseInt(exam.question_limit) || questions.length;
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in" style="max-width: 800px; margin: 0 auto; padding: 2rem;">
+                <div class="card" style="background: white; border-radius: 32px; padding: 3rem; border: none; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);">
+                    <div class="text-center" style="margin-bottom: 3rem;">
+                        <div style="background: #e0e7ff; color: #4338ca; width: 80px; height: 80px; border-radius: 24px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; transform: rotate(-5deg);">
+                            <i data-lucide="info" style="width: 40px; height: 40px;"></i>
+                        </div>
+                        <h1 style="font-weight: 900; font-size: 2rem; color: #1e293b; margin-bottom: 0.5rem;">Examination Instructions</h1>
+                        <p style="color: #64748b; font-size: 1.1rem;">Please read carefully before starting your attempt.</p>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 3rem;">
+                        <div style="background: #f8fafc; padding: 1.5rem; border-radius: 20px; border: 1px solid #f1f5f9; text-align: center;">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem;">SUBJECT</div>
+                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${exam.subject_id}</div>
+                        </div>
+                        <div style="background: #f8fafc; padding: 1.5rem; border-radius: 20px; border: 1px solid #f1f5f9; text-align: center;">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem;">DURATION</div>
+                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${exam.duration} Minutes</div>
+                        </div>
+                        <div style="background: #f8fafc; padding: 1.5rem; border-radius: 20px; border: 1px solid #f1f5f9; text-align: center;">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem;">QUESTIONS</div>
+                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${Math.min(limit, questions.length)} Items</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 3rem;">
+                        <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                            <i data-lucide="shield-check" style="color: #10b981;"></i> Rules & Regulations
+                        </h3>
+                        <ul style="list-style: none; padding: 0; margin: 0;">
+                            <li style="display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 0; border-bottom: 1px solid #f1f5f9;">
+                                <div style="color: #ef4444; margin-top: 0.15rem;"><i data-lucide="alert-circle" style="width: 18px;"></i></div>
+                                <div style="color: #475569; line-height: 1.6; font-weight: 500;">Do <strong>NOT</strong> switch tabs, minimize the browser, or leave the exam interface. Every exit is <strong>logged and reported</strong> to the proctor.</div>
+                            </li>
+                            <li style="display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 0; border-bottom: 1px solid #f1f5f9;">
+                                <div style="color: #ef4444; margin-top: 0.15rem;"><i data-lucide="alert-circle" style="width: 18px;"></i></div>
+                                <div style="color: #475569; line-height: 1.6; font-weight: 500;">Right-clicking and keyboard shortcuts (Ctrl+C, Ctrl+V, F12) are <strong>disabled and monitored</strong>. Attempts to use them will be recorded as violations.</div>
+                            </li>
+                            <li style="display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 0; border-bottom: 1px solid #f1f5f9;">
+                                <div style="color: #f59e0b; margin-top: 0.15rem;"><i data-lucide="wifi-off" style="width: 18px;"></i></div>
+                                <div style="color: #475569; line-height: 1.6; font-weight: 500;">Ensure you have a <strong>stable internet connection</strong> and sufficient battery. If your device goes off, you can resume but the <strong>clock keeps ticking</strong>.</div>
+                            </li>
+                            <li style="display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 0; border-bottom: 1px solid #f1f5f9;">
+                                <div style="color: #10b981; margin-top: 0.15rem;"><i data-lucide="check-circle-2" style="width: 18px;"></i></div>
+                                <div style="color: #475569; line-height: 1.6; font-weight: 500;">Your answers are <strong>auto-saved</strong> after every selection. Use the Question Map at the bottom to jump between questions freely.</div>
+                            </li>
+                            <li style="display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 0;">
+                                <div style="color: #ef4444; margin-top: 0.15rem;"><i data-lucide="gavel" style="width: 18px;"></i></div>
+                                <div style="color: #475569; line-height: 1.6; font-weight: 500;">Excessive violations may result in the <strong>administrator forcefully submitting your exam</strong> as a penalty. Stay focused.</div>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-secondary" onclick="UI.renderCBT()" style="flex: 1; height: 60px; border-radius: 16px; font-weight: 800; background: #f1f5f9; color: #475569; border: none;">Go Back</button>
+                        <button class="btn btn-primary" onclick="UI.finalizeStartCBTExam('${examId}', false)" style="flex: 2; height: 60px; border-radius: 16px; font-weight: 900; background: #4338ca; color: white; border: none; font-size: 1.1rem; box-shadow: 0 10px 15px -3px rgba(67, 56, 202, 0.4);">
+                            I UNDERSTAND — START EXAM
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async finalizeStartCBTExam(examId, isResume = false) {
+        const exam = await db.cbt_exams.get(examId);
+        if (!exam) return;
+
+        let questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+        if (questions.length === 0) return;
+
+        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const now = new Date();
+        const durationSeconds = (exam.duration || 30) * 60;
+
+        // Shuffle and Limit Questions
         questions = this.shuffleArray([...questions]);
         const limit = parseInt(exam.question_limit) || 0;
         if (limit > 0) {
             questions = questions.slice(0, limit);
         }
 
-        // 2. Shuffle Options for each question
+        // Shuffle Options for each question
         questions = questions.map(q => {
             const options = [
                 { key: 'a', text: q.option_a },
@@ -6420,37 +6518,24 @@ export const UI = {
             ].filter(o => o.text);
 
             const shuffledOptions = this.shuffleArray([...options]);
-            
-            // The system knows the correct option by its text
             const correctText = q[`option_${q.correct_option.toLowerCase()}`];
-            
-            return {
-                ...q,
-                shuffledOptions,
-                correctText
-            };
+
+            return { ...q, shuffledOptions, correctText };
         });
 
-        // 3. Persistent Session Check (Cloud Timer)
-        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        // Check for existing session
         let session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
-        
-        const now = new Date();
-        const durationSeconds = (exam.duration || 30) * 60;
 
-        if (session) {
-            if (session.status === 'Completed') {
-                return Notifications.show('You have already submitted this exam.', 'warning');
-            }
-            // Resume session
+        if (session && session.status === 'In Progress') {
+            // Resume session — calculate remaining time from cloud timer
             const startTime = new Date(session.started_at);
             const elapsedSeconds = Math.floor((now - startTime) / 1000);
             this.examTimeLeft = durationSeconds - elapsedSeconds;
-            
+
             if (this.examTimeLeft <= 0) {
                 Notifications.show('Exam time expired while you were away. Submitting now...', 'warning');
                 this.currentExam = exam;
-                this.currentQuestions = questions; 
+                this.currentQuestions = questions;
                 this.userAnswers = session.answers || {};
                 return this.submitExam();
             }
@@ -6464,10 +6549,12 @@ export const UI = {
                 total_questions: questions.length,
                 answers: {},
                 warnings: 0,
+                violations: [],
                 started_at: now.toISOString(),
                 status: 'In Progress'
             });
             await db.cbt_results.add(newSession);
+            session = newSession;
             this.examTimeLeft = durationSeconds;
             syncToCloud();
         }
@@ -6476,7 +6563,16 @@ export const UI = {
         this.currentExam = exam;
         this.currentQuestions = questions;
         this.currentQuestionIndex = 0;
-        this.userAnswers = session ? session.answers : {};
+        this.userAnswers = session ? (session.answers || {}) : {};
+
+        // For resume: jump to the first unanswered question
+        if (isResume && this.userAnswers) {
+            const answeredCount = Object.keys(this.userAnswers).length;
+            if (answeredCount > 0) {
+                this.currentQuestionIndex = Math.min(answeredCount, questions.length - 1);
+            }
+        }
+
         this.examDurationSeconds = durationSeconds;
 
         document.body.classList.add('exam-mode');
