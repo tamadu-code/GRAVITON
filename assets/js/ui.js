@@ -6667,32 +6667,30 @@ export const UI = {
             const text = document.getElementById('bulk-q-text').value;
             if (!text) return;
 
-            const lines = text.split('\n').filter(l => l.trim() !== '');
+            // Deep Scanner: Matches questions spanning multiple lines
+            // Pattern: Question text -> (A) opt -> (B) opt -> (C) opt -> (D) opt -> [Ans: X] -> [Marks: Y] (optional)
+            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]?\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]?\s*([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d+)\])?/gi;
+            
+            let match;
             let count = 0;
 
-            lines.forEach(line => {
-                try {
-                    // Improved Regex for: Question (A) Opt (B) Opt (C) Opt (D) Opt [Ans: X] [Marks: Y]
-                    const qMatch = line.match(/(.*?)\s*\(A\)\s*(.*?)\s*\(B\)\s*(.*?)\s*\(C\)\s*(.*?)\s*\(D\)\s*(.*?)\s*\[Ans:\s*([A-E])\]/i);
-                    const marksMatch = line.match(/\[Marks:\s*(\d+)\]/i);
-                    const marks = marksMatch ? parseInt(marksMatch[1]) : 1;
-                    
-                    if (qMatch) {
-                        this.cbtQuestions.push({
-                            id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
-                            question_text: qMatch[1].trim(),
-                            option_a: qMatch[2].trim(),
-                            option_b: qMatch[3].trim(),
-                            option_c: qMatch[4].trim(),
-                            option_d: qMatch[5].trim(),
-                            option_e: '',
-                            correct_option: qMatch[6].toUpperCase(),
-                            marks: marks
-                        });
-                        count++;
-                    }
-                } catch (e) { console.error('Failed to parse line:', line); }
-            });
+            while ((match = masterRegex.exec(text)) !== null) {
+                const questionText = match[1].replace(/^\d+[\.\)]\s*/, '').trim(); // Remove leading numbers like "1."
+                const marks = match[7] ? parseInt(match[7]) : 1;
+
+                this.cbtQuestions.push({
+                    id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
+                    question_text: questionText,
+                    option_a: match[2].trim(),
+                    option_b: match[3].trim(),
+                    option_c: match[4].trim(),
+                    option_d: match[5].trim(),
+                    option_e: '',
+                    correct_option: match[6].toUpperCase(),
+                    marks: marks
+                });
+                count++;
+            }
 
             this.refreshQuestionPreview();
             Notifications.show(`Successfully imported ${count} questions`, 'success');
