@@ -9723,14 +9723,14 @@ export const UI = {
                                                 </button>
                                             ` : ''}
 
-                                            <div style="display: flex; gap: 0.75rem; border-top: 1px dashed #f1f5f9; padding-top: 1rem;">
+                                            <div style="display: flex; gap: 0.75rem; border-top: 1px solid #f1f5f9; padding-top: 1.25rem; margin-top: 0.5rem;">
                                                 ${isCompleted ? `
-                                                    <button type="button" class="btn btn-warning" onclick="event.stopPropagation(); UI.reopenCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fffbeb; color: #b45309; border: 1px solid #fde68a; height: 44px; text-decoration: none !important;">
-                                                        <i data-lucide="refresh-ccw" style="width: 16px;"></i> Re-open Exam
+                                                    <button type="button" class="btn btn-warning" onclick="event.stopPropagation(); UI.reopenCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 12px; font-weight: 800; background: #fffbeb; color: #92400e; border: 1px solid #fde68a; height: 48px; text-decoration: none !important; display: flex; align-items: center; justify-content: center; gap: 0.5rem; box-shadow: 0 2px 4px rgba(251, 191, 36, 0.1);">
+                                                        <i data-lucide="refresh-ccw" style="width: 18px;"></i> Re-open Student Attempt
                                                     </button>
                                                 ` : `
-                                                    <button type="button" class="btn btn-danger" onclick="event.stopPropagation(); UI.forceSubmitCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px; text-decoration: none !important;">
-                                                        <i data-lucide="log-out" style="width: 16px;"></i> Force Submit
+                                                    <button type="button" class="btn btn-danger" onclick="event.stopPropagation(); UI.forceSubmitCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 12px; font-weight: 800; background: #fee2e2; color: #b91c1c; border: 1px solid #fecdd3; height: 48px; text-decoration: none !important; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                                        <i data-lucide="log-out" style="width: 18px;"></i> Force Submit Exam
                                                     </button>
                                                 `}
                                             </div>
