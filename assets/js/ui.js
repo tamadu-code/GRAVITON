@@ -2048,6 +2048,14 @@ export const UI = {
                                 <div style="font-size: 0.85rem; color: #1e293b; font-weight: 600;">${student.address || 'No address provided'}</div>
                             </div>
                             <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-secondary" onclick="UI.provisionStudentAccess('${studentId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; height: 44px; font-size: 0.8rem;">
+                                    <i data-lucide="shield-check" style="width: 14px;"></i> Provision Access
+                                </button>
+                                <button class="btn btn-primary" onclick="UI.editStudent('${studentId}')" style="flex: 1; border-radius: 10px; font-weight: 700; height: 44px; font-size: 0.8rem;">
+                                    <i data-lucide="edit-3" style="width: 14px;"></i> Edit Details
+                                </button>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
                                 <button class="btn btn-secondary view-full-profile-btn" data-id="${student.student_id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 44px; background: #2563eb; color: white; border: none; font-weight: 700;">
                                     <i data-lucide="user" style="width: 14px;"></i> View Full Profile
                                 </button>
@@ -9651,6 +9659,17 @@ export const UI = {
                     </div>
                 </div>
 
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+                    <h3 style="font-weight: 800; color: #1e293b; font-size: 1.1rem; margin: 0; display: flex; align-items: center; gap: 0.75rem;">
+                        <i data-lucide="users" style="width: 20px; color: #4338ca;"></i> Attempt Records (${results.length})
+                    </h3>
+                    ${results.length > 0 ? `
+                        <button type="button" class="btn btn-sm" style="background: #fffbeb; color: #b45309; border: 1px solid #fde68a; font-weight: 800; border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem;" onclick="if(confirm('Re-open all attempts? This will allow all students who have finished to continue their exams.')){UI.reopenAllCBTAttempts('${examId}')}">
+                            <i data-lucide="refresh-ccw" style="width: 14px;"></i> Re-open All
+                        </button>
+                    ` : ''}
+                </div>
+
                 ${results.length === 0 ? `
                     <div class="card" style="text-align: center; padding: 4rem 2rem; border-radius: 24px; border: none;">
                         <div style="color: #94a3b8; margin-bottom: 1rem;"><i data-lucide="inbox" style="width: 48px; height: 48px;"></i></div>
@@ -9666,9 +9685,8 @@ export const UI = {
                             const violationCount = r.warnings || 0;
 
                             return `
-                                <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04);">
-                                    <!-- Clickable Header -->
-                                    <div onclick="this.parentElement.classList.toggle('expanded')" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem;">
+                                <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); margin-bottom: 1rem;">
+                                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '500px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem; background: white;">
                                         <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0;">
                                             <div style="background: ${isCompleted ? '#ecfdf5' : '#e0e7ff'}; color: ${isCompleted ? '#059669' : '#4338ca'}; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; flex-shrink: 0;">
                                                 ${idx + 1}
@@ -9681,39 +9699,41 @@ export const UI = {
                                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
                                             ${violationCount > 0 ? `<span style="background: #fee2e2; color: #ef4444; padding: 0.3rem 0.6rem; border-radius: 6px; font-weight: 800; font-size: 0.75rem;">⚠ ${violationCount}</span>` : ''}
                                             <span style="background: ${statusBg}; color: ${statusColor}; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 0.75rem;">${r.status}</span>
-                                            <i data-lucide="chevron-down" style="width: 18px; color: #94a3b8; transition: transform 0.2s;"></i>
+                                            <i data-lucide="chevron-down" class="chevron-icon" style="width: 18px; color: #94a3b8; transition: transform 0.3s ease;"></i>
                                         </div>
                                     </div>
 
                                     <!-- Expandable Details -->
-                                    <div class="participant-details" style="border-top: 1px solid #f1f5f9; overflow: hidden;">
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1.25rem 0;">
-                                            <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
-                                                <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">SCORE</div>
-                                                <div style="font-weight: 900; color: #4338ca; font-size: 1.25rem;">${r.score} / ${r.total_questions}</div>
+                                    <div class="participant-details-area" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
+                                        <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                                <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
+                                                    <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">SCORE</div>
+                                                    <div style="font-weight: 900; color: #4338ca; font-size: 1.25rem;">${r.score} / ${r.total_questions}</div>
+                                                </div>
+                                                <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
+                                                    <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">STARTED AT</div>
+                                                    <div style="font-weight: 700; color: #1e293b; font-size: 0.85rem;">${new Date(r.started_at).toLocaleString()}</div>
+                                                </div>
                                             </div>
-                                            <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
-                                                <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">STARTED AT</div>
-                                                <div style="font-weight: 700; color: #1e293b; font-size: 0.85rem;">${new Date(r.started_at).toLocaleString()}</div>
+
+                                            ${violationCount > 0 ? `
+                                                <button type="button" onclick="UI.showViolationLog('${r.student_id}', '${examId}')" style="width: 100%; background: #fef2f2; color: #ef4444; border: 1px solid #fecdd3; padding: 0.75rem; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                                    <i data-lucide="shield-alert" style="width: 16px;"></i> View ${violationCount} Violation${violationCount !== 1 ? 's' : ''}
+                                                </button>
+                                            ` : ''}
+
+                                            <div style="display: flex; gap: 0.75rem; border-top: 1px dashed #f1f5f9; padding-top: 1rem;">
+                                                ${isCompleted ? `
+                                                    <button type="button" class="btn btn-warning" onclick="event.stopPropagation(); UI.reopenCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fffbeb; color: #b45309; border: 1px solid #fde68a; height: 44px; text-decoration: none !important;">
+                                                        <i data-lucide="refresh-ccw" style="width: 16px;"></i> Re-open Exam
+                                                    </button>
+                                                ` : `
+                                                    <button type="button" class="btn btn-danger" onclick="event.stopPropagation(); UI.forceSubmitCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px; text-decoration: none !important;">
+                                                        <i data-lucide="log-out" style="width: 16px;"></i> Force Submit
+                                                    </button>
+                                                `}
                                             </div>
-                                        </div>
-
-                                        ${violationCount > 0 ? `
-                                            <button type="button" onclick="UI.showViolationLog('${r.student_id}', '${examId}')" style="width: 100%; background: #fef2f2; color: #ef4444; border: 1px solid #fecdd3; padding: 0.75rem; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 1rem;">
-                                                <i data-lucide="shield-alert" style="width: 16px;"></i> View ${violationCount} Violation${violationCount !== 1 ? 's' : ''}
-                                            </button>
-                                        ` : ''}
-
-                                        <div style="display: flex; gap: 0.75rem; padding-bottom: 1.25rem;">
-                                            ${isCompleted ? `
-                                                <button type="button" class="btn btn-warning" onclick="UI.reopenCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fffbeb; color: #b45309; border: 1px solid #fde68a; height: 44px;">
-                                                    <i data-lucide="refresh-ccw" style="width: 16px;"></i> Re-open Exam
-                                                </button>
-                                            ` : `
-                                                <button type="button" class="btn btn-danger" onclick="UI.forceSubmitCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px;">
-                                                    <i data-lucide="log-out" style="width: 16px;"></i> Force Submit
-                                                </button>
-                                            `}
                                         </div>
                                     </div>
                                 </div>
@@ -9884,5 +9904,60 @@ export const UI = {
         };
         
         input.click();
+    },
+
+    async provisionStudentAccess(studentId) {
+        if (!confirm(`Are you sure you want to provision cloud access for student ${studentId}? This will set their password to their ID if it's their first time.`)) return;
+
+        try {
+            Notifications.show('Syncing credentials with cloud...', 'info');
+            const studentEmail = `${studentId.toLowerCase()}@student.school`;
+            
+            // Call registration helper (it handles existing users gracefully)
+            const { error } = await registerUser(studentEmail, studentId, studentId, 'Student');
+            
+            if (error) {
+                if (error.message.includes('already registered') || error.message.includes('already exists')) {
+                    // If already exists, offer to reset password to ID
+                    if (confirm('Account already exists. Would you like to reset their password back to their Student ID?')) {
+                        const { error: resetError } = await updateUserPassword(studentEmail, studentId);
+                        if (resetError) throw resetError;
+                        Notifications.show('Password reset successfully.', 'success');
+                    }
+                } else {
+                    throw error;
+                }
+            } else {
+                Notifications.show('Cloud access provisioned successfully.', 'success');
+            }
+        } catch (e) {
+            console.error('Provision Error:', e);
+            Notifications.show(`Failed to provision access: ${e.message}`, 'error');
+        }
+    },
+
+    async reopenAllCBTAttempts(examId) {
+        try {
+            const results = await db.cbt_results.where('exam_id').equals(examId).and(r => r.status === 'Completed').toArray();
+            if (results.length === 0) {
+                Notifications.show('No completed attempts found to re-open.', 'info');
+                return;
+            }
+
+            for (const r of results) {
+                await db.cbt_results.update(r.id, {
+                    status: 'In Progress',
+                    updated_at: new Date().toISOString(),
+                    is_synced: 0
+                });
+            }
+
+            Notifications.show(`Successfully re-opened ${results.length} attempts.`, 'success');
+            syncToCloud();
+            this.renderCBTParticipants(examId);
+        } catch (err) {
+            console.error('Re-open all error:', err);
+            Notifications.show('Failed to re-open attempts.', 'error');
+        }
     }
 };
