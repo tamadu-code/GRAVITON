@@ -124,6 +124,7 @@ export const UI = {
                 case 'insights': await this.renderInsights(); break;
                 case 'noticeboard': await this.renderNoticeBoard(); break;
                 case 'profile': await this.renderProfile(); break;
+                case 'cbt_participants': await this.renderCBTParticipants(this.currentViewData); break;
                 default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
             }
         } catch (error) {
@@ -5893,6 +5894,9 @@ export const UI = {
                                                 `;
                                             })() : `
                                                 ${isAdmin ? `
+                                                <button class="btn btn-primary btn-sm" title="View Participants" onclick="UI.renderCBTParticipants('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #e0e7ff; color: #4338ca; border: none;">
+                                                    <i data-lucide="users" style="width: 18px; height: 18px;"></i>
+                                                </button>
                                                 <button class="btn btn-warning btn-sm" title="Archive Exam" onclick="UI.archiveExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #fef3c7; color: #d97706; border: none;">
                                                     <i data-lucide="archive" style="width: 18px; height: 18px;"></i>
                                                 </button>
@@ -9077,6 +9081,103 @@ export const UI = {
         // Direct them to the Academic module but filtered (or just show the modal)
         Notifications.show(`Redirecting to Academic Manager for ${className}...`, 'info');
         this.renderView('academic');
+    },
+
+    async renderCBTParticipants(examId) {
+        const exam = await db.cbt_exams.get(examId);
+        if (!exam) return this.renderCBT();
+
+        const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
+        const students = await db.students.toArray();
+        const studentMap = students.reduce((acc, s) => ({...acc, [s.assigned_id]: s.full_name}), {});
+
+        this.currentViewData = examId;
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-800">Exam Participants</h1>
+                        <p class="text-slate-500">${exam.title} (${exam.subject_id})</p>
+                    </div>
+                    <button class="btn btn-secondary" onclick="UI.renderCBT()"><i data-lucide="arrow-left"></i> Back to Hub</button>
+                </div>
+
+                <div class="card" style="padding: 0; overflow: hidden; border-radius: 24px; border: none; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
+                    <table class="table" style="margin-bottom: 0;">
+                        <thead>
+                            <tr style="background: #f8fafc;">
+                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">STUDENT</th>
+                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">STATUS</th>
+                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">SCORE</th>
+                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800;">STARTED AT</th>
+                                <th style="padding: 1.5rem; color: #64748b; font-weight: 800; text-align: right;">ACTIONS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${results.length === 0 ? `<tr><td colspan="5" style="text-align: center; padding: 3rem; color: #94a3b8;">No attempts recorded for this exam yet.</td></tr>` : results.map(r => `
+                                <tr style="border-bottom: 1px solid #f1f5f9;">
+                                    <td style="padding: 1.25rem 1.5rem;">
+                                        <div style="font-weight: 700; color: #1e293b;">${studentMap[r.student_id] || 'Unknown Student'}</div>
+                                        <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">ID: ${r.student_id}</div>
+                                    </td>
+                                    <td style="padding: 1.25rem 1.5rem;">
+                                        <span class="badge" style="background: ${r.status === 'Completed' ? '#ecfdf5' : '#fff7ed'}; color: ${r.status === 'Completed' ? '#059669' : '#d97706'}; font-weight: 800; padding: 0.5rem 1rem; border-radius: 8px;">
+                                            ${r.status}
+                                        </span>
+                                    </td>
+                                    <td style="padding: 1.25rem 1.5rem; font-weight: 900; color: #4338ca; font-size: 1.1rem;">
+                                        ${r.score} / ${r.total_questions}
+                                    </td>
+                                    <td style="padding: 1.25rem 1.5rem; color: #64748b; font-size: 0.85rem;">
+                                        ${new Date(r.started_at).toLocaleString()}
+                                    </td>
+                                    <td style="padding: 1.25rem 1.5rem; text-align: right;">
+                                        <button class="btn btn-warning btn-sm" onclick="UI.reopenCBTExam('${r.student_id}', '${examId}')" style="border-radius: 8px; font-weight: 700; background: #fffbeb; color: #b45309; border: 1px solid #fde68a;">
+                                            <i data-lucide="refresh-ccw" style="width: 14px;"></i> Re-open
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async reopenCBTExam(studentId, examId) {
+        const exam = await db.cbt_exams.get(examId);
+        const minsStr = prompt(`Re-opening exam for student. How many minutes should they have left? (Max: ${exam.duration})`, '15');
+        if (!minsStr) return;
+        
+        const minutesAllowed = parseInt(minsStr);
+        if (isNaN(minutesAllowed) || minutesAllowed <= 0) {
+            return Notifications.show('Please enter a valid number of minutes.', 'error');
+        }
+
+        try {
+            // Formula: ElapsedTime = TotalDuration - RemainingTime
+            const totalDurationSecs = exam.duration * 60;
+            const remainingSecs = minutesAllowed * 60;
+            const elapsedSecs = totalDurationSecs - remainingSecs;
+            const fakeStartTime = new Date(Date.now() - (elapsedSecs * 1000));
+
+            // Use .where() to target the specific composite key or separate fields
+            await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
+                status: 'In Progress',
+                started_at: fakeStartTime.toISOString(),
+                is_synced: 0
+            });
+
+            Notifications.show(`Exam re-opened with ${minutesAllowed} minutes remaining.`, 'success');
+            syncToCloud();
+            this.renderCBTParticipants(examId);
+        } catch (err) {
+            console.error('Re-open error:', err);
+            Notifications.show('Failed to re-open exam.', 'error');
+        }
     },
 
     /**
