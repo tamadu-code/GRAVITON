@@ -6980,7 +6980,7 @@ export const UI = {
             let multiplier = 100; // Default to percentage
             const field = (exam.score_field || '').toLowerCase();
             if (field === 'exam') multiplier = 60;
-            else if (field.includes('test') || field.includes('project') || field.includes('assignment')) multiplier = 20;
+            else if (field.includes('test') || field.includes('project') || field.includes('assignment')) multiplier = 10;
 
             const scoreValue = Math.round((result.score / result.total_questions) * multiplier);
 
