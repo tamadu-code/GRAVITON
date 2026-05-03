@@ -5782,23 +5782,26 @@ export const UI = {
         let subjects = (await db.subjects.toArray());
         let exams = await db.cbt_exams.toArray();
 
-        if (isTeacher) {
-            exams = exams.filter(e => e.teacher_id === teacherId);
+        const isAdmin = role === 'admin' || role === 'principal';
+        let activeExams = [];
+        let archivedExams = [];
+
+        if (isAdmin) {
+            activeExams = exams.filter(e => e.status === 'Active');
+            archivedExams = exams.filter(e => e.status === 'Archived');
+        } else if (isTeacher) {
+            activeExams = exams.filter(e => e.teacher_id === teacherId && e.status === 'Active');
         } else if (isStudent) {
             const now = new Date();
             const student = await db.students.get(this.currentUser.assigned_id || this.currentUser.id);
             const sClass = student ? student.class_name : '';
             
-            exams = exams.filter(e => {
-                // Smart class matching (e.g. Exam for "JSS 3" should show for "JSS 3A")
+            activeExams = exams.filter(e => {
                 const isMyClass = sClass.toLowerCase().includes(e.class_name.toLowerCase()) || 
                                  e.class_name.toLowerCase().includes(sClass.toLowerCase());
                 const isActive = e.status === 'Active';
-                
-                // Safety check for dates
                 const hasStarted = !e.start_time || new Date(e.start_time) <= now;
                 const hasNotEnded = !e.end_time || new Date(e.end_time) >= now;
-                
                 return isMyClass && isActive && hasStarted && hasNotEnded;
             });
         }
@@ -5824,8 +5827,11 @@ export const UI = {
                 </div>
 
                 <div class="cbt-list-container" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem;">
-                    ${exams.length === 0 ? '<div class="card text-center p-4">No exams found.</div>' : 
-                        exams.map(e => {
+                    <h3 style="font-weight: 800; color: #1e293b; font-size: 1.2rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                        <i data-lucide="layers" style="width: 20px; color: #4338ca;"></i> ${isStudent ? 'Available Assessments' : 'Active Exams'}
+                    </h3>
+                    ${activeExams.length === 0 ? '<div class="card text-center p-4">No active exams found.</div>' : 
+                        activeExams.map(e => {
                             const result = resultDict[e.id];
                             return `
                             <div class="cbt-exam-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
@@ -5870,11 +5876,16 @@ export const UI = {
                                                     <i data-lucide="play" style="width: 16px;"></i> Start Exam
                                                 </button>
                                             ` : `
+                                                ${isAdmin ? `
+                                                <button class="btn btn-warning btn-sm" title="Archive Exam" onclick="UI.archiveExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #fef3c7; color: #d97706; border: none;">
+                                                    <i data-lucide="archive" style="width: 18px; height: 18px;"></i>
+                                                </button>
+                                                ` : ''}
                                                 <button class="btn btn-secondary btn-sm" onclick="UI.renderCBTEditor('${e.id}')" style="height: 40px; padding: 0 1.25rem; border-radius: 10px;">
                                                     <i data-lucide="edit-3" style="width: 16px;"></i> Edit
                                                 </button>
                                                 <button class="btn btn-danger btn-sm" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                                                    <i data-lucide="trash-2" style="width: 16px;"></i>
+                                                    <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
                                                 </button>
                                             `}
                                         </div>
@@ -5884,6 +5895,33 @@ export const UI = {
                             </div>
                         `;
                         }).join('')}
+
+                    ${isAdmin && archivedExams.length > 0 ? `
+                        <div style="margin-top: 3rem; padding-top: 2rem; border-top: 2px dashed #e2e8f0;">
+                            <h3 style="font-weight: 800; color: #64748b; font-size: 1.1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem;">
+                                <i data-lucide="archive" style="width: 20px;"></i> Archived Records
+                            </h3>
+                            ${archivedExams.map(e => `
+                                <div class="cbt-exam-card" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; margin-bottom: 1rem; opacity: 0.8;">
+                                    <div style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+                                        <div style="display: flex; align-items: center; gap: 1rem;">
+                                            <div style="width: 40px; height: 40px; background: #f1f5f9; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #94a3b8;">
+                                                <i data-lucide="package" style="width: 20px;"></i>
+                                            </div>
+                                            <div>
+                                                <div style="font-weight: 700; color: #475569;">${e.title}</div>
+                                                <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">${e.class_name} | Archived</div>
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <button class="btn btn-sm" onclick="UI.archiveExam('${e.id}', 'Active')" style="background: white; border: 1px solid #e2e8f0; color: #4338ca; font-weight: 700;">Unarchive</button>
+                                            <button class="btn btn-danger btn-sm" onclick="UI.deleteExam('${e.id}')" style="background: #fee2e2; border: none; color: #ef4444; width: 32px; height: 32px; padding: 0; border-radius: 8px;"><i data-lucide="trash-2" style="width: 14px;"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -5909,6 +5947,16 @@ export const UI = {
             }
 
             Notifications.show('Exam deleted successfully', 'success');
+            this.renderCBT();
+            syncToCloud();
+        }
+    },
+
+    async archiveExam(id, newStatus = 'Archived') {
+        const msg = newStatus === 'Archived' ? 'Archive this exam? It will be hidden from students and teachers.' : 'Restore this exam to the active list?';
+        if (confirm(msg)) {
+            await db.cbt_exams.update(id, { status: newStatus, is_synced: 0 });
+            Notifications.show(newStatus === 'Archived' ? 'Exam archived' : 'Exam restored', 'success');
             this.renderCBT();
             syncToCloud();
         }
