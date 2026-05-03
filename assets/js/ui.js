@@ -6069,8 +6069,18 @@ export const UI = {
                                 </div>
                                 <div class="cbt-form-group">
                                     <label>Allocated Marks:</label>
-                                    <input type="number" id="q-marks" class="cbt-input" value="1" min="1">
+                                    <input type="number" id="q-marks" class="cbt-input" value="1" step="0.1" min="0.1">
                                 </div>
+                            </div>
+
+                            <!-- Bulk Marks Tool -->
+                            <div style="background: #f1f5f9; padding: 1rem; border-radius: 12px; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+                                <div style="font-size: 0.8rem; font-weight: 700; color: #475569;">BULK SET MARKS:</div>
+                                <div style="display: flex; gap: 0.5rem; flex: 1;">
+                                    <input type="number" id="bulk-marks-input" class="cbt-input" style="height: 36px; padding: 0 10px;" placeholder="e.g. 1.5" step="0.1">
+                                    <button class="btn btn-sm" onclick="UI.applyBulkMarks()" style="background: #4338ca; color: white; border: none; border-radius: 8px; padding: 0 1rem; font-weight: 700; cursor: pointer; height: 36px;">Apply to All</button>
+                                </div>
+                                <div id="exam-total-badge" style="background: #e0e7ff; color: #4338ca; padding: 6px 12px; border-radius: 8px; font-weight: 900; font-size: 0.75rem;">TOTAL: 0</div>
                             </div>
 
                             <div style="display:flex; justify-content:flex-end; gap:1rem; margin-top:2rem;">
@@ -6239,7 +6249,7 @@ export const UI = {
             option_d: document.getElementById('opt-d').value,
             option_e: document.getElementById('opt-e').value,
             correct_option: document.getElementById('q-correct').value,
-            marks: parseInt(document.getElementById('q-marks').value) || 1
+            marks: parseFloat(document.getElementById('q-marks').value) || 1
         };
 
         this.cbtQuestions.push(q);
@@ -6267,7 +6277,7 @@ export const UI = {
 
         area.innerHTML = this.cbtQuestions.map((q, idx) => `
             <div class="card" style="margin-bottom:0.75rem; padding:1rem; border-radius:12px; background:#f8fafc; border:1px solid #e2e8f0; position:relative;">
-                <div style="font-weight:800; color:#4338ca; font-size:0.75rem; margin-bottom:0.5rem; text-transform:uppercase;">Question ${idx + 1} <span style="margin-left:0.5rem; color:#64748b;">[${q.marks} Marks]</span></div>
+                <div style="font-weight:800; color:#4338ca; font-size:0.75rem; margin-bottom:0.5rem; text-transform:uppercase;">Question ${idx + 1} <span style="margin-left:0.5rem; color:#64748b;">[${(q.marks || 1).toFixed(1)} Marks]</span></div>
                 <div style="font-size:0.95rem; color:#1e293b; line-height:1.5; margin-bottom:0.5rem;">${q.question_text}</div>
                 <div style="font-size:0.8rem; color:#64748b; font-weight:600;">Correct: ${q.correct_option}</div>
                 <button onclick="UI.removeTempQuestion('${q.id}')" style="position:absolute; top:12px; right:12px; background:none; border:none; color:#ef4444; cursor:pointer; padding:4px;">
@@ -6275,8 +6285,22 @@ export const UI = {
                 </button>
             </div>
         `).join('');
+
+        // Update total badge
+        const total = this.cbtQuestions.reduce((acc, q) => acc + (parseFloat(q.marks) || 1), 0);
+        const badge = document.getElementById('exam-total-badge');
+        if (badge) badge.innerText = `TOTAL: ${total.toFixed(1)}`;
         
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    applyBulkMarks() {
+        const val = parseFloat(document.getElementById('bulk-marks-input').value);
+        if (isNaN(val) || val <= 0) return Notifications.show('Enter a valid mark (e.g. 1.5)', 'warning');
+
+        this.cbtQuestions = this.cbtQuestions.map(q => ({ ...q, marks: val }));
+        this.refreshQuestionPreview();
+        Notifications.show(`All questions set to ${val} marks`, 'success');
     },
 
     removeTempQuestion(id) {
