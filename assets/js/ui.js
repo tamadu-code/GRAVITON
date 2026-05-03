@@ -6596,8 +6596,9 @@ export const UI = {
             const elapsedSeconds = Math.floor((now - startTime) / 1000);
             this.examTimeLeft = durationSeconds - elapsedSeconds;
 
-            if (this.examTimeLeft <= 0) {
-                Notifications.show('Exam time expired while you were away. Submitting now...', 'warning');
+            // Only auto-submit if they've exceeded duration by at least 30 seconds
+            if (this.examTimeLeft < -30) {
+                Notifications.show('Exam time expired. Submitting now...', 'warning');
                 this.currentExam = exam;
                 this.currentQuestions = questions;
                 this.userAnswers = session.answers || {};
@@ -6879,17 +6880,31 @@ export const UI = {
             }
         });
 
-        const result = prepareForSync({
-            id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-            exam_id: this.currentExam.id,
-            student_id: this.currentUser.assigned_id || this.currentUser.id,
-            score,
+        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const examId = this.currentExam.id;
+
+        // Update EXISTING session instead of adding new one
+        const existing = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+        
+        const resultUpdate = {
+            score: score,
             total_questions: this.currentQuestions.length,
             answers: this.userAnswers,
-            updated_at: new Date().toISOString()
-        });
+            status: 'Completed',
+            updated_at: new Date().toISOString(),
+            is_synced: 0
+        };
 
-        await db.cbt_results.add(result);
+        if (existing) {
+            await db.cbt_results.update(existing.id, resultUpdate);
+        } else {
+            await db.cbt_results.add({
+                id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                exam_id: examId,
+                student_id: studentId,
+                ...resultUpdate
+            });
+        }
         
         // Auto-post to scoresheet if configured
         if (this.currentExam.score_field) {
@@ -6915,7 +6930,9 @@ export const UI = {
         
         document.body.classList.remove('exam-mode');
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        syncToCloud();
+        
+        // Wait for cloud sync to finish before allowing navigation
+        await syncToCloud();
     },
 
     async postCBTToScoresheet(result) {
