@@ -6565,6 +6565,13 @@ export const UI = {
         if (!exam) return;
 
         let questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+        console.log(`[CBT AUDIT] Loaded ${questions.length} questions for exam ${examId}`);
+        
+        // Data Integrity Check
+        const brokenQuestions = questions.filter(q => !q.option_a && !q.option_b);
+        if (brokenQuestions.length > 0) {
+            console.warn(`[CBT AUDIT] WARNING: Found ${brokenQuestions.length} questions with ZERO options! IDs:`, brokenQuestions.map(q => q.id));
+        }
         if (questions.length === 0) return;
 
         const studentId = this.currentUser.assigned_id || this.currentUser.id;
@@ -7019,9 +7026,8 @@ export const UI = {
             const text = document.getElementById('bulk-q-text').value;
             if (!text) return;
 
-            // Ultra-Flexible Scanner: Handles case variations, extra spaces, and up to 5 options (E)
-            // Pattern: Question text -> (A) opt -> (B) opt -> (C) opt -> (D) opt -> (E) opt? -> [Ans: X] -> [Marks: Y]?
-            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // Ultra-Flexible Scanner: Handles case variations, extra spaces, dots, and varied delimiters
+            const masterRegex = /([\s\S]*?)\s*[\(\[\.]?\s*[Aa][\)\]\.]?\s+([\s\S]*?)\s*[\(\[\.]?\s*[Bb][\)\]\.]?\s+([\s\S]*?)\s*[\(\[\.]?\s*[Cc][\)\]\.]?\s+([\s\S]*?)\s*[\(\[\.]?\s*[Dd][\)\]\.]?\s+([\s\S]*?)\s*(?:[\(\[\.]?\s*[Ee][\)\]\.]?\s+([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
             let match;
             let count = 0;
