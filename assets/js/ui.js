@@ -5899,7 +5899,7 @@ export const UI = {
                                         </div>
                                     </div>
                                     <div style="display: flex; align-items: center; gap: 1rem;">
-                                        ${result ? '<span class="badge success">COMPLETED</span>' : `<span class="badge badge-${e.status === 'Active' ? 'success' : 'warning'}" style="padding: 6px 12px; border-radius: 8px;">${e.status}</span>`}
+                                        ${result ? (result.status === 'Completed' ? '<span class="badge success">COMPLETED</span>' : '<span class="badge warning">IN PROGRESS</span>') : `<span class="badge badge-${e.status === 'Active' ? 'success' : 'warning'}" style="padding: 6px 12px; border-radius: 8px;">${e.status}</span>`}
                                         <i data-lucide="chevron-down" class="chevron-icon" style="width: 20px; color: #94a3b8; transition: transform 0.3s ease;"></i>
                                     </div>
                                 </div>
@@ -5917,7 +5917,7 @@ export const UI = {
                                             <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">TERM / SESSION</div>
                                             <div style="font-weight: 700; color: #334155;">${e.term} | ${e.session}</div>
                                         </div>
-                                        ${result ? `
+                                        ${(result && result.status === 'Completed') ? `
                                         <div>
                                             <div style="font-size: 0.7rem; font-weight: 800; color: #10b981; margin-bottom: 0.25rem;">YOUR SCORE</div>
                                             <div style="font-weight: 800; color: #064e3b; font-size: 1.25rem;">${result.score} / ${result.total_questions}</div>
