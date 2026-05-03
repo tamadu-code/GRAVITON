@@ -11,6 +11,16 @@ import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPas
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
     get viewTitle() { return document.getElementById('view-title'); },
+    
+    escapeHTML(str) {
+        if (!str) return '';
+        return str.toString()
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    },
     currentUser: {
         role: localStorage.getItem('user_role') || 'Admin',
         name: 'Admin User'
@@ -9399,14 +9409,14 @@ export const UI = {
                                             ${questions.map((q, i) => `
                                                 <div style="background: #f8fafc; border-radius: 12px; padding: 1rem; border: 1px solid #f1f5f9;">
                                                     <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; margin-bottom: 0.5rem;">
-                                                        ${i + 1}. ${q.question_text}
+                                                        ${i + 1}. ${this.escapeHTML(q.question_text)}
                                                     </div>
                                                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.8rem; color: #64748b;">
-                                                        <div style="${q.correct_option === 'A' ? 'color: #059669; font-weight: 800;' : ''}">A) ${q.option_a || ''}</div>
-                                                        <div style="${q.correct_option === 'B' ? 'color: #059669; font-weight: 800;' : ''}">B) ${q.option_b || ''}</div>
-                                                        <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${q.option_c || ''}</div>
-                                                        <div style="${q.correct_option === 'D' ? 'color: #059669; font-weight: 800;' : ''}">D) ${q.option_d || ''}</div>
-                                                        ${q.option_e ? `<div style="${q.correct_option === 'E' ? 'color: #059669; font-weight: 800;' : ''}">E) ${q.option_e}</div>` : ''}
+                                                        <div style="${q.correct_option === 'A' ? 'color: #059669; font-weight: 800;' : ''}">A) ${this.escapeHTML(q.option_a)}</div>
+                                                        <div style="${q.correct_option === 'B' ? 'color: #059669; font-weight: 800;' : ''}">B) ${this.escapeHTML(q.option_b)}</div>
+                                                        <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${this.escapeHTML(q.option_c)}</div>
+                                                        <div style="${q.correct_option === 'D' ? 'color: #059669; font-weight: 800;' : ''}">D) ${this.escapeHTML(q.option_d)}</div>
+                                                        ${q.option_e ? `<div style="${q.correct_option === 'E' ? 'color: #059669; font-weight: 800;' : ''}">E) ${this.escapeHTML(q.option_e)}</div>` : ''}
                                                     </div>
                                                 </div>
                                             `).join('')}
