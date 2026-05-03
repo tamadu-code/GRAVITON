@@ -323,14 +323,28 @@ export async function loginUser(identifier, password) {
     let email = identifier;
     let loginPassword = password;
 
-    // Check if the identifier is a Student ID (Format: NKQMS-YEAR-CODE)
+    // ─── Student ID Login Translation ───
+    // 1. Check if the identifier is a standard Student ID (Format: NKQMS-YEAR-CODE)
     const studentIdRegex = /^NKQMS-\d{4}-\d+/i;
-    if (studentIdRegex.test(identifier) && !identifier.includes('@')) {
-        // Transform to synthetic email
+    const isStandardId = studentIdRegex.test(identifier) && !identifier.includes('@');
+    
+    // 2. Check if the identifier is a pure numeric Legacy ID (e.g. "1234")
+    const isLegacyNumeric = /^\d{4,6}$/.test(identifier);
+
+    if (isStandardId) {
         email = `${identifier.toLowerCase()}@student.school`;
-        // If password is not provided (or matches identifier), use identifier as password
-        if (!password || password === identifier) {
-            loginPassword = identifier;
+        if (!password || password === identifier) loginPassword = identifier;
+    } 
+    else if (isLegacyNumeric) {
+        // Attempt to find the real student ID from the legacy_id
+        try {
+            const { data: studentData } = await client.from('students').select('student_id').eq('legacy_id', identifier).maybeSingle();
+            if (studentData && studentData.student_id) {
+                email = `${studentData.student_id.toLowerCase()}@student.school`;
+                if (!password || password === identifier) loginPassword = studentData.student_id;
+            }
+        } catch (err) {
+            console.warn('Legacy ID resolution failed:', err);
         }
     }
 

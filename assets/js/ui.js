@@ -679,187 +679,165 @@ export const UI = {
         const displayRank = hasFeeBalance ? '???' : analytics.rank || 'N/A';
 
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1.5rem; min-height: 100vh;">
-                <!-- ─── Live Announcement Ticker ─── -->
-                <div class="live-ticker-container">
-                    <div class="ticker-content">${liveTickerMsg}</div>
-                </div>
-
-                <!-- ─── Sophisticated Header ─── -->
-                <header class="glass-header" style="margin-bottom: 2.5rem; padding: 2rem; border-radius: 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow-lg);">
-                    <div>
-                        <h1 style="font-size: 2.5rem; font-weight: 900; color: #1e293b; letter-spacing: -1.5px; margin: 0;">Student Universe</h1>
-                        <p style="color: #64748b; font-size: 1.1rem; font-weight: 500; margin-top: 0.5rem;">Academic & Financial Command Center</p>
-                    </div>
-                    <div style="text-align: right;">
-                        <div class="badge" style="background: rgba(79, 70, 229, 0.1); color: #4f46e5; font-weight: 900; font-size: 1rem; padding: 0.8rem 1.5rem; border-radius: 16px; border: 1px solid rgba(79, 70, 229, 0.2);">
-                            ${student?.class_name || 'Unassigned'}
-                        </div>
-                    </div>
-                </header>
-
-                <!-- ─── KPI Visualization ─── -->
-                <div class="kpi-grid">
-                    <div class="kpi-card" style="border-left: 6px solid #4f46e5;">
-                        <div class="kpi-icon-wrapper" style="background: rgba(79, 70, 229, 0.1); color: #4f46e5;">
-                            <i data-lucide="award"></i>
-                        </div>
-                        <div class="kpi-info">
-                            <div class="kpi-value">${displayAvg}</div>
-                            <div class="kpi-label">Average Score</div>
-                        </div>
-                        ${hasFeeBalance ? `<div class="locked-overlay"><i data-lucide="lock" class="lock-icon"></i><span style="font-size:0.6rem; font-weight:900; color:#ef4444;">CLEAR FEES TO VIEW</span></div>` : ''}
-                    </div>
-
-                    <div class="kpi-card" style="border-left: 6px solid #8b5cf6;">
-                        <div class="kpi-icon-wrapper" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6;">
-                            <i data-lucide="trending-up"></i>
-                        </div>
-                        <div class="kpi-info">
-                            <div class="kpi-value">${displayRank}</div>
-                            <div class="kpi-label">Class Position</div>
-                        </div>
-                        ${hasFeeBalance ? `<div class="locked-overlay"><i data-lucide="lock" class="lock-icon"></i><span style="font-size:0.6rem; font-weight:900; color:#ef4444;">LOCKED</span></div>` : ''}
-                    </div>
-
-                    <div class="kpi-card" style="border-left: 6px solid #10b981;">
-                        <div class="kpi-icon-wrapper" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
-                            <i data-lucide="calendar-check"></i>
-                        </div>
-                        <div class="kpi-info">
-                            <div class="kpi-value">${analytics.attendance_rate || 0}%</div>
-                            <div class="kpi-label">Attendance</div>
-                        </div>
-                    </div>
-
-                    <div class="kpi-card" style="border-left: 6px solid ${hasFeeBalance ? '#ef4444' : '#10b981'};">
-                        <div class="kpi-icon-wrapper" style="background: ${hasFeeBalance ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${hasFeeBalance ? '#ef4444' : '#10b981'};">
-                            <i data-lucide="credit-card"></i>
-                        </div>
-                        <div class="kpi-info">
-                            <div class="kpi-value">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
-                            <div class="kpi-label">Fee Balance</div>
-                        </div>
+            <div class="view-container animate-fade-in" style="padding: 1.5rem; background: #f8fafc; min-height: 100vh;">
+                <!-- ─── Enhanced Announcement Ticker ─── -->
+                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.75rem 1.5rem; margin-bottom: 1.5rem; overflow: hidden; white-space: nowrap; box-shadow: var(--shadow-sm); display: flex; align-items: center; gap: 1rem;">
+                    <div style="background: #ef4444; color: white; font-weight: 800; font-size: 0.65rem; padding: 4px 10px; border-radius: 6px; text-transform: uppercase;">Notice</div>
+                    <div style="flex: 1; overflow: hidden;">
+                         <marquee scrollamount="5" style="font-weight: 600; color: #475569; font-size: 0.9rem;">${liveTickerMsg}</marquee>
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
-                    <!-- ─── Main Content Column ─── -->
+                <div style="display: grid; grid-template-columns: 1fr 350px; gap: 2rem; align-items: flex-start;">
+                    
+                    <!-- ─── Left Column: Academic Pulse ─── -->
                     <div style="display: flex; flex-direction: column; gap: 2rem;">
-                        <!-- Financial Management -->
-                        <div class="card" style="border-radius: 24px; padding: 2rem;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                                <h3 style="font-weight: 900; color: #1e293b; display: flex; align-items: center; gap: 0.75rem;">
-                                    <i data-lucide="wallet" style="color: #4f46e5;"></i> Financial Management
-                                </h3>
-                                ${hasFeeBalance ? `<button class="btn btn-primary" onclick="UI.handlePaystackPayment()" style="background: #10b981; border: none; border-radius: 12px; height: 44px; padding: 0 1.5rem; font-weight: 800;">Pay Balance Online</button>` : `<span class="badge success">CLEARANCE GRANTED</span>`}
-                            </div>
+                        
+                        <!-- Main Banner -->
+                        <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-radius: 30px; padding: 2.5rem; color: white; position: relative; overflow: hidden; box-shadow: 0 20px 40px -10px rgba(30, 27, 75, 0.3);">
+                            <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
+                            <div style="position: absolute; bottom: -20px; left: 10%; width: 100px; height: 100px; background: rgba(255,255,255,0.03); border-radius: 50%;"></div>
                             
-                            <div class="table-container" style="border: 1px solid #f1f5f9; border-radius: 16px; background: #f8fafc;">
-                                <table class="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Reference</th>
-                                            <th>Date</th>
-                                            <th>Amount</th>
-                                            <th>Status</th>
-                                            <th style="text-align: right;">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="payment-history-body">
-                                        <!-- Will be populated via JS -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <!-- Academic Life: Timetable -->
-                        <div class="card" style="border-radius: 24px; padding: 2rem;">
-                            <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
-                                <i data-lucide="calendar" style="color: #8b5cf6;"></i> Academic Life & Scheduling
-                            </h3>
-                            <div id="timetable-visualizer-container" style="background: #f8fafc; border-radius: 16px; padding: 1.5rem; border: 1px solid #f1f5f9; min-height: 200px; display: flex; align-items: center; justify-content: center;">
-                                <div style="text-align: center; opacity: 0.5;">
-                                    <i data-lucide="loader-2" class="spin-animation" style="width: 32px; height: 32px; margin-bottom: 1rem;"></i>
-                                    <p>Assembling Timetable...</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- ─── Side Bar Column ─── -->
-                    <div style="display: flex; flex-direction: column; gap: 2rem;">
-                        <!-- CBT Hub Quick Access -->
-                        <div class="card" style="border-radius: 24px; padding: 1.5rem; background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); color: white; border: none; box-shadow: var(--shadow-lg);">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
-                                <div>
-                                    <h4 style="font-weight: 800; margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem;">
-                                        <i data-lucide="monitor"></i> CBT Exam Center
-                                    </h4>
-                                    <p style="font-size: 0.7rem; opacity: 0.8; margin-top: 0.25rem; font-weight: 600;">Available & Upcoming Tests</p>
-                                </div>
-                                <div style="background: rgba(255,255,255,0.2); width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
-                                    <i data-lucide="zap" style="width: 20px;"></i>
-                                </div>
-                            </div>
-                            
-                            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                                ${results.length > 0 ? `
-                                    <div style="background: rgba(255,255,255,0.1); padding: 1rem; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);">
-                                        <div style="font-size: 0.65rem; font-weight: 800; text-transform: uppercase; opacity: 0.7;">Last Result</div>
-                                        <div style="font-size: 1.25rem; font-weight: 900; margin-top: 2px;">${results[results.length - 1].score} / ${results[results.length - 1].total_questions}</div>
-                                    </div>
-                                ` : ''}
+                            <div style="position: relative; z-index: 2;">
+                                <h2 style="font-size: 2.5rem; font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome back, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
+                                <p style="font-size: 1.1rem; opacity: 0.8; margin-top: 0.5rem; font-weight: 500;">You have ${activeNotices.length} new updates in your school universe today.</p>
                                 
-                                <button class="btn btn-primary" onclick="UI.renderView('cbt')" style="width: 100%; border-radius: 12px; height: 48px; background: white; color: #4338ca; border: none; font-weight: 800; margin-top: 0.5rem;">
-                                    Enter CBT Hub <i data-lucide="chevron-right" style="margin-left: 0.5rem;"></i>
-                                </button>
+                                <div style="display: flex; gap: 1rem; margin-top: 2.5rem;">
+                                    <button class="btn" onclick="UI.renderView('cbt')" style="background: #4f46e5; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 14px; font-weight: 800; font-size: 0.85rem; box-shadow: 0 10px 20px -5px rgba(79, 70, 229, 0.4);">
+                                        <i data-lucide="play-circle" style="width: 18px;"></i> Start CBT Exam
+                                    </button>
+                                    <button class="btn" onclick="UI.openResultPinModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 0.75rem 1.5rem; border-radius: 14px; font-weight: 800; font-size: 0.85rem; backdrop-filter: blur(10px);" ${hasFeeBalance ? 'disabled' : ''}>
+                                        <i data-lucide="file-text" style="width: 18px;"></i> View Report Card
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Bio-Data Profile -->
-                        <div class="card" style="border-radius: 24px; padding: 2rem; text-align: center; position: relative; overflow: hidden;">
-                             <div style="position: absolute; top: 0; left: 0; width: 100%; height: 6px; background: linear-gradient(to right, #4f46e5, #8b5cf6);"></div>
-                             <div style="width: 120px; height: 120px; border-radius: 50%; border: 4px solid #f1f5f9; overflow: hidden; margin: 0 auto 1.5rem; box-shadow: var(--shadow-md);">
-                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student?.student_id || student?.name}" style="width: 100%; height: 100%; object-fit: cover;">
-                             </div>
-                             <h3 style="font-weight: 900; color: #1e293b; margin: 0;">${student?.name || this.currentUser.name}</h3>
-                             <p style="color: #94a3b8; font-weight: 800; font-size: 0.75rem; margin-top: 0.25rem;">SERIAL: ${student?.student_id || 'PENDING'}</p>
-                             
-                             <div style="text-align: left; margin-top: 2rem; display: flex; flex-direction: column; gap: 1rem;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Admission Date</span>
-                                    <span style="font-size: 0.8rem; font-weight: 700; color: #1e293b;">${student?.admission_year || 'N/A'}</span>
+                        <!-- KPI Visualization -->
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+                            <div style="background: white; border-radius: 24px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1rem; transition: all 0.3s ease; cursor: pointer; position: relative;" onmouseover="this.style.borderColor='#4f46e5'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
+                                <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center;">
+                                    <i data-lucide="award" style="width: 22px;"></i>
                                 </div>
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Account Status</span>
-                                    <span class="badge success" style="font-size: 0.6rem;">ACTIVE</span>
+                                <div>
+                                    <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Academic Average</div>
+                                    <div style="font-size: 1.75rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${displayAvg}</div>
                                 </div>
-                             </div>
+                                ${hasFeeBalance ? `<div style="position: absolute; inset: 0; background: rgba(255,255,255,0.8); border-radius: 24px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);"><i data-lucide="lock" style="color: #ef4444; width: 24px;"></i></div>` : ''}
+                            </div>
 
-                             <button class="btn btn-primary w-100" onclick="UI.openResultPinModal()" style="margin-top: 2rem; border-radius: 12px; height: 48px; font-weight: 900; background: #1e293b; border: none; box-shadow: 0 10px 20px -5px rgba(30, 41, 59, 0.4);" ${hasFeeBalance ? 'disabled' : ''}>
-                                ${hasFeeBalance ? '<i data-lucide="lock" style="width:16px;"></i> Clear Fees First' : 'View Full Report Card'}
-                             </button>
+                            <div style="background: white; border-radius: 24px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1rem; transition: all 0.3s ease; cursor: pointer; position: relative;" onmouseover="this.style.borderColor='#8b5cf6'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
+                                <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; display: flex; align-items: center; justify-content: center;">
+                                    <i data-lucide="trending-up" style="width: 22px;"></i>
+                                </div>
+                                <div>
+                                    <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Current Rank</div>
+                                    <div style="font-size: 1.75rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${displayRank}</div>
+                                </div>
+                                ${hasFeeBalance ? `<div style="position: absolute; inset: 0; background: rgba(255,255,255,0.8); border-radius: 24px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);"><i data-lucide="lock" style="color: #ef4444; width: 24px;"></i></div>` : ''}
+                            </div>
+
+                            <div style="background: white; border-radius: 24px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1rem; transition: all 0.3s ease; cursor: pointer;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
+                                <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center;">
+                                    <i data-lucide="check-circle" style="width: 22px;"></i>
+                                </div>
+                                <div>
+                                    <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Attendance Rate</div>
+                                    <div style="font-size: 1.75rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${analytics.attendance_rate || 0}%</div>
+                                </div>
+                            </div>
                         </div>
 
-                        <!-- Result Checkout Policy -->
-                        <div class="card" style="background: #1e293b; color: white; border-radius: 24px; padding: 1.5rem; border: none;">
-                            <h4 style="font-weight: 800; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
-                                <i data-lucide="shield-check" style="color: #10b981;"></i> Gatekeeping Policy
-                            </h4>
-                            <p style="font-size: 0.75rem; color: #94a3b8; line-height: 1.6; margin: 0;">
-                                Access to full academic reports is strictly regulated. Ensure all financial obligations are met to enable result checking via Scratch Card PINs.
-                            </p>
+                        <!-- Timetable / Schedule -->
+                        <div style="background: white; border-radius: 30px; padding: 2rem; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                                <h3 style="font-weight: 900; color: #1e293b; display: flex; align-items: center; gap: 0.75rem; margin: 0;">
+                                    <i data-lucide="calendar" style="color: #4f46e5;"></i> My Learning Schedule
+                                </h3>
+                                <button class="btn-xs" style="background: #f1f5f9; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 700; color: #64748b;">Full Calendar <i data-lucide="external-link" style="width:12px;"></i></button>
+                            </div>
+                            
+                            <div id="timetable-visualizer-container" style="min-height: 250px; background: #f8fafc; border-radius: 20px; display: flex; align-items: center; justify-content: center; border: 2px dashed #e2e8f0;">
+                                <div style="text-align: center; color: #94a3b8;">
+                                    <i data-lucide="loader" class="spin" style="width: 30px; height: 30px; margin-bottom: 1rem;"></i>
+                                    <p style="font-weight: 600;">Assembling your timetable...</p>
+                                </div>
+                            </div>
                         </div>
+
+                    </div>
+
+                    <!-- ─── Right Column: Student Profile & Bio ─── -->
+                    <div style="display: flex; flex-direction: column; gap: 2rem;">
+                        
+                        <!-- Student Profile Card -->
+                        <div style="background: white; border-radius: 30px; padding: 2rem; border: 1px solid #e2e8f0; text-align: center; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;">
+                            <div style="position: absolute; top: 0; left: 0; width: 100%; height: 80px; background: linear-gradient(to bottom, #4f46e510, transparent);"></div>
+                            
+                            <div style="width: 130px; height: 130px; border-radius: 40px; border: 5px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); margin: 0 auto 1.5rem; position: relative; overflow: hidden; background: #f1f5f9;">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student?.student_id || 'Scholar'}" style="width: 100%; height: 100%; object-fit: cover;">
+                            </div>
+                            
+                            <h3 style="font-weight: 900; color: #1e293b; font-size: 1.5rem; margin: 0;">${student?.name || 'Academic User'}</h3>
+                            <div style="background: #eff6ff; color: #2563eb; font-weight: 800; font-size: 0.7rem; padding: 4px 12px; border-radius: 10px; display: inline-block; margin-top: 0.5rem;">${student?.class_name || 'Stream Unassigned'}</div>
+                            
+                            <div style="margin-top: 2rem; display: flex; flex-direction: column; gap: 1.25rem; text-align: left;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
+                                    <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8;">System ID</span>
+                                    <span style="font-size: 0.85rem; font-weight: 800; color: #1e293b;">${student?.student_id || 'PENDING'}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
+                                    <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8;">Legacy ID</span>
+                                    <span style="font-size: 0.85rem; font-weight: 800; color: #4f46e5;">${student?.legacy_id || 'None'}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
+                                    <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8;">Admission Year</span>
+                                    <span style="font-size: 0.85rem; font-weight: 800; color: #1e293b;">${student?.admission_year || 'N/A'}</span>
+                                </div>
+                            </div>
+
+                            <button class="btn w-100" onclick="UI.renderView('noticeboard')" style="margin-top: 2rem; border-radius: 14px; height: 50px; background: #1e293b; color: white; border: none; font-weight: 800; box-shadow: 0 10px 20px -5px rgba(30, 41, 59, 0.4);">
+                                <i data-lucide="bell" style="width: 18px;"></i> View Bulletins
+                            </button>
+                        </div>
+
+                        <!-- Financial Shield -->
+                        <div style="background: ${hasFeeBalance ? '#fef2f2' : '#ecfdf5'}; border-radius: 30px; padding: 2rem; border: 1px solid ${hasFeeBalance ? '#fee2e2' : '#d1fae5'}; text-align: center;">
+                            <div style="width: 50px; height: 50px; border-radius: 15px; background: ${hasFeeBalance ? '#ef4444' : '#10b981'}; color: white; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; box-shadow: 0 8px 16px -4px ${hasFeeBalance ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'};">
+                                <i data-lucide="${hasFeeBalance ? 'alert-circle' : 'shield-check'}"></i>
+                            </div>
+                            <h4 style="font-weight: 900; color: ${hasFeeBalance ? '#991b1b' : '#065f46'}; margin: 0;">Financial Standing</h4>
+                            <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 0.5rem;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
+                            <p style="font-size: 0.75rem; color: ${hasFeeBalance ? '#b91c1c' : '#065f46'}; font-weight: 600; margin-top: 0.25rem;">${hasFeeBalance ? 'Outstanding Balance' : 'Account fully cleared'}</p>
+                            
+                            ${hasFeeBalance ? `
+                                <button class="btn w-100" onclick="UI.handlePaystackPayment()" style="margin-top: 1.5rem; background: #ef4444; color: white; border: none; border-radius: 12px; height: 44px; font-weight: 800;">
+                                    Pay Now
+                                </button>
+                            ` : ''}
+                        </div>
+
                     </div>
                 </div>
             </div>
         `;
 
-        // ─── Post-Render Logic ───
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        // Initialize components
+        this.renderTimetableForStudent(studentId);
         this.renderPaymentHistory(studentId);
-        this.renderTimetableVisualizer(student?.class_name);
+    },
+
+    async renderTimetableForStudent(studentId) {
+        const student = await db.students.get(studentId);
+        if (student && student.class_name) {
+            await this.renderTimetableVisualizer(student.class_name);
+        }
+    },
+
+    printReceipt(paymentId) {
+        Notifications.show('Generating digital receipt...', 'info');
+        // Simple print-friendly view for now
+        window.open(`receipt.html?id=${paymentId}`, '_blank');
     },
 
     async renderPaymentHistory(studentId) {
