@@ -6773,11 +6773,19 @@ export const UI = {
         const q = this.currentQuestions[this.currentQuestionIndex];
         const progress = ((this.currentQuestionIndex + 1) / this.currentQuestions.length) * 100;
 
-        // Calculate current time remaining for instant-load (prevents 00:00 flickering)
-        const timeRemaining = Math.max(0, Math.floor((this.examEndTime - Date.now()) / 1000));
-        const mins = Math.floor(timeRemaining / 60);
-        const secs = timeRemaining % 60;
-        const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        // Calculate current time remaining for instant-load (prevents 00:00 or NaN flickering)
+        let timeStr = '00:00';
+        const existingTimer = document.getElementById('exam-timer');
+        
+        if (this.examEndTime && !isNaN(this.examEndTime)) {
+            const timeRemaining = Math.max(0, Math.floor((this.examEndTime - Date.now()) / 1000));
+            const mins = Math.floor(timeRemaining / 60);
+            const secs = timeRemaining % 60;
+            timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        } else if (existingTimer) {
+            // If we don't have a valid end time yet, preserve what's on screen
+            timeStr = existingTimer.innerText;
+        }
 
         this.contentArea.innerHTML = `
             <div class="cbt-exam-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; background: #f8fafc; z-index: 10000;">
