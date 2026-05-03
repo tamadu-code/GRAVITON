@@ -9379,7 +9379,7 @@ export const UI = {
                                             <i data-lucide="chevron-down" style="width: 18px; color: #94a3b8; transition: transform 0.2s;"></i>
                                         </div>
                                     </div>
-                                    <div class="participant-details" style="border-top: 1px solid #f1f5f9; padding: 0 1.5rem; max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease;">
+                                    <div class="participant-details" style="border-top: 1px solid #f1f5f9; overflow: hidden;">
                                         <div style="padding: 1rem 0; display: flex; flex-direction: column; gap: 0.75rem; max-height: 400px; overflow-y: auto;">
                                             ${questions.map((q, i) => `
                                                 <div style="background: #f8fafc; border-radius: 12px; padding: 1rem; border: 1px solid #f1f5f9;">
@@ -9571,7 +9571,7 @@ export const UI = {
                                     </div>
 
                                     <!-- Expandable Details -->
-                                    <div class="participant-details" style="border-top: 1px solid #f1f5f9; padding: 0 1.5rem; max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;">
+                                    <div class="participant-details" style="border-top: 1px solid #f1f5f9; overflow: hidden;">
                                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1.25rem 0;">
                                             <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
                                                 <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">SCORE</div>
