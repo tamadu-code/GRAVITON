@@ -678,6 +678,7 @@ export const UI = {
         const displayAvg = hasFeeBalance ? '???' : (analytics.average || 0).toFixed(1) + '%';
         const displayRank = hasFeeBalance ? '???' : analytics.rank || 'N/A';
 
+        this.contentArea.innerHTML = `
                 <div class="student-dashboard-grid" style="display: grid; grid-template-columns: 1fr 350px; gap: 2rem; align-items: flex-start;">
                     
                     <!-- ─── Left Column: Academic Pulse ─── -->
