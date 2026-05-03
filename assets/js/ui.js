@@ -6594,26 +6594,26 @@ export const UI = {
             questions = questions.slice(0, limit);
         }
 
-        // Shuffle Options for each question using the same seed progression
-        questions = questions.map((q, idx) => {
+        // Shuffle Options for each question - Skip broken/undefined questions
+        questions = questions.filter(q => q && q.option_a).map((q, idx) => {
             const options = [
                 { key: 'a', text: q.option_a },
                 { key: 'b', text: q.option_b },
                 { key: 'c', text: q.option_c },
                 { key: 'd', text: q.option_d },
                 { key: 'e', text: q.option_e }
-            ].filter(o => o.text);
+            ].filter(o => o && o.text);
 
             // Use a modified seed for each question to keep them distinct but deterministic
             let qSeed = seed + idx;
             const shuffledOptions = seededShuffle([...options], qSeed);
             
             // SECURITY: Create a one-way hash of the correct answer.
-            // Do NOT store the correct answer in plain text in the question object.
-            const rawCorrectText = q[`option_${q.correct_option.toLowerCase()}`];
+            const correctKey = (q.correct_option || 'A').toLowerCase();
+            const rawCorrectText = q[`option_${correctKey}`] || '';
             const answerHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join(''); 
 
-            return { ...q, shuffledOptions, answerHash }; // No correctText here anymore
+            return { ...q, shuffledOptions, answerHash };
         });
 
         // Check for existing session
