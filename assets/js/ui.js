@@ -7737,7 +7737,14 @@ export const UI = {
                                                 To: ${n.target || 'All'}
                                             </div>
                                         </div>
-                                        <span style="font-size: 0.85rem; color: #94a3b8; font-weight: 600;">${new Date(n.updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+                                        <div style="display: flex; align-items: center; gap: 1rem;">
+                                            <span style="font-size: 0.85rem; color: #94a3b8; font-weight: 600;">${new Date(n.updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+                                            ${isAdmin || isTeacher ? `
+                                                <button style="background: #fff1f2; color: #e11d48; border: none; width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#ffe4e6'" onmouseout="this.style.background='#fff1f2'" onclick="UI.deleteNotice('${n.id}')">
+                                                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                                                </button>
+                                            ` : ''}
+                                        </div>
                                     </div>
                                     <h2 style="margin: 0 0 1rem 0; font-size: 1.4rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em;">${n.title}</h2>
                                     <div style="color: #475569; line-height: 1.8; font-size: 1.05rem; margin-bottom: 2rem; white-space: pre-wrap;">${n.content}</div>
@@ -7871,6 +7878,20 @@ export const UI = {
             });
         }
     },
+    async deleteNotice(id) {
+        if (!confirm('Are you sure you want to delete this broadcast? This cannot be undone.')) return;
+
+        try {
+            await db.notices.delete(id);
+            Notifications.show('Broadcast deleted successfully', 'success');
+            this.renderNoticeBoard();
+            syncToCloud();
+        } catch (err) {
+            console.error('Delete notice error:', err);
+            Notifications.show('Failed to delete notice', 'error');
+        }
+    },
+
     async renderStudentAttendanceView() {
         const studentId = this.currentUser.assigned_id;
         const attendance = await db.attendance_records.where('student_id').equals(studentId).toArray();
