@@ -5900,6 +5900,16 @@ export const UI = {
     async renderCBTEditor(examId = null) {
         const isEdit = !!examId;
         const teacherId = this.currentUser.id;
+
+        const formatDateForInput = (dateStr) => {
+            if (!dateStr) return '';
+            try {
+                // Ensure date is valid and strip timezone for input format YYYY-MM-DDTHH:MM
+                const date = new Date(dateStr);
+                if (isNaN(date.getTime())) return '';
+                return date.toISOString().slice(0, 16);
+            } catch (e) { return ''; }
+        };
         
         let exam = isEdit ? await db.cbt_exams.get(examId) : {
             title: '', subject_id: '', class_name: '', duration: 30, mode: 'Official Exam', term: '3rd Term', session: '2025/2026', score_field: 'test1', status: 'Draft',
@@ -5999,6 +6009,7 @@ export const UI = {
                             </div>
 
                             <div style="display:flex; justify-content:flex-end; gap:1rem; margin-top:2rem;">
+                                <button class="btn btn-secondary" style="background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe;" onclick="UI.showImportFromBankModal()"><i data-lucide="database"></i> Import from Bank</button>
                                 <button class="btn btn-secondary" onclick="UI.bulkImportQuestions()"><i data-lucide="file-up"></i> Bulk Import</button>
                                 <button class="btn btn-primary" onclick="UI.addTempQuestion()"><i data-lucide="plus"></i> Add Question</button>
                             </div>
@@ -6042,11 +6053,11 @@ export const UI = {
                             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
                                 <div class="cbt-form-group">
                                     <label>Start Date/Time</label>
-                                    <input type="datetime-local" id="exam-start" class="cbt-input" value="${exam.start_time || ''}">
+                                    <input type="datetime-local" id="exam-start" class="cbt-input" value="${formatDateForInput(exam.start_time)}">
                                 </div>
                                 <div class="cbt-form-group">
                                     <label>End Date/Time</label>
-                                    <input type="datetime-local" id="exam-end" class="cbt-input" value="${exam.end_time || ''}">
+                                    <input type="datetime-local" id="exam-end" class="cbt-input" value="${formatDateForInput(exam.end_time)}">
                                 </div>
                             </div>
 
@@ -6230,6 +6241,9 @@ export const UI = {
             const examId = existingId || `EXM${Math.random().toString(36).substr(2,9).toUpperCase()}`;
             console.log(`Saving CBT Exam: ${examId} (${existingId ? 'Update' : 'New'})`);
             
+            const startVal = document.getElementById('exam-start').value;
+            const endVal = document.getElementById('exam-end').value;
+
             const examData = prepareForSync({
                 id: examId,
                 title,
@@ -6243,8 +6257,8 @@ export const UI = {
                 session: document.getElementById('exam-session').value,
                 score_field: document.getElementById('exam-score-field').value,
                 status: document.getElementById('exam-status').value,
-                start_time: document.getElementById('exam-start').value,
-                end_time: document.getElementById('exam-end').value,
+                start_time: startVal || null,
+                end_time: endVal || null,
                 date: new Date().toISOString().split('T')[0]
             });
 
@@ -6577,6 +6591,50 @@ export const UI = {
             this.refreshQuestionPreview();
             Notifications.show(`Successfully imported ${count} questions`, 'success');
         }, 'Import Now');
+    },
+
+    async showImportFromBankModal() {
+        const exams = await db.cbt_exams.toArray();
+        const subjects = await db.subjects.toArray();
+        const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
+
+        const modalHtml = `
+            <div class="form-group">
+                <label>Select an exam to import questions from:</label>
+                <div style="max-height: 300px; overflow-y: auto; margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    ${exams.length === 0 ? '<p>No other exams found.</p>' : exams.map(e => `
+                        <div class="bank-item" style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;" onclick="this.parentElement.querySelectorAll('.bank-item').forEach(b => b.style.borderColor = '#e2e8f0'); this.style.borderColor = '#4338ca'; this.dataset.selected = '${e.id}';">
+                            <div>
+                                <div style="font-weight: 700;">${e.title}</div>
+                                <div style="font-size: 0.75rem; color: #64748b;">${subMap[e.subject_id] || 'Subject'} | ${e.class_name}</div>
+                            </div>
+                            <div style="background: #f1f5f9; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">Select</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        this.showModal('Import from Question Bank', modalHtml, async () => {
+            const selectedItem = document.querySelector('.bank-item[data-selected]');
+            if (!selectedItem) return Notifications.show('Please select an exam first', 'warning');
+            
+            const sourceExamId = selectedItem.dataset.selected;
+            const sourceQuestions = await db.cbt_questions.where('exam_id').equals(sourceExamId).toArray();
+            
+            if (sourceQuestions.length === 0) return Notifications.show('That exam has no questions.', 'error');
+
+            // Copy and generate new IDs to avoid duplicates
+            sourceQuestions.forEach(q => {
+                const newQ = { ...q };
+                delete newQ.id;
+                newQ.id = `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`;
+                this.cbtQuestions.push(newQ);
+            });
+
+            this.refreshQuestionPreview();
+            Notifications.show(`Successfully imported ${sourceQuestions.length} questions from bank`, 'success');
+        }, 'Import Questions');
     },
 
     async renderLessons() {
