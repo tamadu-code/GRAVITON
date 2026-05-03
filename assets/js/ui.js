@@ -5968,7 +5968,7 @@ export const UI = {
         try {
             // 1. Cloud Clean-up (Do this first while we still have the ID)
             if (navigator.onLine) {
-                const client = (typeof supabase !== 'undefined') ? supabase : (window.supabaseClient);
+                const client = window.supabaseClient;
                 if (client) {
                     await client.from('cbt_exams').delete().eq('id', id);
                     // cascading delete on DB should handle questions/results, 
@@ -9407,9 +9407,8 @@ export const UI = {
                                                         <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${q.option_c}</div>
                                                         <div style="${q.correct_option === 'D' ? 'color: #059669; font-weight: 800;' : ''}">D) ${q.option_d}</div>
                                                         ${q.option_e ? `<div style="${q.correct_option === 'E' ? 'color: #059669; font-weight: 800;' : ''}">E) ${q.option_e}</div>` : ''}
-                                                    </div>
-                                                </div>
                                             `).join('')}
+                                        </div>
                                         <div style="display: flex; gap: 0.75rem; padding: 1.25rem; background: #f8fafc; border-top: 1px solid #f1f5f9;">
                                             <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); UI.editBankCategory('${tag}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; height: 44px; text-decoration: none !important;">
                                                 <i data-lucide="edit-3" style="width: 16px;"></i> Edit Category
