@@ -277,10 +277,12 @@ async function loadAuthenticatedApp(authUser) {
     }
 }
 
-// ─── Login Form Submit ───
+// ─── Login Form Submit (Moved Up for Reliability) ───
 if (loginForm) {
+    console.log('Login form found, attaching listener...');
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        console.log('Login event triggered!');
 
         try {
             console.log('Login form submitted...');
@@ -296,10 +298,6 @@ if (loginForm) {
             loginBtn.innerHTML = '<div class="loader" style="width:16px; height:16px; border-width:2px;"></div>';
             loginError.style.display = 'none';
 
-            // --- Student ID Login Translation ---
-            // Now handled inside loginUser in supabase-client.js
-            // ------------------------------------
-
             const { data, error } = await loginUser(email, password);
 
             if (error) {
@@ -312,22 +310,19 @@ if (loginForm) {
                 console.log('Login successful, loading app...');
                 await loadAuthenticatedApp(data.session.user);
             } else {
-                // Successful auth but no session returned (unexpected)
                 loginError.textContent = 'Session could not be established. Please try again.';
                 loginError.style.display = 'block';
                 loginBtn.disabled = false;
                 loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
             }
         } catch (err) {
-            console.error('Login error:', err);
-            loginError.textContent = err.message || 'An unexpected error occurred during login.';
-            loginError.style.display = 'block';
+            console.error('Login form error:', err);
             loginBtn.disabled = false;
             loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
-            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
     });
 }
+
 
 // ─── Create Account Form Submit ───
 if (createAccountForm) {
