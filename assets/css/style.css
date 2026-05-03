@@ -4217,7 +4217,36 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
     #composer-mobile-trigger {
         display: flex !important;
     }
-}
+
+    .broadcast-grid {
+        grid-template-columns: 1fr !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 1.5rem !important;
+    }
+
+    .passport-editable {
+        cursor: pointer;
+        position: relative;
+    }
+    
+    .passport-editable:hover .camera-overlay {
+        opacity: 1 !important;
+    }
+    
+    .camera-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0,0,0,0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        border-radius: inherit;
+        z-index: 10;
+    }
 
 .desktop-only { display: inline-flex; }
 .mobile-only { display: none; }
@@ -4246,4 +4275,98 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
 
 .collapsable-section label:hover {
     background: #f8fafc;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PASSPORT PHOTO UPLOAD OVERLAY
+   ═══════════════════════════════════════════════════════════ */
+.passport-editable {
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.passport-editable .camera-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    border-radius: inherit;
+}
+
+.passport-editable:hover .camera-overlay {
+    opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NOTICE BOARD - MOBILE RESPONSIVE
+   ═══════════════════════════════════════════════════════════ */
+
+/* Composer collapse behaviour */
+.composer-collapse-content {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.4s ease, opacity 0.3s ease;
+}
+
+.composer-collapse-content.active {
+    max-height: 1200px;
+    opacity: 1;
+}
+
+@media (max-width: 1024px) {
+    /* Stack the broadcast grid on mobile */
+    .broadcast-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Show the mobile composer trigger */
+    #composer-mobile-trigger {
+        display: flex !important;
+    }
+
+    /* Hide the desktop-only title */
+    .notice-composer-mobile .desktop-only {
+        display: none !important;
+    }
+
+    /* Collapse the composer by default on mobile */
+    .composer-collapse-content {
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+    }
+    .composer-collapse-content.active {
+        max-height: 1200px;
+        opacity: 1;
+    }
+
+    /* Notice card mobile polish */
+    .notice-card {
+        padding: 1.25rem !important;
+        border-radius: 16px !important;
+    }
+
+    .notice-card h2 {
+        font-size: 1.15rem !important;
+    }
+}
+
+@media (min-width: 1025px) {
+    /* On desktop, composer is always visible */
+    .composer-collapse-content {
+        max-height: none !important;
+        opacity: 1 !important;
+        overflow: visible !important;
+    }
+
+    #composer-mobile-trigger {
+        display: none !important;
+    }
 }

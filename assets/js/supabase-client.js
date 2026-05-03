@@ -100,7 +100,7 @@ export async function syncToCloud() {
                 if (unsynced.length > 0 && client) {
                     // Table-level field whitelists for Supabase insertion
                     const whitelist = {
-                        profiles: ['id', 'full_name', 'role', 'assigned_id', 'email', 'phone', 'department', 'qualification', 'emp_type', 'status', 'is_archived', 'updated_at'],
+                        profiles: ['id', 'full_name', 'role', 'assigned_id', 'email', 'phone', 'department', 'qualification', 'emp_type', 'status', 'is_archived', 'passport', 'updated_at'],
                         students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'dob', 'phone', 'parent_name', 'parent_phone', 'parent_email', 'blood_group', 'genotype', 'passport_url', 'updated_at'],
                         classes: ['id', 'name', 'level', 'updated_at'],
                         subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
@@ -474,4 +474,75 @@ export async function resetPassword(email) {
     });
 
     return { data, error };
+}
+
+/**
+ * Upload a passport photo to Supabase Storage and update the database
+ * @param {string} id - Student ID or Profile ID
+ * @param {string} type - 'student' or 'staff'
+ * @param {File} file - The image file to upload
+ */
+export async function uploadPassport(id, type, file) {
+    const client = getSupabase();
+    if (!client) return { error: 'Supabase not initialized' };
+
+    const fileExt = file.name.split('.').pop();
+    const cleanId = id.replace(/[^a-zA-Z0-9]/g, '_');
+    const filePath = `${type}/${cleanId}_${Date.now()}.${fileExt}`;
+
+    try {
+        // 1. Upload to Supabase Storage
+        const { data: storageData, error: storageError } = await client.storage
+            .from('passports')
+            .upload(filePath, file, { 
+                upsert: true,
+                contentType: file.type 
+            });
+
+        if (storageError) throw storageError;
+
+        // 2. Get Public URL
+        const { data: { publicUrl } } = client.storage.from('passports').getPublicUrl(filePath);
+
+        // 3. Update Database & Local Cache
+        const updatedAt = new Date().toISOString();
+        
+        if (type === 'student') {
+            const { error: dbError } = await client.from('students').update({ 
+                passport_url: publicUrl,
+                updated_at: updatedAt 
+            }).eq('student_id', id);
+            
+            if (dbError) throw dbError;
+            
+            await db.students.update(id, { 
+                passport_url: publicUrl, 
+                updated_at: updatedAt,
+                is_synced: 1 
+            });
+        } else {
+            const { error: dbError } = await client.from('profiles').update({ 
+                passport: publicUrl,
+                updated_at: updatedAt 
+            }).eq('id', id);
+            
+            if (dbError) throw dbError;
+
+            await db.profiles.update(id, { 
+                passport: publicUrl, 
+                updated_at: updatedAt,
+                is_synced: 1 
+            });
+            
+            // If updating current user, update UI object too
+            if (window.UI && window.UI.currentUser && window.UI.currentUser.id === id) {
+                window.UI.currentUser.passport = publicUrl;
+            }
+        }
+
+        return { success: true, url: publicUrl };
+    } catch (err) {
+        console.error('Passport upload failed:', err);
+        return { error: err.message || 'Upload failed' };
+    }
 }

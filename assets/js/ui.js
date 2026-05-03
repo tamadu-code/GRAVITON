@@ -6,7 +6,7 @@ console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet } from './utils.js';
-import { syncToCloud, syncFromCloud, registerUser, updateUserPassword } from './supabase-client.js';
+import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport } from './supabase-client.js';
 
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
@@ -431,9 +431,15 @@ export const UI = {
                 <!-- Header & Ticker -->
                 <header style="margin-bottom: 2rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                        <div>
-                            <h1 style="font-size: 2.25rem; font-weight: 900; color: #1e293b; letter-spacing: -0.02em; font-family: 'Outfit', sans-serif;">Academic Command Center</h1>
-                            <p style="color: #64748b; font-weight: 500;">Hello, <span style="color: #2563eb; font-weight: 700;">${this.currentUser.name}</span>. Reviewing your ${term} status.</p>
+                        <div style="display: flex; align-items: center; gap: 1.5rem;">
+                            <div class="passport-editable" onclick="UI.triggerPassportUpload('${teacherId}', 'staff')" style="width: 70px; height: 70px; border-radius: 20px; background: #e0e7ff; color: #4338ca; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 900; border: 3px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.05); overflow: hidden; position: relative;">
+                                ${this.currentUser.passport ? `<img src="${this.currentUser.passport}" style="width: 100%; height: 100%; object-fit: cover;">` : (this.currentUser.name || 'T').charAt(0)}
+                                <div class="camera-overlay"><i data-lucide="camera" style="width: 18px;"></i></div>
+                            </div>
+                            <div>
+                                <h1 style="font-size: 2.25rem; font-weight: 900; color: #1e293b; letter-spacing: -0.02em; font-family: 'Outfit', sans-serif; margin: 0;">Academic Command Center</h1>
+                                <p style="color: #64748b; font-weight: 500; margin: 0;">Hello, <span style="color: #2563eb; font-weight: 700;">${this.currentUser.name}</span>. Reviewing your ${term} status.</p>
+                            </div>
                         </div>
                         <div style="text-align: right; background: white; padding: 0.75rem 1.25rem; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm); display: flex; align-items: center; gap: 1rem;">
                             <button id="teacher-sync-btn" class="btn btn-primary" style="height: 40px; border-radius: 10px; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; background: #2563eb; color: white; border: none; padding: 0 1rem; cursor: pointer;">
@@ -763,8 +769,9 @@ export const UI = {
                             <label for="toggle-profile" style="display: block; cursor: pointer; padding: 2rem 2rem 1.5rem; margin: 0;">
                                 <div style="position: absolute; top: 0; left: 0; width: 100%; height: 80px; background: linear-gradient(to bottom, #4f46e510, transparent); z-index: 0;"></div>
                                 
-                                <div style="width: 100px; height: 100px; border-radius: 30px; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); margin: 0 auto 1rem; position: relative; overflow: hidden; background: #f1f5f9; z-index: 1;">
-                                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student?.student_id || 'Scholar'}" style="width: 100%; height: 100%; object-fit: cover;">
+                                <div class="passport-editable" onclick="UI.triggerPassportUpload('${student?.student_id}', 'student')" style="width: 100px; height: 100px; border-radius: 30px; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); margin: 0 auto 1rem; position: relative; overflow: hidden; background: #f1f5f9; z-index: 1;">
+                                    <img src="${student?.passport_url || student?.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student?.student_id || 'Scholar'}`}" style="width: 100%; height: 100%; object-fit: cover;">
+                                    <div class="camera-overlay"><i data-lucide="camera" style="width: 24px;"></i></div>
                                 </div>
                                 
                                 <h3 style="font-weight: 900; color: #1e293b; font-size: 1.3rem; margin: 0; position: relative; z-index: 1;">${student?.name || 'Academic User'}</h3>
@@ -1094,10 +1101,12 @@ export const UI = {
 
         if (isTeacher) {
             const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
-            const assignedClasses = new Set(assignments.map(a => a.class_name));
-            // Also include classes where they are form teachers
-            formTeachers.filter(f => f.teacher_id === teacherId).forEach(f => assignedClasses.add(f.class_name));
-            streams = streams.filter(s => assignedClasses.has(s.name));
+            const formAssignments = await db.form_teachers.where('teacher_id').equals(teacherId).toArray();
+            const assignedClassNames = new Set([
+                ...assignments.map(a => a.class_name),
+                ...formAssignments.map(f => f.class_name)
+            ]);
+            streams = streams.filter(s => assignedClassNames.has(s.name));
         }
         
         const getEnrollment = (className) => activeStudents.filter(s => s.class_name === className).length;
@@ -1858,7 +1867,18 @@ export const UI = {
         const teacherId = this.currentUser.id;
         
         let students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-        const classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+        let classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+        
+        // --- Teacher Specific Filtering for Dropdowns ---
+        if (isTeacher) {
+            const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
+            const formAssignments = await db.form_teachers.where('teacher_id').equals(teacherId).toArray();
+            const assignedClassNames = new Set([
+                ...assignments.map(a => a.class_name),
+                ...formAssignments.map(f => f.class_name)
+            ]);
+            classes = classes.filter(c => assignedClassNames.has(c.name));
+        }
         
         // --- Teacher Specific Filtering ---
         if (isTeacher) {
@@ -1903,13 +1923,13 @@ export const UI = {
                         <button id="btn-add-student" class="btn btn-primary" style="background: white; color: #1e3a8a; border: none; border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; font-weight: 700; font-size: 0.75rem;">
                             <i data-lucide="user-plus" style="width: 14px;"></i> New Enrolment
                         </button>
-                        ` : ''}
                         <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); font-size: 0.75rem;">
                             <i data-lucide="printer" style="width: 14px;"></i> Credentials
                         </button>
                         <button id="btn-bulk-repair-students" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; font-size: 0.75rem; font-weight: 700;">
                             <i data-lucide="shield-alert" style="width: 14px;"></i> Bulk Repair Auth
                         </button>
+                        ` : ''}
                     </div>
                 </div>
 
@@ -2319,11 +2339,9 @@ export const UI = {
         detailView.innerHTML = `
             <div style="padding: 1.5rem;">
                 <div class="profile-header" style="margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;">
-                    <div class="profile-avatar-big" style="width: 120px; height: 120px; background: #f8fafc; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-radius: 30px; display: flex; align-items: center; justify-content: center; position: relative;">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}" style="width: 90px; height: 90px;" alt="${student.name}">
-                        <div style="position: absolute; bottom: -10px; right: -10px; width: 44px; height: 44px; background: #2563eb; color: white; border-radius: 14px; display: flex; align-items: center; justify-content: center; border: 4px solid white;">
-                            <i data-lucide="camera" style="width: 18px;"></i>
-                        </div>
+                    <div class="profile-avatar-big passport-editable" onclick="UI.triggerPassportUpload('${student.student_id}', 'student')" style="width: 120px; height: 120px; background: #f8fafc; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-radius: 30px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+                        <img src="${student.passport_url || student.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}`}" style="width: 100%; height: 100%; object-fit: cover;" alt="${student.name}">
+                        <div class="camera-overlay"><i data-lucide="camera" style="width: 24px;"></i></div>
                     </div>
                     <div class="profile-title-info" style="flex: 1;">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
@@ -2519,6 +2537,12 @@ export const UI = {
                         // If we have authData.user.id, use it. Otherwise, we might need to find the user.
                         if (authData?.user?.id) {
                             profileToLink.id = authData.user.id;
+                        } else {
+                            // Try to find the user by email first to get the correct ID
+                            const { data: existingProfile } = await client.from('profiles').select('id').eq('email', studentEmail).maybeSingle();
+                            if (existingProfile) {
+                                profileToLink.id = existingProfile.id;
+                            }
                         }
 
                         const { error: pError } = await client.from('profiles').upsert(profileToLink, { onConflict: 'email' });
@@ -4145,8 +4169,23 @@ export const UI = {
         }
         
         const students = await db.students.filter(s => s.is_active !== false).toArray();
-        const classes = await db.classes.toArray();
-        const subjects = await db.subjects.toArray();
+        let classes = await db.classes.toArray();
+        let subjects = await db.subjects.toArray();
+
+        // --- Teacher Specific Filtering ---
+        if (isTeacher) {
+            const assignments = await db.subject_assignments.where('teacher_id').equals(this.currentUser.id).toArray();
+            const formAssignments = await db.form_teachers.where('teacher_id').equals(this.currentUser.id).toArray();
+            const assignedClassNames = new Set([
+                ...assignments.map(a => a.class_name),
+                ...formAssignments.map(f => f.class_name)
+            ]);
+            classes = classes.filter(c => assignedClassNames.has(c.name));
+            
+            // Also filter subjects to only those they teach
+            const assignedSubjectIds = new Set(assignments.map(a => a.subject_id));
+            subjects = subjects.filter(s => assignedSubjectIds.has(s.id) || assignedSubjectIds.has(s.name));
+        }
         
         // Initial State
         const today = new Date().toISOString().split('T')[0];
@@ -5332,8 +5371,9 @@ export const UI = {
                 <div class="staff-detail-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
                     <!-- Left: Bio-Data -->
                     <div class="card staff-bio-card" style="border-radius: 20px; padding: 2rem; display: flex; flex-direction: column; align-items: center; text-align: center;">
-                        <div style="width: 150px; height: 150px; margin: 0 auto 1.5rem; border-radius: 40px; overflow: hidden; background: #f1f5f9; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);">
-                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${staff.full_name || staff.username}" style="width: 100%; height: 100%; object-fit: cover;">
+                        <div class="passport-editable" onclick="UI.triggerPassportUpload('${staff.id}', 'staff')" style="width: 150px; height: 150px; margin: 0 auto 1.5rem; border-radius: 40px; overflow: hidden; background: #f1f5f9; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);">
+                            <img src="${staff.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${staff.full_name || staff.username}`}" style="width: 100%; height: 100%; object-fit: cover;">
+                            <div class="camera-overlay"><i data-lucide="camera" style="width: 28px;"></i></div>
                         </div>
                         <h2 style="font-size: 1.75rem; font-weight: 800; color: #1e293b;">${staff.full_name || staff.username}</h2>
                         <span class="badge" style="background: #eff6ff; color: #2563eb; font-weight: 800; border-radius: 12px; padding: 0.5rem 1rem; margin-top: 0.5rem; display: inline-block;">${staff.role.toUpperCase()}</span>
@@ -7670,6 +7710,19 @@ export const UI = {
                 }
             });
         }
+
+        // Mobile Composer Toggle
+        const composerTrigger = document.getElementById('composer-mobile-trigger');
+        const composerContent = document.getElementById('notice-composer-content');
+        if (composerTrigger && composerContent) {
+            composerTrigger.addEventListener('click', () => {
+                composerContent.classList.toggle('active');
+                const chevron = document.getElementById('composer-chevron');
+                if (chevron) {
+                    chevron.style.transform = composerContent.classList.contains('active') ? 'rotate(180deg)' : 'rotate(0deg)';
+                }
+            });
+        }
     },
     async renderStudentAttendanceView() {
         const studentId = this.currentUser.assigned_id;
@@ -8676,4 +8729,43 @@ export const UI = {
         Notifications.show(`Redirecting to Academic Manager for ${className}...`, 'info');
         this.renderView('academic');
     },
+
+    /**
+     * Trigger a file upload for passport photos
+     */
+    async triggerPassportUpload(id, type) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (file.size > 5 * 1024 * 1024) {
+                Notifications.show('Photo exceeds 5MB limit.', 'error');
+                return;
+            }
+            
+            Notifications.show('Uploading photo to cloud...', 'info');
+            
+            try {
+                // Use the cloud storage upload function
+                const result = await uploadPassport(id, type, file);
+                
+                if (result.success) {
+                    Notifications.show('Photo updated successfully!', 'success');
+                    // Refresh current view to show new image
+                    this.renderView(this.currentView);
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (err) {
+                console.error('Upload error:', err);
+                Notifications.show(`Upload failed: ${err.message}`, 'error');
+            }
+        };
+        
+        input.click();
+    }
 };
