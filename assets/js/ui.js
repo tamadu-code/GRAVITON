@@ -9401,10 +9401,10 @@ export const UI = {
                                             `).join('')}
                                         </div>
                                         <div style="display: flex; gap: 0.75rem; padding-bottom: 1.25rem;">
-                                            <button class="btn btn-secondary" onclick="UI.editBankCategory('${tag}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; height: 44px;">
+                                            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); UI.editBankCategory('${tag}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; height: 44px;">
                                                 <i data-lucide="edit-3" style="width: 16px;"></i> Edit Category
                                             </button>
-                                            <button class="btn btn-danger" onclick="if(confirm('Delete all ${questions.length} questions in this category?')){UI.deleteBankCategory('BANK-${tag}')}" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px;">
+                                            <button type="button" class="btn btn-danger" onclick="event.stopPropagation(); if(confirm('Delete all ${questions.length} questions in this category?')){UI.deleteBankCategory('BANK-${tag}')}" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px;">
                                                 <i data-lucide="trash-2" style="width: 16px;"></i> Delete Category
                                             </button>
                                         </div>
@@ -9678,18 +9678,18 @@ export const UI = {
                                         </div>
 
                                         ${violationCount > 0 ? `
-                                            <button onclick="UI.showViolationLog('${r.student_id}', '${examId}')" style="width: 100%; background: #fef2f2; color: #ef4444; border: 1px solid #fecdd3; padding: 0.75rem; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 1rem;">
+                                            <button type="button" onclick="UI.showViolationLog('${r.student_id}', '${examId}')" style="width: 100%; background: #fef2f2; color: #ef4444; border: 1px solid #fecdd3; padding: 0.75rem; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 1rem;">
                                                 <i data-lucide="shield-alert" style="width: 16px;"></i> View ${violationCount} Violation${violationCount !== 1 ? 's' : ''}
                                             </button>
                                         ` : ''}
 
                                         <div style="display: flex; gap: 0.75rem; padding-bottom: 1.25rem;">
                                             ${isCompleted ? `
-                                                <button class="btn btn-warning" onclick="UI.reopenCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fffbeb; color: #b45309; border: 1px solid #fde68a; height: 44px;">
+                                                <button type="button" class="btn btn-warning" onclick="UI.reopenCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fffbeb; color: #b45309; border: 1px solid #fde68a; height: 44px;">
                                                     <i data-lucide="refresh-ccw" style="width: 16px;"></i> Re-open Exam
                                                 </button>
                                             ` : `
-                                                <button class="btn btn-danger" onclick="UI.forceSubmitCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px;">
+                                                <button type="button" class="btn btn-danger" onclick="UI.forceSubmitCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px;">
                                                     <i data-lucide="log-out" style="width: 16px;"></i> Force Submit
                                                 </button>
                                             `}
