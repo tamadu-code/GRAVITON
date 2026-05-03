@@ -5462,9 +5462,12 @@ export const UI = {
         const btnReactivate = document.getElementById('btn-reactivate-staff');
         if (btnReactivate) {
             btnReactivate.onclick = async () => {
-                if (confirm(`Reactivate contract for ${staff.full_name}?`)) {
-                    await db.profiles.update(staffId, { status: 'Active', role: 'Teacher', updated_at: new Date().toISOString() });
-                    Notifications.show(`${staff.full_name} has been reactivated.`, 'success');
+                if (confirm(`Restore contract and system access for ${staff.full_name}?`)) {
+                    await db.profiles.update(staffId, prepareForSync({ 
+                        role: 'Teacher', 
+                        status: 'Active' 
+                    }));
+                    Notifications.show('Staff member reactivated.', 'success');
                     this.renderStaffDetail(staffId);
                     syncToCloud();
                 }
@@ -5475,9 +5478,25 @@ export const UI = {
         const btnTerminate = document.getElementById('btn-terminate-staff');
         if (btnTerminate) {
             btnTerminate.onclick = async () => {
-                if (confirm(`Are you sure you want to terminate the contract for ${staff.full_name}? This will revoke system access.`)) {
-                    await db.profiles.update(staffId, { role: 'Former Staff', status: 'Terminated', updated_at: new Date().toISOString() });
-                    Notifications.show('Contract terminated and access revoked.', 'warning');
+                if (confirm(`Are you sure you want to terminate the contract for ${staff.full_name}? This will revoke system access and remove all active assignments.`)) {
+                    // 1. Update Profile (Role & Status)
+                    await db.profiles.update(staffId, prepareForSync({ 
+                        role: 'Former Staff', 
+                        status: 'Terminated' 
+                    }));
+
+                    // 2. Cleanup Assignments (Remove from subjects and classes)
+                    const assignments = await db.subject_assignments.where('teacher_id').equals(staffId).toArray();
+                    for (const a of assignments) {
+                        await db.subject_assignments.delete(a.id);
+                    }
+
+                    const formRoles = await db.form_teachers.where('teacher_id').equals(staffId).toArray();
+                    for (const f of formRoles) {
+                        await db.form_teachers.delete(f.id);
+                    }
+
+                    Notifications.show('Contract terminated. Assignments cleared and access revoked.', 'warning');
                     this.renderStaff();
                     syncToCloud();
                 }

@@ -336,15 +336,29 @@ export async function loginUser(identifier, password) {
         if (!password || password === identifier) loginPassword = identifier;
     } 
     else if (isLegacyNumeric) {
-        // Attempt to find the real student ID from the legacy_id
+        // Attempt to find the real student ID from legacy_id OR attendance_code
         try {
-            const { data: studentData } = await client.from('students').select('student_id').eq('legacy_id', identifier).maybeSingle();
+            // Priority 1: Check legacy_id
+            let { data: studentData } = await client.from('students').select('student_id').eq('legacy_id', identifier).maybeSingle();
+            
+            // Priority 2: Check attendance_code
+            if (!studentData) {
+                const { data } = await client.from('students').select('student_id').eq('attendance_code', identifier).maybeSingle();
+                studentData = data;
+            }
+
+            // Priority 3: Suffix match (e.g. "5703" matches "NKQMS-2026-5703")
+            if (!studentData) {
+                const { data } = await client.from('students').select('student_id').like('student_id', `%-${identifier}`).maybeSingle();
+                studentData = data;
+            }
+
             if (studentData && studentData.student_id) {
                 email = `${studentData.student_id.toLowerCase()}@student.school`;
                 if (!password || password === identifier) loginPassword = studentData.student_id;
             }
         } catch (err) {
-            console.warn('Legacy ID resolution failed:', err);
+            console.warn('Legacy/Attendance ID resolution failed:', err);
         }
     }
 
