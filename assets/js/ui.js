@@ -6968,7 +6968,7 @@ export const UI = {
 
     async showImportFromBankModal() {
         const exams = await db.cbt_exams.toArray();
-        const subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+        const subjects = (await db.subjects.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
         // Also get standalone bank categories
@@ -9312,8 +9312,8 @@ export const UI = {
     },
 
     async renderQuestionBank() {
-        const subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
-        const classes = (await db.classes.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+        const subjects = (await db.subjects.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
+        const classes = (await db.classes.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
         // Get all bank questions (exam_id starts with 'BANK-')
@@ -9420,24 +9420,24 @@ export const UI = {
     },
 
     async bulkImportToBank() {
-        const subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
-        const classes = (await db.classes.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+        const subjects = (await db.subjects.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
+        const classes = (await db.classes.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
 
         const modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group" style="margin: 0;">
-                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Subject</label>
-                        <select id="bank-subject" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
-                            <option value="">— Select Subject —</option>
-                            ${subjects.map(s => `<option value="${s.id}" style="color: #1e293b; background: #ffffff;">${s.name}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Class</label>
                         <select id="bank-class" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
                             <option value="">— Select Class —</option>
                             ${classes.map(c => `<option value="${c.name}" style="color: #1e293b; background: #ffffff;">${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Subject</label>
+                        <select id="bank-subject" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
+                            <option value="">— Select Subject —</option>
+                            ${subjects.map(s => `<option value="${s.id}" style="color: #1e293b; background: #ffffff;">${s.name}</option>`).join('')}
                         </select>
                     </div>
                 </div>
@@ -9539,15 +9539,15 @@ export const UI = {
             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group" style="margin: 0;">
-                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Subject</label>
-                        <select id="edit-bank-subject" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
-                            ${subjects.map(s => `<option value="${s.id}" ${s.id === currentSub ? 'selected' : ''} style="color: #1e293b; background: #ffffff;">${s.name}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Class</label>
                         <select id="edit-bank-class" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
                             ${classes.map(c => `<option value="${c.name}" ${c.name === currentCls ? 'selected' : ''} style="color: #1e293b; background: #ffffff;">${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Subject</label>
+                        <select id="edit-bank-subject" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
+                            ${subjects.map(s => `<option value="${s.id}" ${s.id === currentSub ? 'selected' : ''} style="color: #1e293b; background: #ffffff;">${s.name}</option>`).join('')}
                         </select>
                     </div>
                 </div>
