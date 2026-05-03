@@ -6261,26 +6261,17 @@ export const UI = {
         if (!area) return;
 
         if (this.cbtQuestions.length === 0) {
-            area.innerHTML = `<p class="text-secondary text-center p-4">No questions added yet.</p>`;
+            area.innerHTML = `<div style="text-align:center; padding:2rem; color:#94a3b8; font-size:0.9rem;">No questions added yet.</div>`;
             return;
         }
 
-        area.innerHTML = `<h4>Questions Preview (${this.cbtQuestions.length})</h4>` + this.cbtQuestions.map((q, idx) => `
-            <div class="question-preview-item">
-                <span class="q-num">#${idx + 1}</span>
-                <p style="font-weight:600; margin-bottom:0.5rem;">${q.question_text}</p>
-                <div style="font-size:0.85rem; display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; color:var(--text-secondary);">
-                    <div>A: ${q.option_a}</div>
-                    <div>B: ${q.option_b}</div>
-                    <div>C: ${q.option_c}</div>
-                    <div>D: ${q.option_d}</div>
-                </div>
-                <div style="margin-top:0.5rem; font-size:0.85rem; display:flex; justify-content:space-between; align-items:center;">
-                    <span style="color:var(--accent-success); font-weight:700;">Correct: ${q.correct_option}</span>
-                    <span style="background:var(--bg-secondary); padding:2px 8px; border-radius:6px; font-weight:700; font-size:0.75rem;">${q.marks} Marks</span>
-                </div>
-                <button class="btn btn-sm btn-danger" style="position:absolute; top:10px; right:10px; padding:2px 5px;" onclick="UI.removeTempQuestion('${q.id}')">
-                    <i data-lucide="x" style="width:14px; height:14px;"></i>
+        area.innerHTML = this.cbtQuestions.map((q, idx) => `
+            <div class="card" style="margin-bottom:0.75rem; padding:1rem; border-radius:12px; background:#f8fafc; border:1px solid #e2e8f0; position:relative;">
+                <div style="font-weight:800; color:#4338ca; font-size:0.75rem; margin-bottom:0.5rem; text-transform:uppercase;">Question ${idx + 1} <span style="margin-left:0.5rem; color:#64748b;">[${q.marks} Marks]</span></div>
+                <div style="font-size:0.95rem; color:#1e293b; line-height:1.5; margin-bottom:0.5rem;">${q.question_text}</div>
+                <div style="font-size:0.8rem; color:#64748b; font-weight:600;">Correct: ${q.correct_option}</div>
+                <button onclick="UI.removeTempQuestion('${q.id}')" style="position:absolute; top:12px; right:12px; background:none; border:none; color:#ef4444; cursor:pointer; padding:4px;">
+                    <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
                 </button>
             </div>
         `).join('');
@@ -6369,8 +6360,9 @@ export const UI = {
 
         // 1. Shuffle and Limit Questions
         questions = this.shuffleArray([...questions]);
-        if (exam.question_limit && exam.question_limit > 0) {
-            questions = questions.slice(0, exam.question_limit);
+        const limit = parseInt(exam.question_limit) || 0;
+        if (limit > 0) {
+            questions = questions.slice(0, limit);
         }
 
         // 2. Shuffle Options for each question
