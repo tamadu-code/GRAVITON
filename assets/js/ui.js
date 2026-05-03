@@ -9768,6 +9768,7 @@ export const UI = {
             await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
                 status: 'In Progress',
                 started_at: fakeStartTime.toISOString(),
+                updated_at: new Date().toISOString(),
                 is_synced: 0
             });
 
