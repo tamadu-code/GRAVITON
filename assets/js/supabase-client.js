@@ -54,28 +54,6 @@ export async function syncToCloud() {
     const client = getSupabase();
     if (!client) return { success: false, message: 'Supabase not configured' };
 
-    // --- Data Migration for CA Components ---
-    try {
-        const brokenScores = await db.scores.toArray();
-        const toFix = brokenScores.filter(s => s.ass !== undefined || s.t1 !== undefined);
-        if (toFix.length > 0) {
-            const fixed = toFix.map(s => {
-                s.assignment = s.ass !== undefined ? s.ass : (s.assignment || 0);
-                s.test1 = s.t1 !== undefined ? s.t1 : (s.test1 || 0);
-                s.test2 = s.t2 !== undefined ? s.t2 : (s.test2 || 0);
-                s.project = s.prj !== undefined ? s.prj : (s.project || 0);
-                delete s.ass;
-                delete s.t1;
-                delete s.t2;
-                delete s.prj;
-                return s;
-            });
-            await db.scores.bulkPut(fixed);
-            console.log(`Migrated ${fixed.length} score records to use 'assignment', 'test1', 'test2', 'project'.`);
-        }
-    } catch (e) { console.error('Migration error:', e); }
-    // ----------------------------------------
-
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results'];
     let syncCount = 0;
     const failedTables = new Set();
@@ -85,128 +63,80 @@ export async function syncToCloud() {
 
     try {
         for (const table of tables) {
-            // Enforce dependencies: Don't sync child tables if their parents failed
-            if ((table === 'scores' || table === 'subject_assignments' || table === 'timetable' || table === 'cbt_exams') && failedTables.has('subjects')) {
-                console.warn(`Skipping ${table} sync because subjects sync failed in this run.`);
-                continue;
-            }
-            if ((table === 'scores' || table === 'attendance' || table === 'attendance_records' || table === 'pins' || table === 'payments' || table === 'student_analytics' || table === 'cbt_results') && failedTables.has('students')) {
-                console.warn(`Skipping ${table} sync because students sync failed in this run.`);
-                continue;
-            }
-            if (table === 'cbt_questions' && failedTables.has('cbt_exams')) {
-                console.warn(`Skipping ${table} sync because exams sync failed in this run.`);
-                continue;
-            }
+            // Skip tables based on dependencies
+            if ((table === 'scores' || table === 'subject_assignments' || table === 'cbt_exams') && failedTables.has('subjects')) continue;
+            if (table === 'cbt_questions' && failedTables.has('cbt_exams')) continue;
+            if (table === 'cbt_results' && failedTables.has('students')) continue;
 
             try {
-                // Find records where is_synced is 0 or -1 (to retry flagged records if subjects have now downloaded)
                 const unsynced = await db[table].filter(r => r.is_synced === 0 || r.is_synced === -1).toArray();
+                if (unsynced.length === 0) continue;
+
+                console.log(`Syncing ${unsynced.length} records for ${table}...`);
                 
-                if (unsynced.length > 0 && client) {
-                    // Table-level field whitelists for Supabase insertion
-                    const whitelist = {
-                        profiles: ['id', 'full_name', 'role', 'assigned_id', 'email', 'phone', 'department', 'qualification', 'emp_type', 'status', 'is_archived', 'passport', 'updated_at'],
-                        students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'dob', 'phone', 'parent_name', 'parent_phone', 'parent_email', 'blood_group', 'genotype', 'passport_url', 'updated_at'],
-                        classes: ['id', 'name', 'level', 'updated_at'],
-                        subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
-                        subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'updated_at'],
-                        form_teachers: ['id', 'teacher_id', 'class_name', 'updated_at'],
-                        scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
-                        attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
-                        attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
-                        timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
-                        notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'updated_at'],
-                        settings: ['id', 'key', 'value', 'updated_at'],
-                        pins: ['id', 'pin_code', 'serial', 'status', 'student_id', 'term', 'session', 'used_count', 'usage_limit', 'updated_at'],
-                        payments: ['id', 'student_id', 'amount', 'category', 'term', 'session', 'reference', 'status', 'date', 'updated_at'],
-                        fee_structures: ['id', 'class_name', 'amount', 'term', 'session', 'category', 'updated_at'],
-                        student_analytics: ['student_id', 'average', 'rank', 'fee_balance', 'attendance_rate', 'updated_at'],
-                        cbt_exams: ['id', 'title', 'subject_id', 'class_name', 'teacher_id', 'mode', 'term', 'session', 'score_field', 'date', 'start_time', 'end_time', 'duration', 'question_limit', 'status', 'updated_at'],
-                        cbt_questions: ['id', 'exam_id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'updated_at'],
-                        cbt_results: ['id', 'exam_id', 'student_id', 'score', 'total_questions', 'answers', 'warnings', 'started_at', 'status', 'updated_at'],
-                        duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'updated_at'],
-                        audit_logs: ['id', 'operation', 'table', 'record_id', 'timestamp', 'user_id'],
-                        parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'updated_at']
-                    };
-                    
-                    console.log(`Syncing ${unsynced.length} records for ${table}...`);
-                    
-                    // --- Data Integrity Validation ---
-                    let recordsToSync = unsynced;
-                    
-                    // Validate and Auto-Migrate subject_id
-                    if (table === 'scores' || table === 'subject_assignments' || table === 'timetable' || table === 'cbt_exams') {
-                        const allSubjects = await db.subjects.toArray();
-                        const validSubjectIds = new Set(allSubjects.map(s => s.id));
-                        const subjectNameMap = new Map(allSubjects.map(s => [(s.name || '').toLowerCase().trim(), s.id]));
-                        
-                        const updatedRecords = [];
-                        for (const record of recordsToSync) {
-                            if (record.subject_id && !validSubjectIds.has(record.subject_id)) {
-                                const oldNameKey = record.subject_id.toLowerCase().trim();
-                                let newCorrectId = subjectNameMap.get(oldNameKey);
-                                
-                                if (!newCorrectId) {
-                                    const oldAlpha = oldNameKey.replace(/[^a-z0-9]/g, '');
-                                    for (const [subjName, subjId] of subjectNameMap.entries()) {
-                                        const subjAlpha = subjName.replace(/[^a-z0-9]/g, '');
-                                        if (subjAlpha === oldAlpha) {
-                                            newCorrectId = subjId;
-                                            break;
-                                        }
-                                    }
-                                }
+                // Table-level field whitelists
+                const whitelist = {
+                    profiles: ['id', 'full_name', 'role', 'assigned_id', 'email', 'phone', 'department', 'qualification', 'emp_type', 'status', 'is_archived', 'passport', 'updated_at'],
+                    students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'dob', 'phone', 'parent_name', 'parent_phone', 'parent_email', 'blood_group', 'genotype', 'passport_url', 'updated_at'],
+                    classes: ['id', 'name', 'level', 'updated_at'],
+                    subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
+                    subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'updated_at'],
+                    form_teachers: ['id', 'teacher_id', 'class_name', 'updated_at'],
+                    scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
+                    attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
+                    attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
+                    timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
+                    notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'updated_at'],
+                    settings: ['id', 'key', 'value', 'updated_at'],
+                    pins: ['id', 'pin_code', 'serial', 'status', 'student_id', 'term', 'session', 'used_count', 'usage_limit', 'updated_at'],
+                    payments: ['id', 'student_id', 'amount', 'category', 'term', 'session', 'reference', 'status', 'date', 'updated_at'],
+                    fee_structures: ['id', 'class_name', 'amount', 'term', 'session', 'category', 'updated_at'],
+                    student_analytics: ['student_id', 'average', 'rank', 'fee_balance', 'attendance_rate', 'updated_at'],
+                    cbt_exams: ['id', 'title', 'subject_id', 'class_name', 'teacher_id', 'mode', 'term', 'session', 'score_field', 'date', 'start_time', 'end_time', 'duration', 'question_limit', 'status', 'updated_at'],
+                    cbt_questions: ['id', 'exam_id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'updated_at'],
+                    cbt_results: ['id', 'exam_id', 'student_id', 'score', 'total_questions', 'answers', 'warnings', 'started_at', 'status', 'updated_at'],
+                    duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'updated_at'],
+                    audit_logs: ['id', 'operation', 'table', 'record_id', 'timestamp', 'user_id'],
+                    parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'updated_at']
+                };
 
-                                if (newCorrectId) {
-                                    record.subject_id = newCorrectId;
-                                    record.is_synced = 0;
-                                    await db[table].put(record);
-                                    updatedRecords.push(record);
-                                } else {
-                                    db[table].update(record.id || record.student_id, { is_synced: -1 });
-                                }
-                            } else {
-                                updatedRecords.push(record);
-                            }
-                        }
-                        recordsToSync = updatedRecords;
-                    }
-
-                    // Chunk size of 50 to avoid payload limits
-                    const CHUNK_SIZE = 50;
-                    for (let i = 0; i < recordsToSync.length; i += CHUNK_SIZE) {
-                        const chunk = recordsToSync.slice(i, i + CHUNK_SIZE);
-                        const dataToSync = chunk.map(item => {
-                            const sanitized = {};
-                            const columns = whitelist[table] || Object.keys(item);
-                            columns.forEach(col => {
-                                if (item[col] !== undefined) sanitized[col] = item[col];
-                            });
-                            return sanitized;
+                const CHUNK_SIZE = 50;
+                for (let i = 0; i < unsynced.length; i += CHUNK_SIZE) {
+                    const chunk = unsynced.slice(i, i + CHUNK_SIZE);
+                    
+                    // Filter logic for Question Bank questions (exclude from cloud sync)
+                    let dataToSync = chunk.map(item => {
+                        const sanitized = {};
+                        const columns = whitelist[table] || Object.keys(item);
+                        columns.forEach(col => {
+                            if (item[col] !== undefined) sanitized[col] = item[col];
                         });
+                        return sanitized;
+                    });
 
+                    if (table === 'cbt_questions') {
+                        dataToSync = dataToSync.filter(r => !r.exam_id?.startsWith('BANK-'));
+                    }
+
+                    if (dataToSync.length > 0) {
                         const { error } = await client.from(table).upsert(dataToSync);
-
-                        if (!error) {
-                            const pk = table === 'students' ? 'student_id' : 'id';
-                            for (const item of chunk) {
-                                await db[table].update(item[pk], { is_synced: 1 });
-                            }
-                            syncCount += chunk.length;
-                        } else {
-                            if (error.code === '42P01') {
-                                console.warn(`Table ${table} not found in Supabase during upload. Skipping...`);
-                                break; 
-                            }
-                            failedTables.add(table);
+                        if (error) {
                             console.error(`Sync error for ${table}:`, error);
+                            failedTables.add(table);
+                            continue; 
                         }
                     }
+
+                    // Mark as synced locally
+                    const pk = table === 'students' ? 'student_id' : 'id';
+                    for (const item of chunk) {
+                        await db[table].update(item[pk], { is_synced: 1 });
+                    }
+                    syncCount += chunk.length;
                 }
-            } catch (e) {
+            } catch (err) {
+                console.error(`Failed to sync table ${table}:`, err);
                 failedTables.add(table);
-                console.error(`Local sync error for ${table}:`, e);
             }
         }
     } finally {
@@ -228,7 +158,6 @@ export async function syncFromCloud(forceAll = false) {
     if (window._isSyncingFromCloud) return;
     window._isSyncingFromCloud = true;
 
-    // If forceAll is true, we look back to beginning of time
     const lastSyncTime = localStorage.getItem('last_sync_timestamp');
     const lastSync = (lastSyncTime && !forceAll) ? new Date(new Date(lastSyncTime).getTime() - 300000).toISOString() : new Date(0).toISOString();
 
@@ -241,93 +170,40 @@ export async function syncFromCloud(forceAll = false) {
 
                 while (hasMore) {
                     let query = client.from(table).select('*').range(offset, offset + BATCH_SIZE - 1);
-                    
-                    if (!forceAll) {
-                        query = query.gt('updated_at', lastSync);
-                    }
+                    if (!forceAll) query = query.gt('updated_at', lastSync);
 
                     const { data, error } = await query;
-
                     if (error) {
-                        // If table doesn't exist, skip it instead of failing
-                        if (error.code === '42P01' || error.message.includes('not exist')) {
-                            console.warn(`Table ${table} not found in Supabase, skipping...`);
-                            hasMore = false;
-                            continue;
-                        }
-                        console.error(`Pull error for ${table}:`, error);
+                        if (error.code === '42P01') { hasMore = false; continue; }
                         throw error;
                     }
 
                     if (data && data.length > 0) {
-                        await db[table].bulkPut(data.map(item => ({ 
-                            ...item, 
-                            is_synced: 1 
-                        })));
-                        console.log(`Synced ${data.length} records for ${table} (Offset: ${offset})...`);
-                        
-                        if (data.length < BATCH_SIZE) {
-                            hasMore = false;
-                        } else {
-                            offset += BATCH_SIZE;
-                        }
+                        await db[table].bulkPut(data.map(item => ({ ...item, is_synced: 1 })));
+                        if (data.length < BATCH_SIZE) hasMore = false;
+                        else offset += BATCH_SIZE;
                     } else {
                         hasMore = false;
                     }
                 }
-            } catch (e) {
-                console.error(`Skipping sync for ${table} due to error:`, e);
-            }
+            } catch (e) { console.warn(`Pull error for ${table}:`, e); }
         }
     } finally {
         window._isSyncingFromCloud = false;
-    }
-
-    localStorage.setItem('last_sync_timestamp', new Date().toISOString());
-    
-    // Auto-update UI branding if settings were synced
-    if (window.UI && typeof window.UI.updateInstitutionalBranding === 'function') {
-        window.UI.updateInstitutionalBranding();
+        localStorage.setItem('last_sync_timestamp', new Date().toISOString());
     }
 }
 
-/**
- * Start Background Sync Loop
- */
-/**
- * Start Background Sync Loop
- * Returns the initial sync promise so callers can await first completion.
- */
 export function startSyncLoop(intervalMs = 60000) {
-    // Initial sync — return the promise so UI can update on completion
     const initialSync = syncFromCloud().then(() => syncToCloud());
-
     setInterval(async () => {
-        try {
-            // 1. Pull changes from cloud
-            await syncFromCloud();
-            
-            // 2. Push local changes to cloud
-            const status = await syncToCloud();
-            
-            if (status.count > 0) {
-                window.dispatchEvent(new CustomEvent('sync-complete', { detail: status }));
-            }
-        } catch (err) {
-            console.error('Background sync failed:', err);
-        }
+        await syncFromCloud();
+        await syncToCloud();
     }, intervalMs);
-
     return initialSync;
 }
 
-// ─────────────────────────────────────────
 // Authentication Methods
-// ─────────────────────────────────────────
-
-/**
- * Sign in with email and password
- */
 export async function loginUser(identifier, password) {
     const client = getSupabase();
     if (!client) return { data: null, error: { message: 'Supabase not initialized' } };
@@ -335,223 +211,96 @@ export async function loginUser(identifier, password) {
     let email = identifier;
     let loginPassword = password;
 
-    // ─── Student ID Login Translation ───
-    // 1. Check if the identifier is a standard Student ID (Format: NKQMS-YEAR-CODE)
     const studentIdRegex = /^NKQMS-\d{4}-\d+/i;
-    const isStandardId = studentIdRegex.test(identifier) && !identifier.includes('@');
-    
-    // 2. Check if the identifier is a pure numeric Legacy ID (e.g. "1234")
-    const isLegacyNumeric = /^\d{4,6}$/.test(identifier);
-
-    if (isStandardId) {
+    if (studentIdRegex.test(identifier) && !identifier.includes('@')) {
         email = `${identifier.toLowerCase()}@student.school`;
         if (!password || password === identifier) loginPassword = identifier;
-    } 
-    else if (isLegacyNumeric) {
-        // Attempt to find the real student ID from legacy_id OR attendance_code
-        try {
-            // Priority 1: Check legacy_id
-            let { data: studentData } = await client.from('students').select('student_id').eq('legacy_id', identifier).maybeSingle();
-            
-            // Priority 2: Check attendance_code
-            if (!studentData) {
-                const { data } = await client.from('students').select('student_id').eq('attendance_code', identifier).maybeSingle();
-                studentData = data;
-            }
-
-            // Priority 3: Suffix match (e.g. "5703" matches "NKQMS-2026-5703")
-            if (!studentData) {
-                const { data } = await client.from('students').select('student_id').like('student_id', `%-${identifier}`).maybeSingle();
-                studentData = data;
-            }
-
-            if (studentData && studentData.student_id) {
-                email = `${studentData.student_id.toLowerCase()}@student.school`;
-                if (!password || password === identifier) loginPassword = studentData.student_id;
-            }
-        } catch (err) {
-            console.warn('Legacy/Attendance ID resolution failed:', err);
-        }
     }
 
     const { data, error } = await client.auth.signInWithPassword({ email: email, password: loginPassword });
     return { data, error };
 }
 
-/**
- * Sign out
- */
 export async function logoutUser() {
     const client = getSupabase();
-    if (!client) return true; // No Supabase — just let the caller reload
+    if (!client) return true;
     try {
         localStorage.removeItem('user_role');
         await client.auth.signOut();
-    } catch(e) {
-        console.error('Sign out error:', e);
-    }
+    } catch(e) { console.error('Sign out error:', e); }
     return true;
 }
 
-/**
- * Get current session
- */
 export async function getCurrentSession() {
     const client = getSupabase();
     if (!client) return null;
-    const { data, error } = await client.auth.getSession();
-    if (error) return null;
+    const { data } = await client.auth.getSession();
     return data.session;
 }
 
-/**
- * Get user profile from the profiles table
- */
 export async function getUserProfile(userId) {
     const client = getSupabase();
     if (!client) return null;
-    // Use maybeSingle to avoid PGRST116 error if row doesn't exist
-    const { data, error } = await client.from('profiles').select('*').eq('id', userId).maybeSingle();
-    if (error) {
-        console.warn("Profile retrieval warning:", error.message);
-        return null;
-    }
+    const { data } = await client.from('profiles').select('*').eq('id', userId).maybeSingle();
     return data;
 }
 
-/**
- * Register a new user account
- * Creates auth user and inserts profile row
- */
 export async function registerUser(email, password, fullName, role) {
     const client = getSupabase();
-    if (!client) return { data: null, error: { message: 'Supabase not initialized' } };
+    if (!client) return { error: { message: 'Supabase not initialized' } };
 
-    // 1. Create auth user
     const { data, error } = await client.auth.signUp({
         email,
         password,
-        options: {
-            data: {
-                full_name: fullName,
-                role: role
-            }
-        }
+        options: { data: { full_name: fullName, role: role } }
     });
 
-    if (error) return { data: null, error };
-
-    // 2. Insert profile row (Supabase trigger may also do this, but this is a safety net)
-    if (data.user) {
-        const profileData = {
+    if (!error && data.user) {
+        await client.from('profiles').upsert({
             id: data.user.id,
             full_name: fullName,
             role: role,
             email: email,
             status: 'Active',
             updated_at: new Date().toISOString()
-        };
-        await client.from('profiles').upsert(profileData);
+        });
     }
-
     return { data, error };
 }
 
-/**
- * Update user password
- */
-export async function updateUserPassword(newPassword) {
+export async function updateUserPassword(email, newPassword) {
     const client = getSupabase();
-    if (!client) return { error: { message: 'Database connection failed' } };
-
-    const { data, error } = await client.auth.updateUser({
-        password: newPassword
-    });
-
+    if (!client) return { error: { message: 'Supabase not initialized' } };
+    const { data, error } = await client.auth.updateUser({ password: newPassword });
     return { data, error };
 }
 
-/**
- * Send password reset email
- */
 export async function resetPassword(email) {
     const client = getSupabase();
     if (!client) return { error: { message: 'Supabase not initialized' } };
-
-    const { data, error } = await client.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin
-    });
-
-    return { data, error };
+    return await client.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
 }
 
-/**
- * Upload a passport photo to Supabase Storage and update the database
- * @param {string} id - Student ID or Profile ID
- * @param {string} type - 'student' or 'staff'
- * @param {File} file - The image file to upload
- */
 export async function uploadPassport(id, type, file) {
     const client = getSupabase();
     if (!client) return { error: 'Supabase not initialized' };
 
-    const fileExt = file.name.split('.').pop();
-    const cleanId = id.replace(/[^a-zA-Z0-9]/g, '_');
-    const filePath = `${type}/${cleanId}_${Date.now()}.${fileExt}`;
+    const filePath = `${type}/${id.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${file.name.split('.').pop()}`;
 
     try {
-        // 1. Upload to Supabase Storage
-        const { data: storageData, error: storageError } = await client.storage
-            .from('passports')
-            .upload(filePath, file, { 
-                upsert: true,
-                contentType: file.type 
-            });
-
+        const { error: storageError } = await client.storage.from('passports').upload(filePath, file, { upsert: true });
         if (storageError) throw storageError;
 
-        // 2. Get Public URL
         const { data: { publicUrl } } = client.storage.from('passports').getPublicUrl(filePath);
+        const update = type === 'student' ? { passport_url: publicUrl } : { passport: publicUrl };
+        const key = type === 'student' ? 'student_id' : 'id';
 
-        // 3. Update Database & Local Cache
-        const updatedAt = new Date().toISOString();
-        
-        if (type === 'student') {
-            const { error: dbError } = await client.from('students').update({ 
-                passport_url: publicUrl,
-                updated_at: updatedAt 
-            }).eq('student_id', id);
-            
-            if (dbError) throw dbError;
-            
-            await db.students.update(id, { 
-                passport_url: publicUrl, 
-                updated_at: updatedAt,
-                is_synced: 1 
-            });
-        } else {
-            const { error: dbError } = await client.from('profiles').update({ 
-                passport: publicUrl,
-                updated_at: updatedAt 
-            }).eq('id', id);
-            
-            if (dbError) throw dbError;
-
-            await db.profiles.update(id, { 
-                passport: publicUrl, 
-                updated_at: updatedAt,
-                is_synced: 1 
-            });
-            
-            // If updating current user, update UI object too
-            if (window.UI && window.UI.currentUser && window.UI.currentUser.id === id) {
-                window.UI.currentUser.passport = publicUrl;
-            }
-        }
+        await client.from(type === 'student' ? 'students' : 'profiles').update({ ...update, updated_at: new Date().toISOString() }).eq(key, id);
+        await db[type === 'student' ? 'students' : 'profiles'].update(id, { ...update, is_synced: 1 });
 
         return { success: true, url: publicUrl };
     } catch (err) {
         console.error('Passport upload failed:', err);
-        return { error: err.message || 'Upload failed' };
+        return { error: err.message };
     }
 }
