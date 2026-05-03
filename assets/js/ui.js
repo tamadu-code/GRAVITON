@@ -2493,22 +2493,36 @@ export const UI = {
                 
                 try {
                     const studentEmail = `${student.student_id.toLowerCase()}@student.school`;
-                    const { data: authData, error: authError } = await registerUser(studentEmail, student.student_id, student.name, 'Student');
+                    let { data: authData, error: authError } = await registerUser(studentEmail, student.student_id, student.name, 'Student');
                     
-                    if (authError && !authError.message.includes('already registered')) {
+                    const client = window.getSupabase ? window.getSupabase() : null;
+
+                    if (authError && authError.message.includes('already registered')) {
+                        // User exists, just ensure profile is there. 
+                        // If we can't get ID, we try to upsert by email if possible or just log it
+                        console.log('User already registered, ensuring profile exists...');
+                    } else if (authError) {
                         throw authError;
                     }
                     
                     // Force update profile in Supabase to ensure everything is linked
-                    const client = window.getSupabase ? window.getSupabase() : null;
                     if (client) {
-                        const { error: pError } = await client.from('profiles').upsert({
-                            id: authData?.user?.id || student.id || student.student_id,
+                        // We use a dedicated RPC or direct upsert if RLS allows. 
+                        // Since we are likely Admin here, we should be able to upsert.
+                        const profileToLink = {
                             full_name: student.name,
                             role: 'Student',
                             assigned_id: student.student_id,
-                            email: studentEmail
-                        });
+                            email: studentEmail,
+                            updated_at: new Date().toISOString()
+                        };
+
+                        // If we have authData.user.id, use it. Otherwise, we might need to find the user.
+                        if (authData?.user?.id) {
+                            profileToLink.id = authData.user.id;
+                        }
+
+                        const { error: pError } = await client.from('profiles').upsert(profileToLink, { onConflict: 'email' });
                         if (pError) console.warn('Profile sync warning during repair:', pError);
                     }
 
@@ -2571,7 +2585,16 @@ export const UI = {
                             <div><label>Class</label><select id="edit-std-class" class="input" style="width:100%;">${classOptions}</select></div>
                             <div><label>Gender</label><select id="edit-std-gender" class="input" style="width:100%;"><option value="Male" ${student.gender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${student.gender === 'Female' ? 'selected' : ''}>Female</option></select></div>
                             <div><label>Date of Birth</label><input type="date" id="edit-std-dob" class="input" value="${student.dob || ''}" style="width:100%;"></div>
-                            <div><label>Legacy ID</label><input type="text" id="edit-std-legacy" class="input" value="${student.legacy_id || ''}" style="width:100%;" placeholder="External System ID"></div>
+                        </div>
+                        <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                             <div><label>Admission Year</label><input type="number" id="edit-std-year" class="input" value="${student.admission_year || 2024}" style="width:100%;"></div>
+                             <div><label>Attendance Code</label><input type="text" id="edit-std-attendance" class="input" value="${student.attendance_code || ''}" style="width:100%;" placeholder="4-digit code"></div>
+                             <div><label>Legacy ID (External)</label><input type="text" id="edit-std-legacy" class="input" value="${student.legacy_id || student.attendance_code || ''}" style="width:100%;" placeholder="External System ID"></div>
+                             <div style="display: flex; align-items: flex-end; padding-bottom: 5px;">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.75rem; font-weight: 700; color: #ef4444;">
+                                    <input type="checkbox" id="regenerate-id-flag"> Update System ID to match Year/Code
+                                </label>
+                             </div>
                         </div>
                         <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                             <div><label>Blood Group</label><select id="edit-std-blood" class="input" style="width:100%;">
@@ -2604,8 +2627,34 @@ export const UI = {
                         phone: document.getElementById('edit-std-phone').value,
                         address: document.getElementById('edit-std-address').value,
                         legacy_id: document.getElementById('edit-std-legacy').value.trim(),
+                        attendance_code: document.getElementById('edit-std-attendance').value.trim(),
+                        admission_year: parseInt(document.getElementById('edit-std-year').value),
                         updated_at: new Date().toISOString()
                     };
+
+                    const regenerateID = document.getElementById('regenerate-id-flag').checked;
+                    if (regenerateID) {
+                        const newId = `NKQMS-${updates.admission_year}-${updates.attendance_code}`;
+                        if (newId !== studentId) {
+                            if (confirm(`CRITICAL: Changing System ID from ${studentId} to ${newId}. This may affect existing reports. Proceed?`)) {
+                                // Perform cascading update
+                                const originalData = await db.students.get(studentId);
+                                await db.students.add({ ...originalData, ...updates, student_id: newId });
+                                await db.students.delete(studentId);
+                                
+                                // Update related records (simplified for common tables)
+                                await db.attendance_records.where('student_id').equals(studentId).modify({ student_id: newId });
+                                await db.scores.where('student_id').equals(studentId).modify({ student_id: newId });
+                                await db.payments.where('student_id').equals(studentId).modify({ student_id: newId });
+                                
+                                Notifications.show('Student ID migrated successfully.', 'success');
+                                this.renderStudents();
+                                syncToCloud();
+                                return;
+                            }
+                        }
+                    }
+
                     await db.students.update(studentId, updates);
                     Notifications.show('Profile updated successfully.', 'success');
                     this.renderStudentDetail(studentId);

@@ -150,17 +150,21 @@ async function loadAuthenticatedApp(authUser) {
     let profile = await getUserProfile(authUser.id);
 
     // Safety net: If profile fetch failed, build a local-only fallback.
-    // IMPORTANT: Do NOT upsert back to DB here — that would overwrite the
-    // real role (e.g. 'Admin') with the registration metadata role ('Pending').
     if (!profile) {
         console.warn('Profile fetch failed — using auth metadata as fallback. Check Supabase RLS policies on the profiles table.');
-        const { full_name } = authUser.user_metadata || {};
+        const { full_name, role: metaRole } = authUser.user_metadata || {};
+        
+        // Smarter role detection based on email pattern
+        let detectedRole = metaRole || 'Admin'; 
+        if (authUser.email.toLowerCase().includes('@student.school')) detectedRole = 'Student';
+        else if (authUser.email.toLowerCase().includes('@parent.school')) detectedRole = 'Parent';
+        else if (authUser.email.toLowerCase().includes('@staff.school')) detectedRole = 'Staff';
+
         profile = {
             id: authUser.id,
             full_name: full_name || authUser.email.split('@')[0],
-            // Don't use user_metadata.role here — it was set at registration
-            // and is likely 'Pending'. Treat as Admin so the owner is not locked out.
-            role: 'Admin',
+            role: detectedRole,
+            assigned_id: authUser.email.split('@')[0].toUpperCase() // Fallback attempt at assigned ID
         };
     }
 
