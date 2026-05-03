@@ -7710,19 +7710,6 @@ export const UI = {
                 }
             });
         }
-
-        // Mobile Composer Toggle
-        const composerTrigger = document.getElementById('composer-mobile-trigger');
-        const composerContent = document.getElementById('notice-composer-content');
-        if (composerTrigger && composerContent) {
-            composerTrigger.addEventListener('click', () => {
-                composerContent.classList.toggle('active');
-                const chevron = document.getElementById('composer-chevron');
-                if (chevron) {
-                    chevron.style.transform = composerContent.classList.contains('active') ? 'rotate(180deg)' : 'rotate(0deg)';
-                }
-            });
-        }
     },
     async renderStudentAttendanceView() {
         const studentId = this.currentUser.assigned_id;
