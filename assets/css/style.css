@@ -4460,7 +4460,39 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
     .faculty-card {
         padding: 1.25rem !important;
     }
+
+    .student-dashboard-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+    }
+
+    .student-dashboard-grid > div {
+        width: 100% !important;
+        box-sizing: border-box;
+    }
+
+    .card {
+        border-radius: 20px !important;
+        padding: 1.5rem !important;
+    }
+
+    .banner-title {
+        font-size: 1.5rem !important;
+    }
 }
+
+/* Ticker Animation */
+@keyframes ticker {
+    0% { transform: translateX(100%); }
+    100% { transform: translateX(-100%); }
+}
+
+.live-ticker-container div {
+    display: inline-block;
+    padding-left: 100%;
+    animation: ticker 40s linear infinite;
+}
+
 
 
 

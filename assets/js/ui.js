@@ -427,10 +427,16 @@ export const UI = {
         // Form Master Check
         const formMasterAssignment = await db.form_teachers.where('teacher_id').equals(teacherId).first();
         
-        // Notices
+        // Notices Filtering
         const notices = await db.notices.where('is_active').equals(1).toArray().catch(() => []);
-        const noticeHTML = notices.length > 0 
-            ? notices.map(n => `<span style="margin-right: 3rem;">🔔 <strong>${n.title}</strong>: ${n.content || ''}</span>`).join('')
+        const filteredNotices = isAdmin ? notices : notices.filter(n => 
+            n.target === 'All' || 
+            n.target === 'Staff' || 
+            assignedClasses.includes(n.target)
+        );
+
+        const noticeHTML = filteredNotices.length > 0 
+            ? filteredNotices.map(n => `<span style="margin-right: 3rem;">🔔 <strong>${n.title}</strong>: ${n.content || ''}</span>`).join('')
             : '<span style="margin-right: 3rem;">All academic systems are operational. Stay inspired.</span>';
 
 
@@ -677,7 +683,9 @@ export const UI = {
         };
         const allNotices = await db.notices.toArray();
         const activeNotices = allNotices.filter(n => n.is_active !== 0 && (n.target === 'All' || n.target === 'Students' || n.target === student?.class_name));
-        const liveTickerMsg = activeNotices.length > 0 ? activeNotices.map(n => `[ ${n.category.toUpperCase()} ] ${n.title}: ${n.content}`).join(' ••• ') : "Welcome to the Graviton Student Universe. Stay focused on your goals.";
+        const liveTickerMsg = activeNotices.length > 0 
+            ? activeNotices.map(n => `[ ${n.category.toUpperCase()} ] ${n.title}: ${n.content}`).join(' ••• ') 
+            : "Welcome to the Graviton Student Universe. Stay focused on your goals.";
         
         const results = await db.cbt_results ? await db.cbt_results.where('student_id').equals(studentId).toArray() : [];
         const attendance = await db.attendance_records ? await db.attendance_records.where('student_id').equals(studentId).toArray() : [];
@@ -687,6 +695,14 @@ export const UI = {
         const displayRank = hasFeeBalance ? '???' : analytics.rank || 'N/A';
 
         this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1.5rem; min-height: 100vh; overflow-x: hidden;">
+                <!-- Live Broadcast Ticker -->
+                <div class="live-ticker-container" style="background: #1e1b4b; color: #818cf8; padding: 0.75rem 2rem; border-radius: 16px; margin-bottom: 1.5rem; font-size: 0.85rem; font-weight: 700; white-space: nowrap; overflow: hidden; position: relative; border: 1px solid rgba(129, 140, 248, 0.2); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+                    <div>
+                        ${liveTickerMsg}
+                    </div>
+                </div>
+
                 <div class="student-dashboard-grid" style="display: grid; grid-template-columns: 1fr 350px; gap: 2rem; align-items: flex-start;">
                     
                     <!-- ─── Left Column: Academic Pulse ─── -->
@@ -703,11 +719,6 @@ export const UI = {
                                 </div>
                                 
                                 <div style="flex: 1; min-width: 250px;">
-                                    <h2 class="banner-title" style="font-size: 2.2rem; font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
-                                    <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; flex-wrap: wrap;">
-                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ID: ${student?.student_id || 'PENDING'}</span>
-                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">CLASS: ${student?.class_name || 'N/A'}</span>
-                                                                      <div style="flex: 1; min-width: 250px;">
                                     <h2 class="banner-title" style="font-size: 2.2rem; font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
                                     <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; flex-wrap: wrap;">
                                         <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ID: ${student?.student_id || 'PENDING'}</span>
@@ -7575,16 +7586,21 @@ export const UI = {
         // Filter based on role
         if (!isAdmin) {
             let teacherClasses = [];
+            let studentClass = '';
             if (isTeacher) {
                 const assignments = await db.subject_assignments.where('teacher_id').equals(this.currentUser.id).toArray();
                 teacherClasses = [...new Set(assignments.map(a => a.class_name))];
+            } else {
+                const student = await db.students.get(this.currentUser.assigned_id || '');
+                studentClass = student?.class_name || '';
             }
 
             notices = notices.filter(n => {
                 if (n.target === 'All') return true;
                 if (isTeacher && n.target === 'Staff') return true;
                 if (isTeacher && teacherClasses.includes(n.target)) return true;
-                if (this.currentUser.class_name && n.target === this.currentUser.class_name) return true;
+                if (!isTeacher && n.target === 'Students') return true;
+                if (studentClass && n.target === studentClass) return true;
                 return false;
             });
         }
