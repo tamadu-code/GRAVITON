@@ -251,16 +251,7 @@ export const UI = {
         let teacherCount = 0;
         try {
             const profiles = await db.profiles.toArray();
-            teacherCount = profiles.filter(p => p.role === 'Teacher').length;
-            if (teacherCount === 0) {
-                // Fallback to Supabase if local DB is empty
-                const { getSupabase } = await import('./supabase-client.js');
-                const sb = getSupabase();
-                if (sb) {
-                    const { count } = await sb.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'Teacher');
-                    if (count !== null) teacherCount = count;
-                }
-            }
+            teacherCount = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive').length;
         } catch(e) { console.error('Error fetching teacher count', e); }
 
         const today          = new Date().toISOString().split('T')[0];
@@ -310,7 +301,7 @@ export const UI = {
                     </div>
 
                     <div class="stat-card-premium" style="border-radius: 16px; padding: 1.25rem;">
-                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.05em; color: #64748b; font-size: 0.7rem;">FACULTY STAFF</span>
+                        <span class="stat-label" style="font-weight: 800; letter-spacing: 0.05em; color: #64748b; font-size: 0.7rem;">ACTIVE STAFF</span>
                         <div class="stat-body" style="margin-top: 0.5rem; display: flex; align-items: baseline; gap: 0.75rem;">
                             <span class="stat-number" style="font-size: 1.75rem; font-weight: 800; font-family: 'Outfit', sans-serif;">${teacherCount}</span>
                             <span class="stat-trend" style="background: #f8fafc; color: #64748b; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: 700;">Stable</span>
@@ -5022,22 +5013,22 @@ export const UI = {
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="padding: 1.5rem; background: #f8fafc; min-height: 100vh;">
                 <!-- Premium Header -->
-                <div class="page-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 24px; padding: 2.5rem; color: white; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15); margin-bottom: 2rem; position: relative; overflow: hidden;">
+                <div class="page-banner staff-directory-banner" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 24px; padding: 2.5rem; color: white; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15); margin-bottom: 2rem; position: relative; overflow: hidden;">
                     <div style="position: absolute; right: -30px; top: -30px; width: 180px; height: 180px; background: rgba(99,102,241,0.15); border-radius: 50%;"></div>
                     <div style="position: absolute; right: 80px; bottom: -40px; width: 120px; height: 120px; background: rgba(99,102,241,0.1); border-radius: 50%;"></div>
-                    <div style="position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center;">
+                    <div class="banner-flex-container" style="position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem;">
                         <div>
-                            <h1 style="margin: 0; font-size: 2.25rem; font-weight: 900; letter-spacing: -0.03em; display: flex; align-items: center; gap: 1rem;">
+                            <h1 style="margin: 0; font-size: 2.25rem; font-weight: 900; letter-spacing: -0.03em; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
                                 <i data-lucide="users" style="width: 36px; height: 36px;"></i> Faculty Command Center
                             </h1>
                             <p style="margin-top: 0.5rem; opacity: 0.7; font-size: 1rem;">Manage staff accounts, assignments, and access credentials.</p>
                         </div>
-                        <div style="display: flex; gap: 1rem; align-items: center;">
-                            <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 0.75rem 1.5rem; border-radius: 16px;">
+                        <div class="banner-actions" style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                            <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 0.75rem 1.5rem; border-radius: 16px; min-width: 120px;">
                                 <div style="font-size: 1.75rem; font-weight: 900;">${teachers.length}</div>
                                 <div style="font-size: 0.65rem; font-weight: 700; text-transform: uppercase; opacity: 0.7;">Active Staff</div>
                             </div>
-                            <button id="btn-add-staff" style="height: 52px; border-radius: 16px; padding: 0 1.75rem; display: flex; align-items: center; gap: 0.75rem; background: #6366f1; color: white; font-weight: 800; font-size: 1rem; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(99,102,241,0.4); transition: all 0.2s;">
+                            <button id="btn-add-staff" class="btn-onboard-mobile" style="height: 52px; border-radius: 16px; padding: 0 1.75rem; display: flex; align-items: center; gap: 0.75rem; background: #6366f1; color: white; font-weight: 800; font-size: 1rem; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(99,102,241,0.4); transition: all 0.2s;">
                                 <i data-lucide="user-plus" style="width: 20px;"></i> Onboard Staff
                             </button>
                             <button id="btn-bulk-repair-staff" style="height: 52px; border-radius: 16px; padding: 0 1.25rem; display: flex; align-items: center; gap: 0.5rem; background: #fef9c3; color: #854d0e; font-weight: 800; font-size: 0.85rem; border: 1px solid #fef08a; cursor: pointer;">
@@ -5315,19 +5306,19 @@ export const UI = {
         });
 
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in-up">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <div class="view-container animate-fade-in-up" style="padding-bottom: 5rem;">
+                <div class="staff-detail-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <button class="btn btn-secondary" onclick="UI.renderStaff()"><i data-lucide="arrow-left"></i> Back to Directory</button>
-                    <div style="display: flex; gap: 1rem;">
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
                         ${staff.status === 'Terminated' || staff.status === 'Inactive' || staff.role === 'Former Staff' ? 
-                            `<button id="btn-reactivate-staff" class="btn btn-secondary" style="color: #10b981; background: #ecfdf5; border: none;"><i data-lucide="user-check"></i> Reactivate Staff</button>` :
-                            `<button id="btn-terminate-staff" class="btn btn-secondary" style="color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="trash-2"></i> Terminate Contract</button>`
+                            `<button id="btn-reactivate-staff" class="btn btn-secondary" style="color: #10b981; background: #ecfdf5; border: none; padding: 0.75rem 1rem;"><i data-lucide="user-check"></i> Reactivate</button>` :
+                            `<button id="btn-terminate-staff" class="btn btn-secondary" style="color: #ef4444; background: #fef2f2; border: none; padding: 0.75rem 1rem;"><i data-lucide="trash-2"></i> Terminate</button>`
                         }
-                        <button class="btn btn-primary" style="background: #2563eb;"><i data-lucide="edit"></i> Update Records</button>
+                        <button class="btn btn-primary" id="btn-update-records-direct" style="background: #2563eb; padding: 0.75rem 1rem;"><i data-lucide="edit"></i> Modify Profile</button>
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 350px 1fr; gap: 2rem;">
+                <div class="staff-detail-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
                     <!-- Left: Bio-Data -->
                     <div class="card" style="border-radius: 20px; padding: 2rem; text-align: center;">
                         <div style="width: 150px; height: 150px; margin: 0 auto 1.5rem; border-radius: 40px; overflow: hidden; background: #f1f5f9; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);">
@@ -5430,7 +5421,7 @@ export const UI = {
         }
 
         // Update Records Button
-        const btnUpdate = this.contentArea.querySelector('button[style*="background: #2563eb;"]');
+        const btnUpdate = document.getElementById('btn-update-records-direct');
         if (btnUpdate) {
             btnUpdate.onclick = () => {
                 const modalHtml = `
@@ -7712,31 +7703,51 @@ export const UI = {
                     </button>
                 </header>
 
-                <div class="card" style="border-radius: 24px; padding: 2rem;">
-                    <div class="table-container">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Subject</th>
-                                    <th style="text-align:center;">C.A</th>
-                                    <th style="text-align:center;">Exam</th>
-                                    <th style="text-align:center;">Total</th>
-                                    <th style="text-align:center;">Grade</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${scores.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding:3rem;">No score records found for current term.</td></tr>' : scores.map(s => `
-                                    <tr>
-                                        <td style="font-weight: 700;">${s.subject_id}</td>
-                                        <td style="text-align:center;">${(parseFloat(s.assignment || 0) + parseFloat(s.test1 || 0) + parseFloat(s.test2 || 0) + parseFloat(s.project || 0)).toFixed(1)}</td>
-                                        <td style="text-align:center;">${s.exam || 0}</td>
-                                        <td style="text-align:center; font-weight: 900; color: #4f46e5;">${s.total || 0}</td>
-                                        <td style="text-align:center;"><span class="badge" style="background: #f1f5f9; color: #1e293b;">${s.grade || 'N/A'}</span></td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="grades-mobile-stack" style="display: flex; flex-direction: column; gap: 1rem;">
+                    ${scores.length === 0 ? `
+                        <div class="card" style="text-align:center; padding:3rem; border-radius: 24px;">
+                            <i data-lucide="info" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 1rem;"></i>
+                            <p style="color: #64748b; font-weight: 600;">No score records found for the current term.</p>
+                        </div>
+                    ` : scores.map(s => `
+                        <div class="card collapsable-section" style="border-radius: 24px; padding: 0; overflow: hidden; border: 1px solid #e2e8f0; transition: all 0.3s ease;">
+                            <label for="toggle-grade-${s.id}" style="display: flex; justify-content: space-between; align-items: center; padding: 1.5rem; cursor: pointer; margin: 0; background: white;">
+                                <div style="display: flex; align-items: center; gap: 1rem;">
+                                    <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center;">
+                                        <i data-lucide="book" style="width: 20px;"></i>
+                                    </div>
+                                    <div>
+                                        <h3 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 1rem;">${s.subject_id}</h3>
+                                        <span class="badge" style="background: #f1f5f9; color: #1e293b; font-size: 0.65rem; margin-top: 2px;">Grade: ${s.grade || 'N/A'}</span>
+                                    </div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 1rem;">
+                                    <div style="text-align: right;">
+                                        <div style="font-size: 1.25rem; font-weight: 900; color: #4f46e5;">${s.total || 0}</div>
+                                        <div style="font-size: 0.55rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Total</div>
+                                    </div>
+                                    <i data-lucide="chevron-down" class="collapse-icon" style="color: #94a3b8; transition: transform 0.3s ease;"></i>
+                                </div>
+                            </label>
+                            <input type="checkbox" id="toggle-grade-${s.id}" class="collapse-toggle" style="display: none;">
+                            <div class="collapse-content" style="padding: 0 1.5rem 1.5rem; background: #f8fafc;">
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; padding-top: 1.5rem; border-top: 1px solid #e2e8f0;">
+                                    <div style="text-align: center;">
+                                        <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">C.A Score</div>
+                                        <div style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-top: 2px;">${(parseFloat(s.assignment || 0) + parseFloat(s.test1 || 0) + parseFloat(s.test2 || 0) + parseFloat(s.project || 0)).toFixed(1)}</div>
+                                    </div>
+                                    <div style="text-align: center;">
+                                        <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Exam Score</div>
+                                        <div style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-top: 2px;">${s.exam || 0}</div>
+                                    </div>
+                                    <div style="text-align: center;">
+                                        <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Remark</div>
+                                        <div style="font-size: 0.8rem; font-weight: 900; color: #10b981; margin-top: 4px;">PASS</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
             </div>
         `;

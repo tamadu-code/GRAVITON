@@ -7,7 +7,7 @@ import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, 
 import db from './db.js';
 import { Notifications } from './utils.js';
 
-console.log('--- GRAVITON CORE v16.0 - INITIALIZING ---');
+console.log('--- GRAVITON CORE v17.0 - INITIALIZING ---');
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
