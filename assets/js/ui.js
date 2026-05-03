@@ -2317,7 +2317,7 @@ export const UI = {
 
         detailView.innerHTML = `
             <div style="padding: 1.5rem;">
-                <div class="profile-header" style="margin-bottom: 1.5rem;">
+                <div class="profile-header" style="margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;">
                     <div class="profile-avatar-big" style="width: 120px; height: 120px; background: #f8fafc; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-radius: 30px; display: flex; align-items: center; justify-content: center; position: relative;">
                         <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}" style="width: 90px; height: 90px;" alt="${student.name}">
                         <div style="position: absolute; bottom: -10px; right: -10px; width: 44px; height: 44px; background: #2563eb; color: white; border-radius: 14px; display: flex; align-items: center; justify-content: center; border: 4px solid white;">
@@ -2325,9 +2325,11 @@ export const UI = {
                         </div>
                     </div>
                     <div class="profile-title-info" style="flex: 1;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
                             <div>
-                                <span class="badge" style="background: #eff6ff; color: #2563eb; font-weight: 800; border-radius: 12px; padding: 0.4rem 0.8rem; margin-bottom: 0.5rem; display: inline-block;">ACADEMIC ID: ${student.student_id}</span>
+                                <div class="profile-badge-container">
+                                    <span class="badge" style="background: #eff6ff; color: #2563eb; font-weight: 800; border-radius: 12px; padding: 0.4rem 0.8rem; margin-bottom: 0.5rem; display: inline-block;">ACADEMIC ID: ${student.student_id}</span>
+                                </div>
                                 <h1 style="font-size: 2rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em; line-height: 1.1;">${student.name}</h1>
                                 <p style="font-size: 1.1rem; color: #64748b; margin-top: 0.25rem;">${student.class_name} • ${student.sub_class || 'General Stream'}</p>
                             </div>
@@ -4996,7 +4998,7 @@ export const UI = {
     async renderStaff() {
         const profiles = await db.profiles.toArray();
         const teachers = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive');
-        const formerStaff = profiles.filter(p => p.status === 'Terminated' || p.status === 'Inactive' || p.role === 'Former Staff');
+        const formerStaff = profiles.filter(p => p.status === 'Terminated' || p.status === 'Inactive');
 
         // Get assignment counts per teacher
         const allAssignments = await db.subject_assignments.toArray();
@@ -5310,7 +5312,7 @@ export const UI = {
                 <div class="staff-detail-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <button class="btn btn-secondary" onclick="UI.renderStaff()"><i data-lucide="arrow-left"></i> Back to Directory</button>
                     <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                        ${staff.status === 'Terminated' || staff.status === 'Inactive' || staff.role === 'Former Staff' ? 
+                        ${staff.status === 'Terminated' || staff.status === 'Inactive' ? 
                             `<button id="btn-reactivate-staff" class="btn btn-secondary" style="color: #10b981; background: #ecfdf5; border: none; padding: 0.75rem 1rem;"><i data-lucide="user-check"></i> Reactivate</button>` :
                             `<button id="btn-terminate-staff" class="btn btn-secondary" style="color: #ef4444; background: #fef2f2; border: none; padding: 0.75rem 1rem;"><i data-lucide="trash-2"></i> Terminate</button>`
                         }
@@ -5320,7 +5322,7 @@ export const UI = {
 
                 <div class="staff-detail-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
                     <!-- Left: Bio-Data -->
-                    <div class="card" style="border-radius: 20px; padding: 2rem; text-align: center;">
+                    <div class="card staff-bio-card" style="border-radius: 20px; padding: 2rem; display: flex; flex-direction: column; align-items: center; text-align: center;">
                         <div style="width: 150px; height: 150px; margin: 0 auto 1.5rem; border-radius: 40px; overflow: hidden; background: #f1f5f9; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);">
                             <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${staff.full_name || staff.username}" style="width: 100%; height: 100%; object-fit: cover;">
                         </div>
@@ -5473,7 +5475,6 @@ export const UI = {
                 if (confirm(`Are you sure you want to terminate the contract for ${staff.full_name}? This will revoke system access and remove all active assignments.`)) {
                     // 1. Update Profile (Role & Status)
                     await db.profiles.update(staffId, prepareForSync({ 
-                        role: 'Former Staff', 
                         status: 'Terminated' 
                     }));
 
