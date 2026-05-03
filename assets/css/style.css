@@ -4503,6 +4503,25 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
     animation-play-state: paused;
 }
 
+/* Exam Mode - Full Screen Focus */
+body.exam-mode #sidebar {
+    transform: translateX(-100%);
+    width: 0 !important;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body.exam-mode .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+}
+
+body.exam-mode #mobile-menu-btn,
+body.exam-mode .topbar {
+    display: none !important;
+}
+
 
 
 

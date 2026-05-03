@@ -5775,6 +5775,9 @@ export const UI = {
         const isTeacher = role === 'teacher';
         const isStudent = role === 'student';
         const teacherId = this.currentUser.id;
+
+        // Ensure sidebar is visible when in list view
+        document.body.classList.remove('exam-mode');
         
         let subjects = (await db.subjects.toArray());
         let exams = await db.cbt_exams.toArray();
@@ -6343,6 +6346,7 @@ export const UI = {
         this.examDurationSeconds = (exam.duration || 30) * 60;
         this.examTimeLeft = this.examDurationSeconds;
 
+        document.body.classList.add('exam-mode');
         this.renderCBTExamInterface();
         this.startExamTimer();
     },
@@ -6515,6 +6519,7 @@ export const UI = {
             </div>
         `;
         
+        document.body.classList.remove('exam-mode');
         if (typeof lucide !== 'undefined') lucide.createIcons();
         syncToCloud();
     },
