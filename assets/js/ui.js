@@ -390,7 +390,11 @@ export const UI = {
         
         // ── Data Acquisition ──────────────────────────────────────────────
         const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
-        const assignedClasses = [...new Set(assignments.map(a => a.class_name))];
+        const formAssignments = await db.form_teachers.where('teacher_id').equals(teacherId).toArray();
+        const assignedClasses = [...new Set([
+            ...assignments.map(a => a.class_name),
+            ...formAssignments.map(f => f.class_name)
+        ])];
         const assignedSubjects = [...new Set(assignments.map(a => a.subject_id))];
         
         const allStudents = await db.students.filter(s => s.is_active !== false).toArray();
@@ -1095,7 +1099,7 @@ export const UI = {
         // Alphabetical sort (Natural sort)
         streams.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
         
-        const activeStudents = await db.students.filter(s => s.is_active !== false).toArray();
+        let activeStudents = await db.students.filter(s => s.is_active !== false).toArray();
         const formTeachers = await db.form_teachers.toArray().catch(() => []);
         const profiles = await db.profiles.toArray().catch(() => []);
 
@@ -1107,6 +1111,7 @@ export const UI = {
                 ...formAssignments.map(f => f.class_name)
             ]);
             streams = streams.filter(s => assignedClassNames.has(s.name));
+            activeStudents = activeStudents.filter(s => assignedClassNames.has(s.class_name));
         }
         
         const getEnrollment = (className) => activeStudents.filter(s => s.class_name === className).length;
@@ -4168,7 +4173,7 @@ export const UI = {
             return this.renderStudentAttendanceView();
         }
         
-        const students = await db.students.filter(s => s.is_active !== false).toArray();
+        let students = await db.students.filter(s => s.is_active !== false).toArray();
         let classes = await db.classes.toArray();
         let subjects = await db.subjects.toArray();
 
@@ -4185,6 +4190,9 @@ export const UI = {
             // Also filter subjects to only those they teach
             const assignedSubjectIds = new Set(assignments.map(a => a.subject_id));
             subjects = subjects.filter(s => assignedSubjectIds.has(s.id) || assignedSubjectIds.has(s.name));
+
+            // Filter students to only those in assigned classes
+            students = students.filter(s => assignedClassNames.has(s.class_name));
         }
         
         // Initial State
@@ -4380,6 +4388,22 @@ export const UI = {
                 .toArray();
 
             let filteredStudents = students;
+            
+            // 0. Force Selection for Subject Mode (Teachers)
+            if (currentTab === 'subject' && !cls) {
+                listBody.innerHTML = `
+                    <div style="text-align: center; padding: 4rem 2rem; color: #94a3b8; background: white; border-radius: 20px; border: 2px dashed #f1f5f9;">
+                        <i data-lucide="users" style="width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.5;"></i>
+                        <p style="font-weight: 600;">Please select a class to load the student list.</p>
+                    </div>
+                `;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                document.getElementById('stat-present').textContent = '0';
+                document.getElementById('stat-late').textContent = '0';
+                document.getElementById('stat-absent').textContent = '0';
+                document.getElementById('stat-turnout').textContent = '0%';
+                return;
+            }
             
             // 1. Basic Class Filter (Robust matching for sub-classes)
             if (cls) {
