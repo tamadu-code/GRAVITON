@@ -7020,8 +7020,10 @@ export const UI = {
                 await db.scores.update(existingScore.id, prepareForSync(updateData));
                 console.log(`[SCORE POST] Updated existing record: ${existingScore.id}`);
             } else {
+                // Use the standard Scoresheet ID format: studentId_subjectId_term_session
+                const standardId = `${result.student_id}_${exam.subject_id}_${exam.term}_${exam.session}`;
                 const newScore = prepareForSync({
-                    id: `SCR${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    id: standardId,
                     student_id: result.student_id,
                     subject_id: exam.subject_id,
                     term: exam.term,
@@ -7029,7 +7031,7 @@ export const UI = {
                     [exam.score_field]: scoreValue
                 });
                 await db.scores.add(newScore);
-                console.log(`[SCORE POST] Created NEW record: ${newScore.id}`);
+                console.log(`[SCORE POST] Created NEW record with Standard ID: ${newScore.id}`);
             }
             
             // Force a cloud sync attempt
