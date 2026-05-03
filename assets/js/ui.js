@@ -6771,6 +6771,12 @@ export const UI = {
         const q = this.currentQuestions[this.currentQuestionIndex];
         const progress = ((this.currentQuestionIndex + 1) / this.currentQuestions.length) * 100;
 
+        // Calculate current time remaining for instant-load (prevents 00:00 flickering)
+        const timeRemaining = Math.max(0, Math.floor((this.examEndTime - Date.now()) / 1000));
+        const mins = Math.floor(timeRemaining / 60);
+        const secs = timeRemaining % 60;
+        const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
         this.contentArea.innerHTML = `
             <div class="cbt-exam-container animate-fade-in">
                 <!-- Header: Title & Timer -->
@@ -6781,7 +6787,7 @@ export const UI = {
                             Q${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}
                         </div>
                     </div>
-                    <div id="exam-timer" class="cbt-exam-timer-box" style="font-size: 1.1rem; padding: 0.25rem 0.75rem;">00:00</div>
+                    <div id="exam-timer" class="cbt-exam-timer-box" style="font-size: 1.1rem; padding: 0.25rem 0.75rem;">${timeStr}</div>
                 </header>
 
                 <!-- Progress Bar -->
