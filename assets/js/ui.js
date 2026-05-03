@@ -6818,14 +6818,14 @@ export const UI = {
                     </div>
                 </main>
 
-                <!-- Question Map: Full Grid Layout (No Scrolling) -->
-                <div class="cbt-question-map" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 0.4rem; padding: 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; width: 100%;">
+                <!-- Question Map: Compact Grid Layout -->
+                <div class="cbt-question-map" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap: 0.35rem; padding: 0.75rem; background: #f8fafc; border-top: 1px solid #e2e8f0; width: 100%;">
                     ${this.currentQuestions.map((cq, i) => {
                         const isAnswered = this.userAnswers[cq.id];
                         const isActive = i === this.currentQuestionIndex;
                         return `
                             <div class="q-map-item ${isActive ? 'active' : ''} ${isAnswered ? 'answered' : ''}" 
-                                 style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; font-weight: 800; font-size: 0.8rem; border: 2px solid ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#e2e8f0')}; background: ${isActive ? '#eef2ff' : (isAnswered ? '#ecfdf5' : 'white')}; color: ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#64748b')};"
+                                 style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; cursor: pointer; font-weight: 800; font-size: 0.7rem; border: 2px solid ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#e2e8f0')}; background: ${isActive ? '#eef2ff' : (isAnswered ? '#ecfdf5' : 'white')}; color: ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#64748b')};"
                                  onclick="UI.goToQuestion(${i})">
                                 ${i + 1}
                             </div>
@@ -6833,17 +6833,17 @@ export const UI = {
                     }).join('')}
                 </div>
 
-                <!-- Footer: Sticky Navigation -->
-                <footer class="cbt-exam-footer" style="position: sticky; bottom: 0; background: white; padding: 1rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; z-index: 100; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
-                    <button class="btn btn-secondary" style="border-radius: 10px; height: 48px; padding: 0 1.25rem; font-weight: 700; background: #f1f5f9; color: #475569; border: none;" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>
-                        <i data-lucide="chevron-left" style="width:18px;"></i> Prev
+                <!-- Footer: Sticky Navigation (Slimmer on Mobile) -->
+                <footer class="cbt-exam-footer" style="position: sticky; bottom: 0; background: white; padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; z-index: 100; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);">
+                    <button class="btn btn-secondary" style="border-radius: 8px; height: 42px; padding: 0 1rem; font-weight: 700; background: #f1f5f9; color: #475569; border: none; font-size: 0.8rem;" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>
+                        <i data-lucide="chevron-left" style="width:16px;"></i> Prev
                     </button>
                     
-                    <div style="display: flex; gap: 0.75rem;">
+                    <div style="display: flex; gap: 0.6rem;">
                         ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
-                            <button class="btn btn-success" style="border-radius: 10px; height: 48px; padding: 0 2rem; background: #10b981; color: white; border: none; font-weight: 800; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);" onclick="UI.submitExam()">Submit Exam</button>
+                            <button class="btn btn-success" style="border-radius: 8px; height: 42px; padding: 0 1.5rem; background: #10b981; color: white; border: none; font-weight: 800; font-size: 0.8rem; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);" onclick="UI.submitExam()">Submit</button>
                         ` : `
-                            <button class="btn btn-primary" style="border-radius: 10px; height: 48px; padding: 0 2rem; background: #4338ca; color: white; border: none; font-weight: 800; box-shadow: 0 4px 12px rgba(67, 56, 202, 0.3);" onclick="UI.nextQuestion()">Next <i data-lucide="chevron-right" style="width:18px;"></i></button>
+                            <button class="btn btn-primary" style="border-radius: 8px; height: 42px; padding: 0 1.5rem; background: #4338ca; color: white; border: none; font-weight: 800; font-size: 0.8rem; box-shadow: 0 4px 10px rgba(67, 56, 202, 0.2);" onclick="UI.nextQuestion()">Next <i data-lucide="chevron-right" style="width:16px;"></i></button>
                         `}
                     </div>
                 </footer>
