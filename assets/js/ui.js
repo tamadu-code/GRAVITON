@@ -6610,14 +6610,8 @@ export const UI = {
             const elapsedSeconds = Math.floor((now - startTime) / 1000);
             this.examTimeLeft = durationSeconds - elapsedSeconds;
 
-            // Only auto-submit if they've exceeded duration by at least 30 seconds
-            if (this.examTimeLeft < -30) {
-                Notifications.show('Exam time expired. Submitting now...', 'warning');
-                this.currentExam = exam;
-                this.currentQuestions = questions;
-                this.userAnswers = session.answers || {};
-                return this.submitExam();
-            }
+            // We no longer auto-submit just for being away. 
+            // The timer (startExamTimer) will handle submission when timeLeft <= 0.
         } else {
             // Start New Session
             const newSession = prepareForSync({
