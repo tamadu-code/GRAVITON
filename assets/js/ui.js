@@ -6448,8 +6448,9 @@ export const UI = {
             this.examTimeLeft = durationSeconds - elapsedSeconds;
             
             if (this.examTimeLeft <= 0) {
-                Notifications.show('Your exam time has expired.', 'error');
-                this.currentQuestions = questions; // Load for scoring
+                Notifications.show('Exam time expired while you were away. Submitting now...', 'warning');
+                this.currentExam = exam;
+                this.currentQuestions = questions; 
                 this.userAnswers = session.answers || {};
                 return this.submitExam();
             }
