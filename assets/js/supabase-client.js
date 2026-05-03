@@ -211,10 +211,33 @@ export async function loginUser(identifier, password) {
     let email = identifier;
     let loginPassword = password;
 
+    // ─── Student ID Login Translation ───
     const studentIdRegex = /^NKQMS-\d{4}-\d+/i;
-    if (studentIdRegex.test(identifier) && !identifier.includes('@')) {
+    const isStandardId = studentIdRegex.test(identifier) && !identifier.includes('@');
+    const isLegacyNumeric = /^\d{3,8}$/.test(identifier);
+
+    if (isStandardId) {
         email = `${identifier.toLowerCase()}@student.school`;
         if (!password || password === identifier) loginPassword = identifier;
+    } 
+    else if (isLegacyNumeric) {
+        try {
+            // Check legacy_id, attendance_code, or suffix
+            let { data: studentData } = await client.from('students').select('student_id').eq('legacy_id', identifier).maybeSingle();
+            if (!studentData) {
+                const { data } = await client.from('students').select('student_id').eq('attendance_code', identifier).maybeSingle();
+                studentData = data;
+            }
+            if (!studentData) {
+                const { data } = await client.from('students').select('student_id').like('student_id', `%-${identifier}`).maybeSingle();
+                studentData = data;
+            }
+
+            if (studentData && studentData.student_id) {
+                email = `${studentData.student_id.toLowerCase()}@student.school`;
+                if (!password || password === identifier) loginPassword = studentData.student_id;
+            }
+        } catch (err) { console.warn('ID resolution failed:', err); }
     }
 
     const { data, error } = await client.auth.signInWithPassword({ email: email, password: loginPassword });
