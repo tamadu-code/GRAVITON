@@ -9378,8 +9378,8 @@ export const UI = {
                             const sessionLabel = parts[3] ? parts[3].replace('-', '/') : '';
 
                             return `
-                                <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04);">
-                                    <div onclick="event.preventDefault(); event.stopPropagation(); this.parentElement.classList.toggle('expanded')" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem;">
+                                <div class="card cbt-bank-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); margin-bottom: 1rem;">
+                                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '2000px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem; background: white;">
                                         <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0;">
                                             <div style="background: #e0e7ff; color: #4338ca; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                                                 <i data-lucide="book-open" style="width: 20px;"></i>
@@ -9391,11 +9391,11 @@ export const UI = {
                                         </div>
                                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
                                             <span style="background: #e0e7ff; color: #4338ca; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 0.8rem;">${questions.length} Q</span>
-                                            <i data-lucide="chevron-down" style="width: 18px; color: #94a3b8; transition: transform 0.2s;"></i>
+                                            <i data-lucide="chevron-down" class="chevron-icon" style="width: 18px; color: #94a3b8; transition: transform 0.3s ease;"></i>
                                         </div>
                                     </div>
-                                    <div class="participant-details" style="border-top: 1px solid #f1f5f9; overflow: hidden;">
-                                        <div style="padding: 1rem 0; display: flex; flex-direction: column; gap: 0.75rem; max-height: 400px; overflow-y: auto;">
+                                    <div class="bank-details-area" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
+                                        <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem;">
                                             ${questions.map((q, i) => `
                                                 <div style="background: #f8fafc; border-radius: 12px; padding: 1rem; border: 1px solid #f1f5f9;">
                                                     <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; margin-bottom: 0.5rem;">
@@ -9410,12 +9410,11 @@ export const UI = {
                                                     </div>
                                                 </div>
                                             `).join('')}
-                                        </div>
-                                        <div style="display: flex; gap: 0.75rem; padding-bottom: 1.25rem;">
-                                            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); UI.editBankCategory('${tag}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; height: 44px;">
+                                        <div style="display: flex; gap: 0.75rem; padding: 1.25rem; background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                                            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); UI.editBankCategory('${tag}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; height: 44px; text-decoration: none !important;">
                                                 <i data-lucide="edit-3" style="width: 16px;"></i> Edit Category
                                             </button>
-                                            <button type="button" class="btn btn-danger" onclick="event.stopPropagation(); if(confirm('Delete all ${questions.length} questions in this category?')){UI.deleteBankCategory('BANK-${tag}')}" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px;">
+                                            <button type="button" class="btn btn-danger" onclick="event.stopPropagation(); if(confirm('Delete all ${questions.length} questions in this category?')){UI.deleteBankCategory('BANK-${tag}')}" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px; text-decoration: none !important;">
                                                 <i data-lucide="trash-2" style="width: 16px;"></i> Delete Category
                                             </button>
                                         </div>
