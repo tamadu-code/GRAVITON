@@ -5981,15 +5981,21 @@ export const UI = {
                                 <div class="cbt-form-group"><label>Option E (Optional)</label><input type="text" id="opt-e" class="cbt-input"></div>
                             </div>
 
-                            <div class="cbt-form-group">
-                                <label>Correct Answer:</label>
-                                <select id="q-correct" class="cbt-input">
-                                    <option value="A">Option A</option>
-                                    <option value="B">Option B</option>
-                                    <option value="C">Option C</option>
-                                    <option value="D">Option D</option>
-                                    <option value="E">Option E</option>
-                                </select>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+                                <div class="cbt-form-group">
+                                    <label>Correct Answer:</label>
+                                    <select id="q-correct" class="cbt-input">
+                                        <option value="A">Option A</option>
+                                        <option value="B">Option B</option>
+                                        <option value="C">Option C</option>
+                                        <option value="D">Option D</option>
+                                        <option value="E">Option E</option>
+                                    </select>
+                                </div>
+                                <div class="cbt-form-group">
+                                    <label>Allocated Marks:</label>
+                                    <input type="number" id="q-marks" class="cbt-input" value="1" min="1">
+                                </div>
                             </div>
 
                             <div style="display:flex; justify-content:flex-end; gap:1rem; margin-top:2rem;">
@@ -6156,7 +6162,8 @@ export const UI = {
             option_c: document.getElementById('opt-c').value,
             option_d: document.getElementById('opt-d').value,
             option_e: document.getElementById('opt-e').value,
-            correct_option: document.getElementById('q-correct').value
+            correct_option: document.getElementById('q-correct').value,
+            marks: parseInt(document.getElementById('q-marks').value) || 1
         };
 
         this.cbtQuestions.push(q);
@@ -6192,8 +6199,9 @@ export const UI = {
                     <div>C: ${q.option_c}</div>
                     <div>D: ${q.option_d}</div>
                 </div>
-                <div style="margin-top:0.5rem; font-size:0.85rem; color:var(--accent-success); font-weight:700;">
-                    Correct: ${q.correct_option}
+                <div style="margin-top:0.5rem; font-size:0.85rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--accent-success); font-weight:700;">Correct: ${q.correct_option}</span>
+                    <span style="background:var(--bg-secondary); padding:2px 8px; border-radius:6px; font-weight:700; font-size:0.75rem;">${q.marks} Marks</span>
                 </div>
                 <button class="btn btn-sm btn-danger" style="position:absolute; top:10px; right:10px; padding:2px 5px;" onclick="UI.removeTempQuestion('${q.id}')">
                     <i data-lucide="x" style="width:14px; height:14px;"></i>
@@ -6450,7 +6458,7 @@ export const UI = {
         let score = 0;
         this.currentQuestions.forEach(q => {
             if (this.userAnswers[q.id] === q.correctText) {
-                score++;
+                score += (q.marks || 1);
             }
         });
 
