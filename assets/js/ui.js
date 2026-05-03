@@ -6923,20 +6923,22 @@ export const UI = {
             is_synced: 0
         };
 
+        const finalResult = existing ? { ...existing, ...resultUpdate } : { 
+            id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+            exam_id: examId,
+            student_id: studentId,
+            ...resultUpdate 
+        };
+
         if (existing) {
             await db.cbt_results.update(existing.id, resultUpdate);
         } else {
-            await db.cbt_results.add({
-                id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                exam_id: examId,
-                student_id: studentId,
-                ...resultUpdate
-            });
+            await db.cbt_results.add(finalResult);
         }
         
         // Auto-post to scoresheet if configured
         if (this.currentExam.score_field) {
-            await this.postCBTToScoresheet(result);
+            await this.postCBTToScoresheet(finalResult);
         }
 
         this.contentArea.innerHTML = `
@@ -6974,7 +6976,13 @@ export const UI = {
                 .equals([result.student_id, exam.subject_id, exam.term, exam.session])
                 .first();
 
-            const scoreValue = Math.round((result.score / result.total_questions) * 60);
+            // Determine multiplier based on field
+            let multiplier = 100; // Default to percentage
+            const field = (exam.score_field || '').toLowerCase();
+            if (field === 'exam') multiplier = 60;
+            else if (field.includes('test') || field.includes('project') || field.includes('assignment')) multiplier = 20;
+
+            const scoreValue = Math.round((result.score / result.total_questions) * multiplier);
 
             if (existingScore) {
                 const updateData = { [exam.score_field]: scoreValue };
