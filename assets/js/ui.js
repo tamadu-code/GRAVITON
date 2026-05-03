@@ -6500,62 +6500,69 @@ export const UI = {
         const progress = ((this.currentQuestionIndex + 1) / this.currentQuestions.length) * 100;
 
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in" style="max-width: 900px; margin: 0 auto; padding-top: 2rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <div class="cbt-exam-container animate-fade-in">
+                <!-- Header: Title & Timer -->
+                <header class="cbt-exam-header">
                     <div>
-                        <h2 style="font-weight: 800; color: #1e293b; margin: 0;">${this.currentExam.title}</h2>
-                        <p style="color: #64748b; font-size: 0.85rem; font-weight: 600;">Question ${this.currentQuestionIndex + 1} of ${this.currentQuestions.length}</p>
+                        <h2 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 1rem;">${this.currentExam.title}</h2>
+                        <div style="font-size: 0.7rem; color: #64748b; font-weight: 700; text-transform: uppercase;">
+                            Question ${this.currentQuestionIndex + 1} of ${this.currentQuestions.length}
+                        </div>
                     </div>
-                    <div id="exam-timer" style="font-size: 2rem; font-weight: 900; font-family: 'JetBrains Mono', monospace; color: #4338ca; background: #eef2ff; padding: 0.5rem 1.5rem; border-radius: 16px; min-width: 120px; text-align: center; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
-                        00:00
-                    </div>
-                </div>
+                    <div id="exam-timer" class="cbt-exam-timer-box">00:00</div>
+                </header>
 
-                <div style="width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; margin-bottom: 2.5rem; overflow: hidden;">
+                <!-- Progress Bar -->
+                <div style="width: 100%; height: 4px; background: #e2e8f0; overflow: hidden;">
                     <div style="width: ${progress}%; height: 100%; background: #4338ca; transition: width 0.4s ease;"></div>
                 </div>
 
-                <div class="card" style="padding: 2.5rem; border-radius: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); border: 1px solid #f1f5f9; margin-bottom: 2rem;">
-                    <div style="font-size: 1.25rem; font-weight: 700; color: #1e293b; line-height: 1.6; margin-bottom: 2.5rem;">
-                        ${q.question_text}
-                    </div>
+                <!-- Main Question Area -->
+                <main class="cbt-exam-content-area">
+                    <div class="cbt-question-card">
+                        <div style="font-size: 1.15rem; font-weight: 700; color: #1e293b; line-height: 1.6; margin-bottom: 2rem;">
+                            ${q.question_text}
+                        </div>
 
-                    <div style="display: flex; flex-direction: column; gap: 1rem;">
-                        ${q.shuffledOptions.map((opt, idx) => `
-                            <label style="display: flex; align-items: center; gap: 1rem; padding: 1.25rem; border: 2px solid ${this.userAnswers[q.id] === opt.text ? '#4338ca' : '#f1f5f9'}; border-radius: 16px; cursor: pointer; transition: all 0.2s; background: ${this.userAnswers[q.id] === opt.text ? '#f5f7ff' : 'white'};" class="option-label">
-                                <input type="radio" name="exam-option" value="${opt.text}" ${this.userAnswers[q.id] === opt.text ? 'checked' : ''} style="width: 20px; height: 20px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
-                                <div style="display: flex; align-items: center; gap: 1rem; width: 100%;">
-                                    <span style="font-weight: 800; color: ${this.userAnswers[q.id] === opt.text ? '#4338ca' : '#94a3b8'}; background: ${this.userAnswers[q.id] === opt.text ? '#eef2ff' : '#f8fafc'}; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem;">
-                                        ${String.fromCharCode(65 + idx)}
-                                    </span>
-                                    <span style="font-weight: 600; color: #334155;">${opt.text}</span>
-                                </div>
-                            </label>
-                        `).join('')}
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${q.shuffledOptions.map((opt, idx) => `
+                                <label style="display: flex; align-items: center; gap: 1rem; padding: 1rem; border: 2px solid ${this.userAnswers[q.id] === opt.text ? '#4338ca' : '#f1f5f9'}; border-radius: 14px; cursor: pointer; transition: all 0.2s; background: ${this.userAnswers[q.id] === opt.text ? '#f5f7ff' : 'white'};" class="option-label">
+                                    <input type="radio" name="exam-option" value="${opt.text}" ${this.userAnswers[q.id] === opt.text ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
+                                    <div style="display: flex; align-items: center; gap: 0.75rem; width: 100%;">
+                                        <span style="font-weight: 800; color: ${this.userAnswers[q.id] === opt.text ? '#4338ca' : '#94a3b8'}; background: ${this.userAnswers[q.id] === opt.text ? '#eef2ff' : '#f8fafc'}; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem;">
+                                            ${String.fromCharCode(64 + (idx + 1))}
+                                        </span>
+                                        <span style="font-weight: 600; color: #334155; font-size: 0.95rem;">${opt.text}</span>
+                                    </div>
+                                </label>
+                            `).join('')}
+                        </div>
                     </div>
-                </div>
+                </main>
 
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <button class="btn btn-secondary" style="border-radius: 12px; height: 52px; padding: 0 1.5rem;" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>
-                        <i data-lucide="arrow-left"></i> Previous
+                <!-- Footer: Navigation -->
+                <footer class="cbt-exam-footer">
+                    <button class="btn btn-secondary" style="border-radius: 10px; height: 48px;" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>
+                        <i data-lucide="chevron-left"></i> Prev
                     </button>
                     
-                    <div style="display: flex; gap: 1rem;">
-                        <button class="btn btn-danger" style="border-radius: 12px; height: 52px; padding: 0 1.5rem; background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3;" onclick="UI.confirmSubmitExam()">
-                            Submit Exam
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-danger" style="border-radius: 10px; height: 48px; background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3;" onclick="UI.confirmSubmitExam()">
+                            Submit
                         </button>
                         
                         ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
-                            <button class="btn btn-primary" style="border-radius: 12px; height: 52px; padding: 0 2rem; background: #059669;" onclick="UI.confirmSubmitExam()">
-                                Finalize & Submit <i data-lucide="check-circle" style="margin-left: 0.5rem;"></i>
+                            <button class="btn btn-primary" style="border-radius: 10px; height: 48px; background: #059669;" onclick="UI.confirmSubmitExam()">
+                                Finalize <i data-lucide="check-circle" style="margin-left: 0.25rem; width: 16px;"></i>
                             </button>
                         ` : `
-                            <button class="btn btn-primary" style="border-radius: 12px; height: 52px; padding: 0 2rem; background: #4338ca;" onclick="UI.nextQuestion()">
-                                Next Question <i data-lucide="arrow-right" style="margin-left: 0.5rem;"></i>
+                            <button class="btn btn-primary" style="border-radius: 10px; height: 48px; background: #4338ca;" onclick="UI.nextQuestion()">
+                                Next <i data-lucide="chevron-right" style="margin-left: 0.25rem; width: 16px;"></i>
                             </button>
                         `}
                     </div>
-                </div>
+                </footer>
+            </div>
             </div>
         `;
 
