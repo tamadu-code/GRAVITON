@@ -6991,12 +6991,14 @@ export const UI = {
                             const parts = tag.split('__');
                             const subLabel = subMap[parts[0]] || parts[0];
                             const clsLabel = parts[1] || 'General';
+                            const termLabel = parts[2] ? parts[2].replace('Term', ' Term') : '';
+                            const sessionLabel = parts[3] ? parts[3].replace('-', '/') : '';
                             const count = bankGroups[key];
                             return `
                                 <div class="bank-item" style="padding: 1rem; border: 1px solid #e0e7ff; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; background: #f5f3ff;" onclick="this.closest('.form-group').querySelectorAll('.bank-item').forEach(b => {b.style.borderColor = '#e2e8f0'; b.style.background = b.dataset.bg || '#fff'}); this.style.borderColor = '#4338ca'; this.style.background = '#e0e7ff'; this.dataset.selected = '${key}';" data-bg="#f5f3ff">
                                     <div>
                                         <div style="font-weight: 700;"><i data-lucide="database" style="width: 14px; display: inline; vertical-align: -2px; margin-right: 4px; color: #4338ca;"></i>${subLabel}</div>
-                                        <div style="font-size: 0.75rem; color: #64748b;">${clsLabel} • ${count} questions</div>
+                                        <div style="font-size: 0.75rem; color: #64748b;">${clsLabel} ${termLabel ? `• ${termLabel}` : ''} ${sessionLabel ? `• ${sessionLabel}` : ''} • ${count} questions</div>
                                     </div>
                                     <div style="background: #e0e7ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">Bank</div>
                                 </div>
@@ -9361,6 +9363,8 @@ export const UI = {
                             const parts = tag.split('__');
                             const subjectLabel = subMap[parts[0]] || parts[0];
                             const classLabel = parts[1] || 'General';
+                            const termLabel = parts[2] ? parts[2].replace('Term', ' Term') : '';
+                            const sessionLabel = parts[3] ? parts[3].replace('-', '/') : '';
 
                             return `
                                 <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04);">
@@ -9371,7 +9375,7 @@ export const UI = {
                                             </div>
                                             <div style="min-width: 0;">
                                                 <div style="font-weight: 800; color: #1e293b;">${subjectLabel}</div>
-                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${classLabel}</div>
+                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${classLabel} ${termLabel ? `• ${termLabel}` : ''} ${sessionLabel ? `• ${sessionLabel}` : ''}</div>
                                             </div>
                                         </div>
                                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
@@ -9434,6 +9438,23 @@ export const UI = {
                         </select>
                     </div>
                 </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Term</label>
+                        <select id="bank-term" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
+                            <option value="1st Term">1st Term</option>
+                            <option value="2nd Term">2nd Term</option>
+                            <option value="3rd Term">3rd Term</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Session</label>
+                        <select id="bank-session" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
+                            <option value="2024/2025">2024/2025</option>
+                            <option value="2025/2026">2025/2026</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="form-group" style="margin: 0;">
                     <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Paste questions below:</label>
                     <div style="font-size:0.75rem; color:#64748b; margin-bottom:0.5rem; background:#f1f5f9; padding:0.75rem; border-radius:10px; line-height: 1.6;">
@@ -9449,10 +9470,13 @@ export const UI = {
             const className = document.getElementById('bank-class').value;
             const text = document.getElementById('bank-q-text').value;
 
+            const term = document.getElementById('bank-term').value;
+            const session = document.getElementById('bank-session').value;
+
             if (!subjectId || !className) return Notifications.show('Please select both a Subject and a Class.', 'error');
             if (!text) return Notifications.show('Please paste your questions.', 'error');
 
-            const bankExamId = `BANK-${subjectId}__${className}`;
+            const bankExamId = `BANK-${subjectId}__${className}__${term.replace(/\s+/g, '')}__${session.replace(/\//g, '-')}`;
 
             const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
 
