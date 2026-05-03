@@ -6491,6 +6491,8 @@ export const UI = {
 
     async renderCBTInstructions(examId) {
         const exam = await db.cbt_exams.get(examId);
+        const subject = await db.subjects.get(exam.subject_id);
+        const subjectName = subject ? subject.name : exam.subject_id;
         const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
         const limit = parseInt(exam.question_limit) || questions.length;
 
@@ -6508,7 +6510,7 @@ export const UI = {
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 3rem;">
                         <div style="background: #f8fafc; padding: 1.5rem; border-radius: 20px; border: 1px solid #f1f5f9; text-align: center;">
                             <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem;">SUBJECT</div>
-                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${exam.subject_id}</div>
+                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${subjectName}</div>
                         </div>
                         <div style="background: #f8fafc; padding: 1.5rem; border-radius: 20px; border: 1px solid #f1f5f9; text-align: center;">
                             <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem;">DURATION</div>
