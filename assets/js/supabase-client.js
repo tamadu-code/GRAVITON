@@ -114,8 +114,10 @@ export async function syncToCloud() {
                         return sanitized;
                     });
 
+                    // We now allow BANK questions to sync to the cloud
+                    // Note: Requires the cloud DB to have the FK constraint relaxed or Bank IDs added to cbt_exams
                     if (table === 'cbt_questions') {
-                        dataToSync = dataToSync.filter(r => !r.exam_id?.startsWith('BANK-'));
+                        dataToSync = dataToSync.filter(r => r.question_text); // Only skip empty records
                     }
 
                     if (dataToSync.length > 0) {
