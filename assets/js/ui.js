@@ -2401,7 +2401,7 @@ export const UI = {
                                     </div>
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
                                         <span style="color: #94a3b8; font-weight: 600;">Legacy ID</span>
-                                        <span style="font-weight: 700; color: #475569;">${student.legacy_id || 'Not Assigned'}</span>
+                                        <span style="font-weight: 700; color: #475569;">${student.legacy_student_id || 'Not Assigned'}</span>
                                     </div>
                                 </div>
                             </div>
@@ -2585,7 +2585,7 @@ export const UI = {
                         <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                              <div><label>Admission Year</label><input type="number" id="edit-std-year" class="input" value="${student.admission_year || 2024}" style="width:100%;"></div>
                              <div><label>Attendance Code</label><input type="text" id="edit-std-attendance" class="input" value="${student.attendance_code || ''}" style="width:100%;" placeholder="4-digit code"></div>
-                             <div><label>Legacy ID (External)</label><input type="text" id="edit-std-legacy" class="input" value="${student.legacy_id || student.attendance_code || ''}" style="width:100%;" placeholder="External System ID"></div>
+                             <div><label>Legacy ID (External)</label><input type="text" id="edit-std-legacy" class="input" value="${student.legacy_student_id || student.attendance_code || ''}" style="width:100%;" placeholder="External System ID"></div>
                              <div style="display: flex; align-items: flex-end; padding-bottom: 5px;">
                                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.75rem; font-weight: 700; color: #ef4444;">
                                     <input type="checkbox" id="regenerate-id-flag"> Update System ID to match Year/Code
@@ -2622,7 +2622,7 @@ export const UI = {
                         parent_email: document.getElementById('edit-std-parent-email').value,
                         phone: document.getElementById('edit-std-phone').value,
                         address: document.getElementById('edit-std-address').value,
-                        legacy_id: document.getElementById('edit-std-legacy').value.trim(),
+                        legacy_student_id: document.getElementById('edit-std-legacy').value.trim(),
                         attendance_code: document.getElementById('edit-std-attendance').value.trim(),
                         admission_year: parseInt(document.getElementById('edit-std-year').value),
                         updated_at: new Date().toISOString()

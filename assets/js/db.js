@@ -83,7 +83,7 @@ db.version(18).stores({
 
 db.version(20).stores({
     profiles: 'id, full_name, role, assigned_id, email, status, updated_at, is_synced',
-    students: 'student_id, name, gender, address, class_name, status, is_active, attendance_code, admission_year, sub_class, legacy_id, updated_at, is_synced',
+    students: 'student_id, name, gender, address, class_name, status, is_active, attendance_code, admission_year, sub_class, legacy_student_id, updated_at, is_synced',
     classes: 'id, name, level, updated_at, is_synced',
     subjects: 'id, name, type, credits, updated_at, is_synced',
     subject_assignments: 'id, teacher_id, subject_id, class_name, specialization, updated_at, is_synced',
