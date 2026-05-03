@@ -6665,6 +6665,11 @@ export const UI = {
             }
         };
 
+        // Closing / Refreshing
+        window.onbeforeunload = () => {
+            log('Student attempted to close or refresh the exam interface');
+        };
+
         // Right-click
         window.oncontextmenu = (e) => {
             e.preventDefault();
