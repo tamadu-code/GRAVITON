@@ -5841,7 +5841,7 @@ export const UI = {
                             const result = resultDict[e.id];
                             return `
                             <div class="cbt-exam-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-                                <div class="cbt-exam-trigger" style="padding: 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: white;" onclick="const content = this.nextElementSibling; const isExpanded = content.style.maxHeight !== '0px' && content.style.maxHeight !== ''; content.style.maxHeight = isExpanded ? '0px' : '500px'; this.querySelector('.chevron-icon').style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';">
+                                <div class="cbt-exam-trigger" style="padding: 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: white;" onclick="event.preventDefault(); event.stopPropagation(); const content = this.nextElementSibling; const isExpanded = content.style.maxHeight !== '0px' && content.style.maxHeight !== ''; content.style.maxHeight = isExpanded ? '0px' : '500px'; this.querySelector('.chevron-icon').style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';">
                                     <div style="display: flex; align-items: center; gap: 1rem;">
                                         <div style="width: 45px; height: 45px; background: #eef2ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #4338ca;">
                                             <i data-lucide="file-text"></i>
@@ -9379,14 +9379,14 @@ export const UI = {
 
                             return `
                                 <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04);">
-                                    <div onclick="this.parentElement.classList.toggle('expanded')" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem;">
+                                    <div onclick="event.preventDefault(); event.stopPropagation(); this.parentElement.classList.toggle('expanded')" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem;">
                                         <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0;">
                                             <div style="background: #e0e7ff; color: #4338ca; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                                                 <i data-lucide="book-open" style="width: 20px;"></i>
                                             </div>
-                                            <div style="min-width: 0;">
-                                                <div style="font-weight: 800; color: #1e293b;">${subjectLabel}</div>
-                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${classLabel} ${termLabel ? `• ${termLabel}` : ''} ${sessionLabel ? `• ${sessionLabel}` : ''}</div>
+                                            <div style="min-width: 0; user-select: none;">
+                                                <div style="font-weight: 800; color: #1e293b; text-decoration: none !important;">${subjectLabel}</div>
+                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-decoration: none !important;">${classLabel} ${termLabel ? `• ${termLabel}` : ''} ${sessionLabel ? `• ${sessionLabel}` : ''}</div>
                                             </div>
                                         </div>
                                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
