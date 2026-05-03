@@ -9766,7 +9766,8 @@ export const UI = {
                             const isCompleted = r.status === 'Completed';
                             const statusBg = isCompleted ? '#ecfdf5' : '#fff7ed';
                             const statusColor = isCompleted ? '#059669' : '#d97706';
-                            const violationCount = r.warnings || 0;
+                            const violations = r.violations || [];
+                            const violationCount = violations.length;
 
                             return `
                                 <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); margin-bottom: 1rem;">
