@@ -111,6 +111,10 @@ db.version(21).stores({
     cbt_results: 'id, exam_id, student_id, [student_id+exam_id], score, total_questions, started_at, status, updated_at, is_synced'
 });
 
+db.version(22).stores({
+    scores: 'id, student_id, subject_id, term, session, [student_id+subject_id+term+session], updated_at, is_synced'
+});
+
 /**
  * Smart ID Generation
  * Format: NKQMS-{year}-{attendance_code}

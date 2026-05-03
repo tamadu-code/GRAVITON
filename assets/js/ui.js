@@ -6979,10 +6979,20 @@ export const UI = {
             const student = await db.students.get(result.student_id);
             if (!exam || !student) return;
 
-            const existingScore = await db.scores
-                .where('[student_id+subject_id+term+session]')
-                .equals([result.student_id, exam.subject_id, exam.term, exam.session])
-                .first();
+            // Robust Lookup: Try composite index first, fallback to filter
+            let existingScore;
+            try {
+                existingScore = await db.scores
+                    .where('[student_id+subject_id+term+session]')
+                    .equals([result.student_id, exam.subject_id, exam.term, exam.session])
+                    .first();
+            } catch (e) {
+                // Fallback for older database versions without the composite index
+                existingScore = await db.scores
+                    .where('student_id').equals(result.student_id)
+                    .and(s => s.subject_id === exam.subject_id && s.term === exam.term && s.session === exam.session)
+                    .first();
+            }
 
             // Determine multiplier based on field
             let multiplier = 100; // Default to percentage
