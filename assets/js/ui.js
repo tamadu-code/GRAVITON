@@ -678,17 +678,7 @@ export const UI = {
         const displayAvg = hasFeeBalance ? '???' : (analytics.average || 0).toFixed(1) + '%';
         const displayRank = hasFeeBalance ? '???' : analytics.rank || 'N/A';
 
-        this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in" style="padding: 1.5rem; background: #f8fafc; min-height: 100vh;">
-                <!-- ─── Enhanced Announcement Ticker ─── -->
-                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.75rem 1.5rem; margin-bottom: 1.5rem; overflow: hidden; white-space: nowrap; box-shadow: var(--shadow-sm); display: flex; align-items: center; gap: 1rem;">
-                    <div style="background: #ef4444; color: white; font-weight: 800; font-size: 0.65rem; padding: 4px 10px; border-radius: 6px; text-transform: uppercase;">Notice</div>
-                    <div style="flex: 1; overflow: hidden;">
-                         <marquee scrollamount="5" style="font-weight: 600; color: #475569; font-size: 0.9rem;">${liveTickerMsg}</marquee>
-                    </div>
-                </div>
-
-                <div style="display: grid; grid-template-columns: 1fr 350px; gap: 2rem; align-items: flex-start;">
+                <div class="student-dashboard-grid" style="display: grid; grid-template-columns: 1fr 350px; gap: 2rem; align-items: flex-start;">
                     
                     <!-- ─── Left Column: Academic Pulse ─── -->
                     <div style="display: flex; flex-direction: column; gap: 2rem;">
@@ -699,14 +689,14 @@ export const UI = {
                             <div style="position: absolute; bottom: -20px; left: 10%; width: 100px; height: 100px; background: rgba(255,255,255,0.03); border-radius: 50%;"></div>
                             
                             <div style="position: relative; z-index: 2;">
-                                <h2 style="font-size: 2.5rem; font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome back, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
-                                <p style="font-size: 1.1rem; opacity: 0.8; margin-top: 0.5rem; font-weight: 500;">You have ${activeNotices.length} new updates in your school universe today.</p>
+                                <h2 class="banner-title" style="font-size: 2.5rem; font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome back, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
+                                <p style="font-size: 1.1rem; opacity: 0.8; margin-top: 0.5rem; font-weight: 500;">You have ${activeNotices.length} updates in your school universe today.</p>
                                 
-                                <div style="display: flex; gap: 1rem; margin-top: 2.5rem;">
-                                    <button class="btn" onclick="UI.renderView('cbt')" style="background: #4f46e5; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 14px; font-weight: 800; font-size: 0.85rem; box-shadow: 0 10px 20px -5px rgba(79, 70, 229, 0.4);">
+                                <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 2.5rem;">
+                                    <button class="btn" onclick="UI.renderView('cbt')" style="background: #4f46e5; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 14px; font-weight: 800; font-size: 0.85rem; box-shadow: 0 10px 20px -5px rgba(79, 70, 229, 0.4); display: flex; align-items: center; gap: 8px;">
                                         <i data-lucide="play-circle" style="width: 18px;"></i> Start CBT Exam
                                     </button>
-                                    <button class="btn" onclick="UI.openResultPinModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 0.75rem 1.5rem; border-radius: 14px; font-weight: 800; font-size: 0.85rem; backdrop-filter: blur(10px);" ${hasFeeBalance ? 'disabled' : ''}>
+                                    <button class="btn" onclick="UI.openResultPinModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 0.75rem 1.5rem; border-radius: 14px; font-weight: 800; font-size: 0.85rem; backdrop-filter: blur(10px); display: flex; align-items: center; gap: 8px;" ${hasFeeBalance ? 'disabled' : ''}>
                                         <i data-lucide="file-text" style="width: 18px;"></i> View Report Card
                                     </button>
                                 </div>
@@ -714,7 +704,7 @@ export const UI = {
                         </div>
 
                         <!-- KPI Visualization -->
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+                        <div class="kpi-visualization-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
                             <div style="background: white; border-radius: 24px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1rem; transition: all 0.3s ease; cursor: pointer; position: relative;" onmouseover="this.style.borderColor='#4f46e5'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
                                 <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center;">
                                     <i data-lucide="award" style="width: 22px;"></i>
@@ -748,19 +738,24 @@ export const UI = {
                             </div>
                         </div>
 
-                        <!-- Timetable / Schedule -->
-                        <div style="background: white; border-radius: 30px; padding: 2rem; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm);">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-                                <h3 style="font-weight: 900; color: #1e293b; display: flex; align-items: center; gap: 0.75rem; margin: 0;">
+                        <!-- Timetable / Schedule (Collapsable on Mobile) -->
+                        <div class="card collapsable-section" style="background: white; border-radius: 30px; padding: 0; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm); overflow: hidden;">
+                            <label for="toggle-timetable" style="display: flex; justify-content: space-between; align-items: center; padding: 1.5rem 2rem; cursor: pointer; margin: 0;">
+                                <h3 style="font-weight: 900; color: #1e293b; display: flex; align-items: center; gap: 0.75rem; margin: 0; font-size: 1.1rem;">
                                     <i data-lucide="calendar" style="color: #4f46e5;"></i> My Learning Schedule
                                 </h3>
-                                <button class="btn-xs" style="background: #f1f5f9; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 700; color: #64748b;">Full Calendar <i data-lucide="external-link" style="width:12px;"></i></button>
-                            </div>
-                            
-                            <div id="timetable-visualizer-container" style="min-height: 250px; background: #f8fafc; border-radius: 20px; display: flex; align-items: center; justify-content: center; border: 2px dashed #e2e8f0;">
-                                <div style="text-align: center; color: #94a3b8;">
-                                    <i data-lucide="loader" class="spin" style="width: 30px; height: 30px; margin-bottom: 1rem;"></i>
-                                    <p style="font-weight: 600;">Assembling your timetable...</p>
+                                <div style="display: flex; align-items: center; gap: 1rem;">
+                                    <button class="btn-xs desktop-only" style="background: #f1f5f9; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 700; color: #64748b;">Full Calendar <i data-lucide="external-link" style="width:12px;"></i></button>
+                                    <i data-lucide="chevron-down" class="mobile-only collapse-icon" style="color: #94a3b8;"></i>
+                                </div>
+                            </label>
+                            <input type="checkbox" id="toggle-timetable" class="collapse-toggle" style="display: none;" checked>
+                            <div class="collapse-content" style="padding: 0 2rem 2rem;">
+                                <div id="timetable-visualizer-container" style="min-height: 250px; background: #f8fafc; border-radius: 20px; display: flex; align-items: center; justify-content: center; border: 2px dashed #e2e8f0;">
+                                    <div style="text-align: center; color: #94a3b8;">
+                                        <i data-lucide="loader" class="spin" style="width: 30px; height: 30px; margin-bottom: 1rem;"></i>
+                                        <p style="font-weight: 600;">Assembling your timetable...</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -770,48 +765,57 @@ export const UI = {
                     <!-- ─── Right Column: Student Profile & Bio ─── -->
                     <div style="display: flex; flex-direction: column; gap: 2rem;">
                         
-                        <!-- Student Profile Card -->
-                        <div style="background: white; border-radius: 30px; padding: 2rem; border: 1px solid #e2e8f0; text-align: center; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;">
-                            <div style="position: absolute; top: 0; left: 0; width: 100%; height: 80px; background: linear-gradient(to bottom, #4f46e510, transparent);"></div>
-                            
-                            <div style="width: 130px; height: 130px; border-radius: 40px; border: 5px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); margin: 0 auto 1.5rem; position: relative; overflow: hidden; background: #f1f5f9;">
-                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student?.student_id || 'Scholar'}" style="width: 100%; height: 100%; object-fit: cover;">
-                            </div>
-                            
-                            <h3 style="font-weight: 900; color: #1e293b; font-size: 1.5rem; margin: 0;">${student?.name || 'Academic User'}</h3>
-                            <div style="background: #eff6ff; color: #2563eb; font-weight: 800; font-size: 0.7rem; padding: 4px 12px; border-radius: 10px; display: inline-block; margin-top: 0.5rem;">${student?.class_name || 'Stream Unassigned'}</div>
-                            
-                            <div style="margin-top: 2rem; display: flex; flex-direction: column; gap: 1.25rem; text-align: left;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
-                                    <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8;">System ID</span>
-                                    <span style="font-size: 0.85rem; font-weight: 800; color: #1e293b;">${student?.student_id || 'PENDING'}</span>
+                        <!-- Student Profile Card (Collapsable on Mobile) -->
+                        <div class="card collapsable-section" style="background: white; border-radius: 30px; padding: 0; border: 1px solid #e2e8f0; text-align: center; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;">
+                            <label for="toggle-profile" style="display: block; cursor: pointer; padding: 2rem 2rem 1.5rem; margin: 0;">
+                                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 80px; background: linear-gradient(to bottom, #4f46e510, transparent); z-index: 0;"></div>
+                                
+                                <div style="width: 100px; height: 100px; border-radius: 30px; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); margin: 0 auto 1rem; position: relative; overflow: hidden; background: #f1f5f9; z-index: 1;">
+                                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${student?.student_id || 'Scholar'}" style="width: 100%; height: 100%; object-fit: cover;">
                                 </div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
-                                    <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8;">Legacy ID</span>
-                                    <span style="font-size: 0.85rem; font-weight: 800; color: #4f46e5;">${student?.legacy_id || 'None'}</span>
+                                
+                                <h3 style="font-weight: 900; color: #1e293b; font-size: 1.3rem; margin: 0; position: relative; z-index: 1;">${student?.name || 'Academic User'}</h3>
+                                <div style="background: #eff6ff; color: #2563eb; font-weight: 800; font-size: 0.65rem; padding: 4px 12px; border-radius: 8px; display: inline-block; margin-top: 0.5rem; position: relative; z-index: 1;">${student?.class_name || 'Stream Unassigned'}</div>
+                                <i data-lucide="chevron-down" class="mobile-only collapse-icon" style="color: #94a3b8; margin-top: 1rem;"></i>
+                            </label>
+                            
+                            <input type="checkbox" id="toggle-profile" class="collapse-toggle" style="display: none;" checked>
+                            
+                            <div class="collapse-content" style="padding: 0 2rem 2rem;">
+                                <div style="display: flex; flex-direction: column; gap: 1rem; text-align: left;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
+                                        <span style="font-size: 0.7rem; font-weight: 700; color: #94a3b8;">System ID</span>
+                                        <span style="font-size: 0.8rem; font-weight: 800; color: #1e293b;">${student?.student_id || 'PENDING'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
+                                        <span style="font-size: 0.7rem; font-weight: 700; color: #94a3b8;">Attendance Code</span>
+                                        <span style="font-size: 0.8rem; font-weight: 800; color: #4f46e5;">${student?.attendance_code || 'None'}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
+                                        <span style="font-size: 0.7rem; font-weight: 700; color: #94a3b8;">Admission Year</span>
+                                        <span style="font-size: 0.8rem; font-weight: 800; color: #1e293b;">${student?.admission_year || 'N/A'}</span>
+                                    </div>
                                 </div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
-                                    <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8;">Admission Year</span>
-                                    <span style="font-size: 0.85rem; font-weight: 800; color: #1e293b;">${student?.admission_year || 'N/A'}</span>
-                                </div>
-                            </div>
 
-                            <button class="btn w-100" onclick="UI.renderView('noticeboard')" style="margin-top: 2rem; border-radius: 14px; height: 50px; background: #1e293b; color: white; border: none; font-weight: 800; box-shadow: 0 10px 20px -5px rgba(30, 41, 59, 0.4);">
-                                <i data-lucide="bell" style="width: 18px;"></i> View Bulletins
-                            </button>
+                                <button class="btn w-100" onclick="UI.renderView('noticeboard')" style="margin-top: 1.5rem; border-radius: 14px; height: 48px; background: #1e293b; color: white; border: none; font-weight: 800; font-size: 0.8rem; box-shadow: 0 10px 20px -5px rgba(30, 41, 59, 0.4);">
+                                    <i data-lucide="bell" style="width: 16px;"></i> View Bulletins
+                                </button>
+                            </div>
                         </div>
 
-                        <!-- Financial Shield -->
-                        <div style="background: ${hasFeeBalance ? '#fef2f2' : '#ecfdf5'}; border-radius: 30px; padding: 2rem; border: 1px solid ${hasFeeBalance ? '#fee2e2' : '#d1fae5'}; text-align: center;">
-                            <div style="width: 50px; height: 50px; border-radius: 15px; background: ${hasFeeBalance ? '#ef4444' : '#10b981'}; color: white; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; box-shadow: 0 8px 16px -4px ${hasFeeBalance ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'};">
-                                <i data-lucide="${hasFeeBalance ? 'alert-circle' : 'shield-check'}"></i>
+                        <!-- Financial Shield (Stacked Container) -->
+                        <div class="card" style="background: ${hasFeeBalance ? '#fef2f2' : '#ecfdf5'}; border-radius: 30px; padding: 1.5rem; border: 1px solid ${hasFeeBalance ? '#fee2e2' : '#d1fae5'}; display: flex; flex-direction: column; gap: 0.5rem; align-items: center; text-align: center;">
+                            <div style="width: 40px; height: 40px; border-radius: 12px; background: ${hasFeeBalance ? '#ef4444' : '#10b981'}; color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 16px -4px ${hasFeeBalance ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'};">
+                                <i data-lucide="${hasFeeBalance ? 'alert-circle' : 'shield-check'}" style="width: 18px;"></i>
                             </div>
-                            <h4 style="font-weight: 900; color: ${hasFeeBalance ? '#991b1b' : '#065f46'}; margin: 0;">Financial Standing</h4>
-                            <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 0.5rem;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
-                            <p style="font-size: 0.75rem; color: ${hasFeeBalance ? '#b91c1c' : '#065f46'}; font-weight: 600; margin-top: 0.25rem;">${hasFeeBalance ? 'Outstanding Balance' : 'Account fully cleared'}</p>
+                            <div>
+                                <h4 style="font-weight: 900; color: ${hasFeeBalance ? '#991b1b' : '#065f46'}; margin: 0; font-size: 0.9rem;">Financial Standing</h4>
+                                <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
+                                <p style="font-size: 0.65rem; color: ${hasFeeBalance ? '#b91c1c' : '#065f46'}; font-weight: 700; margin-top: 0.15rem; text-transform: uppercase; letter-spacing: 0.05em;">${hasFeeBalance ? 'Outstanding Balance' : 'Account fully cleared'}</p>
+                            </div>
                             
                             ${hasFeeBalance ? `
-                                <button class="btn w-100" onclick="UI.handlePaystackPayment()" style="margin-top: 1.5rem; background: #ef4444; color: white; border: none; border-radius: 12px; height: 44px; font-weight: 800;">
+                                <button class="btn w-100" onclick="UI.handlePaystackPayment()" style="margin-top: 0.5rem; background: #ef4444; color: white; border: none; border-radius: 12px; height: 40px; font-weight: 800; font-size: 0.8rem;">
                                     Pay Now
                                 </button>
                             ` : ''}
@@ -5745,7 +5749,10 @@ export const UI = {
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        document.getElementById('btn-create-exam').onclick = () => this.renderCBTEditor();
+        const createExamBtn = document.getElementById('btn-create-exam');
+        if (createExamBtn) {
+            createExamBtn.onclick = () => this.renderCBTEditor();
+        }
     },
 
     async deleteExam(id) {

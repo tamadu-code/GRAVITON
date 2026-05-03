@@ -4094,3 +4094,58 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
 .spin {
     animation: spin 2s linear infinite;
 }
+
+/* --- Student Dashboard Mobile Responsiveness --- */
+@media (max-width: 1024px) {
+    .student-dashboard-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1.5rem !important;
+    }
+    
+    .banner-title {
+        font-size: 1.75rem !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .kpi-visualization-grid {
+        grid-template-columns: 1fr !important;
+    }
+    
+    .desktop-only {
+        display: none !important;
+    }
+    
+    .mobile-only {
+        display: block !important;
+    }
+}
+
+.desktop-only { display: inline-flex; }
+.mobile-only { display: none; }
+
+/* Collapsable Logic */
+.collapse-toggle:checked ~ .collapse-content {
+    display: block !important;
+    max-height: 2000px;
+    opacity: 1;
+    transition: all 0.5s ease;
+}
+
+.collapse-toggle:not(:checked) ~ .collapse-content {
+    display: none !important;
+    max-height: 0;
+    opacity: 0;
+}
+
+.collapse-toggle:checked ~ label .collapse-icon {
+    transform: rotate(180deg);
+}
+
+.collapse-icon {
+    transition: transform 0.3s ease;
+}
+
+.collapsable-section label:hover {
+    background: #f8fafc;
+}
