@@ -18,6 +18,7 @@ function createClient() {
         if (typeof window.supabase !== 'undefined') {
             try {
                 sb = window.supabase.createClient(SB_CONFIG.url, SB_CONFIG.key);
+                window.supabaseClient = sb;
             } catch (e) {
                 console.error('Failed to initialize Supabase:', e);
             }
@@ -37,6 +38,7 @@ export function initSupabase(url, key) {
     localStorage.setItem('sb_url', url);
     localStorage.setItem('sb_key', key);
     sb = window.supabase.createClient(url, key);
+    window.supabaseClient = sb;
     return sb;
 }
 

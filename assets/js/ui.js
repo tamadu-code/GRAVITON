@@ -5963,21 +5963,32 @@ export const UI = {
     },
 
     async deleteExam(id) {
-        if (confirm('Are you sure you want to delete this exam and all its questions?')) {
-            await db.cbt_exams.delete(id);
-            await db.cbt_questions.where('exam_id').equals(id).delete();
-
-            // Cloud Clean-up
-            if (window.supabase && navigator.onLine) {
-                try {
-                    await window.supabase.from('cbt_exams').delete().eq('id', id);
-                    await window.supabase.from('cbt_questions').delete().eq('exam_id', id);
-                } catch (e) { console.warn('Cloud clean-up deferred:', e); }
+        if (!confirm('Are you sure you want to delete this exam and all its questions? This will also remove student results for this exam.')) return;
+        
+        try {
+            // 1. Cloud Clean-up (Do this first while we still have the ID)
+            if (navigator.onLine) {
+                const client = (typeof supabase !== 'undefined') ? supabase : (window.supabaseClient);
+                if (client) {
+                    await client.from('cbt_exams').delete().eq('id', id);
+                    // cascading delete on DB should handle questions/results, 
+                    // but we do it manually to be safe if cascade isn't set
+                    await client.from('cbt_questions').delete().eq('exam_id', id);
+                    await client.from('cbt_results').delete().eq('exam_id', id);
+                }
             }
 
-            Notifications.show('Exam deleted successfully', 'success');
+            // 2. Local Clean-up
+            await db.cbt_exams.delete(id);
+            await db.cbt_questions.where('exam_id').equals(id).delete();
+            await db.cbt_results.where('exam_id').equals(id).delete();
+
+            Notifications.show('Exam and all related records deleted.', 'success');
             this.renderCBT();
-            syncToCloud();
+            if (typeof syncToCloud === 'function') syncToCloud();
+        } catch (e) {
+            console.error('Delete Exam Error:', e);
+            Notifications.show('Failed to delete exam completely. Check console.', 'error');
         }
     },
 
