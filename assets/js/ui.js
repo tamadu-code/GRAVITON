@@ -5821,9 +5821,14 @@ export const UI = {
                         <p class="banner-subtitle">${isStudent ? 'Take your computer-based tests here.' : 'Create, manage, and monitor computer-based tests.'}</p>
                     </div>
                     ${!isStudent ? `
-                    <button id="btn-create-exam" class="btn btn-primary" style="background: white; color: #4338ca; border: none; font-weight: 800; box-shadow: var(--shadow-md);">
-                        <i data-lucide="plus-square"></i> New Exam
-                    </button>
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <button id="btn-question-bank" class="btn" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); font-weight: 800; backdrop-filter: blur(10px);">
+                            <i data-lucide="database"></i> Question Bank
+                        </button>
+                        <button id="btn-create-exam" class="btn btn-primary" style="background: white; color: #4338ca; border: none; font-weight: 800; box-shadow: var(--shadow-md);">
+                            <i data-lucide="plus-square"></i> New Exam
+                        </button>
+                    </div>
                     ` : ''}
                 </div>
 
@@ -5950,6 +5955,10 @@ export const UI = {
         const createExamBtn = document.getElementById('btn-create-exam');
         if (createExamBtn) {
             createExamBtn.onclick = () => this.renderCBTEditor();
+        }
+        const bankBtn = document.getElementById('btn-question-bank');
+        if (bankBtn) {
+            bankBtn.onclick = () => this.renderQuestionBank();
         }
     },
 
@@ -6931,31 +6940,65 @@ export const UI = {
         const subjects = await db.subjects.toArray();
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
+        // Also get standalone bank categories
+        const allQuestions = await db.cbt_questions.toArray();
+        const bankGroups = {};
+        allQuestions.filter(q => q.exam_id && q.exam_id.startsWith('BANK-')).forEach(q => {
+            if (!bankGroups[q.exam_id]) bankGroups[q.exam_id] = 0;
+            bankGroups[q.exam_id]++;
+        });
+        const bankKeys = Object.keys(bankGroups);
+
         const modalHtml = `
             <div class="form-group">
-                <label>Select an exam to import questions from:</label>
-                <div style="max-height: 300px; overflow-y: auto; margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                    ${exams.length === 0 ? '<p>No other exams found.</p>' : exams.map(e => `
-                        <div class="bank-item" style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;" onclick="this.parentElement.querySelectorAll('.bank-item').forEach(b => b.style.borderColor = '#e2e8f0'); this.style.borderColor = '#4338ca'; this.dataset.selected = '${e.id}';">
-                            <div>
-                                <div style="font-weight: 700;">${e.title}</div>
-                                <div style="font-size: 0.75rem; color: #64748b;">${subMap[e.subject_id] || 'Subject'} | ${e.class_name}</div>
+                <label>Select a source to import questions from:</label>
+                <div style="max-height: 350px; overflow-y: auto; margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    ${bankKeys.length > 0 ? `
+                        <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem; margin-top: 0.5rem;">QUESTION BANK</div>
+                        ${bankKeys.map(key => {
+                            const tag = key.replace('BANK-', '');
+                            const parts = tag.split('__');
+                            const subLabel = subMap[parts[0]] || parts[0];
+                            const clsLabel = parts[1] || 'General';
+                            const count = bankGroups[key];
+                            return `
+                                <div class="bank-item" style="padding: 1rem; border: 1px solid #e0e7ff; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; background: #f5f3ff;" onclick="this.closest('.form-group').querySelectorAll('.bank-item').forEach(b => {b.style.borderColor = '#e2e8f0'; b.style.background = b.dataset.bg || '#fff'}); this.style.borderColor = '#4338ca'; this.style.background = '#e0e7ff'; this.dataset.selected = '${key}';" data-bg="#f5f3ff">
+                                    <div>
+                                        <div style="font-weight: 700;"><i data-lucide="database" style="width: 14px; display: inline; vertical-align: -2px; margin-right: 4px; color: #4338ca;"></i>${subLabel}</div>
+                                        <div style="font-size: 0.75rem; color: #64748b;">${clsLabel} • ${count} questions</div>
+                                    </div>
+                                    <div style="background: #e0e7ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">Bank</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    ` : ''}
+
+                    ${exams.length > 0 ? `
+                        <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem; margin-top: 0.75rem;">FROM EXISTING EXAMS</div>
+                        ${exams.map(e => `
+                            <div class="bank-item" style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;" onclick="this.closest('.form-group').querySelectorAll('.bank-item').forEach(b => {b.style.borderColor = '#e2e8f0'; b.style.background = b.dataset.bg || '#fff'}); this.style.borderColor = '#4338ca'; this.style.background = '#eef2ff'; this.dataset.selected = '${e.id}';" data-bg="#fff">
+                                <div>
+                                    <div style="font-weight: 700;">${e.title}</div>
+                                    <div style="font-size: 0.75rem; color: #64748b;">${subMap[e.subject_id] || 'Subject'} | ${e.class_name}</div>
+                                </div>
+                                <div style="background: #f1f5f9; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">Exam</div>
                             </div>
-                            <div style="background: #f1f5f9; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">Select</div>
-                        </div>
-                    `).join('')}
+                        `).join('')}
+                    ` : ''}
+
+                    ${bankKeys.length === 0 && exams.length === 0 ? '<p style="text-align: center; color: #94a3b8; padding: 2rem;">No sources available. Import questions to the Question Bank first.</p>' : ''}
                 </div>
             </div>
         `;
 
         this.showModal('Import from Question Bank', modalHtml, async () => {
             const selectedItem = document.querySelector('.bank-item[data-selected]');
-            if (!selectedItem) return Notifications.show('Please select an exam first', 'warning');
+            if (!selectedItem) return Notifications.show('Please select a source first', 'warning');
             
             const sourceExamId = selectedItem.dataset.selected;
             const sourceQuestions = await db.cbt_questions.where('exam_id').equals(sourceExamId).toArray();
             
-            if (sourceQuestions.length === 0) return Notifications.show('That exam has no questions.', 'error');
+            if (sourceQuestions.length === 0) return Notifications.show('That source has no questions.', 'error');
 
             // Copy and generate new IDs to avoid duplicates
             sourceQuestions.forEach(q => {
@@ -6966,9 +7009,10 @@ export const UI = {
             });
 
             this.refreshQuestionPreview();
-            Notifications.show(`Successfully imported ${sourceQuestions.length} questions from bank`, 'success');
+            Notifications.show(`Successfully imported ${sourceQuestions.length} questions`, 'success');
         }, 'Import Questions');
     },
+
 
     async renderLessons() {
         const teachers = await db.profiles.where('role').equals('Teacher').toArray();
@@ -9232,6 +9276,194 @@ export const UI = {
         // Direct them to the Academic module but filtered (or just show the modal)
         Notifications.show(`Redirecting to Academic Manager for ${className}...`, 'info');
         this.renderView('academic');
+    },
+
+    async renderQuestionBank() {
+        const subjects = await db.subjects.toArray();
+        const classes = await db.classes.toArray();
+        const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
+
+        // Get all bank questions (exam_id starts with 'BANK-')
+        const allQuestions = await db.cbt_questions.toArray();
+        const bankQuestions = allQuestions.filter(q => q.exam_id && q.exam_id.startsWith('BANK-'));
+
+        // Group by subject
+        const grouped = {};
+        bankQuestions.forEach(q => {
+            const tag = q.exam_id.replace('BANK-', '');
+            if (!grouped[tag]) grouped[tag] = [];
+            grouped[tag].push(q);
+        });
+
+        const groupKeys = Object.keys(grouped);
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in">
+                <div class="view-header" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 2rem; gap: 1rem;">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-800"><i data-lucide="database" style="display: inline; vertical-align: -4px; margin-right: 0.5rem;"></i>Question Bank</h1>
+                        <p class="text-slate-500">Import and manage questions independently from exams.</p>
+                        <p style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; margin-top: 0.25rem;">${bankQuestions.length} question${bankQuestions.length !== 1 ? 's' : ''} across ${groupKeys.length} categor${groupKeys.length !== 1 ? 'ies' : 'y'}</p>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="UI.bulkImportToBank()" style="background: #4338ca; border: none; font-weight: 800; border-radius: 12px; height: 44px;">
+                            <i data-lucide="file-up"></i> Bulk Import
+                        </button>
+                        <button class="btn btn-secondary" onclick="UI.renderCBT()" style="border-radius: 12px; height: 44px;">
+                            <i data-lucide="arrow-left"></i> Back to Hub
+                        </button>
+                    </div>
+                </div>
+
+                ${groupKeys.length === 0 ? `
+                    <div class="card" style="text-align: center; padding: 4rem 2rem; border-radius: 24px; border: none;">
+                        <div style="background: #e0e7ff; color: #4338ca; width: 80px; height: 80px; border-radius: 24px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+                            <i data-lucide="inbox" style="width: 40px; height: 40px;"></i>
+                        </div>
+                        <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 0.5rem;">Your Question Bank is empty</h3>
+                        <p style="color: #94a3b8; font-weight: 600; max-width: 400px; margin: 0 auto;">Click <strong>Bulk Import</strong> to add questions. You can then pull them into any exam later.</p>
+                    </div>
+                ` : `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${groupKeys.map(tag => {
+                            const questions = grouped[tag];
+                            const parts = tag.split('__');
+                            const subjectLabel = subMap[parts[0]] || parts[0];
+                            const classLabel = parts[1] || 'General';
+
+                            return `
+                                <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04);">
+                                    <div onclick="this.parentElement.classList.toggle('expanded')" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem;">
+                                        <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0;">
+                                            <div style="background: #e0e7ff; color: #4338ca; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                                <i data-lucide="book-open" style="width: 20px;"></i>
+                                            </div>
+                                            <div style="min-width: 0;">
+                                                <div style="font-weight: 800; color: #1e293b;">${subjectLabel}</div>
+                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${classLabel}</div>
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
+                                            <span style="background: #e0e7ff; color: #4338ca; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 0.8rem;">${questions.length} Q</span>
+                                            <i data-lucide="chevron-down" style="width: 18px; color: #94a3b8; transition: transform 0.2s;"></i>
+                                        </div>
+                                    </div>
+                                    <div class="participant-details" style="border-top: 1px solid #f1f5f9; padding: 0 1.5rem; max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease;">
+                                        <div style="padding: 1rem 0; display: flex; flex-direction: column; gap: 0.75rem; max-height: 400px; overflow-y: auto;">
+                                            ${questions.map((q, i) => `
+                                                <div style="background: #f8fafc; border-radius: 12px; padding: 1rem; border: 1px solid #f1f5f9;">
+                                                    <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; margin-bottom: 0.5rem;">
+                                                        <span style="color: #4338ca; font-weight: 900;">${i + 1}.</span> ${q.question_text}
+                                                    </div>
+                                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; font-size: 0.8rem; color: #475569;">
+                                                        <div style="${q.correct_option === 'A' ? 'color: #059669; font-weight: 800;' : ''}">A) ${q.option_a}</div>
+                                                        <div style="${q.correct_option === 'B' ? 'color: #059669; font-weight: 800;' : ''}">B) ${q.option_b}</div>
+                                                        <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${q.option_c}</div>
+                                                        <div style="${q.correct_option === 'D' ? 'color: #059669; font-weight: 800;' : ''}">D) ${q.option_d}</div>
+                                                        ${q.option_e ? `<div style="${q.correct_option === 'E' ? 'color: #059669; font-weight: 800;' : ''}">E) ${q.option_e}</div>` : ''}
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        <div style="display: flex; gap: 0.75rem; padding-bottom: 1.25rem;">
+                                            <button class="btn btn-danger" onclick="if(confirm('Delete all ${questions.length} questions in this category?')){UI.deleteBankCategory('BANK-${tag}')}" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px;">
+                                                <i data-lucide="trash-2" style="width: 16px;"></i> Delete Category
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `}
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async bulkImportToBank() {
+        const subjects = await db.subjects.toArray();
+        const classes = await db.classes.toArray();
+
+        const modalHtml = `
+            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Subject</label>
+                        <select id="bank-subject" class="cbt-input" style="height: 44px; border-radius: 10px;">
+                            <option value="">— Select Subject —</option>
+                            ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Class</label>
+                        <select id="bank-class" class="cbt-input" style="height: 44px; border-radius: 10px;">
+                            <option value="">— Select Class —</option>
+                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Paste questions below:</label>
+                    <div style="font-size:0.75rem; color:#64748b; margin-bottom:0.5rem; background:#f1f5f9; padding:0.75rem; border-radius:10px; line-height: 1.6;">
+                        <strong>Format:</strong> Question text? (A) Option 1 (B) Option 2 (C) Option 3 (D) Option 4 [Ans: A] [Marks: 5]
+                    </div>
+                    <textarea id="bank-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.8rem; border-radius: 12px;" placeholder="Question 1... [Ans: B] [Marks: 2]\nQuestion 2... [Ans: C]"></textarea>
+                </div>
+            </div>
+        `;
+
+        this.showModal('Import to Question Bank', modalHtml, async () => {
+            const subjectId = document.getElementById('bank-subject').value;
+            const className = document.getElementById('bank-class').value;
+            const text = document.getElementById('bank-q-text').value;
+
+            if (!subjectId || !className) return Notifications.show('Please select both a Subject and a Class.', 'error');
+            if (!text) return Notifications.show('Please paste your questions.', 'error');
+
+            const bankExamId = `BANK-${subjectId}__${className}`;
+
+            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d+)\])?/gi;
+
+            let match;
+            let count = 0;
+            const newQuestions = [];
+
+            while ((match = masterRegex.exec(text)) !== null) {
+                const questionText = match[1].replace(/^\d+[\.)\]]\s*/, '').trim();
+                const marks = match[7] ? parseInt(match[7]) : 1;
+
+                newQuestions.push(prepareForSync({
+                    id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    exam_id: bankExamId,
+                    question_text: questionText,
+                    option_a: match[2].trim(),
+                    option_b: match[3].trim(),
+                    option_c: match[4].trim(),
+                    option_d: match[5].trim(),
+                    option_e: '',
+                    correct_option: match[6].toUpperCase(),
+                    marks: marks
+                }));
+                count++;
+            }
+
+            if (count === 0) return Notifications.show('Could not parse any questions. Check your format.', 'error');
+
+            await db.cbt_questions.bulkAdd(newQuestions);
+            syncToCloud();
+
+            document.getElementById('ui-modal')?.remove();
+            Notifications.show(`Successfully imported ${count} questions to the bank!`, 'success');
+            this.renderQuestionBank();
+        }, 'Import to Bank', 'database');
+    },
+
+    async deleteBankCategory(bankExamId) {
+        await db.cbt_questions.where('exam_id').equals(bankExamId).delete();
+        syncToCloud();
+        Notifications.show('Category deleted from bank.', 'success');
+        this.renderQuestionBank();
     },
 
     async renderCBTParticipants(examId) {
