@@ -4437,6 +4437,31 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
     .banner-actions div {
         grid-column: span 2;
     }
+
+    /* Teacher Dashboard Mobile Grid */
+    .teacher-dashboard-main-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .teacher-dashboard-main-grid > div {
+        width: 100% !important;
+    }
+
+    .kpi-visualization-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+
+    .faculty-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+
+    .faculty-card {
+        padding: 1.25rem !important;
+    }
 }
+
+
 
 

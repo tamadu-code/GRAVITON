@@ -6,7 +6,7 @@ console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet } from './utils.js';
-import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport } from './supabase-client.js';
+import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
 
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
@@ -402,13 +402,16 @@ export const UI = {
         const isAdmin = (this.currentUser.role || '').toLowerCase() === 'admin' || (this.currentUser.role || '').toLowerCase() === 'principal';
         const myStudents = isAdmin ? allStudents : allStudents.filter(s => assignedClasses.includes(s.class_name));
         
-        const session = (await db.settings.get('currentSession'))?.value || (await db.settings.get('current_session'))?.value || '2025/2026';
-        const term = (await db.settings.get('currentTerm'))?.value || (await db.settings.get('current_term'))?.value || '1st Term';
+        const sessionSetting = await db.settings.get('currentSession') || await db.settings.get('current_session');
+        const termSetting = await db.settings.get('currentTerm') || await db.settings.get('current_term');
+        const session = sessionSetting?.value || '2025/2026';
+        const term = termSetting?.value || '1st Term';
         
         // Active Learners: Students with at least one score this term
-        const termScores = await db.scores.where('term').equals(term).and(s => s.session === session).toArray();
-        const activeLearnerIds = new Set(termScores.map(s => s.student_id));
+        const termScores = await db.scores.where('term').equals(term).toArray();
+        const activeLearnerIds = new Set(termScores.filter(s => s.session === session).map(s => s.student_id));
         const activeLearners = myStudents.filter(s => activeLearnerIds.has(s.student_id)).length;
+
 
         // Attendance Stats
         const today = new Date().toISOString().split('T')[0];
@@ -428,7 +431,8 @@ export const UI = {
         const notices = await db.notices.where('is_active').equals(1).toArray().catch(() => []);
         const noticeHTML = notices.length > 0 
             ? notices.map(n => `<span style="margin-right: 3rem;">🔔 <strong>${n.title}</strong>: ${n.content || ''}</span>`).join('')
-            : '<span style="margin-right: 3rem;">Welcome to the Academic Command Center. All systems operational.</span>';
+            : '<span style="margin-right: 3rem;">All academic systems are operational. Stay inspired.</span>';
+
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="padding: 1.5rem; background: #f8fafc;">
@@ -484,11 +488,12 @@ export const UI = {
                         <div style="position: absolute; right: -10px; bottom: -10px; opacity: 0.05; transform: rotate(-15deg);"><i data-lucide="zap" style="width: 80px; height: 80px;"></i></div>
                     </div>
                     <div class="glass-card" style="background: white; padding: 1.5rem; border-radius: 24px; border: 1px solid #e2e8f0; position: relative; overflow: hidden;">
-                        <div style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Class Load</div>
-                        <div style="font-size: 2rem; font-weight: 900; color: #1e293b;">${assignedClasses.length}</div>
-                        <div style="font-size: 0.75rem; color: #f59e0b; font-weight: 700; margin-top: 0.25rem;">Across ${assignedSubjects.length} Subjects</div>
+                        <div style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Subject Load</div>
+                        <div style="font-size: 2rem; font-weight: 900; color: #1e293b;">${assignments.length}</div>
+                        <div style="font-size: 0.75rem; color: #f59e0b; font-weight: 700; margin-top: 0.25rem;">Across ${assignedClasses.length} Streams</div>
                         <div style="position: absolute; right: -10px; bottom: -10px; opacity: 0.05; transform: rotate(-15deg);"><i data-lucide="book-open" style="width: 80px; height: 80px;"></i></div>
                     </div>
+
                     <div class="glass-card" style="background: #1e293b; color: white; padding: 1.5rem; border-radius: 24px; border: 1px solid #334155; position: relative; overflow: hidden;">
                         <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Turnout Gauge</div>
                         <div style="font-size: 2rem; font-weight: 900;">${attendancePct}%</div>
@@ -497,7 +502,8 @@ export const UI = {
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+                <div class="teacher-dashboard-main-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+
                     <!-- Participation Intelligence -->
                     <div style="display: flex; flex-direction: column; gap: 1.5rem;">
                         <div class="glass-card" style="background: white; padding: 2rem; border-radius: 32px; border: 1px solid #e2e8f0;">
@@ -687,24 +693,44 @@ export const UI = {
                     <div style="display: flex; flex-direction: column; gap: 2rem;">
                         
                         <!-- Main Banner -->
-                        <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-radius: 30px; padding: 2.5rem; color: white; position: relative; overflow: hidden; box-shadow: 0 20px 40px -10px rgba(30, 27, 75, 0.3);">
+                        <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-radius: 30px; padding: 2rem; color: white; position: relative; overflow: hidden; box-shadow: 0 20px 40px -10px rgba(30, 27, 75, 0.3);">
                             <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
-                            <div style="position: absolute; bottom: -20px; left: 10%; width: 100px; height: 100px; background: rgba(255,255,255,0.03); border-radius: 50%;"></div>
                             
-                            <div style="position: relative; z-index: 2;">
-                                <h2 class="banner-title" style="font-size: 2.5rem; font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome back, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
-                                <p style="font-size: 1.1rem; opacity: 0.8; margin-top: 0.5rem; font-weight: 500;">You have ${activeNotices.length} updates in your school universe today.</p>
+                            <div style="position: relative; z-index: 2; display: flex; gap: 2rem; align-items: center; flex-wrap: wrap;">
+                                <div class="passport-editable" onclick="UI.triggerPassportUpload('${student?.student_id}', 'student')" style="width: 110px; height: 110px; border-radius: 30px; border: 4px solid rgba(255,255,255,0.1); box-shadow: 0 10px 25px rgba(0,0,0,0.2); overflow: hidden; background: #f1f5f9; flex-shrink: 0;">
+                                    <img src="${student?.passport_url || student?.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student?.student_id || 'Scholar'}`}" style="width: 100%; height: 100%; object-fit: cover;">
+                                    <div class="camera-overlay"><i data-lucide="camera" style="width: 24px;"></i></div>
+                                </div>
                                 
-                                <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 2.5rem;">
-                                    <button class="btn" onclick="UI.renderView('cbt')" style="background: #4f46e5; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 14px; font-weight: 800; font-size: 0.85rem; box-shadow: 0 10px 20px -5px rgba(79, 70, 229, 0.4); display: flex; align-items: center; gap: 8px;">
-                                        <i data-lucide="play-circle" style="width: 18px;"></i> Start CBT Exam
-                                    </button>
-                                    <button class="btn" onclick="UI.openResultPinModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 0.75rem 1.5rem; border-radius: 14px; font-weight: 800; font-size: 0.85rem; backdrop-filter: blur(10px); display: flex; align-items: center; gap: 8px;" ${hasFeeBalance ? 'disabled' : ''}>
-                                        <i data-lucide="file-text" style="width: 18px;"></i> View Report Card
-                                    </button>
+                                <div style="flex: 1; min-width: 250px;">
+                                    <h2 class="banner-title" style="font-size: 2.2rem; font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
+                                    <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; flex-wrap: wrap;">
+                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ID: ${student?.student_id || 'PENDING'}</span>
+                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">CLASS: ${student?.class_name || 'N/A'}</span>
+                                                                      <div style="flex: 1; min-width: 250px;">
+                                    <h2 class="banner-title" style="font-size: 2.2rem; font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
+                                    <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; flex-wrap: wrap;">
+                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ID: ${student?.student_id || 'PENDING'}</span>
+                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">CLASS: ${student?.class_name || 'N/A'}</span>
+                                        <span style="background: #4f46e5; padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">CODE: ${student?.attendance_code || '---'}</span>
+                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ADMIT: ${student?.admission_year || 'N/A'}</span>
+                                    </div>
+                                    
+                                    <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                                        <button class="btn btn-sm" onclick="UI.renderView('cbt')" style="background: #4f46e5; color: white; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.25rem;">
+                                            <i data-lucide="play-circle" style="width: 16px;"></i> Start CBT
+                                        </button>
+                                        <button class="btn btn-sm" onclick="UI.openResultPinModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; font-weight: 800; padding: 0.5rem 1.25rem;" ${hasFeeBalance ? 'disabled' : ''}>
+                                            <i data-lucide="file-text" style="width: 16px;"></i> Grades
+                                        </button>
+                                        <button class="btn btn-sm" onclick="UI.renderView('noticeboard')" style="background: white; color: #1e1b4b; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.25rem;">
+                                            <i data-lucide="bell" style="width: 16px;"></i> Bulletins
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
 
                         <!-- KPI Visualization -->
                         <div class="kpi-visualization-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
@@ -765,61 +791,22 @@ export const UI = {
 
                     </div>
 
-                    <!-- ─── Right Column: Student Profile & Bio ─── -->
+                    <!-- ─── Right Column: Standings & Finance ─── -->
                     <div style="display: flex; flex-direction: column; gap: 2rem;">
                         
-                        <!-- Student Profile Card (Collapsable on Mobile) -->
-                        <div class="card collapsable-section" style="background: white; border-radius: 30px; padding: 0; border: 1px solid #e2e8f0; text-align: center; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;">
-                            <label for="toggle-profile" style="display: block; cursor: pointer; padding: 2rem 2rem 1.5rem; margin: 0;">
-                                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 80px; background: linear-gradient(to bottom, #4f46e510, transparent); z-index: 0;"></div>
-                                
-                                <div class="passport-editable" onclick="UI.triggerPassportUpload('${student?.student_id}', 'student')" style="width: 100px; height: 100px; border-radius: 30px; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); margin: 0 auto 1rem; position: relative; overflow: hidden; background: #f1f5f9; z-index: 1;">
-                                    <img src="${student?.passport_url || student?.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student?.student_id || 'Scholar'}`}" style="width: 100%; height: 100%; object-fit: cover;">
-                                    <div class="camera-overlay"><i data-lucide="camera" style="width: 24px;"></i></div>
-                                </div>
-                                
-                                <h3 style="font-weight: 900; color: #1e293b; font-size: 1.3rem; margin: 0; position: relative; z-index: 1;">${student?.name || 'Academic User'}</h3>
-                                <div style="background: #eff6ff; color: #2563eb; font-weight: 800; font-size: 0.65rem; padding: 4px 12px; border-radius: 8px; display: inline-block; margin-top: 0.5rem; position: relative; z-index: 1;">${student?.class_name || 'Stream Unassigned'}</div>
-                                <i data-lucide="chevron-down" class="mobile-only collapse-icon" style="color: #94a3b8; margin-top: 1rem;"></i>
-                            </label>
-                            
-                            <input type="checkbox" id="toggle-profile" class="collapse-toggle" style="display: none;" checked>
-                            
-                            <div class="collapse-content" style="padding: 0 2rem 2rem;">
-                                <div style="display: flex; flex-direction: column; gap: 1rem; text-align: left;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
-                                        <span style="font-size: 0.7rem; font-weight: 700; color: #94a3b8;">System ID</span>
-                                        <span style="font-size: 0.8rem; font-weight: 800; color: #1e293b;">${student?.student_id || 'PENDING'}</span>
-                                    </div>
-                                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
-                                        <span style="font-size: 0.7rem; font-weight: 700; color: #94a3b8;">Attendance Code</span>
-                                        <span style="font-size: 0.8rem; font-weight: 800; color: #4f46e5;">${student?.attendance_code || 'None'}</span>
-                                    </div>
-                                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9;">
-                                        <span style="font-size: 0.7rem; font-weight: 700; color: #94a3b8;">Admission Year</span>
-                                        <span style="font-size: 0.8rem; font-weight: 800; color: #1e293b;">${student?.admission_year || 'N/A'}</span>
-                                    </div>
-                                </div>
-
-                                <button class="btn w-100" onclick="UI.renderView('noticeboard')" style="margin-top: 1.5rem; border-radius: 14px; height: 48px; background: #1e293b; color: white; border: none; font-weight: 800; font-size: 0.8rem; box-shadow: 0 10px 20px -5px rgba(30, 41, 59, 0.4);">
-                                    <i data-lucide="bell" style="width: 16px;"></i> View Bulletins
-                                </button>
-                            </div>
-                        </div>
-
                         <!-- Financial Shield (Stacked Container) -->
-                        <div class="card" style="background: ${hasFeeBalance ? '#fef2f2' : '#ecfdf5'}; border-radius: 30px; padding: 1.5rem; border: 1px solid ${hasFeeBalance ? '#fee2e2' : '#d1fae5'}; display: flex; flex-direction: column; gap: 0.5rem; align-items: center; text-align: center;">
-                            <div style="width: 40px; height: 40px; border-radius: 12px; background: ${hasFeeBalance ? '#ef4444' : '#10b981'}; color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 16px -4px ${hasFeeBalance ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'};">
-                                <i data-lucide="${hasFeeBalance ? 'alert-circle' : 'shield-check'}" style="width: 18px;"></i>
+                        <div class="card" style="background: ${hasFeeBalance ? '#fef2f2' : '#ecfdf5'}; border-radius: 30px; padding: 2rem; border: 1px solid ${hasFeeBalance ? '#fee2e2' : '#d1fae5'}; display: flex; flex-direction: column; gap: 1rem; align-items: center; text-align: center; box-shadow: var(--shadow-md);">
+                            <div style="width: 60px; height: 60px; border-radius: 20px; background: ${hasFeeBalance ? '#ef4444' : '#10b981'}; color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 16px -4px ${hasFeeBalance ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'};">
+                                <i data-lucide="${hasFeeBalance ? 'alert-circle' : 'shield-check'}" style="width: 30px; height: 30px;"></i>
                             </div>
                             <div>
-                                <h4 style="font-weight: 900; color: ${hasFeeBalance ? '#991b1b' : '#065f46'}; margin: 0; font-size: 0.9rem;">Financial Standing</h4>
-                                <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
-                                <p style="font-size: 0.65rem; color: ${hasFeeBalance ? '#b91c1c' : '#065f46'}; font-weight: 700; margin-top: 0.15rem; text-transform: uppercase; letter-spacing: 0.05em;">${hasFeeBalance ? 'Outstanding Balance' : 'Account fully cleared'}</p>
+                                <h4 style="font-weight: 900; color: ${hasFeeBalance ? '#991b1b' : '#065f46'}; margin: 0; font-size: 1.1rem;">Financial Status</h4>
+                                <div style="font-size: 2rem; font-weight: 900; color: #1e293b; margin-top: 0.5rem;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
+                                <p style="font-size: 0.75rem; color: ${hasFeeBalance ? '#b91c1c' : '#065f46'}; font-weight: 700; margin-top: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em;">${hasFeeBalance ? 'Outstanding Balance' : 'Account Cleared'}</p>
                             </div>
                             
                             ${hasFeeBalance ? `
-                                <button class="btn w-100" onclick="UI.handlePaystackPayment()" style="margin-top: 0.5rem; background: #ef4444; color: white; border: none; border-radius: 12px; height: 40px; font-weight: 800; font-size: 0.8rem;">
+                                <button class="btn btn-primary w-100" onclick="UI.handlePaystackPayment()" style="margin-top: 1rem; background: #ef4444; color: white; border: none; border-radius: 12px; height: 40px; font-weight: 800; font-size: 0.8rem;">
                                     Pay Now
                                 </button>
                             ` : ''}
@@ -1589,6 +1576,7 @@ export const UI = {
                                                 <strong style="font-size: 0.7rem; color: #64748b;">FACULTY ASSIGNMENT</strong>
                                                 <div style="margin-top: 0.25rem; font-weight: 600; color: #1e293b;">${details.facultyString}</div>
                                             </div>
+                                            ${!isTeacher ? `
                                             <div style="display: flex; gap: 0.5rem;">
                                                 <button class="btn btn-secondary modify-subject-btn" data-ids="${s.ids.join(',')}" data-name="${s.name}" style="flex: 1; border-radius: 8px; font-size: 0.8rem; height: 40px;">
                                                     <i data-lucide="edit-3" style="width: 14px;"></i> Edit
@@ -1597,7 +1585,9 @@ export const UI = {
                                                     <i data-lucide="trash-2" style="width: 14px;"></i> Remove
                                                 </button>
                                             </div>
+                                            ` : ''}
                                         </div>
+
                                     </div>
                                 </div>
                             `;}).join('')}
@@ -5259,9 +5249,20 @@ export const UI = {
                     cleanupBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Cleaning...';
                     
                     const idsToDelete = unknownStaff.map(s => s.id);
+                    
+                    // 1. Delete from Cloud
+                    const client = getSupabase();
+                    if (client) {
+                        try {
+                            const { error } = await client.from('profiles').delete().in('id', idsToDelete);
+                            if (error) console.error('Cloud cleanup error:', error);
+                        } catch (e) { console.error('Cloud deletion failed:', e); }
+                    }
+
+                    // 2. Delete from Local
                     await db.profiles.bulkDelete(idsToDelete);
                     
-                    Notifications.show(`Successfully removed ${idsToDelete.length} unknown records.`, 'success');
+                    Notifications.show(`Successfully removed ${idsToDelete.length} unknown records from local and cloud.`, 'success');
                     this.renderStaff();
                     syncToCloud();
                 }

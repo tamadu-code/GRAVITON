@@ -84,12 +84,16 @@ export async function syncToCloud() {
     try {
         for (const table of tables) {
             // Enforce dependencies: Don't sync child tables if their parents failed
-            if ((table === 'scores' || table === 'subject_assignments' || table === 'timetable') && failedTables.has('subjects')) {
+            if ((table === 'scores' || table === 'subject_assignments' || table === 'timetable' || table === 'cbt_exams') && failedTables.has('subjects')) {
                 console.warn(`Skipping ${table} sync because subjects sync failed in this run.`);
                 continue;
             }
-            if ((table === 'scores' || table === 'attendance' || table === 'attendance_records' || table === 'pins' || table === 'payments' || table === 'student_analytics') && failedTables.has('students')) {
+            if ((table === 'scores' || table === 'attendance' || table === 'attendance_records' || table === 'pins' || table === 'payments' || table === 'student_analytics' || table === 'cbt_results') && failedTables.has('students')) {
                 console.warn(`Skipping ${table} sync because students sync failed in this run.`);
+                continue;
+            }
+            if (table === 'cbt_questions' && failedTables.has('cbt_exams')) {
+                console.warn(`Skipping ${table} sync because exams sync failed in this run.`);
                 continue;
             }
 
@@ -118,7 +122,10 @@ export async function syncToCloud() {
                         student_analytics: ['student_id', 'average', 'rank', 'fee_balance', 'attendance_rate', 'updated_at'],
                         cbt_exams: ['id', 'title', 'subject_id', 'class_name', 'teacher_id', 'mode', 'term', 'session', 'score_field', 'date', 'start_time', 'end_time', 'duration', 'status', 'updated_at'],
                         cbt_questions: ['id', 'exam_id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'updated_at'],
-                        cbt_results: ['id', 'exam_id', 'student_id', 'score', 'total_questions', 'answers', 'warnings', 'updated_at']
+                        cbt_results: ['id', 'exam_id', 'student_id', 'score', 'total_questions', 'answers', 'warnings', 'updated_at'],
+                        duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'updated_at'],
+                        audit_logs: ['id', 'operation', 'table', 'record_id', 'timestamp', 'user_id'],
+                        parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'updated_at']
                     };
                     
                     console.log(`Syncing ${unsynced.length} records for ${table}...`);
@@ -127,7 +134,7 @@ export async function syncToCloud() {
                     let recordsToSync = unsynced;
                     
                     // Validate and Auto-Migrate subject_id
-                    if (table === 'scores' || table === 'subject_assignments' || table === 'timetable') {
+                    if (table === 'scores' || table === 'subject_assignments' || table === 'timetable' || table === 'cbt_exams') {
                         const allSubjects = await db.subjects.toArray();
                         const validSubjectIds = new Set(allSubjects.map(s => s.id));
                         const subjectNameMap = new Map(allSubjects.map(s => [(s.name || '').toLowerCase().trim(), s.id]));
