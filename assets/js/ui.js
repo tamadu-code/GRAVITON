@@ -6997,14 +6997,22 @@ export const UI = {
             // Determine multiplier based on field
             let multiplier = 100; // Default to percentage
             const field = (exam.score_field || '').toLowerCase();
+            
+            if (!field) {
+                console.warn('[SCORE POST] ERROR: No score_field (e.g. test1, exam) defined for this exam. Cannot post to scoresheet.');
+                return;
+            }
+
             if (field === 'exam') multiplier = 60;
             else if (field.includes('test') || field.includes('project') || field.includes('assignment')) multiplier = 10;
 
             const scoreValue = Math.round((result.score / result.total_questions) * multiplier);
+            console.log(`[SCORE POST] Posting ${scoreValue} to field "${field}" for student ${result.student_id}`);
 
             if (existingScore) {
                 const updateData = { [exam.score_field]: scoreValue };
                 await db.scores.update(existingScore.id, prepareForSync(updateData));
+                console.log(`[SCORE POST] Updated existing record: ${existingScore.id}`);
             } else {
                 const newScore = prepareForSync({
                     id: `SCR${Math.random().toString(36).substr(2,9).toUpperCase()}`,
@@ -7015,6 +7023,12 @@ export const UI = {
                     [exam.score_field]: scoreValue
                 });
                 await db.scores.add(newScore);
+                console.log(`[SCORE POST] Created NEW record: ${newScore.id}`);
+            }
+            
+            // Force a cloud sync attempt
+            if (typeof syncToCloud === 'function') {
+                syncToCloud().then(r => console.log(`[SCORE POST] Cloud sync triggered: ${r.success ? 'Success' : 'Queued'}`));
             }
         } catch (e) {
             console.error('Error posting CBT score:', e);
