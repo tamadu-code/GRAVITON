@@ -5899,6 +5899,15 @@ export const UI = {
         if (confirm('Are you sure you want to delete this exam and all its questions?')) {
             await db.cbt_exams.delete(id);
             await db.cbt_questions.where('exam_id').equals(id).delete();
+
+            // Cloud Clean-up
+            if (window.supabase && navigator.onLine) {
+                try {
+                    await window.supabase.from('cbt_exams').delete().eq('id', id);
+                    await window.supabase.from('cbt_questions').delete().eq('exam_id', id);
+                } catch (e) { console.warn('Cloud clean-up deferred:', e); }
+            }
+
             Notifications.show('Exam deleted successfully', 'success');
             this.renderCBT();
             syncToCloud();
@@ -7927,6 +7936,14 @@ export const UI = {
 
         try {
             await db.notices.delete(id);
+            
+            // Cloud Clean-up
+            if (window.supabase && navigator.onLine) {
+                try {
+                    await window.supabase.from('notices').delete().eq('id', id);
+                } catch (e) { console.warn('Cloud clean-up deferred:', e); }
+            }
+
             Notifications.show('Broadcast deleted successfully', 'success');
             this.renderNoticeBoard();
             syncToCloud();
