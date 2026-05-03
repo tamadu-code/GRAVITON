@@ -6083,52 +6083,64 @@ export const UI = {
     },
 
     async saveExam(existingId) {
-        const title = document.getElementById('exam-title').value;
-        const subId = document.getElementById('exam-subject').value;
-        const cls = document.getElementById('exam-class').value;
+        try {
+            const title = document.getElementById('exam-title').value;
+            const subId = document.getElementById('exam-subject').value;
+            const cls = document.getElementById('exam-class').value;
 
-        if (!title || !subId || !cls) {
-            return Notifications.show('Please fill in required fields (Title, Subject, Class)', 'error');
+            if (!title || !subId || !cls) {
+                return Notifications.show('Please fill in required fields (Title, Subject, Class)', 'error');
+            }
+
+            const examId = existingId || `EXM${Math.random().toString(36).substr(2,9).toUpperCase()}`;
+            console.log(`Saving CBT Exam: ${examId} (${existingId ? 'Update' : 'New'})`);
+            
+            const examData = prepareForSync({
+                id: examId,
+                title,
+                subject_id: subId,
+                class_name: cls,
+                teacher_id: this.currentUser.id,
+                duration: parseInt(document.getElementById('exam-duration').value) || 30,
+                mode: document.getElementById('exam-mode').value,
+                term: document.getElementById('exam-term').value,
+                session: document.getElementById('exam-session').value,
+                score_field: document.getElementById('exam-score-field').value,
+                status: document.getElementById('exam-status').value,
+                start_time: document.getElementById('exam-start').value,
+                end_time: document.getElementById('exam-end').value,
+                date: new Date().toISOString().split('T')[0]
+            });
+
+            if (existingId) {
+                await db.cbt_exams.update(existingId, examData);
+                console.log('Exam metadata updated.');
+                // Re-save questions
+                await db.cbt_questions.where('exam_id').equals(existingId).delete();
+                console.log('Old questions cleared.');
+            } else {
+                await db.cbt_exams.add(examData);
+                console.log('New exam created.');
+            }
+
+            // Save all current questions
+            let qCount = 0;
+            for (const q of this.cbtQuestions) {
+                await db.cbt_questions.add(prepareForSync({
+                    ...q,
+                    exam_id: examId
+                }));
+                qCount++;
+            }
+            console.log(`Saved ${qCount} questions to database.`);
+
+            Notifications.show(`Exam saved successfully with ${qCount} questions`, 'success');
+            this.renderCBT();
+            syncToCloud();
+        } catch (err) {
+            console.error('CBT Save Error:', err);
+            Notifications.show(`Failed to save exam: ${err.message}`, 'error');
         }
-
-        const examId = existingId || `EXM${Math.random().toString(36).substr(2,9).toUpperCase()}`;
-        
-        const examData = prepareForSync({
-            id: examId,
-            title,
-            subject_id: subId,
-            class_name: cls,
-            teacher_id: this.currentUser.id,
-            duration: parseInt(document.getElementById('exam-duration').value) || 30,
-            mode: document.getElementById('exam-mode').value,
-            term: document.getElementById('exam-term').value,
-            session: document.getElementById('exam-session').value,
-            score_field: document.getElementById('exam-score-field').value,
-            status: document.getElementById('exam-status').value,
-            start_time: document.getElementById('exam-start').value,
-            end_time: document.getElementById('exam-end').value,
-            date: new Date().toISOString().split('T')[0]
-        });
-
-        if (existingId) {
-            await db.cbt_exams.update(existingId, examData);
-            // Re-save questions
-            await db.cbt_questions.where('exam_id').equals(existingId).delete();
-        } else {
-            await db.cbt_exams.add(examData);
-        }
-
-        // Save all current questions
-        for (const q of this.cbtQuestions) {
-            await db.cbt_questions.add(prepareForSync({
-                ...q,
-                exam_id: examId
-            }));
-        }
-
-        Notifications.show('Exam saved successfully', 'success');
-        this.renderCBT();
-        syncToCloud();
     },
 
     async startCBTExam(examId) {
