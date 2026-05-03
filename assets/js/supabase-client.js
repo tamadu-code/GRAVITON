@@ -383,9 +383,10 @@ export async function getCurrentSession() {
 export async function getUserProfile(userId) {
     const client = getSupabase();
     if (!client) return null;
-    const { data, error } = await client.from('profiles').select('*').eq('id', userId).single();
+    // Use maybeSingle to avoid PGRST116 error if row doesn't exist
+    const { data, error } = await client.from('profiles').select('*').eq('id', userId).maybeSingle();
     if (error) {
-        console.error("Error fetching profile:", error);
+        console.warn("Profile retrieval warning:", error.message);
         return null;
     }
     return data;

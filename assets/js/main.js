@@ -164,8 +164,20 @@ async function loadAuthenticatedApp(authUser) {
             id: authUser.id,
             full_name: full_name || authUser.email.split('@')[0],
             role: detectedRole,
-            assigned_id: authUser.email.split('@')[0].toUpperCase() // Fallback attempt at assigned ID
+            assigned_id: authUser.email.split('@')[0].toUpperCase(), // Fallback attempt at assigned ID
+            email: authUser.email,
+            status: 'Active',
+            updated_at: new Date().toISOString()
         };
+
+        // Self-provision the missing profile row in Supabase
+        const client = getSupabase();
+        if (client) {
+            client.from('profiles').upsert(profile).then(({ error }) => {
+                if (error) console.warn('Automatic profile provisioning deferred:', error.message);
+                else console.log('Profile successfully self-provisioned for:', authUser.email);
+            });
+        }
     }
 
     // Update UI State
