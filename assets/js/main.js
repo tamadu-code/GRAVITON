@@ -170,7 +170,16 @@ async function loadAuthenticatedApp(authUser) {
 
     // Update UI State
     const currentName = profile.full_name || authUser.email;
-    const currentRole = profile.role || 'Admin';
+    let currentRole = profile.role || 'Admin';
+
+    // Aggressive Role Correction: If email is @student.school, they MUST be a Student
+    if (authUser.email.toLowerCase().includes('@student.school')) {
+        currentRole = 'Student';
+    } else if (authUser.email.toLowerCase().includes('@parent.school')) {
+        currentRole = 'Parent';
+    } else if (authUser.email.toLowerCase().includes('@staff.school') && currentRole !== 'Admin') {
+        currentRole = 'Staff';
+    }
 
     UI.currentUser = {
         id: authUser.id,
