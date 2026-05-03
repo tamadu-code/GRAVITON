@@ -373,6 +373,7 @@ export async function logoutUser() {
     const client = getSupabase();
     if (!client) return true; // No Supabase — just let the caller reload
     try {
+        localStorage.removeItem('user_role');
         await client.auth.signOut();
     } catch(e) {
         console.error('Sign out error:', e);

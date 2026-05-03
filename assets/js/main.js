@@ -193,6 +193,9 @@ async function loadAuthenticatedApp(authUser) {
         currentRole = 'Staff';
     }
 
+    // Persist role for UI initialization
+    localStorage.setItem('user_role', currentRole);
+
     UI.currentUser = {
         id: authUser.id,
         email: authUser.email,

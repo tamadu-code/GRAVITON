@@ -152,7 +152,7 @@ export const UI = {
     },
 
     initSidebar() {
-        const role = (localStorage.getItem('user_role') || '').toLowerCase();
+        const role = (this.currentUser.role || '').toLowerCase();
         const navItems = document.querySelectorAll('.nav-item');
         const adminSectionHeaders = document.querySelectorAll('.nav-section-header');
         
