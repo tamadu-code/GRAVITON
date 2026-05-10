@@ -4138,6 +4138,13 @@ export const UI = {
 
     async updateFormMaster(className, teacherId) {
         if (!teacherId) {
+            // Cloud Clean-up for deletion
+            if (navigator.onLine) {
+                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (client) {
+                    await client.from('form_teachers').delete().eq('class_name', className);
+                }
+            }
             await db.form_teachers.where('class_name').equals(className).delete();
         } else {
             const existing = await db.form_teachers.where('class_name').equals(className).first();
@@ -6319,7 +6326,7 @@ export const UI = {
         try {
             // 1. Cloud Clean-up (Do this first while we still have the ID)
             if (navigator.onLine) {
-                const client = window.supabaseClient;
+                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (client) {
                     await client.from('cbt_exams').delete().eq('id', id);
                     // cascading delete on DB should handle questions/results, 
@@ -7877,10 +7884,24 @@ export const UI = {
 
     async deleteAssignment(id) {
         if (confirm('Are you sure you want to delete this assignment?')) {
-            await db.subject_assignments.delete(id);
-            Notifications.show('Assignment removed', 'success');
-            this.renderLessons();
-            syncToCloud();
+            try {
+                await db.subject_assignments.delete(id);
+                
+                // Cloud Clean-up
+                if (navigator.onLine) {
+                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                    if (client) {
+                        await client.from('subject_assignments').delete().eq('id', id);
+                    }
+                }
+
+                Notifications.show('Assignment removed', 'success');
+                this.renderLessons();
+                syncToCloud();
+            } catch (err) {
+                console.error('Delete assignment error:', err);
+                Notifications.show('Failed to delete assignment', 'error');
+            }
         }
     },
 
@@ -8797,9 +8818,12 @@ export const UI = {
             await db.notices.delete(id);
             
             // Cloud Clean-up
-            if (window.supabase && navigator.onLine) {
+            if (navigator.onLine) {
                 try {
-                    await window.supabase.from('notices').delete().eq('id', id);
+                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                    if (client) {
+                        await client.from('notices').delete().eq('id', id);
+                    }
                 } catch (e) { console.warn('Cloud clean-up deferred:', e); }
             }
 
@@ -9803,8 +9827,24 @@ export const UI = {
 
     async deleteFeeStructure(id) {
         if (confirm('Delete this fee structure?')) {
-            await db.fee_structures.delete(id);
-            this.renderFeeStructures();
+            try {
+                await db.fee_structures.delete(id);
+                
+                // Cloud Clean-up
+                if (navigator.onLine) {
+                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                    if (client) {
+                        await client.from('fee_structures').delete().eq('id', id);
+                    }
+                }
+                
+                this.renderFeeStructures();
+                syncToCloud();
+                Notifications.show('Fee structure removed', 'success');
+            } catch (err) {
+                console.error('Delete fee structure error:', err);
+                Notifications.show('Failed to delete fee structure', 'error');
+            }
         }
     },
 
@@ -9979,9 +10019,25 @@ export const UI = {
     },
 
     async deleteParentLink(id) {
-        if (confirm('Sever this parent-student connection?')) {
-            await db.parent_links.delete(id);
-            this.renderParents();
+        if (confirm('Remove this parent link?')) {
+            try {
+                await db.parent_links.delete(id);
+                
+                // Cloud Clean-up
+                if (navigator.onLine) {
+                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                    if (client) {
+                        await client.from('parent_links').delete().eq('id', id);
+                    }
+                }
+                
+                this.renderParents();
+                syncToCloud();
+                Notifications.show('Parent link removed', 'success');
+            } catch (err) {
+                console.error('Delete parent link error:', err);
+                Notifications.show('Failed to delete parent link', 'error');
+            }
         }
     },
 
@@ -10373,10 +10429,25 @@ export const UI = {
 
     async deleteBankCategory(bankExamId) {
         if (!confirm('Are you sure you want to permanently delete all questions in this category? This cannot be undone.')) return;
-        await db.cbt_questions.where('exam_id').equals(bankExamId).delete();
-        syncToCloud();
-        Notifications.show('Category deleted from bank.', 'success');
-        this.renderQuestionBank();
+        
+        try {
+            await db.cbt_questions.where('exam_id').equals(bankExamId).delete();
+            
+            // Cloud Clean-up
+            if (navigator.onLine) {
+                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (client) {
+                    await client.from('cbt_questions').delete().eq('exam_id', bankExamId);
+                }
+            }
+
+            syncToCloud();
+            Notifications.show('Category deleted from bank.', 'success');
+            this.renderQuestionBank();
+        } catch (err) {
+            console.error('Delete bank category error:', err);
+            Notifications.show('Failed to delete category', 'error');
+        }
     },
 
     async editBankCategory(tag) {
