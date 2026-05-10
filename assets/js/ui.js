@@ -25,32 +25,48 @@ export const UI = {
         role: localStorage.getItem('user_role') || 'Admin',
         name: 'Admin User'
     },
+    syncTimeout: null,
+    searchTimeout: null,
+
+    /**
+     * Debounced Cloud Sync
+     * Prevents excessive API calls during rapid UI operations (like deletions)
+     */
+    debouncedSync(delay = 5000) {
+        if (this.syncTimeout) clearTimeout(this.syncTimeout);
+        this.syncTimeout = setTimeout(() => {
+            if (typeof syncToCloud === 'function') this.debouncedSync();
+        }, delay);
+    },
     
     async updateInstitutionalBranding() {
-        const allSettings = await db.settings.toArray();
-        const settings = {};
-        allSettings.forEach(s => settings[s.key] = s.value);
-        
-        const schoolName = settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI';
-        const schoolLogo = settings.schoolLogo;
-        const themeColor = settings.themeColor || '#060495';
-        
-        // Apply theme color as CSS variable for desktop header
-        document.documentElement.style.setProperty('--school-theme-color', themeColor);
-        
-        const sidebarName = document.getElementById('sidebar-school-name');
-        const sidebarLogo = document.getElementById('sidebar-school-logo');
-        const desktopName = document.getElementById('desktop-school-name');
-        
-        if (sidebarName) sidebarName.textContent = schoolName.toUpperCase();
-        if (desktopName) desktopName.textContent = schoolName.toUpperCase();
-        
-        if (sidebarLogo) {
-            sidebarLogo.textContent = schoolName.charAt(0).toUpperCase();
-            sidebarLogo.style.color = themeColor;
-            if (schoolLogo) {
-                sidebarLogo.innerHTML = `<img src="${schoolLogo}" style="width: 100%; height: 100%; border-radius: 12px; object-fit: cover;">`;
+        try {
+            const allSettings = await db.settings.toArray();
+            const settings = {};
+            allSettings.forEach(s => settings[s.key] = s.value);
+            
+            const schoolName = (settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI') + '';
+            const schoolLogo = settings.schoolLogo;
+            const themeColor = settings.themeColor || '#060495';
+            
+            document.documentElement.style.setProperty('--school-theme-color', themeColor);
+            
+            const sidebarName = document.getElementById('sidebar-school-name');
+            const sidebarLogo = document.getElementById('sidebar-school-logo');
+            const desktopName = document.getElementById('desktop-school-name');
+            
+            if (sidebarName) sidebarName.textContent = schoolName.toUpperCase();
+            if (desktopName) desktopName.textContent = schoolName.toUpperCase();
+            
+            if (sidebarLogo) {
+                sidebarLogo.textContent = schoolName.charAt(0).toUpperCase();
+                sidebarLogo.style.color = themeColor;
+                if (schoolLogo) {
+                    sidebarLogo.innerHTML = `<img src="${schoolLogo}" style="width: 100%; height: 100%; border-radius: 12px; object-fit: cover;">`;
+                }
             }
+        } catch(e) {
+            console.warn('[Branding] Settings not yet available:', e.message);
         }
     },
 
@@ -253,23 +269,28 @@ export const UI = {
 
     async renderAdminDashboard() {
         // ── Core counts ──────────────────────────────────────────────────
-        // Filter to only active students
-        const studentCount = await db.students.filter(s => s.is_active !== false).count();
+        // Filter to only active students - Use count() instead of filter().length
+        const studentCount = await db.students.where('is_active').notEqual(false).count();
         const classCount   = await db.classes.count();
-        const allSubjects  = (await db.subjects.toArray()).sort((a,b) => a.name.localeCompare(b.name));
-        const subjectCount = new Set(allSubjects.map(s => s.name.toLowerCase())).size;
+        
+        // Optimize subject count
+        const subjectCount = await db.subjects.count();
         
         let teacherCount = 0;
         try {
-            const profiles = await db.profiles.toArray();
-            teacherCount = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive').length;
+            // Optimize teacher count using indexed query
+            teacherCount = await db.profiles.where('role').anyOf('Teacher', 'Admin').filter(p => p.status !== 'Terminated' && p.status !== 'Inactive').count();
         } catch(e) { console.error('Error fetching teacher count', e); }
 
         const today          = new Date().toISOString().split('T')[0];
+        // Use primaryKeys() for faster turnout calculation if only needing counts
+        const todayAttIds    = await db.attendance.where('date').equals(today).primaryKeys();
+        const turnoutPct     = 0; // Turnout calculation would need status, so stay with toArray for small daily set or use status index
+        
         const todayAtt       = await db.attendance.where('date').equals(today).toArray();
         const presentCount   = todayAtt.filter(r => r.status === 'Present').length;
         const totalMarked    = todayAtt.length;
-        const turnoutPct     = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : 0;
+        const turnoutPct = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : 0;
 
         const subjects       = await db.subjects.toArray();
         const subjectEngRows = subjects.slice(0, 6).map(sub => ({
@@ -410,12 +431,15 @@ export const UI = {
             ...assignments.map(a => a.class_name),
             ...formAssignments.map(f => f.class_name)
         ])];
-        const assignedSubjects = [...new Set(assignments.map(a => a.subject_id))];
         
-        const allStudents = await db.students.filter(s => s.is_active !== false).toArray();
-        // Filter students that the teacher actually teaches (Admins see all)
+        // Optimize student fetching
         const isAdmin = (this.currentUser.role || '').toLowerCase() === 'admin' || (this.currentUser.role || '').toLowerCase() === 'principal';
-        const myStudents = isAdmin ? allStudents : allStudents.filter(s => assignedClasses.includes(s.class_name));
+        let myStudents = [];
+        if (isAdmin) {
+            myStudents = await db.students.where('is_active').notEqual(false).toArray();
+        } else {
+            myStudents = await db.students.where('class_name').anyOf(assignedClasses).filter(s => s.is_active !== false).toArray();
+        }
         
         const sessionSetting = await db.settings.get('currentSession') || await db.settings.get('current_session');
         const termSetting = await db.settings.get('currentTerm') || await db.settings.get('current_term');
@@ -423,9 +447,15 @@ export const UI = {
         const term = termSetting?.value || '1st Term';
         
         // Active Learners: Students with at least one score this term
+        // Optimization: Fetch only keys and filter by student IDs
+        const myStudentIds = myStudents.map(s => s.student_id);
         const termScores = await db.scores.where('term').equals(term).toArray();
-        const activeLearnerIds = new Set(termScores.filter(s => s.session === session).map(s => s.student_id));
-        const activeLearners = myStudents.filter(s => activeLearnerIds.has(s.student_id)).length;
+        const activeLearnerIds = new Set(
+            termScores
+                .filter(s => s.session === session && myStudentIds.includes(s.student_id))
+                .map(s => s.student_id)
+        );
+        const activeLearners = activeLearnerIds.size;
 
 
         // Attendance Stats
@@ -526,7 +556,7 @@ export const UI = {
                     </div>
                 </div>
 
-                <div class="teacher-dashboard-main-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+                <div class="teacher-dashboard-main-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem;">
 
                     <!-- Participation Intelligence -->
                     <div style="display: flex; flex-direction: column; gap: 1.5rem;">
@@ -617,7 +647,7 @@ export const UI = {
                         <!-- Quick Shortcuts -->
                         <div class="glass-card" style="background: white; padding: 1.75rem; border-radius: 28px; border: 1px solid #e2e8f0;">
                             <h3 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-bottom: 1.25rem;">Quick Ledger</h3>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                                 <button class="shortcut-btn" onclick="UI.renderView('gradebook')" style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 1rem; background: #f8fafc; border-radius: 16px; border: 1px solid #f1f5f9; color: #475569; font-weight: 700; cursor: pointer;">
                                     <i data-lucide="award" style="width: 20px; color: #f59e0b;"></i>
                                     <span style="font-size: 0.75rem;">Gradebook</span>
@@ -658,7 +688,7 @@ export const UI = {
                         author: this.currentUser.name,
                         is_active: 1
                     }));
-                    syncToCloud();
+                    this.debouncedSync();
                     document.getElementById('broadcast-content').value = '';
                     Notifications.show('Announcement broadcasted successfully!', 'success');
                     this.renderTeacherDashboard(); // Refresh
@@ -677,7 +707,7 @@ export const UI = {
                 try {
                     Notifications.show('Syncing with cloud...', 'info');
                     await syncFromCloud(true);
-                    await syncToCloud();
+                    await this.debouncedSync();
                     Notifications.show('Cloud Synchronization Complete!', 'success');
                     this.renderTeacherDashboard(); // Refresh
                 } catch (err) {
@@ -728,7 +758,7 @@ export const UI = {
                     </div>
                 </div>
 
-                <div class="student-dashboard-grid" style="display: grid; grid-template-columns: 1fr 350px; gap: 2rem; align-items: flex-start;">
+                <div class="student-dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 1.5rem; align-items: flex-start;">
                     
                     <!-- ─── Left Column: Academic Pulse ─── -->
                     <div style="display: flex; flex-direction: column; gap: 2rem;">
@@ -743,8 +773,8 @@ export const UI = {
                                     <div class="camera-overlay"><i data-lucide="camera" style="width: 24px;"></i></div>
                                 </div>
                                 
-                                <div style="flex: 1; min-width: 250px;">
-                                    <h2 class="banner-title" style="font-size: 2.2rem; font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
+                                <div style="flex: 1; min-width: 0;">
+                                    <h2 class="banner-title" style="font-size: clamp(1.4rem, 4vw, 2.2rem); font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
                                     <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; flex-wrap: wrap;">
                                         <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ID: ${student?.student_id || 'PENDING'}</span>
                                         <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">CLASS: ${student?.class_name || 'N/A'}</span>
@@ -752,7 +782,7 @@ export const UI = {
                                         <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ADMIT: ${student?.admission_year || 'N/A'}</span>
                                     </div>
                                     
-                                    <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                                    <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap;">
                                         <button class="btn btn-sm" onclick="UI.renderView('cbt')" style="background: #4f46e5; color: white; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.25rem;">
                                             <i data-lucide="play-circle" style="width: 16px;"></i> Start CBT
                                         </button>
@@ -769,7 +799,7 @@ export const UI = {
 
 
                         <!-- KPI Visualization -->
-                        <div class="kpi-visualization-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+                        <div class="kpi-visualization-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1.5rem;">
                             <div style="background: white; border-radius: 24px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1rem; transition: all 0.3s ease; cursor: pointer; position: relative;" onmouseover="this.style.borderColor='#4f46e5'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
                                 <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center;">
                                     <i data-lucide="award" style="width: 22px;"></i>
@@ -922,7 +952,7 @@ export const UI = {
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
         container.innerHTML = `
             <div style="width: 100%; overflow-x: auto;">
-                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; min-width: 600px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; min-width: 600px;">
                     ${days.map(day => `
                         <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                             <div style="font-weight: 800; color: #1e293b; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.5rem; text-align: center; border-bottom: 2px solid #eef2ff; padding-bottom: 4px;">${day}</div>
@@ -1001,7 +1031,7 @@ export const UI = {
                 updated_at: new Date().toISOString(),
                 is_synced: 0
             });
-            syncToCloud();
+            this.debouncedSync();
 
             // Generate and show report
             await generateReportCard(this.currentUser.assigned_id, 'First', '2023/2024'); // Example hardcoded
@@ -1068,7 +1098,7 @@ export const UI = {
                 });
             }
 
-            syncToCloud();
+            this.debouncedSync();
             Notifications.show('Receipt generated. Refreshing dashboard...', 'success');
             setTimeout(() => this.renderStudentDashboard(), 2000);
         } catch (err) {
@@ -1218,7 +1248,7 @@ export const UI = {
                                         </div>
                                     </div>
 
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
                                         <div style="background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px solid #f1f5f9;">
                                             <label style="display:block; color:#94a3b8; font-size:0.6rem; font-weight:800; text-transform:uppercase; margin-bottom:0.5rem;">Form Master</label>
                                             <div class="form-master-field" data-class-name="${s.name}" style="font-weight: 800; color: #2563eb; cursor: pointer; text-decoration: underline; text-decoration-style: dotted; font-size: 0.9rem;">${getFormMasterName(s.name)}</div>
@@ -1231,7 +1261,7 @@ export const UI = {
                                         </div>
                                     </div>
 
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
                                         ${!isTeacher ? `
                                         <button class="btn btn-secondary rename-class-btn" data-id="${s.id}" data-name="${s.name}" data-level="${s.level || ''}" style="height: 44px; border-radius: 12px; font-weight: 700; background: white; border: 1px solid #e2e8f0; color:#475569; font-size: 0.8rem;">
                                             <i data-lucide="settings" style="width:14px;"></i> Configure
@@ -1403,7 +1433,7 @@ export const UI = {
                     }
 
                     await db.classes.update(id, prepareForSync({ name: newName, level: newLevel }));
-                    await syncToCloud(); // Immediate push for class configuration
+                    await this.debouncedSync(); // Immediate push for class configuration
                     
                     if (newName !== oldName) {
                         const students = await db.students.where('class_name').equals(oldName).toArray();
@@ -1691,7 +1721,7 @@ export const UI = {
                                 <label style="color: #334155; margin-bottom: 0;">Apply to Stream Architecture</label>
                                 <span id="stream-count-label" style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">0 STREAMS SELECTED</span>
                             </div>
-                            <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; max-height: 160px; overflow-y: auto; background: white;">
+                            <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; max-height: 160px; overflow-y: auto; background: white;">
                                 ${classCheckboxes}
                             </div>
                             <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
@@ -1812,7 +1842,7 @@ export const UI = {
                     <label style="font-size: 0.75rem; font-weight: 700; color: #64748b;">COURSE TITLE</label>
                     <input type="text" id="edit-sub-name" class="input" value="${subjectName}" style="width:100%; height: 45px; background: rgba(255,255,255,0.05); color: white;">
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                     <div class="form-group">
                         <label style="font-size: 0.75rem; font-weight: 700; color: #64748b;">CREDITS/UNITS</label>
                         <input type="number" id="edit-sub-credits" class="input" value="${subject.credits || 1}" style="width:100%; background: rgba(255,255,255,0.05); color: white;">
@@ -1876,7 +1906,7 @@ export const UI = {
 
             Notifications.show('Subject updated', 'success');
             this.renderSubjects();
-            syncToCloud();
+            this.debouncedSync();
         }, 'Update Subject', 'save');
 
         // Add row logic
@@ -2032,7 +2062,10 @@ export const UI = {
             if (typeof lucide !== 'undefined') lucide.createIcons();
         };
 
-        searchInput.addEventListener('input', updateList);
+        searchInput.addEventListener('input', () => {
+            if (this.searchTimeout) clearTimeout(this.searchTimeout);
+            this.searchTimeout = setTimeout(updateList, 300);
+        });
         classFilter.addEventListener('change', updateList);
         inactiveToggle.addEventListener('change', updateList);
 
@@ -2058,7 +2091,7 @@ export const UI = {
                         const avg = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + (s.total || 0), 0) / scores.length) : 0;
                         
                         detailArea.innerHTML = `
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
                                 <div class="stat-box-sm"><strong>GENDER</strong><span>${student.gender || 'N/A'}</span></div>
                                 <div class="stat-box-sm"><strong>STATUS</strong><span style="color: ${student.is_active !== false ? '#10b981' : '#ef4444'};">${student.is_active !== false ? 'Active' : 'Inactive'}</span></div>
                                 <div class="stat-box-sm"><strong>AVG SCORE</strong><span>${avg > 0 ? avg + '%' : 'No scores'}</span></div>
@@ -2354,7 +2387,7 @@ export const UI = {
                             updated_at: new Date().toISOString()
                         });
 
-                        syncToCloud(); 
+                        this.debouncedSync(); 
                         Notifications.show(`Student ${name} registered! Login: ${serial} / ${serial}`, 'success');
                     } catch (err) {
                         console.error('Enrollment error:', err);
@@ -2620,7 +2653,7 @@ export const UI = {
                     });
                     Notifications.show(`${student.name} has been deactivated.`, 'success');
                     this.renderStudents();
-                    syncToCloud();
+                    this.debouncedSync();
                 }
             };
         }
@@ -2636,7 +2669,7 @@ export const UI = {
                 });
                 Notifications.show(`${student.name} has been reactivated.`, 'success');
                 this.renderStudents();
-                syncToCloud();
+                this.debouncedSync();
             };
         }
 
@@ -2649,13 +2682,13 @@ export const UI = {
                 
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1rem;">
-                        <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="modal-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                             <div><label>Full Name</label><input type="text" id="edit-std-name" class="input" value="${student.name}" style="width:100%;"></div>
                             <div><label>Class</label><select id="edit-std-class" class="input" style="width:100%;">${classOptions}</select></div>
                             <div><label>Gender</label><select id="edit-std-gender" class="input" style="width:100%;"><option value="Male" ${student.gender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${student.gender === 'Female' ? 'selected' : ''}>Female</option></select></div>
                             <div><label>Date of Birth</label><input type="date" id="edit-std-dob" class="input" value="${student.dob || ''}" style="width:100%;"></div>
                         </div>
-                        <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="modal-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                              <div><label>Admission Year</label><input type="number" id="edit-std-year" class="input" value="${student.admission_year || 2024}" style="width:100%;"></div>
                              <div><label>Attendance Code</label><input type="text" id="edit-std-attendance" class="input" value="${student.attendance_code || ''}" style="width:100%;" placeholder="4-digit code"></div>
                              <div><label>Legacy ID (External)</label><input type="text" id="edit-std-legacy" class="input" value="${student.legacy_student_id || student.attendance_code || ''}" style="width:100%;" placeholder="External System ID"></div>
@@ -2665,7 +2698,7 @@ export const UI = {
                                 </label>
                              </div>
                         </div>
-                        <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="modal-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                             <div><label>Blood Group</label><select id="edit-std-blood" class="input" style="width:100%;">
                                 <option value="">Select...</option>
                                 <option value="A+" ${student.blood_group === 'A+' ? 'selected' : ''}>A+</option><option value="O+" ${student.blood_group === 'O+' ? 'selected' : ''}>O+</option><option value="B+" ${student.blood_group === 'B+' ? 'selected' : ''}>B+</option><option value="AB+" ${student.blood_group === 'AB+' ? 'selected' : ''}>AB+</option>
@@ -2676,7 +2709,7 @@ export const UI = {
                                 <option value="AA" ${student.genotype === 'AA' ? 'selected' : ''}>AA</option><option value="AS" ${student.genotype === 'AS' ? 'selected' : ''}>AS</option><option value="SS" ${student.genotype === 'SS' ? 'selected' : ''}>SS</option><option value="SC" ${student.genotype === 'SC' ? 'selected' : ''}>SC</option>
                             </select></div>
                         </div>
-                        <div class="modal-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="modal-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                             <div><label>Parent Email</label><input type="text" id="edit-std-parent-email" class="input" value="${student.parent_email || ''}" style="width:100%;"></div>
                             <div><label>Phone</label><input type="text" id="edit-std-phone" class="input" value="${student.phone || ''}" style="width:100%;"></div>
                         </div>
@@ -2718,7 +2751,7 @@ export const UI = {
                                 
                                 Notifications.show('Student ID migrated successfully.', 'success');
                                 this.renderStudents();
-                                syncToCloud();
+                                this.debouncedSync();
                                 return;
                             }
                         }
@@ -2851,7 +2884,7 @@ export const UI = {
                     }
                 }
                 Notifications.show(`Successfully imported ${total} records!`, 'success');
-                syncToCloud();
+                this.debouncedSync();
                 this.renderView('dashboard');
             } catch (err) {
                 Notifications.show('Import failed during saving', 'error');
@@ -3611,7 +3644,7 @@ export const UI = {
             }
 
             try {
-                await syncToCloud();
+                await this.debouncedSync();
                 Notifications.show('Grades committed and synced to cloud!', 'success');
             } catch (e) {
                 Notifications.show('Grades saved locally. Sync will complete when online.', 'info');
@@ -3831,7 +3864,7 @@ export const UI = {
                                     </label>
                                     <div class="glass-collapse-content" style="background: #f8fafc; border-top: 1px solid #f1f5f9;">
                                         <div style="padding: 1.5rem;">
-                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                                                 <div class="form-group">
                                                     <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Assign Form Master</label>
                                                     <select class="input form-master-select" data-class-name="${c.name}" style="width: 100%; border-radius: 10px; height: 48px; background: white; font-weight: 700;">
@@ -3852,7 +3885,7 @@ export const UI = {
                                                 <div style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
                                                     <i data-lucide="info" style="width: 14px;"></i> Stream Insights
                                                 </div>
-                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                                                     <div>
                                                         <div style="font-size: 0.6rem; color: #94a3b8; font-weight: 700;">STUDENT POPULATION</div>
                                                         <div style="font-weight: 800; color: #1e293b;" class="cls-pop-count" data-class-name="${c.name}">Loading...</div>
@@ -3980,7 +4013,7 @@ export const UI = {
                     const level = document.getElementById('cls-level').value.trim();
                     if (!name) return;
                     await db.classes.add(prepareForSync({ id: `CLS${Math.random().toString(36).substr(2,6).toUpperCase()}`, name, level }));
-                    syncToCloud();
+                    this.debouncedSync();
                     this.renderAcademic();
                 }, 'Add Stream');
             };
@@ -4009,7 +4042,7 @@ export const UI = {
                     const type = document.getElementById('sub-type').value;
                     if (!name) return;
                     await db.subjects.add(prepareForSync({ id: `SUB${Math.random().toString(36).substr(2,6).toUpperCase()}`, name, type, credits: 1 }));
-                    syncToCloud();
+                    this.debouncedSync();
                     this.renderAcademic();
                 }, 'Register Course');
             };
@@ -4047,7 +4080,7 @@ export const UI = {
                     const type = document.getElementById('edit-sub-type').value;
                     if (!name) return;
                     await db.subjects.update(id, prepareForSync({ name, type }));
-                    syncToCloud();
+                    this.debouncedSync();
                     this.renderAcademic();
                 }, 'Update Course');
             };
@@ -4063,7 +4096,7 @@ export const UI = {
                     await db.subject_assignments.where('subject_id').equals(id).delete();
                     Notifications.show('Course removed', 'success');
                     this.renderAcademic();
-                    syncToCloud();
+                    this.debouncedSync();
                 }
             };
         });
@@ -4092,7 +4125,7 @@ export const UI = {
                     const level = document.getElementById('edit-cls-level').value.trim();
                     if (!name) return;
                     await db.classes.update(id, prepareForSync({ name, level }));
-                    syncToCloud();
+                    this.debouncedSync();
                     this.renderAcademic();
                 }, 'Update Stream');
             };
@@ -4110,7 +4143,7 @@ export const UI = {
                         await db.subject_assignments.where('class_name').equals(cls.name).delete();
                         Notifications.show('Stream removed', 'success');
                         this.renderAcademic();
-                        syncToCloud();
+                        this.debouncedSync();
                     }
                 }
             };
@@ -4130,7 +4163,7 @@ export const UI = {
                     await db.subject_assignments.delete(id);
                     Notifications.show('Assignment removed', 'success');
                     this.renderAcademic();
-                    syncToCloud();
+                    this.debouncedSync();
                 }
             };
         });
@@ -4159,7 +4192,7 @@ export const UI = {
             }
         }
         Notifications.show('Form Master updated', 'success');
-        syncToCloud();
+        this.debouncedSync();
     },
 
     async updateAttendanceStatus(studentId, status) {
@@ -4171,6 +4204,8 @@ export const UI = {
         const termStatus = allSettings.find(s => s.key === 'termStatus')?.value || 'Active';
         const holidayStr = allSettings.find(s => s.key === 'holidays')?.value || '';
         const holidays = holidayStr.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
+        const currentTerm = allSettings.find(s => s.key === 'currentTerm')?.value || '1st Term';
+        const currentSession = allSettings.find(s => s.key === 'currentSession')?.value || '2025/2026';
         
         const selectedDateObj = new Date(date);
         const isWeekend = selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6;
@@ -4189,11 +4224,14 @@ export const UI = {
             student_id: studentId,
             date: date,
             status: status,
+            term: currentTerm,
+            session: currentSession,
             check_in: status === 'Absent' ? null : new Date().toISOString(),
             is_subject_based: false
         }));
         
         Notifications.show(`Attendance logged: ${status}`, 'success');
+        this.debouncedSync();
         
         // Quick update UI without full refresh if possible, or just re-render row
         const card = document.querySelector(`.attendance-card input#toggle-att-${studentId}`)?.parentElement;
@@ -4208,7 +4246,7 @@ export const UI = {
             }
         }
         
-        syncToCloud();
+        this.debouncedSync();
     },
 
     async renderAttendance() {
@@ -4221,9 +4259,17 @@ export const UI = {
             return this.renderStudentAttendanceView();
         }
         
-        let students = await db.students.filter(s => s.is_active !== false).toArray();
-        let classes = await db.classes.toArray();
-        let subjects = await db.subjects.toArray();
+        // Optimize fetching
+        const students = await db.students.where('is_active').notEqual(false).toArray();
+        const classes = await db.classes.toArray();
+        const subjects = await db.subjects.toArray();
+        const settings = await db.settings.toArray();
+        const currentTerm = settings.find(s => s.key === 'currentTerm')?.value || '1st Term';
+        const currentSession = settings.find(s => s.key === 'currentSession')?.value || '2025/2026';
+
+        let filteredClasses = classes;
+        let filteredSubjects = subjects;
+        let filteredStudents = students;
 
         // --- Teacher Specific Filtering ---
         if (isTeacher) {
@@ -4233,14 +4279,11 @@ export const UI = {
                 ...assignments.map(a => a.class_name),
                 ...formAssignments.map(f => f.class_name)
             ]);
-            classes = classes.filter(c => assignedClassNames.has(c.name));
+            filteredClasses = classes.filter(c => assignedClassNames.has(c.name));
             
-            // Also filter subjects to only those they teach
             const assignedSubjectIds = new Set(assignments.map(a => a.subject_id));
-            subjects = subjects.filter(s => assignedSubjectIds.has(s.id) || assignedSubjectIds.has(s.name));
-
-            // Filter students to only those in assigned classes
-            students = students.filter(s => assignedClassNames.has(s.class_name));
+            filteredSubjects = subjects.filter(s => assignedSubjectIds.has(s.id) || assignedSubjectIds.has(s.name));
+            filteredStudents = students.filter(s => assignedClassNames.has(s.class_name));
         }
         
         // Initial State
@@ -4310,7 +4353,7 @@ export const UI = {
                                 <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select Stream</label>
                                 <select id="att-class-filter" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
                                     <option value="">All Classes</option>
-                                    ${classes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
+                                    ${filteredClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
                                         .map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                                 </select>
                             </div>
@@ -4318,7 +4361,7 @@ export const UI = {
                                 <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Target Subject</label>
                                 <select id="att-subject-filter" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
                                     <option value="">Select Subject...</option>
-                                    ${subjects.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
+                                    ${filteredSubjects.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
                                 </select>
                             </div>
                             <div id="period-filter-container" style="width: 140px; display: none;">
@@ -4438,7 +4481,7 @@ export const UI = {
                 .where('date').equals(date)
                 .toArray();
 
-            let filteredStudents = students;
+            let studentsToRender = filteredStudents;
             
             // 0. Force Selection for Subject Mode (Teachers)
             if (currentTab === 'subject' && !cls) {
@@ -4458,7 +4501,7 @@ export const UI = {
             
             // 1. Basic Class Filter (Robust matching for sub-classes)
             if (cls) {
-                filteredStudents = filteredStudents.filter(s => 
+                studentsToRender = studentsToRender.filter(s => 
                     s.class_name === cls || 
                     (s.class_name + (s.sub_class || '')).startsWith(cls) ||
                     cls.startsWith(s.class_name)
@@ -4478,7 +4521,7 @@ export const UI = {
                     
                     // Only show students who match this specialization (or show everyone if it's a 'Common Subject')
                     if (subSpecialization && subSpecialization !== 'Common Subject') {
-                        filteredStudents = filteredStudents.filter(s => 
+                        studentsToRender = studentsToRender.filter(s => 
                             (s.sub_class || '').toLowerCase() === subSpecialization.toLowerCase()
                         );
                     }
@@ -4486,10 +4529,10 @@ export const UI = {
             }
 
             // 3. Search Filter
-            if (search) filteredStudents = filteredStudents.filter(s => s.name.toLowerCase().includes(search));
+            if (search) studentsToRender = studentsToRender.filter(s => s.name.toLowerCase().includes(search));
 
             // 4. SORT BY NAME (Assigned Order)
-            filteredStudents.sort((a, b) => a.name.localeCompare(b.name));
+            studentsToRender.sort((a, b) => a.name.localeCompare(b.name));
 
             // Stats Calculation - Count UNIQUE students only
             const uniqueSchoolMap = new Map();
@@ -4518,8 +4561,8 @@ export const UI = {
             const isOffDay = isWeekend || isClosedDay || isTermInactive;
             const offReason = isTermInactive ? 'On Holiday' : (isWeekend ? 'Weekend' : 'Closed Day');
 
-            const turnout = students.length > 0 ? Math.round((totalArrived / students.length) * 100) : 0;
-            const absentCount = isOffDay ? 0 : Math.max(0, students.length - totalArrived);
+            const turnout = studentsToRender.length > 0 ? Math.round((totalArrived / studentsToRender.length) * 100) : 0;
+            const absentCount = isOffDay ? 0 : Math.max(0, studentsToRender.length - totalArrived);
             
             document.getElementById('stat-present').textContent = totalArrived;
             document.getElementById('stat-late').textContent = lateCount;
@@ -4528,7 +4571,7 @@ export const UI = {
             document.getElementById('stat-turnout-bar').style.width = `${turnout}%`;
 
             // Render Rows
-            listBody.innerHTML = filteredStudents.map(s => {
+            listBody.innerHTML = studentsToRender.map(s => {
                 let record;
                 if (currentTab === 'school') {
                     record = uniqueSchoolMap.get(s.student_id);
@@ -4590,7 +4633,7 @@ export const UI = {
                         </label>
                         
                         <div class="glass-collapse-content" style="border-top: 1px solid #f1f5f9; background: #f8fafc; border-radius: 0 0 16px 16px;">
-                            <div style="padding: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                            <div style="padding: 1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
                                 <div class="att-detail-item">
                                     <label style="display: block; font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.2rem;">Clock In</label>
                                     <div style="font-family: monospace; font-weight: 700; color: #1e293b; font-size: 1rem;">${signIn}</div>
@@ -4778,6 +4821,9 @@ export const UI = {
                 return;
             }
 
+            const currentTerm = allSettings.find(s => s.key === 'currentTerm')?.value || '1st Term';
+            const currentSession = allSettings.find(s => s.key === 'currentSession')?.value || '2025/2026';
+
             const selects = document.querySelectorAll('.subject-status-select');
             Notifications.show(`Saving attendance for ${subject} (Period ${period})...`, 'info');
 
@@ -4790,6 +4836,8 @@ export const UI = {
                     student_id: studentId,
                     date: date,
                     status: status,
+                    term: currentTerm,
+                    session: currentSession,
                     subject_name: subject,
                     period_number: parseInt(period),
                     is_subject_based: true
@@ -4797,7 +4845,7 @@ export const UI = {
             }
 
             Notifications.show('Attendance committed successfully', 'success');
-            syncToCloud();
+            this.debouncedSync();
             refreshList();
         };
 
@@ -4864,59 +4912,70 @@ export const UI = {
 
             try {
                 // Fetch students in class
-                const students = await db.students.where('class_name').equals(cls).toArray();
-                const studentIds = students.map(s => s.student_id);
+                const students = await db.students.where('class_name').equals(cls).filter(s => s.is_active !== false).toArray();
+                const studentIds = new Set(students.map(s => String(s.student_id || '').trim()));
+
+                // Build lookup maps for ID resolution.
+                // The external attendance system stores student_id as the numeric suffix of the school ID.
+                // e.g. attendance_code "1057" → student_id "NKQMS-2026-1057" (ends with "-1057")
+                // Strategy: match any record whose student_id ENDS WITH "-{attendance_code}"
+                // AND also match direct student_id equality for records saved by Graviton itself.
+                const codeToId = {}; // numeric suffix / attendance_code → canonical student_id
+                students.forEach(s => {
+                    const sid = String(s.student_id || '').trim();
+                    // Derive the numeric suffix from the student_id (e.g. "NKQMS-2026-1057" → "1057")
+                    const suffix = sid.split('-').pop();
+                    if (suffix) codeToId[suffix] = sid;
+                    // Also map from the explicit attendance_code field if populated
+                    const code = String(s.attendance_code || '').trim();
+                    if (code && code !== suffix) codeToId[code] = sid;
+                });
+
+                // All valid IDs: canonical student_ids + their numeric suffixes/attendance_codes
+                const allValidIds = new Set([...studentIds, ...Object.keys(codeToId)]);
 
                 console.log(`[AttendanceHistory] Found ${students.length} students in ${cls}`);
 
-                // Fetch records in range - being more broad with the query
+                // Fetch records in date range
                 const records = await db.attendance_records
                     .where('date').between(start, end, true, true)
                     .toArray();
                 
                 console.log(`[AttendanceHistory] Found ${records.length} total records between ${start} and ${end}`);
                 if (records.length > 0) {
-                    console.log('[AttendanceHistory] Sample Record IDs in range:', records.slice(0, 3).map(r => r.student_id));
-                    console.log('[AttendanceHistory] Sample Student IDs in class:', studentIds.slice(0, 3));
+                    console.log('[AttendanceHistory] Sample record student_ids:', records.slice(0, 3).map(r => r.student_id));
+                    console.log('[AttendanceHistory] Sample student IDs in class:', [...studentIds].slice(0, 3));
+                    console.log('[AttendanceHistory] Resolved code→id map sample:', Object.entries(codeToId).slice(0, 3));
                 }
                 
-                // Filter records for these students and exclude subject-based if we want school attendance
+                // Match records: direct ID match OR suffix/code match
                 const filteredRecords = records.filter(r => {
                     const rid = String(r.student_id || '').trim();
-                    return studentIds.some(sid => 
-                        rid === sid || 
-                        rid.endsWith(sid) || 
-                        sid.endsWith(rid) ||
-                        (rid.includes('-') && sid.includes('-') && rid.split('-').pop() === sid.split('-').pop())
-                    );
+                    return allValidIds.has(rid);
                 });
+
+                // Normalise each record to a canonical student_id
+                filteredRecords.forEach(r => {
+                    const rid = String(r.student_id || '').trim();
+                    // If the record used a numeric suffix/code, resolve to full school ID
+                    r._resolvedStudentId = codeToId[rid] || rid;
+                });
+
                 console.log(`[AttendanceHistory] Records matching class students: ${filteredRecords.length}`);
 
                 if (records.length > 0 && filteredRecords.length === 0) {
-                    console.warn('[AttendanceHistory] Records found but none match student IDs in this class. Checking ID format...');
-                    if (records[0].student_id && !records[0].student_id.includes('-')) {
-                        console.info('[AttendanceHistory] Detected legacy ID format in records. Attempting fallback match.');
-                    }
+                    console.warn('[AttendanceHistory] No match found. Record student_ids:', records.slice(0,5).map(r=>r.student_id), '| Expected one of:', [...allValidIds].slice(0,5));
                 }
 
-                // Group by student
+                // Group by student — use _resolvedStudentId for reliable matching
                 const report = students.map(s => {
                     const sid = String(s.student_id || '').trim();
-                    const scode = String(s.attendance_code || '').trim();
 
-                    // Match by student_id (fuzzy) or attendance_code (exact)
+                    // Records already have _resolvedStudentId normalised to canonical school ID
                     const sRecords = filteredRecords.filter(r => {
-                        const rid = String(r.student_id || '').trim();
-                        const rac = String(r.attendance_code || '').trim();
-
-                        const isMatch = rid === sid || 
-                                      rid.endsWith(sid) || 
-                                      sid.endsWith(rid) ||
-                                      (rid.includes('-') && sid.includes('-') && rid.split('-').pop() === sid.split('-').pop()) ||
-                                      rac === scode ||
-                                      rid === scode;
-
-                        return isMatch && (r.is_subject_based === false || r.is_subject_based === 0 || r.is_subject_based === undefined || r.is_subject_based === null);
+                        const resolvedId = r._resolvedStudentId || String(r.student_id || '').trim();
+                        const isSchoolAtt = (r.is_subject_based === false || r.is_subject_based === 0 || r.is_subject_based === undefined || r.is_subject_based === null);
+                        return resolvedId === sid && isSchoolAtt;
                     });
                     
                     const present = sRecords.filter(r => r.status === 'Present' || r.status === 'Late').length;
@@ -4933,19 +4992,38 @@ export const UI = {
                 });
 
                 if (filteredRecords.length === 0) {
+                    // Diagnostic: check if those students have ANY records (any date)
+                    const anyRecordsForClass = await db.attendance_records
+                        .filter(r => studentIds.has(String(r.student_id || '').trim()) || 
+                                     allValidIds.has(String(r.student_id || '').trim()))
+                        .limit(1).toArray();
+
+                    const totalInRange = records.length;
+                    const diagMsg = totalInRange > 0
+                        ? `<p style="color:#b91c1c;font-size:0.85rem;margin-bottom:0.5rem;">ℹ️ ${totalInRange} record(s) found in this date range — but they belong to <strong>other classes</strong> (IDs: ${records.slice(0,3).map(r=>r.student_id).join(', ')}${totalInRange > 3 ? '…' : ''}).</p>`
+                        : `<p style="color:#b91c1c;font-size:0.85rem;margin-bottom:0.5rem;">ℹ️ No records at all in local DB for this date range. Attendance may not have been taken or synced yet.</p>`;
+
+                    const anyEverMsg = anyRecordsForClass.length > 0
+                        ? `<p style="color:#065f46;font-size:0.8rem;background:#ecfdf5;padding:0.5rem 1rem;border-radius:8px;margin-bottom:1rem;">✅ ${cls} students DO have attendance records on other dates — sync may be needed for this range.</p>`
+                        : `<p style="color:#92400e;font-size:0.8rem;background:#fffbeb;padding:0.5rem 1rem;border-radius:8px;margin-bottom:1rem;">⚠️ ${cls} students have NO attendance records at all in local DB. Use Force Cloud Sync below.</p>`;
+
                     resultsArea.innerHTML = `
-                        <div style="text-align: center; padding: 4rem 2rem; background: #fff1f2; border-radius: 20px; border: 1px solid #fecdd3;">
-                            <i data-lucide="alert-circle" style="width: 48px; height: 48px; color: #ef4444; margin-bottom: 1rem;"></i>
-                            <h3 style="color: #991b1b; font-weight: 800;">No Records Found locally</h3>
-                            <p style="color: #b91c1c; font-size: 0.9rem; margin-bottom: 1.5rem;">We couldn't find any attendance data for ${cls} in this date range.</p>
-                            <button onclick="UI.forceAttendanceSync()" class="btn" style="background: #ef4444; color: white; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 700;">
-                                <i data-lucide="refresh-cw"></i> Force Cloud Sync
-                            </button>
+                        <div style="text-align:center;padding:3rem 2rem;background:#fff1f2;border-radius:20px;border:1px solid #fecdd3;">
+                            <i data-lucide="alert-circle" style="width:48px;height:48px;color:#ef4444;margin-bottom:1rem;"></i>
+                            <h3 style="color:#991b1b;font-weight:800;margin-bottom:1rem;">No Attendance Records for ${cls}</h3>
+                            ${diagMsg}
+                            ${anyEverMsg}
+                            <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:1rem;">
+                                <button onclick="UI.forceAttendanceSync()" class="btn" style="background:#ef4444;color:white;padding:0.75rem 1.5rem;border-radius:12px;font-weight:700;display:flex;align-items:center;gap:0.5rem;">
+                                    <i data-lucide="refresh-cw"></i> Force Cloud Sync
+                                </button>
+                            </div>
                         </div>
                     `;
                     if (typeof lucide !== 'undefined') lucide.createIcons();
                     return;
                 }
+
 
                 report.sort((a, b) => b.rate - a.rate);
 
@@ -5008,7 +5086,7 @@ export const UI = {
                                             ${r.rate}%
                                         </span>
                                     </div>
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; background: white; padding: 1rem; border-radius: 12px;">
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; background: white; padding: 1rem; border-radius: 12px;">
                                         <div>
                                             <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Sessions</div>
                                             <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${r.total}</div>
@@ -5050,8 +5128,13 @@ export const UI = {
     async forceAttendanceSync() {
         Notifications.show('Connecting to cloud for full attendance sync...', 'info');
         try {
+            // Clear stale lock so forceAll is never blocked
+            window._isSyncingFromCloud = false;
+            // Clear last sync timestamp so the pull gets ALL records
+            localStorage.removeItem('last_sync_timestamp');
+
             const { syncFromCloud } = await import('./supabase-client.js');
-            await syncFromCloud(true); // Force all
+            await syncFromCloud(true); // Force all records
             Notifications.show('Sync complete! Refreshing report...', 'success');
             document.getElementById('btn-load-history')?.click();
         } catch (err) {
@@ -5221,14 +5304,26 @@ export const UI = {
             btnSyncGenerate.disabled = true;
 
             try {
-                // Fetch Data
+                // Fetch Data Optimized
                 loadedStudents = await db.students.where('class_name').equals(className).filter(s => s.is_active !== false).toArray();
                 loadedStudents.sort((a,b) => a.name.localeCompare(b.name));
+                const studentIds = loadedStudents.map(s => s.student_id);
                 
-                const classScores = await db.scores.where('class_name').equals(className).toArray();
-                loadedScores = classScores.filter(s => s.term === term && s.session === session);
+                // Fetch scores using indexed query
+                loadedScores = await db.scores
+                    .where('class_name').equals(className)
+                    .filter(s => s.term === term && s.session === session)
+                    .toArray();
                 
-                loadedAttendance = await db.attendance_records.filter(a => a.term === term && a.session === session).toArray();
+                // Fetch attendance for these students specifically using compound index
+                loadedAttendance = [];
+                for (const sid of studentIds) {
+                    const studentAtt = await db.attendance_records
+                        .where('[student_id+term+session]')
+                        .equals([sid, term, session])
+                        .toArray();
+                    loadedAttendance.push(...studentAtt);
+                }
 
                 const subjectIds = [...new Set(loadedScores.map(s => s.subject_id))];
                 loadedSubjects = [];
@@ -5596,7 +5691,7 @@ export const UI = {
                     
                     Notifications.show(`Successfully removed ${idsToDelete.length} unknown records from local and cloud.`, 'success');
                     this.renderStaff();
-                    syncToCloud();
+                    this.debouncedSync();
                 }
             };
         }
@@ -5614,7 +5709,7 @@ export const UI = {
                         <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">FULL LEGAL NAME *</label>
                         <input type="text" id="staff-name" class="input" placeholder="e.g. Dr. John Doe" style="width: 100%; height: 50px;">
                     </div>
-                    <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 1rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
                         <div class="form-group">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">LOGIN EMAIL (Optional)</label>
                             <input type="email" id="staff-email" class="input" placeholder="Leave blank to auto-generate" style="width: 100%;">
@@ -5627,7 +5722,7 @@ export const UI = {
                             </select>
                         </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                         <div class="form-group">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PHONE NUMBER</label>
                             <input type="text" id="staff-phone" class="input" placeholder="080XXXXXXXX" style="width: 100%;">
@@ -5717,7 +5812,7 @@ export const UI = {
                     
                     Notifications.show(`${name} onboarded successfully! They can log in with: ${finalEmail} / ${DEFAULT_PASSWORD}`, 'success');
                     this.renderStaff();
-                    syncToCloud();
+                    this.debouncedSync();
                 } catch (err) {
                     if (err.message !== 'Validation failed') {
                         console.error('Staff creation error:', err);
@@ -5896,7 +5991,7 @@ export const UI = {
                     await db.profiles.update(staffId, { full_name: name, role, updated_at: new Date().toISOString() });
                     Notifications.show('Staff records updated', 'success');
                     this.renderStaffDetail(staffId);
-                    syncToCloud();
+                    this.debouncedSync();
                 }, 'Save Updates');
             };
         }
@@ -5912,7 +6007,7 @@ export const UI = {
                     }));
                     Notifications.show('Staff member reactivated.', 'success');
                     this.renderStaffDetail(staffId);
-                    syncToCloud();
+                    this.debouncedSync();
                 }
             };
         }
@@ -5940,7 +6035,7 @@ export const UI = {
 
                     Notifications.show('Contract terminated. Assignments cleared and access revoked.', 'warning');
                     this.renderStaff();
-                    syncToCloud();
+                    this.debouncedSync();
                 }
             };
         }
@@ -5984,7 +6079,7 @@ export const UI = {
 
                 Notifications.show('Subjects assigned successfully', 'success');
                 this.renderStaffDetail(staffId);
-                syncToCloud();
+                this.debouncedSync();
             }, 'Finalize Assignments', 'save');
 
             document.getElementById('btn-add-assign-row').onclick = () => {
@@ -6343,7 +6438,7 @@ export const UI = {
 
             Notifications.show('Exam and all related records deleted.', 'success');
             this.renderCBT();
-            if (typeof syncToCloud === 'function') syncToCloud();
+            if (typeof syncToCloud === 'function') this.debouncedSync();
         } catch (e) {
             console.error('Delete Exam Error:', e);
             Notifications.show('Failed to delete exam completely. Check console.', 'error');
@@ -6356,7 +6451,7 @@ export const UI = {
             await db.cbt_exams.update(id, { status: newStatus, is_synced: 0 });
             Notifications.show(newStatus === 'Archived' ? 'Exam archived' : 'Exam restored', 'success');
             this.renderCBT();
-            syncToCloud();
+            this.debouncedSync();
         }
     },
 
@@ -6411,12 +6506,12 @@ export const UI = {
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in-up">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-                    <div>
-                        <h2 style="display:flex; align-items:center; gap:0.75rem;"><i data-lucide="monitor"></i> Computer Based Testing (CBT)</h2>
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem; flex-wrap:wrap; gap:0.75rem;">
+                    <div style="flex:1; min-width:0;">
+                        <h2 style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;"><i data-lucide="monitor"></i> Computer Based Testing (CBT)</h2>
                         <p class="text-secondary">Manage exams and view results</p>
                     </div>
-                    <button class="btn btn-secondary" onclick="UI.renderCBT()"><i data-lucide="arrow-left"></i> Back to List</button>
+                    <button class="btn btn-secondary" style="flex-shrink:0;" onclick="UI.renderCBT()"><i data-lucide="arrow-left"></i> Back to List</button>
                 </div>
 
                 <div class="cbt-container">
@@ -6425,17 +6520,17 @@ export const UI = {
                         <div class="card" style="border-radius:20px; padding:1.5rem;">
                             <h3 style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1.5rem;"><i data-lucide="file-text"></i> Add Questions</h3>
                             
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
                                 <div class="cbt-form-group">
                                     <label>Question Type</label>
-                                    <select id="q-type" class="cbt-input">
+                                    <select id="q-type" class="cbt-input" style="width:100%; max-width:100%; box-sizing:border-box;">
                                         <option value="mcq">Multiple Choice</option>
                                         <option value="fill">Fill in the Gaps</option>
                                     </select>
                                 </div>
                                 <div class="cbt-form-group">
                                     <label>Attachment (Image)</label>
-                                    <input type="file" id="q-file" class="cbt-input">
+                                    <input type="file" id="q-file" class="cbt-input" style="width:100%; max-width:100%; box-sizing:border-box; overflow:hidden;">
                                 </div>
                             </div>
 
@@ -6444,20 +6539,20 @@ export const UI = {
                                 <textarea id="q-text" class="cbt-input" style="height:100px; resize:none;" placeholder="Type Question Here... (e.g. Solve the equation in the image)"></textarea>
                             </div>
 
-                            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:1rem; margin-bottom:1rem;">
-                                <div class="cbt-form-group"><label>Option A</label><input type="text" id="opt-a" class="cbt-input"></div>
-                                <div class="cbt-form-group"><label>Option B</label><input type="text" id="opt-b" class="cbt-input"></div>
-                                <div class="cbt-form-group"><label>Option C</label><input type="text" id="opt-c" class="cbt-input"></div>
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:1rem; margin-bottom:1rem;">
+                                <div class="cbt-form-group"><label>Option A</label><input type="text" id="opt-a" class="cbt-input" style="width:100%; box-sizing:border-box;"></div>
+                                <div class="cbt-form-group"><label>Option B</label><input type="text" id="opt-b" class="cbt-input" style="width:100%; box-sizing:border-box;"></div>
+                                <div class="cbt-form-group"><label>Option C</label><input type="text" id="opt-c" class="cbt-input" style="width:100%; box-sizing:border-box;"></div>
                             </div>
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
-                                <div class="cbt-form-group"><label>Option D</label><input type="text" id="opt-d" class="cbt-input"></div>
-                                <div class="cbt-form-group"><label>Option E (Optional)</label><input type="text" id="opt-e" class="cbt-input"></div>
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:1rem; margin-bottom:1rem;">
+                                <div class="cbt-form-group"><label>Option D</label><input type="text" id="opt-d" class="cbt-input" style="width:100%; box-sizing:border-box;"></div>
+                                <div class="cbt-form-group"><label>Option E (Optional)</label><input type="text" id="opt-e" class="cbt-input" style="width:100%; box-sizing:border-box;"></div>
                             </div>
 
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:1rem;">
                                 <div class="cbt-form-group">
                                     <label>Correct Answer:</label>
-                                    <select id="q-correct" class="cbt-input">
+                                    <select id="q-correct" class="cbt-input" style="width:100%; box-sizing:border-box;">
                                         <option value="A">Option A</option>
                                         <option value="B">Option B</option>
                                         <option value="C">Option C</option>
@@ -6467,21 +6562,21 @@ export const UI = {
                                 </div>
                                 <div class="cbt-form-group">
                                     <label>Allocated Marks:</label>
-                                    <input type="number" id="q-marks" class="cbt-input" value="1" step="0.1" min="0.1">
+                                    <input type="number" id="q-marks" class="cbt-input" value="1" step="0.1" min="0.1" style="width:100%; box-sizing:border-box;">
                                 </div>
                             </div>
 
                             <!-- Set Marks Tool -->
-                            <div style="background: #f1f5f9; padding: 1rem; border-radius: 12px; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
-                                <div style="font-size: 0.8rem; font-weight: 700; color: #475569;">SET MARKS:</div>
-                                <div style="display: flex; gap: 0.5rem; flex: 1;">
-                                    <input type="number" id="bulk-marks-input" class="cbt-input" style="height: 36px; padding: 0 10px;" placeholder="e.g. 1.5" step="any">
-                                    <button class="btn btn-sm" onclick="UI.applyBulkMarks()" style="background: #4338ca; color: white; border: none; border-radius: 8px; padding: 0 1rem; font-weight: 700; cursor: pointer; height: 36px;">Apply to All</button>
+                            <div style="background: #f1f5f9; padding: 1rem; border-radius: 12px; margin-bottom: 1.5rem; display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+                                <div style="font-size: 0.8rem; font-weight: 700; color: #475569; white-space: nowrap;">SET MARKS:</div>
+                                <div style="display: flex; gap: 0.5rem; flex: 1; min-width: 160px;">
+                                    <input type="number" id="bulk-marks-input" class="cbt-input" style="height: 36px; padding: 0 10px; flex: 1; min-width: 0; box-sizing: border-box;" placeholder="e.g. 1.5" step="any">
+                                    <button class="btn btn-sm" onclick="UI.applyBulkMarks()" style="background: #4338ca; color: white; border: none; border-radius: 8px; padding: 0 1rem; font-weight: 700; cursor: pointer; height: 36px; white-space: nowrap; flex-shrink: 0;">Apply to All</button>
                                 </div>
-                                <div id="exam-total-badge" style="background: #e0e7ff; color: #4338ca; padding: 6px 12px; border-radius: 8px; font-weight: 900; font-size: 0.75rem;">TOTAL: 0</div>
+                                <div id="exam-total-badge" style="background: #e0e7ff; color: #4338ca; padding: 6px 12px; border-radius: 8px; font-weight: 900; font-size: 0.75rem; white-space: nowrap;">TOTAL: 0</div>
                             </div>
 
-                            <div style="display:flex; justify-content:flex-end; gap:1rem; margin-top:2rem;">
+                            <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:2rem; flex-wrap:wrap;">
                                 <button class="btn btn-secondary" style="background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe;" onclick="UI.showImportFromBankModal()"><i data-lucide="database"></i> Import from Bank</button>
                                 <button class="btn btn-secondary" onclick="UI.bulkImportQuestions()"><i data-lucide="file-up"></i> Bulk Import</button>
                                 <button class="btn btn-primary" onclick="UI.addTempQuestion()"><i data-lucide="plus"></i> Add Question</button>
@@ -6523,7 +6618,7 @@ export const UI = {
                                 </select>
                             </div>
 
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
                                 <div class="cbt-form-group">
                                     <label>Start Date/Time</label>
                                     <input type="datetime-local" id="exam-start" class="cbt-input" value="${formatDateForInput(exam.start_time)}">
@@ -6534,7 +6629,7 @@ export const UI = {
                                 </div>
                             </div>
 
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
                                 <div class="cbt-form-group">
                                     <label>Duration (Minutes)</label>
                                     <input type="number" id="exam-duration" class="cbt-input" value="${exam.duration || 30}">
@@ -6553,7 +6648,7 @@ export const UI = {
                                 </select>
                             </div>
 
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem;">
                                 <div class="cbt-form-group">
                                     <label>Target Term</label>
                                     <select id="exam-term" class="cbt-input">
@@ -6776,7 +6871,7 @@ export const UI = {
 
             Notifications.show(`Exam saved successfully with ${qCount} questions`, 'success');
             this.renderCBT();
-            syncToCloud();
+            this.debouncedSync();
         } catch (err) {
             console.error('CBT Save Error:', err);
             Notifications.show(`Failed to save exam: ${err.message}`, 'error');
@@ -6826,7 +6921,7 @@ export const UI = {
                         <p style="color: #64748b; font-size: 1.1rem;">Please read carefully before starting your attempt.</p>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 3rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1.5rem; margin-bottom: 3rem;">
                         <div style="background: #f8fafc; padding: 1.5rem; border-radius: 20px; border: 1px solid #f1f5f9; text-align: center;">
                             <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem;">SUBJECT</div>
                             <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${subjectName}</div>
@@ -6975,7 +7070,7 @@ export const UI = {
             await db.cbt_results.add(newSession);
             session = newSession;
             this.examTimeLeft = durationSeconds;
-            syncToCloud();
+            this.debouncedSync();
         }
 
         // Store session state
@@ -7052,7 +7147,7 @@ export const UI = {
             
             // Subtle notification for student? No, keep it silent as requested "silently watch".
             console.warn('Security violation logged:', entry);
-            syncToCloud();
+            this.debouncedSync();
         } catch (e) {
             console.error('Failed to log violation:', e);
         }
@@ -7178,7 +7273,7 @@ export const UI = {
                         <button onclick="UI.toggleCBTMap()" style="background: none; border: none; color: #94a3b8; cursor: pointer;"><i data-lucide="x" style="width: 20px;"></i></button>
                     </div>
                     <div style="flex: 1; overflow-y: auto; padding: 1rem;">
-                        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem;">
                             ${this.currentQuestions.map((cq, i) => {
                                 const isAnswered = this.userAnswers[cq.id];
                                 const isActive = i === this.currentQuestionIndex;
@@ -7259,7 +7354,7 @@ export const UI = {
                 is_synced: 0
             });
             // Background cloud sync
-            syncToCloud();
+            this.debouncedSync();
         } catch (e) {
             console.error('Failed to auto-save progress:', e);
         }
@@ -7371,7 +7466,7 @@ export const UI = {
         if (typeof lucide !== 'undefined') lucide.createIcons();
         
         // Wait for cloud sync to finish before allowing navigation
-        await syncToCloud();
+        await this.debouncedSync();
     },
 
     async postCBTToScoresheet(result) {
@@ -7432,7 +7527,7 @@ export const UI = {
             
             // Force a cloud sync attempt
             if (typeof syncToCloud === 'function') {
-                syncToCloud().then(r => console.log(`[SCORE POST] Cloud sync triggered: ${r.success ? 'Success' : 'Queued'}`));
+                this.debouncedSync().then(r => console.log(`[SCORE POST] Cloud sync triggered: ${r.success ? 'Success' : 'Queued'}`));
             }
         } catch (e) {
             console.error('Error posting CBT score:', e);
@@ -7570,7 +7665,8 @@ export const UI = {
         const openBulkClasses = document.getElementById('toggle-bulk-classes')?.checked;
         const openBulkSubjects = document.getElementById('toggle-bulk-subjects')?.checked;
 
-        const teachers = await db.profiles.where('role').equals('Teacher').toArray();
+        const teachers = (await db.profiles.where('role').equals('Teacher').toArray())
+            .filter(t => t.full_name && t.full_name !== 'Unnamed Staff' && t.full_name !== 'Unknown Staff' && t.status !== 'Terminated' && t.status !== 'Inactive');
         const classes = await db.classes.toArray();
         const subjects = await db.subjects.toArray();
         const assignments = await db.subject_assignments.toArray();
@@ -7594,6 +7690,13 @@ export const UI = {
         });
 
         subjects.sort((a,b) => a.name.localeCompare(b.name));
+        
+        // Performance Optimization: Pre-map data for O(1) lookups
+        const subjectMap = {};
+        subjects.forEach(s => subjectMap[s.id] = s.name);
+        
+        const teacherMap = {};
+        teachers.forEach(t => teacherMap[t.id] = t);
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in-up">
@@ -7636,7 +7739,7 @@ export const UI = {
                                     <span class="glass-collapse-title" style="font-size: 0.9rem; font-weight: 700;"><i data-lucide="layers" style="width: 16px;"></i> Select Classes (Multi-select enabled)</span>
                                     <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                                 </label>
-                                <div class="glass-collapse-content" style="max-height: 250px; overflow-y: auto; padding: 0.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                <div class="glass-collapse-content" style="max-height: 250px; overflow-y: auto; padding: 0.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.5rem;">
                                     ${classes.map(c => `
                                         <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.75rem; cursor: pointer; transition: background 0.2s; border-radius: 8px; background: #f8fafc; border: 1px solid #f1f5f9;" data-class-name="${c.name}">
                                             <input type="checkbox" name="bulk-classes" value="${c.name}" style="width: 18px; height: 18px;" onchange="document.getElementById('count-classes').textContent = document.querySelectorAll('input[name=bulk-classes]:checked').length">
@@ -7702,8 +7805,7 @@ export const UI = {
                             assignments.forEach(a => {
                                 if (!groupedByTeacher[a.teacher_id]) groupedByTeacher[a.teacher_id] = {};
                                 
-                                const subject = subjects.find(s => s.id === a.subject_id);
-                                const subjectName = subject ? subject.name : 'Unknown Subject';
+                                const subjectName = subjectMap[a.subject_id] || 'Unknown Subject';
                                 
                                 if (!groupedByTeacher[a.teacher_id][subjectName]) {
                                     groupedByTeacher[a.teacher_id][subjectName] = [];
@@ -7711,11 +7813,18 @@ export const UI = {
                                 groupedByTeacher[a.teacher_id][subjectName].push(a);
                             });
 
-                            const teacherIds = Object.keys(groupedByTeacher);
-                            if (teacherIds.length === 0) return '<div class="text-center p-4">Waiting for faculty deployments...</div>';
+                            const sortedTeacherIds = Object.keys(groupedByTeacher)
+                                .filter(tid => teacherMap[tid]) // Only show teachers who weren't filtered out
+                                .sort((a,b) => {
+                                    const tA = teacherMap[a]?.full_name || '';
+                                    const tB = teacherMap[b]?.full_name || '';
+                                    return tA.localeCompare(tB);
+                                });
 
-                            return teacherIds.map(tid => {
-                                const teacher = profiles.find(p => p.id === tid);
+                            if (sortedTeacherIds.length === 0) return '<div class="text-center p-4">Waiting for faculty deployments...</div>';
+
+                            return sortedTeacherIds.map(tid => {
+                                const teacher = teacherMap[tid];
                                 const teacherSubjects = groupedByTeacher[tid];
                                 const subjectNames = Object.keys(teacherSubjects).sort();
                                 const totalTasks = Object.values(teacherSubjects).flat().length;
@@ -7851,7 +7960,7 @@ export const UI = {
             }
             Notifications.show(`Deployment complete! ${addedCount} new, ${updatedCount} updated.`, 'success');
             this.renderLessons();
-            syncToCloud();
+            this.debouncedSync();
         } catch (e) {
             console.error(e);
             Notifications.show('Deployment failed.', 'error');
@@ -7913,7 +8022,7 @@ export const UI = {
 
                 Notifications.show('Assignment removed', 'success');
                 this.renderLessons();
-                syncToCloud();
+                this.debouncedSync();
             } catch (err) {
                 console.error('Delete assignment error:', err);
                 Notifications.show('Failed to delete assignment', 'error');
@@ -8065,7 +8174,7 @@ export const UI = {
             }
 
             Notifications.show(`Timetable for ${cls} successfully deployed!`, 'success');
-            syncToCloud();
+            this.debouncedSync();
         };
     },
 
@@ -8110,7 +8219,7 @@ export const UI = {
                     </label>
                     <div class="glass-collapse-content">
                     
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
                             <label>School Name</label>
                             <input type="text" id="set-school-name" class="input" value="${config.schoolName}">
@@ -8126,7 +8235,7 @@ export const UI = {
                         <input type="text" id="set-school-address" class="input" value="${config.schoolAddress}">
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
                             <label>Phone Number</label>
                             <input type="text" id="set-school-phone" class="input" value="${config.schoolPhone}">
@@ -8137,7 +8246,7 @@ export const UI = {
                         </div>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
                             <label>Principal's Name</label>
                             <input type="text" id="set-principal-name" class="input" value="${config.principalName}">
@@ -8148,7 +8257,7 @@ export const UI = {
                         </div>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
                             <label>School Logo</label>
                             <div style="display: flex; align-items: center; gap: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px dashed #cbd5e1;">
@@ -8216,7 +8325,7 @@ export const UI = {
                         </div>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div class="form-group">
                             <label>Term Closure Date</label>
                             <input type="${settings.termClosure ? 'date' : 'text'}" id="set-term-closure" placeholder="Select Date" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'" class="input" value="${settings.termClosure || ''}" onclick="this.showPicker()">
@@ -8285,7 +8394,7 @@ export const UI = {
                     </label>
                     <div class="glass-collapse-content">
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                         <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 20px;">
                             <h4 style="font-size: 0.9rem; font-weight: 800; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
                                 <i data-lucide="download" style="width: 18px;"></i> Backup Data
@@ -8435,7 +8544,7 @@ export const UI = {
             }
             await this.updateInstitutionalBranding();
             Notifications.show('Settings saved successfully!', 'success');
-            await syncToCloud();
+            await this.debouncedSync();
         } catch (e) {
             console.error(e);
             Notifications.show('Failed to save settings.', 'error');
@@ -8475,7 +8584,7 @@ export const UI = {
             }
 
             Notifications.show(`Promotion Complete! ${promoted} students promoted, ${graduated} graduated.`, 'success');
-            syncToCloud();
+            this.debouncedSync();
         } catch (e) {
             console.error(e);
             Notifications.show('Promotion failed.', 'error');
@@ -8532,17 +8641,28 @@ export const UI = {
         const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
         const teacherId = this.currentUser.id;
         
-        let scores = await db.scores.toArray();
-        let students = await db.students.filter(s => s.is_active !== false).toArray();
-        let subjects = await db.subjects.toArray();
-        
+        let scores = [];
+        let students = [];
+        let subjects = [];
+
         if (isTeacher) {
             const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
-            const assignedSubIds = new Set(assignments.map(a => a.subject_id));
-            const assignedClasses = new Set(assignments.map(a => a.class_name));
+            const assignedSubIds = assignments.map(a => a.subject_id);
+            const assignedClasses = [...new Set(assignments.map(a => a.class_name))];
             
-            scores = scores.filter(s => assignedSubIds.has(s.subject_id) && assignedClasses.has(students.find(std => std.student_id === s.student_id)?.class_name));
-            subjects = subjects.filter(s => assignedSubIds.has(s.id));
+            // Use indexed anyOf for subjects
+            scores = await db.scores.where('subject_id').anyOf(assignedSubIds).toArray();
+            
+            // Further filter by classes (could be indexed if we had class_name in scores)
+            // Wait, I just added class_name to scores!
+            scores = scores.filter(s => assignedClasses.includes(s.class_name));
+            
+            students = await db.students.where('class_name').anyOf(assignedClasses).filter(s => s.is_active !== false).toArray();
+            subjects = await db.subjects.where('id').anyOf(assignedSubIds).toArray();
+        } else {
+            scores = await db.scores.toArray(); // Admins still get all, but maybe limit?
+            students = await db.students.where('is_active').notEqual(false).toArray();
+            subjects = await db.subjects.toArray();
         }
 
         const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + (s.total || 0), 0) / scores.length) : 0;
@@ -8814,7 +8934,7 @@ export const UI = {
                     }));
 
                     Notifications.show('Broadcast posted successfully!', 'success');
-                    syncToCloud();
+                    this.debouncedSync();
                     this.renderNoticeBoard(); // Refresh view
                 } catch (err) {
                     console.error('Notice error:', err);
@@ -8845,7 +8965,7 @@ export const UI = {
 
             Notifications.show('Broadcast deleted successfully', 'success');
             this.renderNoticeBoard();
-            syncToCloud();
+            this.debouncedSync();
         } catch (err) {
             console.error('Delete notice error:', err);
             Notifications.show('Failed to delete notice', 'error');
@@ -8857,7 +8977,7 @@ export const UI = {
         const attendance = await db.attendance_records.where('student_id').equals(studentId).toArray();
         
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1.5rem; min-height: 100vh;">
+            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1rem; min-height: 100vh; overflow-x: hidden;">
                 <header class="glass-header" style="margin-bottom: 2rem; padding: 2rem; border-radius: 24px;">
                     <h1 style="font-size: 2rem; font-weight: 900; color: #1e293b;">Participation Record</h1>
                     <p style="color: #64748b;">Your official attendance history and engagement metrics.</p>
@@ -8917,7 +9037,7 @@ export const UI = {
         const scores = await db.scores.where('student_id').equals(studentId).toArray();
         
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1.5rem; min-height: 100vh;">
+            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1rem; min-height: 100vh; overflow-x: hidden;">
                 <header class="glass-header" style="margin-bottom: 2rem; padding: 2rem; border-radius: 24px; display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <h1 style="font-size: 2rem; font-weight: 900; color: #1e293b;">Academic Transcript</h1>
@@ -8956,7 +9076,7 @@ export const UI = {
                             </label>
                             <input type="checkbox" id="toggle-grade-${s.id}" class="collapse-toggle" style="display: none;">
                             <div class="collapse-content" style="padding: 0 1.5rem 1.5rem; background: #f8fafc;">
-                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; padding-top: 1.5rem; border-top: 1px solid #e2e8f0;">
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; padding-top: 1.5rem; border-top: 1px solid #e2e8f0;">
                                     <div style="text-align: center;">
                                         <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">C.A Score</div>
                                         <div style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-top: 2px;">${(parseFloat(s.assignment || 0) + parseFloat(s.test1 || 0) + parseFloat(s.test2 || 0) + parseFloat(s.project || 0)).toFixed(1)}</div>
@@ -9055,7 +9175,7 @@ export const UI = {
                     <p class="text-slate-500">Manage your account information and login credentials</p>
                 </div>
 
-                <div class="grid" style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 2rem;">
+                <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2rem;">
                     <!-- User Info Card -->
                     <div class="card" style="padding: 2rem; background: white; border-radius: 24px; text-align: center; border: 1px solid #f1f5f9; box-shadow: var(--shadow-sm);">
                         <div style="width: 100px; height: 100px; background: #e0e7ff; border-radius: 50%; margin: 0 auto 1.5rem; display: flex; align-items: center; justify-content: center; color: #4338ca;">
@@ -9249,7 +9369,7 @@ export const UI = {
         
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in">
-                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 0.75rem;">
                     <div>
                         <h1 class="text-2xl font-bold text-slate-800">Result Checker Pins</h1>
                         <p class="text-slate-500">Generate and manage access codes for student results</p>
@@ -9355,25 +9475,25 @@ export const UI = {
         
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="background: #f8fafc; min-height: 100vh; padding: 2rem;">
-                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2.5rem; background: white; padding: 2rem; border-radius: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; background: white; padding: 1.5rem; border-radius: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 1rem;">
                     <div>
                         <h1 style="font-size: 2rem; font-weight: 900; color: #1e293b; margin: 0;">Financial Operations</h1>
                         <p style="color: #64748b; margin-top: 0.5rem; font-weight: 500;">Accounts & Revenue Management Portal</p>
                     </div>
                     <div style="display: flex; gap: 1rem;">
-                        <button class="btn" onclick="UI.showFinanceSettingsModal()" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 14px; height: 52px; width: 52px; padding: 0; display: flex; align-items: center; justify-content: center;" title="Finance Settings">
+                        <button class="btn" onclick="UI.showFinanceSettingsModal()" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 14px; height: 44px; width: 44px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Finance Settings">
                             <i data-lucide="settings" style="width: 20px;"></i>
                         </button>
-                        <button class="btn" onclick="UI.renderFeeStructures()" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 14px; height: 52px; padding: 0 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                        <button class="btn" onclick="UI.renderFeeStructures()" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 14px; height: 44px; padding: 0 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
                             <i data-lucide="layers" style="width: 18px;"></i> Fee Config
                         </button>
-                        <button class="btn btn-primary" onclick="UI.showManualPaymentModal()" style="background: #1e293b; border: none; border-radius: 14px; height: 52px; padding: 0 2rem; font-weight: 800; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(30, 41, 59, 0.3);">
+                        <button class="btn btn-primary" onclick="UI.showManualPaymentModal()" style="background: #1e293b; border: none; border-radius: 14px; height: 44px; padding: 0 1.5rem; font-weight: 800; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(30, 41, 59, 0.3); white-space: nowrap;">
                             <i data-lucide="plus-circle"></i> Record Payment
                         </button>
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 2.5rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
                     <div class="stat-card" style="background: white; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
                         <div style="background: #dcfce7; color: #16a34a; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
                             <i data-lucide="trending-up"></i>
@@ -9405,11 +9525,11 @@ export const UI = {
                 </div>
 
                 <div class="card" style="background: white; border-radius: 24px; padding: 0; overflow: hidden; border: 1px solid #f1f5f9;">
-                    <div style="padding: 1.5rem 2rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
                         <h3 style="font-weight: 800; color: #1e293b; margin: 0;">Payment Ledger</h3>
-                        <div style="position: relative;">
+                        <div style="position: relative; flex: 1; min-width: 180px; max-width: 300px;">
                             <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 16px; color: #94a3b8;"></i>
-                            <input type="text" placeholder="Search references..." style="padding-left: 2.75rem; border-radius: 12px; border: 1px solid #e2e8f0; height: 40px; width: 250px; font-size: 0.85rem;">
+                            <input type="text" placeholder="Search references..." style="padding-left: 2.75rem; border-radius: 12px; border: 1px solid #e2e8f0; height: 40px; width: 100%; font-size: 0.85rem; box-sizing: border-box;">
                         </div>
                     </div>
                     <div class="table-container">
@@ -9465,8 +9585,8 @@ export const UI = {
         const payments = await db.payments.where('student_id').equals(studentId).reverse().sortBy('date');
         
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in student-universe-bg" style="padding: 2rem; min-height: 100vh;">
-                <header class="glass-header" style="margin-bottom: 2.5rem; padding: 2.5rem; border-radius: 32px; display: flex; justify-content: space-between; align-items: center;">
+            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1rem; min-height: 100vh; overflow-x: hidden;">
+                <header class="glass-header" style="margin-bottom: 2rem; padding: 1.5rem; border-radius: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
                     <div>
                         <h1 style="font-size: 2.25rem; font-weight: 900; color: #1e293b;">Fees & Payments</h1>
                         <p style="color: #64748b; font-weight: 600;">Manage your tuition and view transaction history.</p>
@@ -9477,7 +9597,7 @@ export const UI = {
                     </div>
                 </header>
 
-                <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 2rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2rem;">
                     <!-- Pay Now Card -->
                     <div style="display: flex; flex-direction: column; gap: 2rem;">
                         <div class="card" style="padding: 2.5rem; border-radius: 32px; border: none; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); background: white;">
@@ -9677,7 +9797,7 @@ export const UI = {
                 Notifications.show(`₦${amount.toLocaleString()} has been credited to your account.`, 'success');
             }
 
-            syncToCloud();
+            this.debouncedSync();
             this.renderStudentFeesPortal();
         } catch (err) {
             console.error('Payment Processing Error:', err);
@@ -9745,7 +9865,7 @@ export const UI = {
                     <input type="text" id="set-paystack-key" class="cbt-input" value="${getVal('paystack_public_key')}" placeholder="pk_test_..." style="height: 52px; border-radius: 12px; font-family: monospace; border: 2px solid #e2e8f0; width: 100%; padding: 0 1rem;">
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem;">
                     <div class="form-group">
                         <label style="font-weight: 900; color: white; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Pin Price (₦)</label>
                         <input type="number" id="set-pin-price" class="cbt-input" value="${getVal('result_pin_price') || 1500}" style="height: 52px; border-radius: 12px; border: 2px solid #e2e8f0; width: 100%; padding: 0 1rem;">
@@ -9770,7 +9890,7 @@ export const UI = {
                         <label style="font-weight: 800; color: white; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SETTLEMENT ACCOUNT ID (Optional)</label>
                         <input type="text" id="set-subaccount" class="cbt-input" value="${getVal('paystack_subaccount')}" placeholder="ACCT_..." style="height: 48px; border-radius: 10px; border: 2px solid #cbd5e1; width: 100%; padding: 0 1rem;">
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem;">
                         <div class="form-group">
                             <label style="font-weight: 800; color: white; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SERVICE CHARGE (%)</label>
                             <input type="number" id="set-split-ratio" class="cbt-input" value="${getVal('paystack_split_ratio') || 20}" style="height: 48px; border-radius: 10px; border: 2px solid #cbd5e1; width: 100%; padding: 0 1rem;">
@@ -9802,7 +9922,7 @@ export const UI = {
 
             Notifications.show('Settings updated successfully!', 'success');
             document.getElementById('ui-modal')?.remove();
-            syncToCloud();
+            this.debouncedSync();
         }, 'Save Configuration', 'settings');
         
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -9855,7 +9975,7 @@ export const UI = {
                 }
                 
                 this.renderFeeStructures();
-                syncToCloud();
+                this.debouncedSync();
                 Notifications.show('Fee structure removed', 'success');
             } catch (err) {
                 console.error('Delete fee structure error:', err);
@@ -10048,7 +10168,7 @@ export const UI = {
                 }
                 
                 this.renderParents();
-                syncToCloud();
+                this.debouncedSync();
                 Notifications.show('Parent link removed', 'success');
             } catch (err) {
                 console.error('Delete parent link error:', err);
@@ -10310,7 +10430,7 @@ export const UI = {
                                                     <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; margin-bottom: 0.5rem;">
                                                         ${i + 1}. ${this.escapeHTML(q.question_text)}
                                                     </div>
-                                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.8rem; color: #64748b;">
+                                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.5rem; font-size: 0.8rem; color: #64748b;">
                                                         <div style="${q.correct_option === 'A' ? 'color: #059669; font-weight: 800;' : ''}">A) ${this.escapeHTML(q.option_a)}</div>
                                                         <div style="${q.correct_option === 'B' ? 'color: #059669; font-weight: 800;' : ''}">B) ${this.escapeHTML(q.option_b)}</div>
                                                         <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${this.escapeHTML(q.option_c)}</div>
@@ -10345,7 +10465,7 @@ export const UI = {
 
         const modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                     <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Class</label>
                         <select id="bank-class" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
@@ -10361,7 +10481,7 @@ export const UI = {
                         </select>
                     </div>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                     <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Term</label>
                         <select id="bank-term" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
@@ -10435,7 +10555,7 @@ export const UI = {
             if (count === 0) return Notifications.show('Could not parse any questions. Check your format.', 'error');
 
             await db.cbt_questions.bulkAdd(newQuestions);
-            syncToCloud();
+            this.debouncedSync();
 
             document.getElementById('ui-modal')?.remove();
             Notifications.show(`Successfully imported ${count} questions to the bank!`, 'success');
@@ -10457,7 +10577,7 @@ export const UI = {
                 }
             }
 
-            syncToCloud();
+            this.debouncedSync();
             Notifications.show('Category deleted from bank.', 'success');
             this.renderQuestionBank();
         } catch (err) {
@@ -10478,7 +10598,7 @@ export const UI = {
 
         const modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                     <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Class</label>
                         <select id="edit-bank-class" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
@@ -10492,7 +10612,7 @@ export const UI = {
                         </select>
                     </div>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                     <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Term</label>
                         <select id="edit-bank-term" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
@@ -10526,7 +10646,7 @@ export const UI = {
                 is_synced: 0
             });
 
-            syncToCloud();
+            this.debouncedSync();
             Notifications.show('Category updated successfully.', 'success');
             this.renderQuestionBank();
         }, 'Update Details', 'save');
@@ -10621,7 +10741,7 @@ export const UI = {
                                     <!-- Expandable Details -->
                                     <div class="participant-details-area" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
                                         <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
-                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                                                 <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
                                                     <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">SCORE</div>
                                                     <div style="font-weight: 900; color: #4338ca; font-size: 1.25rem;">${r.score} / ${r.total_marks || r.total_questions}</div>
@@ -10692,7 +10812,7 @@ export const UI = {
             });
 
             Notifications.show(`Exam re-opened with ${minutesAllowed} minutes remaining.`, 'success');
-            syncToCloud();
+            this.debouncedSync();
             this.renderCBTParticipants(examId);
         } catch (err) {
             console.error('Re-open error:', err);
@@ -10724,7 +10844,7 @@ export const UI = {
             });
 
             Notifications.show('Exam force-submitted and scored successfully.', 'success');
-            syncToCloud();
+            this.debouncedSync();
             this.renderCBTParticipants(examId);
         } catch (err) {
             console.error('Force submit error:', err);
@@ -10757,7 +10877,7 @@ export const UI = {
             }
 
             Notifications.show(`Successfully force-submitted ${activeResults.length} students.`, 'success');
-            syncToCloud();
+            this.debouncedSync();
             this.renderCBTParticipants(examId);
         } catch (err) {
             console.error('Force submit all error:', err);
@@ -10873,7 +10993,7 @@ export const UI = {
             }
 
             Notifications.show(`Successfully re-opened ${results.length} attempts.`, 'success');
-            syncToCloud();
+            this.debouncedSync();
             this.renderCBTParticipants(examId);
         } catch (err) {
             console.error('Re-open all error:', err);

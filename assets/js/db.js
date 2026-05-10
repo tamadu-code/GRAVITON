@@ -107,17 +107,17 @@ db.version(20).stores({
     exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
 });
 
-db.version(25).stores({
+db.version(26).stores({
     profiles: 'id, full_name, role, assigned_id, email, status, updated_at, is_synced',
     students: 'student_id, name, gender, address, class_name, status, is_active, attendance_code, admission_year, sub_class, legacy_student_id, updated_at, is_synced',
     classes: 'id, name, level, updated_at, is_synced',
     subjects: 'id, name, type, credits, updated_at, is_synced',
     subject_assignments: 'id, teacher_id, subject_id, class_name, specialization, updated_at, is_synced',
     form_teachers: 'id, teacher_id, class_name, updated_at, is_synced',
-    scores: 'id, student_id, subject_id, term, session, [student_id+subject_id+term+session], updated_at, is_synced',
+    scores: 'id, student_id, subject_id, term, session, class_name, [student_id+subject_id+term+session], updated_at, is_synced',
     attendance: 'id, student_id, date, status, updated_at, is_synced',
     notices: 'id, title, target, category, is_active, updated_at, is_synced',
-    attendance_records: 'id, student_id, date, status, subject_name, period_number, is_subject_based, updated_at, is_synced',
+    attendance_records: 'id, student_id, date, status, term, session, [student_id+term+session], subject_name, period_number, is_subject_based, updated_at, is_synced',
     timetable: 'id, class_name, day_of_week, period_number, subject_id, teacher_id, [class_name+day_of_week+period_number], updated_at, is_synced',
     settings: 'id, key, value, updated_at, is_synced',
     pins: 'id, pin_code, serial, status, student_id, term, session, used_count, usage_limit, updated_at, is_synced',

@@ -165,37 +165,57 @@ export async function syncFromCloud(forceAll = false) {
 
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results'];
     
-    if (window._isSyncingFromCloud) return;
+    // ── Clear stale lock (may persist across page reloads) ──
+    if (window._isSyncingFromCloud && !forceAll) return;
     window._isSyncingFromCloud = true;
 
     const lastSyncTime = localStorage.getItem('last_sync_timestamp');
-    const lastSync = (lastSyncTime && !forceAll) ? new Date(new Date(lastSyncTime).getTime() - 300000).toISOString() : new Date(0).toISOString();
+    // Subtract 10 minutes as buffer to avoid missing records at boundary
+    const lastSync = (lastSyncTime && !forceAll)
+        ? new Date(new Date(lastSyncTime).getTime() - 600000).toISOString()
+        : new Date(0).toISOString();
 
     try {
         for (const table of tables) {
             try {
                 let hasMore = true;
                 let offset = 0;
-                const BATCH_SIZE = 1000;
+                const BATCH_SIZE = table === 'attendance_records' ? 2000 : 1000;
 
                 while (hasMore) {
                     let query = client.from(table).select('*').range(offset, offset + BATCH_SIZE - 1);
-                    if (!forceAll) query = query.gt('updated_at', lastSync);
+                    
+                    if (!forceAll) {
+                        // For attendance_records: filter by EITHER updated_at OR date
+                        // (biometric records may have null/stale updated_at but a valid date)
+                        if (table === 'attendance_records') {
+                            const dateFilter = lastSyncTime
+                                ? new Date(lastSyncTime).toISOString().split('T')[0]
+                                : '1970-01-01';
+                            query = client.from(table).select('*')
+                                .or(`updated_at.gt.${lastSync},date.gte.${dateFilter}`)
+                                .range(offset, offset + BATCH_SIZE - 1);
+                        } else {
+                            query = query.gt('updated_at', lastSync);
+                        }
+                    }
 
                     const { data, error } = await query;
                     if (error) {
                         if (error.code === '42P01') { hasMore = false; continue; }
-                        throw error;
+                        console.warn(`Pull error for ${table}:`, error.message);
+                        hasMore = false; continue;
                     }
 
                     if (data && data.length > 0) {
                         const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
                         const validData = data.filter(item => item[pk]).map(item => ({ ...item, is_synced: 1 }));
-                        
                         if (validData.length > 0) {
                             await db[table].bulkPut(validData);
+                            if (table === 'attendance_records') {
+                                console.log(`[Sync] Pulled ${validData.length} attendance_records from cloud`);
+                            }
                         }
-                        
                         if (data.length < BATCH_SIZE) hasMore = false;
                         else offset += BATCH_SIZE;
                     } else {
@@ -209,6 +229,7 @@ export async function syncFromCloud(forceAll = false) {
         localStorage.setItem('last_sync_timestamp', new Date().toISOString());
     }
 }
+
 
 export function startSyncLoop(intervalMs = 60000) {
     const initialSync = syncFromCloud().then(() => syncToCloud());
