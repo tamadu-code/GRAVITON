@@ -5007,7 +5007,6 @@ export const UI = {
             }
             if (typeof lucide !== 'undefined') lucide.createIcons();
         };
-        refreshList();
     },
 
     async forceAttendanceSync() {
