@@ -241,8 +241,9 @@ async function loadAuthenticatedApp(authUser) {
     if (footerAvatarEl) footerAvatarEl.textContent = currentName.charAt(0).toUpperCase();
 
     const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights'];
-    const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
+    const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances'];
     const parentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
+    const accountsAllowed = ['dashboard', 'finances', 'noticeboard'];
 
     document.querySelectorAll('.nav-item').forEach(item => {
         const view = item.getAttribute('data-view');
@@ -251,6 +252,8 @@ async function loadAuthenticatedApp(authUser) {
         } else if (currentRole === 'Student' && !studentAllowed.includes(view)) {
             item.style.display = 'none';
         } else if (currentRole === 'Parent' && !parentAllowed.includes(view)) {
+            item.style.display = 'none';
+        } else if (currentRole === 'Accounts Officer' && !accountsAllowed.includes(view)) {
             item.style.display = 'none';
         } else {
             item.style.display = 'flex';
@@ -542,9 +545,15 @@ navItems.forEach(item => {
         // Strict Role-Based Protection
         const role = UI.currentUser?.role;
         const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights'];
+        const accountsAllowed = ['dashboard', 'finances', 'noticeboard'];
 
         if (role === 'Teacher' && !teacherAllowed.includes(view)) {
             if (window.Notifications) Notifications.show('Access Denied: Admin privileges required.', 'error');
+            return;
+        }
+
+        if (role === 'Accounts Officer' && !accountsAllowed.includes(view)) {
+            if (window.Notifications) Notifications.show('Access Denied: Financial module access restricted.', 'error');
             return;
         }
 

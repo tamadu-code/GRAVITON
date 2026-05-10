@@ -5945,6 +5945,7 @@ export const UI = {
                                                     </button>
                                                 `;
                                             })() : `
+                                                ${(isAdmin || e.teacher_id === teacherId) ? `
                                                 ${isAdmin ? `
                                                 <button class="btn btn-primary btn-sm" title="View Participants" onclick="UI.renderCBTParticipants('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #e0e7ff; color: #4338ca; border: none;">
                                                     <i data-lucide="users" style="width: 18px; height: 18px;"></i>
@@ -5952,13 +5953,20 @@ export const UI = {
                                                 <button class="btn btn-warning btn-sm" title="Archive Exam" onclick="UI.archiveExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #fef3c7; color: #d97706; border: none;">
                                                     <i data-lucide="archive" style="width: 18px; height: 18px;"></i>
                                                 </button>
-                                                ` : ''}
+                                                <button class="btn btn-danger btn-sm" title="Delete Exam" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                                                    <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
+                                                </button>
+                                                ` : `
+                                                <button class="btn btn-primary btn-sm" title="View Participants" onclick="UI.renderCBTParticipants('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #e0e7ff; color: #4338ca; border: none;">
+                                                    <i data-lucide="users" style="width: 18px; height: 18px;"></i>
+                                                </button>
+                                                `}
                                                 <button class="btn btn-secondary btn-sm" onclick="UI.renderCBTEditor('${e.id}')" style="height: 40px; padding: 0 1.25rem; border-radius: 10px;">
                                                     <i data-lucide="edit-3" style="width: 16px;"></i> Edit
                                                 </button>
-                                                <button class="btn btn-danger btn-sm" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
                                                     <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
                                                 </button>
+                                                ` : ''}
                                             `}
                                         </div>
                                         `}
@@ -6325,7 +6333,15 @@ export const UI = {
 
     addTempQuestion() {
         const text = document.getElementById('q-text').value;
-        if (!text) return Notifications.show('Please enter question text', 'error');
+        const hasQuestions = this.cbtQuestions.length > 0;
+
+        if (!text) {
+            if (hasQuestions) {
+                // If we have questions (from bank or bulk), we can just proceed to saving the exam
+                return Notifications.show('Manual question text is empty. You can now use "Save Exam" to commit your imported questions.', 'info');
+            }
+            return Notifications.show('Please enter question text to add a manual question.', 'warning');
+        }
 
         const q = {
             id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
@@ -8990,80 +9006,106 @@ export const UI = {
     },
 
     async renderFinances() {
+        const role = this.currentUser.role;
+        if (role === 'Student') return this.renderStudentFeesPortal();
+        
         const payments = await db.payments.orderBy('date').reverse().toArray();
-        const structures = await db.fee_structures.toArray();
+        const students = await db.students.toArray();
+        const studentMap = students.reduce((acc, s) => ({...acc, [s.student_id]: s.name}), {});
         
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in">
-                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <div class="view-container animate-fade-in" style="background: #f8fafc; min-height: 100vh; padding: 2rem;">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2.5rem; background: white; padding: 2rem; border-radius: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
                     <div>
-                        <h1 class="text-2xl font-bold text-slate-800">Financial Management</h1>
-                        <p class="text-slate-500">Track revenue, payments, and fee configurations</p>
+                        <h1 style="font-size: 2rem; font-weight: 900; color: #1e293b; margin: 0;">Financial Operations</h1>
+                        <p style="color: #64748b; margin-top: 0.5rem; font-weight: 500;">Accounts & Revenue Management Portal</p>
                     </div>
                     <div style="display: flex; gap: 1rem;">
-                        <button class="btn btn-secondary" onclick="UI.renderFeeStructures()" style="background: white; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem;">
-                            <i data-lucide="settings"></i> Fee Structures
+                        <button class="btn" onclick="UI.showFinanceSettingsModal()" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 14px; height: 52px; width: 52px; padding: 0; display: flex; align-items: center; justify-content: center;" title="Finance Settings">
+                            <i data-lucide="settings" style="width: 20px;"></i>
                         </button>
-                        <button class="btn btn-primary" onclick="UI.showManualPaymentModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem;">
+                        <button class="btn" onclick="UI.renderFeeStructures()" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 14px; height: 52px; padding: 0 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="layers" style="width: 18px;"></i> Fee Config
+                        </button>
+                        <button class="btn btn-primary" onclick="UI.showManualPaymentModal()" style="background: #1e293b; border: none; border-radius: 14px; height: 52px; padding: 0 2rem; font-weight: 800; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(30, 41, 59, 0.3);">
                             <i data-lucide="plus-circle"></i> Record Payment
                         </button>
                     </div>
                 </div>
 
-                <div class="stats-grid mb-2">
-                    <div class="stat-card">
-                        <div class="stat-icon" style="background: #dcfce7; color: #16a34a;"><i data-lucide="trending-up"></i></div>
-                        <div class="stat-content">
-                            <div class="stat-label">Total Revenue</div>
-                            <div class="stat-value">₦${payments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0).toLocaleString()}</div>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 2.5rem;">
+                    <div class="stat-card" style="background: white; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="background: #dcfce7; color: #16a34a; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                            <i data-lucide="trending-up"></i>
                         </div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Total Revenue</div>
+                        <div style="font-size: 1.75rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;">₦${payments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0).toLocaleString()}</div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-icon" style="background: #fef3c7; color: #d97706;"><i data-lucide="clock"></i></div>
-                        <div class="stat-content">
-                            <div class="stat-label">Pending Verifications</div>
-                            <div class="stat-value">${payments.filter(p => p.status !== 'success').length}</div>
+                    <div class="stat-card" style="background: white; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="background: #e0e7ff; color: #4338ca; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                            <i data-lucide="users"></i>
                         </div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Total Payees</div>
+                        <div style="font-size: 1.75rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;">${new Set(payments.map(p => p.student_id)).size}</div>
+                    </div>
+                    <div class="stat-card" style="background: white; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="background: #fef3c7; color: #d97706; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                            <i data-lucide="clock"></i>
+                        </div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Pending</div>
+                        <div style="font-size: 1.75rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;">${payments.filter(p => p.status !== 'success').length}</div>
+                    </div>
+                    <div class="stat-card" style="background: #1e293b; padding: 2rem; border-radius: 24px; color: white; box-shadow: 0 10px 15px -3px rgba(30, 41, 59, 0.3);">
+                        <div style="background: rgba(255,255,255,0.1); color: white; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                            <i data-lucide="zap"></i>
+                        </div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.05em;">Today's Intake</div>
+                        <div style="font-size: 1.75rem; font-weight: 900; margin-top: 0.25rem;">₦${payments.filter(p => p.date === new Date().toISOString().split('T')[0]).reduce((a, b) => a + (parseFloat(b.amount) || 0), 0).toLocaleString()}</div>
                     </div>
                 </div>
 
-                <div class="card shadow-sm" style="background: white; border-radius: 1.5rem; overflow: hidden;">
-                    <div class="card-header" style="padding: 1.5rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
-                        <h3 class="font-bold text-slate-800">Payment Ledger</h3>
-                        <div class="search-box" style="position: relative;">
-                            <i data-lucide="search" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); width: 14px; color: #94a3b8;"></i>
-                            <input type="text" placeholder="Search reference..." style="padding-left: 2.25rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.8rem;">
+                <div class="card" style="background: white; border-radius: 24px; padding: 0; overflow: hidden; border: 1px solid #f1f5f9;">
+                    <div style="padding: 1.5rem 2rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="font-weight: 800; color: #1e293b; margin: 0;">Payment Ledger</h3>
+                        <div style="position: relative;">
+                            <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 16px; color: #94a3b8;"></i>
+                            <input type="text" placeholder="Search references..." style="padding-left: 2.75rem; border-radius: 12px; border: 1px solid #e2e8f0; height: 40px; width: 250px; font-size: 0.85rem;">
                         </div>
                     </div>
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
-                                <tr>
-                                    <th>DATE</th>
-                                    <th>STUDENT</th>
+                                <tr style="background: #f8fafc;">
+                                    <th style="padding: 1.25rem 2rem;">TRANSACTION DATE</th>
+                                    <th>STUDENT NAME</th>
                                     <th>REFERENCE</th>
-                                    <th>CATEGORY</th>
                                     <th>AMOUNT</th>
                                     <th>STATUS</th>
-                                    <th style="text-align: right;">RECEIPT</th>
+                                    <th style="text-align: right; padding-right: 2rem;">ACTIONS</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${payments.length === 0 ? '<tr><td colspan="7" style="text-align:center; padding: 4rem;">No financial records found.</td></tr>' : payments.map(p => `
+                                ${payments.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding: 5rem;">No payment records found.</td></tr>' : payments.map(p => `
                                     <tr>
-                                        <td class="text-slate-500 text-xs">${new Date(p.date).toLocaleDateString()}</td>
-                                        <td><span class="font-medium text-slate-800">#${p.student_id}</span></td>
-                                        <td class="font-mono text-xs text-slate-400">${p.reference}</td>
-                                        <td><span class="badge" style="background: #f1f5f9; color: #64748b;">${p.category || 'School Fees'}</span></td>
-                                        <td class="font-bold text-slate-800">₦${parseFloat(p.amount).toLocaleString()}</td>
+                                        <td style="padding: 1.25rem 2rem;">
+                                            <div style="font-weight: 700; color: #1e293b;">${new Date(p.date).toLocaleDateString()}</div>
+                                            <div style="font-size: 0.7rem; color: #94a3b8;">${new Date(p.date).toLocaleTimeString()}</div>
+                                        </td>
                                         <td>
-                                            <span class="badge" style="background: ${p.status === 'success' ? '#dcfce7; color: #16a34a' : '#fee2e2; color: #ef4444'}">
-                                                ${p.status === 'success' ? 'Verified' : 'Pending'}
+                                            <div style="font-weight: 800; color: #4338ca;">${studentMap[p.student_id] || 'Unknown'}</div>
+                                            <div style="font-size: 0.7rem; color: #94a3b8;">#${p.student_id}</div>
+                                        </td>
+                                        <td><code style="background: #f1f5f9; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; color: #64748b;">${p.reference}</code></td>
+                                        <td><div style="font-weight: 900; color: #1e293b; font-size: 1.1rem;">₦${parseFloat(p.amount).toLocaleString()}</div></td>
+                                        <td>
+                                            <span style="background: ${p.status === 'success' ? '#dcfce7; color: #16a34a' : '#fee2e2; color: #ef4444'}; padding: 0.5rem 1rem; border-radius: 10px; font-weight: 800; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                                <div style="width: 6px; height: 6px; border-radius: 50%; background: currentColor;"></div>
+                                                ${p.status === 'success' ? 'VERIFIED' : 'PENDING'}
                                             </span>
                                         </td>
-                                        <td style="text-align: right;">
-                                            <button class="btn btn-secondary btn-sm" onclick="UI.printReceipt('${p.id}')" style="background: #f1f5f9; color: #4f46e5;">
-                                                <i data-lucide="file-text"></i>
+                                        <td style="text-align: right; padding-right: 2rem;">
+                                            <button class="btn" onclick="UI.printReceipt('${p.id}')" style="background: #f1f5f9; color: #4338ca; border: none; width: 40px; height: 40px; border-radius: 10px; padding: 0; display: inline-flex; align-items: center; justify-content: center;">
+                                                <i data-lucide="printer" style="width: 18px;"></i>
                                             </button>
                                         </td>
                                     </tr>
@@ -9075,6 +9117,174 @@ export const UI = {
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async renderStudentFeesPortal() {
+        const studentId = this.currentUser.assigned_id;
+        const analytics = await db.student_analytics.get(studentId) || { fee_balance: 0, fee_paid: 0 };
+        const payments = await db.payments.where('student_id').equals(studentId).reverse().sortBy('date');
+        
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in student-universe-bg" style="padding: 2rem; min-height: 100vh;">
+                <header class="glass-header" style="margin-bottom: 2.5rem; padding: 2.5rem; border-radius: 32px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h1 style="font-size: 2.25rem; font-weight: 900; color: #1e293b;">Fees & Payments</h1>
+                        <p style="color: #64748b; font-weight: 600;">Manage your tuition and view transaction history.</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Outstanding Balance</div>
+                        <div style="font-size: 2.5rem; font-weight: 950; color: ${analytics.fee_balance > 0 ? '#ef4444' : '#10b981'};">₦${analytics.fee_balance.toLocaleString()}</div>
+                    </div>
+                </header>
+
+                <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 2rem;">
+                    <!-- Pay Now Card -->
+                    <div class="card" style="padding: 2.5rem; border-radius: 32px; border: none; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); background: white; height: fit-content;">
+                        <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                            <i data-lucide="credit-card" style="color: #4338ca;"></i> Online Payment
+                        </h3>
+                        <p style="color: #64748b; font-size: 0.9rem; line-height: 1.6; margin-bottom: 2rem;">Pay your fees securely using Paystack. Your balance will be updated instantly upon successful transaction.</p>
+                        
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <label style="font-weight: 800; color: #475569; font-size: 0.75rem; text-transform: uppercase;">AMOUNT TO PAY (₦)</label>
+                            <input type="number" id="payment-amount" class="input w-100" value="${analytics.fee_balance}" style="height: 56px; border-radius: 16px; font-size: 1.25rem; font-weight: 800; padding: 0 1.5rem; border: 2px solid #e2e8f0;">
+                        </div>
+
+                        <button id="pay-now-btn" class="btn btn-primary w-100" style="height: 64px; border-radius: 18px; font-weight: 900; font-size: 1.1rem; background: #1e293b; display: flex; align-items: center; justify-content: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(30, 41, 59, 0.3);">
+                            <i data-lucide="zap"></i> PAY WITH PAYSTACK
+                        </button>
+
+                        <div style="margin-top: 2rem; display: flex; align-items: center; gap: 1rem; padding: 1rem; background: #f8fafc; border-radius: 16px;">
+                            <i data-lucide="shield-check" style="color: #10b981; width: 24px;"></i>
+                            <span style="font-size: 0.75rem; color: #64748b; font-weight: 600;">Secured with 256-bit encryption. Payment processed by Paystack.</span>
+                        </div>
+                    </div>
+
+                    <!-- History Card -->
+                    <div class="card" style="padding: 0; border-radius: 32px; border: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); background: white; overflow: hidden;">
+                        <div style="padding: 2rem; border-bottom: 1px solid #f1f5f9;">
+                            <h3 style="font-weight: 900; color: #1e293b; margin: 0;">Transaction History</h3>
+                        </div>
+                        <div class="table-container" style="max-height: 500px; overflow-y: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr style="background: #f8fafc;">
+                                        <th style="padding-left: 2rem;">DATE</th>
+                                        <th>REFERENCE</th>
+                                        <th>AMOUNT</th>
+                                        <th>STATUS</th>
+                                        <th style="text-align: right; padding-right: 2rem;">RECEIPT</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${payments.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem; color: #94a3b8;">No payment history found.</td></tr>' : payments.map(p => `
+                                        <tr>
+                                            <td style="padding-left: 2rem;">
+                                                <div style="font-weight: 700; color: #1e293b;">${new Date(p.date).toLocaleDateString()}</div>
+                                            </td>
+                                            <td><code style="font-size: 0.75rem; color: #64748b;">${p.reference}</code></td>
+                                            <td><div style="font-weight: 800; color: #1e293b;">₦${parseFloat(p.amount).toLocaleString()}</div></td>
+                                            <td>
+                                                <span class="badge ${p.status === 'success' ? 'success' : 'warning'}" style="font-weight: 800;">${p.status.toUpperCase()}</span>
+                                            </td>
+                                            <td style="text-align: right; padding-right: 2rem;">
+                                                <button class="btn btn-sm" onclick="UI.printReceipt('${p.id}')" style="background: #f1f5f9; color: #4338ca; border-radius: 8px;">
+                                                    <i data-lucide="file-text" style="width: 14px;"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Paystack Integration
+        const payBtn = document.getElementById('pay-now-btn');
+        if (payBtn) {
+            payBtn.onclick = () => {
+                const amount = parseFloat(document.getElementById('payment-amount').value);
+                if (isNaN(amount) || amount <= 0) return Notifications.show('Please enter a valid amount.', 'warning');
+
+                this.initiatePaystackPayment(amount);
+            };
+        }
+    },
+
+    async initiatePaystackPayment(amount) {
+        const paystackKey = (await db.settings.get('paystack_public_key'))?.value;
+        
+        if (!paystackKey || paystackKey === 'pk_test_placeholder_key') {
+            return Notifications.show('Paystack is not configured. Please contact administration.', 'error');
+        }
+
+        const handler = PaystackPop.setup({
+            key: paystackKey,
+            email: this.currentUser.email,
+            amount: amount * 100, // Amount in kobo
+            currency: 'NGN',
+            ref: 'PAY-' + Math.floor((Math.random() * 1000000000) + 1),
+            metadata: {
+                student_id: this.currentUser.assigned_id,
+                custom_fields: [
+                    { display_name: "Student Name", variable_name: "student_name", value: this.currentUser.name },
+                    { display_name: "Student ID", variable_name: "student_id", value: this.currentUser.assigned_id }
+                ]
+            },
+            callback: async (response) => {
+                Notifications.show('Payment successful! Verifying...', 'success');
+                await this.handlePaymentSuccess(response, amount);
+            },
+            onClose: () => {
+                Notifications.show('Payment window closed.', 'info');
+            }
+        });
+        handler.openIframe();
+    },
+
+    async handlePaymentSuccess(response, amount) {
+        const studentId = this.currentUser.assigned_id;
+        
+        try {
+            // 1. Record the payment
+            const newPayment = prepareForSync({
+                id: crypto.randomUUID(),
+                student_id: studentId,
+                amount: amount,
+                reference: response.reference,
+                status: 'success',
+                date: new Date().toISOString().split('T')[0],
+                category: 'School Fees',
+                channel: 'Paystack',
+                is_synced: 0
+            });
+            await db.payments.add(newPayment);
+
+            // 2. Update Student Analytics (Fee Balance)
+            const analytics = await db.student_analytics.get(studentId);
+            if (analytics) {
+                const newPaid = (parseFloat(analytics.fee_paid) || 0) + amount;
+                const newBalance = Math.max(0, (parseFloat(analytics.fee_balance) || 0) - amount);
+                
+                await db.student_analytics.update(studentId, {
+                    fee_paid: newPaid,
+                    fee_balance: newBalance,
+                    is_synced: 0
+                });
+            }
+
+            Notifications.show(`₦${amount.toLocaleString()} has been credited to your account.`, 'success');
+            syncToCloud();
+            this.renderStudentFeesPortal();
+        } catch (err) {
+            console.error('Payment Processing Error:', err);
+            Notifications.show('Failed to update records. Please contact administration with your reference.', 'error');
+        }
     },
 
     async renderFeeStructures() {
@@ -9122,6 +9332,36 @@ export const UI = {
             </div>
         `, null, 'Close', 'check');
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async showFinanceSettingsModal() {
+        const currentKey = (await db.settings.get('paystack_public_key'))?.value || '';
+        
+        const modalHtml = `
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                <div class="form-group">
+                    <label style="font-weight: 800; color: #1e293b; margin-bottom: 0.5rem; display: block;">PAYSTACK PUBLIC KEY</label>
+                    <p style="font-size: 0.75rem; color: #64748b; margin-bottom: 1rem;">Enter your <strong>Public Key</strong> from the Paystack Dashboard (Settings > API Keys & Webhooks).</p>
+                    <input type="text" id="paystack-key-input" class="cbt-input" value="${currentKey}" placeholder="pk_test_..." style="height: 52px; border-radius: 12px; font-family: monospace;">
+                </div>
+                <div style="background: #fffbeb; padding: 1rem; border-radius: 12px; border: 1px solid #fde68a; display: flex; gap: 1rem; align-items: flex-start;">
+                    <i data-lucide="alert-triangle" style="color: #b45309; flex-shrink: 0; width: 20px;"></i>
+                    <div style="font-size: 0.8rem; color: #92400e; font-weight: 600; line-height: 1.5;">
+                        Never share your <strong>Secret Key</strong>. Only the Public Key should be used here for frontend integration.
+                    </div>
+                </div>
+            </div>
+        `;
+
+        this.showModal('Finance Settings', modalHtml, async () => {
+            const newKey = document.getElementById('paystack-key-input').value.trim();
+            if (!newKey) return Notifications.show('Please enter a valid key.', 'warning');
+
+            await db.settings.put({ key: 'paystack_public_key', value: newKey });
+            Notifications.show('Finance settings updated successfully!', 'success');
+            document.getElementById('ui-modal')?.remove();
+            syncToCloud();
+        }, 'Save Configuration', 'settings');
     },
 
     async saveFeeStructure() {
@@ -9672,6 +9912,12 @@ export const UI = {
 
             const bankExamId = `BANK-${subjectId}__${className}__${term.replace(/\s+/g, '')}__${session.replace(/\//g, '-')}`;
 
+            // Check for existing questions in this category to inform the user
+            const existingCount = await db.cbt_questions.where('exam_id').equals(bankExamId).count();
+            if (existingCount > 0) {
+                if (!confirm(`This category already has ${existingCount} questions. Append the new questions to it?`)) return;
+            }
+
             const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
 
             let match;
@@ -9798,6 +10044,8 @@ export const UI = {
 
         const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
         const students = await db.students.toArray();
+        const isAdmin = this.currentUser.role === 'Admin' || this.currentUser.role === 'Principal';
+        
         // Fix: students table uses 'student_id' as key and 'name' for the name field
         const studentMap = students.reduce((acc, s) => ({...acc, [s.student_id]: s.name}), {});
 
@@ -9812,7 +10060,7 @@ export const UI = {
                         <p style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; margin-top: 0.25rem;">${results.length} attempt${results.length !== 1 ? 's' : ''} recorded</p>
                     </div>
                     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                        ${results.some(r => r.status === 'In Progress') ? `
+                        ${(results.some(r => r.status === 'In Progress') && (isAdmin || this.currentUser.id === exam.teacher_id)) ? `
                             <button class="btn btn-danger" onclick="UI.forceSubmitAllParticipants('${examId}')" style="background: #ef4444; border: none; font-weight: 800; border-radius: 12px; height: 44px;">
                                 <i data-lucide="stop-circle"></i> FORCE SUBMIT ALL
                             </button>
@@ -9825,7 +10073,7 @@ export const UI = {
                     <h3 style="font-weight: 800; color: #1e293b; font-size: 1.1rem; margin: 0; display: flex; align-items: center; gap: 0.75rem;">
                         <i data-lucide="users" style="width: 20px; color: #4338ca;"></i> Attempt Records (${results.length})
                     </h3>
-                    ${results.length > 0 ? `
+                    ${(results.length > 0 && isAdmin) ? `
                         <button type="button" class="btn btn-sm" style="background: #fffbeb; color: #b45309; border: 1px solid #fde68a; font-weight: 800; border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem;" onclick="if(confirm('Re-open all attempts? This will allow all students who have finished to continue their exams.')){UI.reopenAllCBTAttempts('${examId}')}">
                             <i data-lucide="refresh-ccw" style="width: 14px;"></i> Re-open All
                         </button>
@@ -9888,9 +10136,13 @@ export const UI = {
 
                                             <div style="display: flex; gap: 0.75rem; border-top: 1px solid #f1f5f9; padding-top: 1.25rem; margin-top: 0.5rem;">
                                                 ${isCompleted ? `
+                                                    ${isAdmin ? `
                                                     <button type="button" class="btn btn-warning" onclick="event.stopPropagation(); UI.reopenCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 12px; font-weight: 800; background: #fffbeb; color: #92400e; border: 1px solid #fde68a; height: 48px; text-decoration: none !important; display: flex; align-items: center; justify-content: center; gap: 0.5rem; box-shadow: 0 2px 4px rgba(251, 191, 36, 0.1);">
                                                         <i data-lucide="refresh-ccw" style="width: 18px;"></i> Re-open Student Attempt
                                                     </button>
+                                                    ` : `
+                                                    <div style="flex: 1; text-align: center; color: #94a3b8; font-size: 0.8rem; font-weight: 700;">Attempt Locked (Admin Only Restart)</div>
+                                                    `}
                                                 ` : `
                                                     <button type="button" class="btn btn-danger" onclick="event.stopPropagation(); UI.forceSubmitCBTExam('${r.student_id}', '${examId}')" style="flex: 1; border-radius: 12px; font-weight: 800; background: #fee2e2; color: #b91c1c; border: 1px solid #fecdd3; height: 48px; text-decoration: none !important; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
                                                         <i data-lucide="log-out" style="width: 18px;"></i> Force Submit Exam
