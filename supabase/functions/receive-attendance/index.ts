@@ -132,6 +132,7 @@ serve(async (req) => {
     }
 
     // Step 4: Upsert attendance record in SMS (including sign out)
+    const isSubjectBased = !!(record.subject_id || record.subject_name || record.period_id);
     const { data: upsertData, error: upsertError } = await supabase
       .from('attendance_records')
       .upsert({
@@ -141,14 +142,16 @@ serve(async (req) => {
         check_in: sign_in ? `${date}T${sign_in}` : undefined,
         check_out: sign_out ? `${date}T${sign_out}` : undefined,
         status: is_late ? 'Late' : 'Present',
-        subject_id: record.subject_id || null,
-        period_id: record.period_id || null,
+        subject_name: record.subject_name || record.subject_id || null,
+        period_number: record.period_number || record.period_id || null,
+        is_subject_based: isSubjectBased,
+        updated_at: new Date().toISOString(),
         metadata: { 
           source: 'biometric_sync',
           raw_payload: record 
         }
       }, { 
-        onConflict: 'student_id,date,subject_id,period_id' 
+        onConflict: 'student_id,date,subject_name,period_number' 
       })
 
     if (upsertError) {

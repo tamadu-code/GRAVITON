@@ -4284,6 +4284,9 @@ export const UI = {
                         <button class="att-tab-btn ${isTeacher ? 'active' : ''}" data-tab="subject" style="flex: 1; padding: 1.25rem; border: none; background: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.2s; ${!isTeacher ? 'color: #94a3b8;' : ''}">
                             <i data-lucide="book-marked"></i> Subject Periods
                         </button>
+                        <button class="att-tab-btn" data-tab="history" style="flex: 1; padding: 1.25rem; border: none; background: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.75rem; transition: all 0.2s; color: #94a3b8;">
+                            <i data-lucide="history"></i> Past Records
+                        </button>
                     </div>
 
                     <div style="padding: 1.5rem;">
@@ -4629,10 +4632,26 @@ export const UI = {
                 btn.style.borderBottom = '3px solid #2563eb';
 
                 currentTab = btn.dataset.tab;
-                subjectContainer.style.display = currentTab === 'subject' ? 'block' : 'none';
-                subjectActions.style.display = currentTab === 'subject' ? 'block' : 'none';
-                periodContainer.style.display = currentTab === 'subject' ? 'block' : 'none';
-                refreshList();
+                
+                if (currentTab === 'history') {
+                    // Hide daily controls
+                    classContainer.style.display = 'none';
+                    subjectContainer.style.display = 'none';
+                    periodContainer.style.display = 'none';
+                    subjectActions.style.display = 'none';
+                    document.getElementById('att-date').parentElement.style.display = 'none';
+                    document.getElementById('att-search').parentElement.style.display = 'none';
+                    this.renderAttendanceHistory();
+                } else {
+                    // Show daily controls
+                    classContainer.style.display = 'block';
+                    subjectContainer.style.display = currentTab === 'subject' ? 'block' : 'none';
+                    subjectActions.style.display = currentTab === 'subject' ? 'block' : 'none';
+                    periodContainer.style.display = currentTab === 'subject' ? 'block' : 'none';
+                    document.getElementById('att-date').parentElement.style.display = 'block';
+                    document.getElementById('att-search').parentElement.style.display = 'block';
+                    refreshList();
+                }
             });
         });
 
@@ -4769,6 +4788,133 @@ export const UI = {
         };
 
         // Initial Load
+        refreshList();
+    },
+
+    async renderAttendanceHistory() {
+        const listBody = document.getElementById('attendance-list-container');
+        const role = (this.currentUser.role || '').toLowerCase();
+        const isTeacher = role === 'teacher';
+
+        // Filters for history
+        listBody.innerHTML = `
+            <div style="background: white; padding: 2rem; border-radius: 20px; border: 1px solid #f1f5f9;">
+                <div style="display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; align-items: flex-end;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select Class</label>
+                        <select id="hist-class" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
+                            <option value="">Choose Class...</option>
+                            ${(await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric: true})).map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div style="width: 180px;">
+                        <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Start Date</label>
+                        <input type="date" id="hist-start" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
+                    </div>
+                    <div style="width: 180px;">
+                        <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">End Date</label>
+                        <input type="date" id="hist-end" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
+                    </div>
+                    <button id="btn-load-history" class="btn btn-primary" style="height: 48px; border-radius: 12px; padding: 0 2rem; font-weight: 700;">
+                        <i data-lucide="search"></i> Generate Report
+                    </button>
+                </div>
+
+                <div id="history-results" style="min-height: 200px;">
+                    <div style="text-align: center; padding: 4rem 2rem; color: #94a3b8;">
+                        <i data-lucide="table" style="width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.5;"></i>
+                        <p>Set your filters and click generate to view historical attendance trends.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        document.getElementById('btn-load-history').onclick = async () => {
+            const cls = document.getElementById('hist-class').value;
+            const start = document.getElementById('hist-start').value;
+            const end = document.getElementById('hist-end').value;
+            const resultsArea = document.getElementById('history-results');
+
+            if (!cls || !start || !end) {
+                return Notifications.show('Please fill all filters', 'warning');
+            }
+
+            resultsArea.innerHTML = '<div class="loader" style="margin: 4rem auto;"></div>';
+
+            try {
+                // Fetch students in class
+                const students = await db.students.where('class_name').equals(cls).toArray();
+                const studentIds = students.map(s => s.student_id);
+
+                // Fetch records in range
+                const records = await db.attendance_records
+                    .where('date').between(start, end, true, true)
+                    .toArray();
+                
+                const filteredRecords = records.filter(r => studentIds.includes(r.student_id));
+
+                // Group by student
+                const report = students.map(s => {
+                    const sRecords = filteredRecords.filter(r => r.student_id === s.student_id && !r.is_subject_based);
+                    const present = sRecords.filter(r => r.status === 'Present' || r.status === 'Late').length;
+                    const total = sRecords.length;
+                    const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+                    
+                    return {
+                        name: s.name,
+                        present,
+                        total,
+                        rate,
+                        records: sRecords
+                    };
+                });
+
+                report.sort((a, b) => b.rate - a.rate);
+
+                resultsArea.innerHTML = `
+                    <div style="overflow-x: auto; margin-top: 1rem;">
+                        <table class="data-table" style="width: 100%; border-collapse: separate; border-spacing: 0 0.5rem;">
+                            <thead>
+                                <tr style="background: transparent;">
+                                    <th style="background: transparent; border: none; padding: 1rem;">Student</th>
+                                    <th style="background: transparent; border: none; padding: 1rem; text-align: center;">Sessions</th>
+                                    <th style="background: transparent; border: none; padding: 1rem; text-align: center;">Present</th>
+                                    <th style="background: transparent; border: none; padding: 1rem; text-align: center;">Rate</th>
+                                    <th style="background: transparent; border: none; padding: 1rem; text-align: right;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${report.map(r => `
+                                    <tr style="background: #f8fafc; transition: all 0.2s;">
+                                        <td style="padding: 1rem; border-radius: 12px 0 0 12px; font-weight: 700; color: #1e293b;">${r.name}</td>
+                                        <td style="padding: 1rem; text-align: center; color: #64748b; font-weight: 600;">${r.total}</td>
+                                        <td style="padding: 1rem; text-align: center; color: #10b981; font-weight: 700;">${r.present}</td>
+                                        <td style="padding: 1rem; text-align: center;">
+                                            <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                                <div style="flex: 1; height: 6px; background: #e2e8f0; border-radius: 3px; max-width: 60px; overflow: hidden;">
+                                                    <div style="width: ${r.rate}%; height: 100%; background: ${r.rate > 75 ? '#10b981' : (r.rate > 50 ? '#f59e0b' : '#ef4444')}; border-radius: 3px;"></div>
+                                                </div>
+                                                <span style="font-size: 0.75rem; font-weight: 800; color: #1e293b;">${r.rate}%</span>
+                                            </div>
+                                        </td>
+                                        <td style="padding: 1rem; text-align: right; border-radius: 0 12px 12px 0;">
+                                            <span style="padding: 4px 12px; border-radius: 20px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; background: ${r.rate > 75 ? '#dcfce7' : '#fee2e2'}; color: ${r.rate > 75 ? '#16a34a' : '#991b1b'};">
+                                                ${r.rate > 75 ? 'Excellent' : (r.rate > 50 ? 'Average' : 'Critical')}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } catch (err) {
+                console.error(err);
+                resultsArea.innerHTML = `<p style="color: red; text-align: center;">Error generating report: ${err.message}</p>`;
+            }
+        };
         refreshList();
     },
 
