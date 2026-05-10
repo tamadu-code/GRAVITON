@@ -9139,24 +9139,32 @@ export const UI = {
 
                 <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 2rem;">
                     <!-- Pay Now Card -->
-                    <div class="card" style="padding: 2.5rem; border-radius: 32px; border: none; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); background: white; height: fit-content;">
-                        <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
-                            <i data-lucide="credit-card" style="color: #4338ca;"></i> Online Payment
-                        </h3>
-                        <p style="color: #64748b; font-size: 0.9rem; line-height: 1.6; margin-bottom: 2rem;">Pay your fees securely using Paystack. Your balance will be updated instantly upon successful transaction.</p>
-                        
-                        <div class="form-group" style="margin-bottom: 1.5rem;">
-                            <label style="font-weight: 800; color: #475569; font-size: 0.75rem; text-transform: uppercase;">AMOUNT TO PAY (₦)</label>
-                            <input type="number" id="payment-amount" class="input w-100" value="${analytics.fee_balance}" style="height: 56px; border-radius: 16px; font-size: 1.25rem; font-weight: 800; padding: 0 1.5rem; border: 2px solid #e2e8f0;">
+                    <div style="display: flex; flex-direction: column; gap: 2rem;">
+                        <div class="card" style="padding: 2.5rem; border-radius: 32px; border: none; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); background: white;">
+                            <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                                <i data-lucide="credit-card" style="color: #4338ca;"></i> Tuition Payment
+                            </h3>
+                            <p style="color: #64748b; font-size: 0.9rem; line-height: 1.6; margin-bottom: 2rem;">Pay your school fees securely using Paystack.</p>
+                            
+                            <div class="form-group" style="margin-bottom: 1.5rem;">
+                                <label style="font-weight: 800; color: #475569; font-size: 0.75rem; text-transform: uppercase;">AMOUNT TO PAY (₦)</label>
+                                <input type="number" id="payment-amount" class="input w-100" value="${analytics.fee_balance}" style="height: 56px; border-radius: 16px; font-size: 1.25rem; font-weight: 800; padding: 0 1.5rem; border: 2px solid #e2e8f0;">
+                            </div>
+
+                            <button id="pay-now-btn" class="btn btn-primary w-100" style="height: 64px; border-radius: 18px; font-weight: 900; font-size: 1.1rem; background: #1e293b; display: flex; align-items: center; justify-content: center; gap: 0.75rem;">
+                                <i data-lucide="zap"></i> PAY TUITION
+                            </button>
                         </div>
 
-                        <button id="pay-now-btn" class="btn btn-primary w-100" style="height: 64px; border-radius: 18px; font-weight: 900; font-size: 1.1rem; background: #1e293b; display: flex; align-items: center; justify-content: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(30, 41, 59, 0.3);">
-                            <i data-lucide="zap"></i> PAY WITH PAYSTACK
-                        </button>
-
-                        <div style="margin-top: 2rem; display: flex; align-items: center; gap: 1rem; padding: 1rem; background: #f8fafc; border-radius: 16px;">
-                            <i data-lucide="shield-check" style="color: #10b981; width: 24px;"></i>
-                            <span style="font-size: 0.75rem; color: #64748b; font-weight: 600;">Secured with 256-bit encryption. Payment processed by Paystack.</span>
+                        <div class="card" style="padding: 2.5rem; border-radius: 32px; border: none; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); background: #fdf2f2; border: 1px solid #fee2e2;">
+                            <h3 style="font-weight: 900; color: #b91c1c; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem;">
+                                <i data-lucide="key" style="color: #ef4444;"></i> Result Checking Pin
+                            </h3>
+                            <p style="color: #991b1b; font-size: 0.85rem; line-height: 1.5; margin-bottom: 1.5rem; font-weight: 600;">Purchase an access pin to check your terminal results online.</p>
+                            
+                            <button id="buy-pin-btn" class="btn w-100" style="height: 56px; border-radius: 16px; font-weight: 900; background: white; color: #b91c1c; border: 2px solid #fecdd3; display: flex; align-items: center; justify-content: center; gap: 0.75rem;">
+                                <i data-lucide="shopping-cart"></i> BUY PIN (₦${(await db.settings.get('result_pin_price'))?.value || 1500})
+                            </button>
                         </div>
                     </div>
 
@@ -9210,44 +9218,56 @@ export const UI = {
             payBtn.onclick = () => {
                 const amount = parseFloat(document.getElementById('payment-amount').value);
                 if (isNaN(amount) || amount <= 0) return Notifications.show('Please enter a valid amount.', 'warning');
+                this.initiatePaystackPayment(amount, 'Tuition Payment');
+            };
+        }
 
-                this.initiatePaystackPayment(amount);
+        const buyPinBtn = document.getElementById('buy-pin-btn');
+        if (buyPinBtn) {
+            buyPinBtn.onclick = async () => {
+                const price = parseFloat((await db.settings.get('result_pin_price'))?.value || 1500);
+                this.initiatePaystackPayment(price, 'Result Pin');
             };
         }
     },
 
-    async initiatePaystackPayment(amount) {
+    async initiatePaystackPayment(amount, category = 'Tuition Payment') {
         const paystackKey = (await db.settings.get('paystack_public_key'))?.value;
+        const subaccount = (await db.settings.get('paystack_subaccount'))?.value;
         
         if (!paystackKey || paystackKey === 'pk_test_placeholder_key') {
             return Notifications.show('Paystack is not configured. Please contact administration.', 'error');
         }
 
-        const handler = PaystackPop.setup({
+        const payData = {
             key: paystackKey,
             email: this.currentUser.email,
-            amount: amount * 100, // Amount in kobo
+            amount: amount * 100,
             currency: 'NGN',
             ref: 'PAY-' + Math.floor((Math.random() * 1000000000) + 1),
             metadata: {
                 student_id: this.currentUser.assigned_id,
+                category: category,
                 custom_fields: [
                     { display_name: "Student Name", variable_name: "student_name", value: this.currentUser.name },
-                    { display_name: "Student ID", variable_name: "student_id", value: this.currentUser.assigned_id }
+                    { display_name: "Category", variable_name: "payment_category", value: category }
                 ]
             },
             callback: async (response) => {
                 Notifications.show('Payment successful! Verifying...', 'success');
-                await this.handlePaymentSuccess(response, amount);
-            },
-            onClose: () => {
-                Notifications.show('Payment window closed.', 'info');
+                await this.handlePaymentSuccess(response, amount, category);
             }
-        });
+        };
+
+        if (subaccount && subaccount.startsWith('ACCT_')) {
+            payData.subaccount = subaccount;
+        }
+
+        const handler = PaystackPop.setup(payData);
         handler.openIframe();
     },
 
-    async handlePaymentSuccess(response, amount) {
+    async handlePaymentSuccess(response, amount, category = 'Tuition Payment') {
         const studentId = this.currentUser.assigned_id;
         
         try {
@@ -9258,27 +9278,65 @@ export const UI = {
                 amount: amount,
                 reference: response.reference,
                 status: 'success',
+                category: category,
                 date: new Date().toISOString().split('T')[0],
-                category: 'School Fees',
                 channel: 'Paystack',
                 is_synced: 0
             });
             await db.payments.add(newPayment);
 
-            // 2. Update Student Analytics (Fee Balance)
-            const analytics = await db.student_analytics.get(studentId);
-            if (analytics) {
-                const newPaid = (parseFloat(analytics.fee_paid) || 0) + amount;
-                const newBalance = Math.max(0, (parseFloat(analytics.fee_balance) || 0) - amount);
+            if (category === 'Result Pin') {
+                // Generate Pin
+                const pinLimit = parseInt((await db.settings.get('result_pin_limit'))?.value || 5);
+                const pinCode = Math.floor(1000000000 + Math.random() * 9000000000).toString(); // 10-digit PIN
+                const serial = 'SR' + Math.floor(100000 + Math.random() * 900000);
                 
-                await db.student_analytics.update(studentId, {
-                    fee_paid: newPaid,
-                    fee_balance: newBalance,
+                const newPin = prepareForSync({
+                    id: crypto.randomUUID(),
+                    pin_code: pinCode,
+                    serial: serial,
+                    status: 'Active',
+                    student_id: studentId,
+                    usage_limit: pinLimit,
+                    used_count: 0,
+                    updated_at: new Date().toISOString(),
                     is_synced: 0
                 });
+                await db.pins.add(newPin);
+
+                this.showModal('Access Pin Purchased!', `
+                    <div style="text-align: center; padding: 1rem;">
+                        <div style="background: #dcfce7; color: #16a34a; width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+                            <i data-lucide="check" style="width: 32px; height: 32px;"></i>
+                        </div>
+                        <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem;">Payment Verified</h3>
+                        <p style="color: #64748b; margin-bottom: 2rem;">Your result checking pin has been generated successfully.</p>
+                        
+                        <div style="background: #f8fafc; border: 2px dashed #e2e8f0; padding: 2rem; border-radius: 20px; position: relative;">
+                            <div style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">PIN CODE</div>
+                            <div style="font-size: 2rem; font-weight: 950; color: #1e293b; letter-spacing: 0.2em; font-family: monospace;">${pinCode}</div>
+                            <div style="margin-top: 1rem; font-size: 0.8rem; font-weight: 700; color: #64748b;">Serial: ${serial}</div>
+                        </div>
+                        
+                        <p style="margin-top: 2rem; font-size: 0.75rem; color: #94a3b8; font-weight: 600;">You can find this pin anytime in your dashboard under "Access Pins".</p>
+                    </div>
+                `, null, 'Great!', 'key');
+            } else {
+                // 2. Update Student Analytics (Fee Balance)
+                const analytics = await db.student_analytics.get(studentId);
+                if (analytics) {
+                    const newPaid = (parseFloat(analytics.fee_paid) || 0) + amount;
+                    const newBalance = Math.max(0, (parseFloat(analytics.fee_balance) || 0) - amount);
+                    
+                    await db.student_analytics.update(studentId, {
+                        fee_paid: newPaid,
+                        fee_balance: newBalance,
+                        is_synced: 0
+                    });
+                }
+                Notifications.show(`₦${amount.toLocaleString()} has been credited to your account.`, 'success');
             }
 
-            Notifications.show(`₦${amount.toLocaleString()} has been credited to your account.`, 'success');
             syncToCloud();
             this.renderStudentFeesPortal();
         } catch (err) {
@@ -9335,33 +9393,67 @@ export const UI = {
     },
 
     async showFinanceSettingsModal() {
-        const currentKey = (await db.settings.get('paystack_public_key'))?.value || '';
+        const settings = await db.settings.toArray();
+        const getVal = (key) => settings.find(s => s.key === key)?.value || '';
         
         const modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1.5rem;">
                 <div class="form-group">
                     <label style="font-weight: 800; color: #1e293b; margin-bottom: 0.5rem; display: block;">PAYSTACK PUBLIC KEY</label>
-                    <p style="font-size: 0.75rem; color: #64748b; margin-bottom: 1rem;">Enter your <strong>Public Key</strong> from the Paystack Dashboard (Settings > API Keys & Webhooks).</p>
-                    <input type="text" id="paystack-key-input" class="cbt-input" value="${currentKey}" placeholder="pk_test_..." style="height: 52px; border-radius: 12px; font-family: monospace;">
+                    <input type="text" id="set-paystack-key" class="cbt-input" value="${getVal('paystack_public_key')}" placeholder="pk_test_..." style="height: 48px; border-radius: 10px; font-family: monospace;">
                 </div>
-                <div style="background: #fffbeb; padding: 1rem; border-radius: 12px; border: 1px solid #fde68a; display: flex; gap: 1rem; align-items: flex-start;">
-                    <i data-lucide="alert-triangle" style="color: #b45309; flex-shrink: 0; width: 20px;"></i>
-                    <div style="font-size: 0.8rem; color: #92400e; font-weight: 600; line-height: 1.5;">
-                        Never share your <strong>Secret Key</strong>. Only the Public Key should be used here for frontend integration.
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label style="font-weight: 800; color: #1e293b; margin-bottom: 0.5rem; display: block;">RESULT PIN PRICE (₦)</label>
+                        <input type="number" id="set-pin-price" class="cbt-input" value="${getVal('result_pin_price') || 1500}" style="height: 48px; border-radius: 10px;">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight: 800; color: #1e293b; margin-bottom: 0.5rem; display: block;">PIN USAGE LIMIT</label>
+                        <input type="number" id="set-pin-limit" class="cbt-input" value="${getVal('result_pin_limit') || 5}" style="height: 48px; border-radius: 10px;">
+                    </div>
+                </div>
+
+                <div style="background: #f8fafc; padding: 1.5rem; border-radius: 16px; border: 1px solid #e2e8f0;">
+                    <h4 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="share-2" style="width: 16px; color: #4338ca;"></i> Split Payment (Optional)
+                    </h4>
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label style="font-weight: 700; color: #475569; font-size: 0.75rem;">PAYSTACK SUBACCOUNT ID</label>
+                        <input type="text" id="set-subaccount" class="cbt-input" value="${getVal('paystack_subaccount')}" placeholder="ACCT_..." style="height: 44px; border-radius: 8px;">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label style="font-weight: 700; color: #475569; font-size: 0.75rem;">SPLIT PERCENTAGE (%)</label>
+                            <input type="number" id="set-split-ratio" class="cbt-input" value="${getVal('paystack_split_ratio') || 20}" style="height: 44px; border-radius: 8px;">
+                        </div>
+                        <div style="font-size: 0.7rem; color: #64748b; line-height: 1.4; display: flex; align-items: center;">
+                            The specified percentage will be sent to the subaccount automatically for every transaction.
+                        </div>
                     </div>
                 </div>
             </div>
         `;
 
         this.showModal('Finance Settings', modalHtml, async () => {
-            const newKey = document.getElementById('paystack-key-input').value.trim();
-            if (!newKey) return Notifications.show('Please enter a valid key.', 'warning');
+            const updates = [
+                { key: 'paystack_public_key', value: document.getElementById('set-paystack-key').value.trim() },
+                { key: 'result_pin_price', value: document.getElementById('set-pin-price').value },
+                { key: 'result_pin_limit', value: document.getElementById('set-pin-limit').value },
+                { key: 'paystack_subaccount', value: document.getElementById('set-subaccount').value.trim() },
+                { key: 'paystack_split_ratio', value: document.getElementById('set-split-ratio').value }
+            ];
 
-            await db.settings.put({ key: 'paystack_public_key', value: newKey });
-            Notifications.show('Finance settings updated successfully!', 'success');
+            for (const item of updates) {
+                await db.settings.put({ key: item.key, value: item.value });
+            }
+
+            Notifications.show('Settings updated successfully!', 'success');
             document.getElementById('ui-modal')?.remove();
             syncToCloud();
         }, 'Save Configuration', 'settings');
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     async saveFeeStructure() {
