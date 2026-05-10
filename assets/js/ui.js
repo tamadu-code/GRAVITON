@@ -5208,10 +5208,10 @@ export const UI = {
             const nextTermDate = document.getElementById('report-next-term').value;
 
             // NEW: Persist these to global settings
-            await db.settings.put({ key: 'termClosure', value: closureDate });
-            await db.settings.put({ key: 'nextTermBegins', value: nextTermDate });
-            await db.settings.put({ key: 'currentSession', value: session });
-            await db.settings.put({ key: 'currentTerm', value: term });
+            await db.settings.put({ id: 'termClosure', key: 'termClosure', value: closureDate });
+            await db.settings.put({ id: 'nextTermBegins', key: 'nextTermBegins', value: nextTermDate });
+            await db.settings.put({ id: 'currentSession', key: 'currentSession', value: session });
+            await db.settings.put({ id: 'currentTerm', key: 'currentTerm', value: term });
 
             if (!className) return Notifications.show('Please select a Stream Target.', 'warning');
 
@@ -5391,8 +5391,8 @@ export const UI = {
 
     async renderStaff() {
         const profiles = await db.profiles.toArray();
-        const teachers = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive' && p.full_name && p.full_name !== 'Unnamed Staff');
-        const unknownStaff = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && (!p.full_name || p.full_name === 'Unnamed Staff'));
+        const teachers = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive' && p.full_name && p.full_name !== 'Unnamed Staff' && p.full_name !== 'Unknown Staff');
+        const unknownStaff = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && (!p.full_name || p.full_name === 'Unnamed Staff' || p.full_name === 'Unknown Staff'));
         const formerStaff = profiles.filter(p => p.status === 'Terminated' || p.status === 'Inactive');
 
 
@@ -5533,7 +5533,7 @@ export const UI = {
         const bulkStaffBtn = document.getElementById('btn-bulk-repair-staff');
         if (bulkStaffBtn) {
             bulkStaffBtn.onclick = async () => {
-                const allStaff = (await db.profiles.toArray()).filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.full_name && p.full_name !== 'Unnamed Staff');
+                const allStaff = (await db.profiles.toArray()).filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.full_name && p.full_name !== 'Unnamed Staff' && p.full_name !== 'Unknown Staff');
                 if (!confirm(`This will re-provision login accounts for ALL ${allStaff.length} staff members. Password will be reset to "Staff123!". Continue?`)) return;
                 
                 bulkStaffBtn.disabled = true;
@@ -7320,9 +7320,12 @@ export const UI = {
         // Update EXISTING session instead of adding new one
         const existing = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
         
+        const totalMarks = this.currentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+        
         const resultUpdate = {
             score: score,
             total_questions: this.currentQuestions.length,
+            total_marks: totalMarks,
             answers: this.userAnswers,
             status: 'Completed',
             updated_at: new Date().toISOString(),
@@ -7357,7 +7360,7 @@ export const UI = {
                 
                 <div class="card" style="max-width: 400px; margin: 0 auto 3rem; padding: 2rem; border-radius: 20px;">
                     <div style="font-size: 0.85rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">FINAL SCORE</div>
-                    <div style="font-size: 4rem; font-weight: 900; color: #4338ca;">${score.toFixed(1)} <span style="font-size: 1.5rem; color: #94a3b8;">/ ${(existing?.total_marks || this.currentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0)).toFixed(1)}</span></div>
+                    <div style="font-size: 4rem; font-weight: 900; color: #4338ca;">${score.toFixed(1)} <span style="font-size: 1.5rem; color: #94a3b8;">/ ${totalMarks.toFixed(1)}</span></div>
                 </div>
 
                 <button class="btn btn-primary" onclick="UI.renderCBT()" style="padding: 1rem 3rem; border-radius: 12px; font-weight: 800;">Return to Hub</button>
@@ -7562,6 +7565,11 @@ export const UI = {
 
 
     async renderLessons() {
+        // Capture currently open teacher cards to persist state across re-render
+        const openTeacherIds = Array.from(document.querySelectorAll('input[id^="toggle-teacher-"]:checked')).map(i => i.id);
+        const openBulkClasses = document.getElementById('toggle-bulk-classes')?.checked;
+        const openBulkSubjects = document.getElementById('toggle-bulk-subjects')?.checked;
+
         const teachers = await db.profiles.where('role').equals('Teacher').toArray();
         const classes = await db.classes.toArray();
         const subjects = await db.subjects.toArray();
@@ -7768,6 +7776,14 @@ export const UI = {
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        
+        // Restore open states
+        openTeacherIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.checked = true;
+        });
+        if (openBulkClasses && document.getElementById('toggle-bulk-classes')) document.getElementById('toggle-bulk-classes').checked = true;
+        if (openBulkSubjects && document.getElementById('toggle-bulk-subjects')) document.getElementById('toggle-bulk-subjects').checked = true;
 
         document.getElementById('btn-deploy-workload').onclick = () => this.deployWorkload();
     },
@@ -9781,7 +9797,7 @@ export const UI = {
             }
 
             for (const item of updates) {
-                await db.settings.put({ key: item.key, value: item.value });
+                await db.settings.put({ id: item.key, key: item.key, value: item.value });
             }
 
             Notifications.show('Settings updated successfully!', 'success');
@@ -9909,7 +9925,7 @@ export const UI = {
         const structures = await db.fee_structures.where('class_name').equals(student.class_name).toArray();
         const totalExpected = structures.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
         
-        const analytics = await db.student_analytics.get(studentId) || { student_id: studentId };
+        const analytics = await db.student_analytics.get(studentId) || { id: studentId, student_id: studentId };
         analytics.fee_balance = Math.max(0, totalExpected - totalPaid);
         
         await db.student_analytics.put(prepareForSync(analytics));
