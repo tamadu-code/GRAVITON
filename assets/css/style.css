@@ -1,31 +1,36 @@
 :root {
-    /* Color Palette - Modern High Contrast Light Theme */
-    --bg-main: linear-gradient(135deg, #dbeafe 0%, #f3e8ff 50%, #ffedd5 100%);
+    /* Academic Precision Design System (Google Stitch) */
+    --primary: #3525cd;
+    --primary-container: #4f46e5;
+    --on-primary: #ffffff;
+    --secondary: #515f74;
+    --on-secondary: #ffffff;
+    --surface: #f7f9fb;
+    --on-surface: #191c1e;
+    --outline: #e2e8f0;
+    
+    /* Mapped Layout Variables */
+    --bg-main: #f7f9fb;
     --bg-sidebar: rgba(255, 255, 255, 0.7);
     --bg-card: rgba(255, 255, 255, 0.6);
     --bg-card-hover: rgba(255, 255, 255, 0.8);
-    --border-color: rgba(255, 255, 255, 0.4);
-    --text-primary: #0f172a;
-    --text-secondary: #475569;
+    --border-color: var(--outline);
+    --text-primary: var(--on-surface);
+    --text-secondary: var(--secondary);
     --text-muted: #94a3b8;
     
-    --accent-primary: #4f46e5;
-    --accent-secondary: #4338ca;
+    --accent-primary: var(--primary-container);
+    --accent-secondary: var(--primary);
     --accent-success: #10b981;
     --accent-warning: #f59e0b;
-    --accent-danger: #ef4444;
+    --accent-danger: #ba1a1a;
     
-    --glass-bg: rgba(255, 255, 255, 0.8);
-    --glass-border: rgba(226, 232, 240, 0.5);
-    
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    --radius-md: 0.5rem;
+    --shadow-sm: 0 1px 3px rgba(79, 70, 229, 0.08);
+    --shadow-md: 0 4px 12px rgba(79, 70, 229, 0.12);
     
     --sidebar-width: 280px;
-    --sidebar-collapsed-width: 80px;
     --header-height: 60px;
-    
     --transition-speed: 0.2s;
 }
 

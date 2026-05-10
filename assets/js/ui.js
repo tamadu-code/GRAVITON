@@ -4918,45 +4918,89 @@ export const UI = {
                             <i data-lucide="refresh-cw" style="width: 12px;"></i> Update Data
                         </button>
                     </div>
-                    <div style="overflow-x: auto;">
-                        <table class="data-table" style="width: 100%; border-collapse: separate; border-spacing: 0 0.5rem;">
-                            <thead>
-                                <tr style="background: transparent;">
-                                    <th style="background: transparent; border: none; padding: 1rem;">Student</th>
-                                    <th style="background: transparent; border: none; padding: 1rem; text-align: center;">Sessions</th>
-                                    <th style="background: transparent; border: none; padding: 1rem; text-align: center;">Present</th>
-                                    <th style="background: transparent; border: none; padding: 1rem; text-align: center;">Rate</th>
-                                    <th style="background: transparent; border: none; padding: 1rem; text-align: right;">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${report.map(r => `
-                                    <tr style="background: #f8fafc; transition: all 0.2s;">
-                                        <td style="padding: 1rem; border-radius: 12px 0 0 12px;">
-                                            <div style="font-weight: 700; color: #1e293b;">${r.name}</div>
-                                            <div style="font-size: 0.65rem; color: #94a3b8; font-family: monospace;">${r.id}</div>
-                                        </td>
-                                        <td style="padding: 1rem; text-align: center; color: #64748b; font-weight: 600;">${r.total}</td>
-                                        <td style="padding: 1rem; text-align: center; color: #10b981; font-weight: 700;">${r.present}</td>
-                                        <td style="padding: 1rem; text-align: center;">
-                                            <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                                                <div style="flex: 1; height: 6px; background: #e2e8f0; border-radius: 3px; max-width: 60px; overflow: hidden;">
-                                                    <div style="width: ${r.rate}%; height: 100%; background: ${r.rate > 75 ? '#10b981' : (r.rate > 50 ? '#f59e0b' : '#ef4444')}; border-radius: 3px;"></div>
-                                                </div>
-                                                <span style="font-size: 0.75rem; font-weight: 800; color: #1e293b;">${r.rate}%</span>
-                                            </div>
-                                        </td>
-                                        <td style="padding: 1rem; text-align: right; border-radius: 0 12px 12px 0;">
-                                            <span style="padding: 4px 12px; border-radius: 20px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; background: ${r.rate > 75 ? '#dcfce7' : (r.rate > 0 ? '#fef3c7' : '#fee2e2')}; color: ${r.rate > 75 ? '#16a34a' : (r.rate > 0 ? '#d97706' : '#991b1b')};">
-                                                ${r.rate > 75 ? 'Excellent' : (r.rate > 0 ? 'Review' : 'No Data')}
-                                            </span>
-                                        </td>
+                    <div class="attendance-history-view" style="margin-top: 1rem;">
+                        <div class="desktop-only" style="overflow-x: auto;">
+                            <table class="data-table" style="width: 100%; border-collapse: separate; border-spacing: 0 0.5rem;">
+                                <thead>
+                                    <tr style="background: transparent;">
+                                        <th style="background: transparent; border: none; padding: 1rem;">Student</th>
+                                        <th style="background: transparent; border: none; padding: 1rem; text-align: center;">Sessions</th>
+                                        <th style="background: transparent; border: none; padding: 1rem; text-align: center;">Present</th>
+                                        <th style="background: transparent; border: none; padding: 1rem; text-align: center;">Rate</th>
+                                        <th style="background: transparent; border: none; padding: 1rem; text-align: right;">Status</th>
                                     </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    ${report.map(r => `
+                                        <tr style="background: #f8fafc; transition: all 0.2s;">
+                                            <td style="padding: 1rem; border-radius: 12px 0 0 12px;">
+                                                <div style="font-weight: 700; color: #1e293b;">${r.name}</div>
+                                                <div style="font-size: 0.65rem; color: #94a3b8; font-family: monospace;">${r.id}</div>
+                                            </td>
+                                            <td style="padding: 1rem; text-align: center; color: #64748b; font-weight: 600;">${r.total}</td>
+                                            <td style="padding: 1rem; text-align: center; color: #10b981; font-weight: 700;">${r.present}</td>
+                                            <td style="padding: 1rem; text-align: center;">
+                                                <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                                    <div style="flex: 1; height: 6px; background: #e2e8f0; border-radius: 3px; max-width: 60px; overflow: hidden;">
+                                                        <div style="width: ${r.rate}%; height: 100%; background: ${r.rate > 75 ? '#10b981' : (r.rate > 50 ? '#f59e0b' : '#ef4444')}; border-radius: 3px;"></div>
+                                                    </div>
+                                                    <span style="font-size: 0.75rem; font-weight: 800; color: #1e293b;">${r.rate}%</span>
+                                                </div>
+                                            </td>
+                                            <td style="padding: 1rem; text-align: right; border-radius: 0 12px 12px 0;">
+                                                <span style="padding: 4px 12px; border-radius: 20px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; background: ${r.rate > 75 ? '#dcfce7' : (r.rate > 0 ? '#fef3c7' : '#fee2e2')}; color: ${r.rate > 75 ? '#16a34a' : (r.rate > 0 ? '#d97706' : '#991b1b')};">
+                                                    ${r.rate > 75 ? 'Excellent' : (r.rate > 0 ? 'Review' : 'No Data')}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="mobile-only" style="display: none; flex-direction: column; gap: 1rem;">
+                            ${report.map(r => `
+                                <div style="background: #f8fafc; padding: 1.25rem; border-radius: 16px; border: 1px solid #e2e8f0;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                                        <div>
+                                            <div style="font-weight: 800; color: #1e293b; font-size: 1rem;">${r.name}</div>
+                                            <div style="font-size: 0.7rem; color: #94a3b8; font-family: monospace;">${r.id}</div>
+                                        </div>
+                                        <span style="padding: 4px 12px; border-radius: 20px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; background: ${r.rate > 75 ? '#dcfce7' : (r.rate > 0 ? '#fef3c7' : '#fee2e2')}; color: ${r.rate > 75 ? '#16a34a' : (r.rate > 0 ? '#d97706' : '#991b1b')};">
+                                            ${r.rate}%
+                                        </span>
+                                    </div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; background: white; padding: 1rem; border-radius: 12px;">
+                                        <div>
+                                            <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Sessions</div>
+                                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${r.total}</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Present</div>
+                                            <div style="font-size: 1.1rem; font-weight: 900; color: #10b981;">${r.present}</div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top: 1rem; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;">
+                                        <div style="width: ${r.rate}%; height: 100%; background: ${r.rate > 75 ? '#10b981' : (r.rate > 50 ? '#f59e0b' : '#ef4444')}; border-radius: 3px;"></div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                 `;
+
+                // Add CSS for desktop/mobile toggle if not exists
+                if (!document.getElementById('attendance-responsive-css')) {
+                    const style = document.createElement('style');
+                    style.id = 'attendance-responsive-css';
+                    style.textContent = `
+                        @media (max-width: 768px) {
+                            .desktop-only { display: none !important; }
+                            .mobile-only { display: flex !important; }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
             } catch (err) {
                 console.error(err);
                 resultsArea.innerHTML = `<p style="color: red; text-align: center;">Error generating report: ${err.message}</p>`;
