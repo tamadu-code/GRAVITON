@@ -9679,38 +9679,38 @@ export const UI = {
         let modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1.5rem; padding: 0.5rem;">
                 <div class="form-group">
-                    <label style="font-weight: 900; color: #0f172a; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Paystack Public Key</label>
+                    <label style="font-weight: 900; color: white; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Paystack Public Key</label>
                     <input type="text" id="set-paystack-key" class="cbt-input" value="${getVal('paystack_public_key')}" placeholder="pk_test_..." style="height: 52px; border-radius: 12px; font-family: monospace; border: 2px solid #e2e8f0; width: 100%; padding: 0 1rem;">
                 </div>
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
                     <div class="form-group">
-                        <label style="font-weight: 900; color: #0f172a; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Pin Price (₦)</label>
+                        <label style="font-weight: 900; color: white; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Pin Price (₦)</label>
                         <input type="number" id="set-pin-price" class="cbt-input" value="${getVal('result_pin_price') || 1500}" style="height: 52px; border-radius: 12px; border: 2px solid #e2e8f0; width: 100%; padding: 0 1rem;">
                     </div>
                     <div class="form-group">
-                        <label style="font-weight: 900; color: #0f172a; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Pin Usage Limit</label>
+                        <label style="font-weight: 900; color: white; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Pin Usage Limit</label>
                         <input type="number" id="set-pin-limit" class="cbt-input" value="${getVal('result_pin_limit') || 5}" style="height: 52px; border-radius: 12px; border: 2px solid #e2e8f0; width: 100%; padding: 0 1rem;">
                     </div>
                 </div>
 
                 ${isAdmin ? `
-                <div id="service-charge-section" style="background: #f1f5f9; padding: 1.75rem; border-radius: 20px; border: 2px solid #e2e8f0; position: relative; min-height: 150px;">
-                    <div id="section-lock-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(241, 245, 249, 0.95); z-index: 10; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; cursor: pointer;" onclick="UI.unlockServiceCharge()">
-                        <i data-lucide="lock" style="width: 32px; height: 32px; color: #64748b;"></i>
-                        <span style="font-weight: 800; color: #475569; font-size: 0.8rem; text-transform: uppercase;">Protected Settings - Click to Unlock</span>
+                <div id="service-charge-section" style="background: #0f172a; padding: 1.75rem; border-radius: 20px; border: 2px solid #334155; position: relative; min-height: 150px;">
+                    <div id="section-lock-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.9); z-index: 10; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; cursor: pointer;" onclick="UI.unlockServiceCharge()">
+                        <i data-lucide="lock" style="width: 32px; height: 32px; color: #94a3b8;"></i>
+                        <span style="font-weight: 800; color: #cbd5e1; font-size: 0.8rem; text-transform: uppercase;">Protected Settings - Click to Unlock</span>
                     </div>
 
-                    <h4 style="font-weight: 950; color: #1e293b; margin-bottom: 1.25rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.75rem;">
+                    <h4 style="font-weight: 950; color: #4338ca; margin-bottom: 1.25rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.75rem;">
                         <i data-lucide="percent" style="width: 18px; color: #4338ca;"></i> Service Charge / Maintenance
                     </h4>
                     <div class="form-group" style="margin-bottom: 1.25rem;">
-                        <label style="font-weight: 800; color: #334155; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SETTLEMENT ACCOUNT ID (Optional)</label>
+                        <label style="font-weight: 800; color: white; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SETTLEMENT ACCOUNT ID (Optional)</label>
                         <input type="text" id="set-subaccount" class="cbt-input" value="${getVal('paystack_subaccount')}" placeholder="ACCT_..." style="height: 48px; border-radius: 10px; border: 2px solid #cbd5e1; width: 100%; padding: 0 1rem;">
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
                         <div class="form-group">
-                            <label style="font-weight: 800; color: #334155; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SERVICE CHARGE (%)</label>
+                            <label style="font-weight: 800; color: white; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SERVICE CHARGE (%)</label>
                             <input type="number" id="set-split-ratio" class="cbt-input" value="${getVal('paystack_split_ratio') || 20}" style="height: 48px; border-radius: 10px; border: 2px solid #cbd5e1; width: 100%; padding: 0 1rem;">
                         </div>
                         <div style="font-size: 0.75rem; color: #475569; line-height: 1.5; display: flex; align-items: center; font-weight: 500;">

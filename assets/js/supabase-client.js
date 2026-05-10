@@ -130,9 +130,17 @@ export async function syncToCloud() {
                     }
 
                     // Mark as synced locally
-                    const pk = table === 'students' ? 'student_id' : 'id';
+                    const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
                     for (const item of chunk) {
-                        await db[table].update(item[pk], { is_synced: 1 });
+                        if (item[pk]) {
+                            try {
+                                await db[table].update(item[pk], { is_synced: 1 });
+                            } catch (e) {
+                                console.warn(`Local sync mark failed for ${table} [${item[pk]}]:`, e);
+                            }
+                        } else {
+                            console.warn(`Record in ${table} is missing its primary key (${pk}). Skipping sync mark.`);
+                        }
                     }
                     syncCount += chunk.length;
                 }
@@ -181,7 +189,13 @@ export async function syncFromCloud(forceAll = false) {
                     }
 
                     if (data && data.length > 0) {
-                        await db[table].bulkPut(data.map(item => ({ ...item, is_synced: 1 })));
+                        const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
+                        const validData = data.filter(item => item[pk]).map(item => ({ ...item, is_synced: 1 }));
+                        
+                        if (validData.length > 0) {
+                            await db[table].bulkPut(validData);
+                        }
+                        
                         if (data.length < BATCH_SIZE) hasMore = false;
                         else offset += BATCH_SIZE;
                     } else {
