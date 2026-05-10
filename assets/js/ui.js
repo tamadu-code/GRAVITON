@@ -9543,38 +9543,38 @@ export const UI = {
         const getVal = (key) => settings.find(s => s.key === key)?.value || '';
         
         const modalHtml = `
-            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <div style="display: flex; flex-direction: column; gap: 1.5rem; padding: 0.5rem;">
                 <div class="form-group">
-                    <label style="font-weight: 800; color: #1e293b; margin-bottom: 0.5rem; display: block;">PAYSTACK PUBLIC KEY</label>
-                    <input type="text" id="set-paystack-key" class="cbt-input" value="${getVal('paystack_public_key')}" placeholder="pk_test_..." style="height: 48px; border-radius: 10px; font-family: monospace;">
+                    <label style="font-weight: 900; color: #0f172a; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Paystack Public Key</label>
+                    <input type="text" id="set-paystack-key" class="cbt-input" value="${getVal('paystack_public_key')}" placeholder="pk_test_..." style="height: 52px; border-radius: 12px; font-family: monospace; border: 2px solid #e2e8f0; width: 100%; padding: 0 1rem;">
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
                     <div class="form-group">
-                        <label style="font-weight: 800; color: #1e293b; margin-bottom: 0.5rem; display: block;">RESULT PIN PRICE (₦)</label>
-                        <input type="number" id="set-pin-price" class="cbt-input" value="${getVal('result_pin_price') || 1500}" style="height: 48px; border-radius: 10px;">
+                        <label style="font-weight: 900; color: #0f172a; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Pin Price (₦)</label>
+                        <input type="number" id="set-pin-price" class="cbt-input" value="${getVal('result_pin_price') || 1500}" style="height: 52px; border-radius: 12px; border: 2px solid #e2e8f0; width: 100%; padding: 0 1rem;">
                     </div>
                     <div class="form-group">
-                        <label style="font-weight: 800; color: #1e293b; margin-bottom: 0.5rem; display: block;">PIN USAGE LIMIT</label>
-                        <input type="number" id="set-pin-limit" class="cbt-input" value="${getVal('result_pin_limit') || 5}" style="height: 48px; border-radius: 10px;">
+                        <label style="font-weight: 900; color: #0f172a; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Pin Usage Limit</label>
+                        <input type="number" id="set-pin-limit" class="cbt-input" value="${getVal('result_pin_limit') || 5}" style="height: 52px; border-radius: 12px; border: 2px solid #e2e8f0; width: 100%; padding: 0 1rem;">
                     </div>
                 </div>
 
-                <div style="background: #f8fafc; padding: 1.5rem; border-radius: 16px; border: 1px solid #e2e8f0;">
-                    <h4 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.5rem;">
-                        <i data-lucide="share-2" style="width: 16px; color: #4338ca;"></i> Split Payment (Optional)
+                <div style="background: #f1f5f9; padding: 1.75rem; border-radius: 20px; border: 2px solid #e2e8f0;">
+                    <h4 style="font-weight: 950; color: #1e293b; margin-bottom: 1.25rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.75rem;">
+                        <i data-lucide="percent" style="width: 18px; color: #4338ca;"></i> Service Charge / Maintenance
                     </h4>
-                    <div class="form-group" style="margin-bottom: 1rem;">
-                        <label style="font-weight: 700; color: #475569; font-size: 0.75rem;">PAYSTACK SUBACCOUNT ID</label>
-                        <input type="text" id="set-subaccount" class="cbt-input" value="${getVal('paystack_subaccount')}" placeholder="ACCT_..." style="height: 44px; border-radius: 8px;">
+                    <div class="form-group" style="margin-bottom: 1.25rem;">
+                        <label style="font-weight: 800; color: #334155; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SETTLEMENT ACCOUNT ID (Optional)</label>
+                        <input type="text" id="set-subaccount" class="cbt-input" value="${getVal('paystack_subaccount')}" placeholder="ACCT_..." style="height: 48px; border-radius: 10px; border: 2px solid #cbd5e1; width: 100%; padding: 0 1rem;">
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
                         <div class="form-group">
-                            <label style="font-weight: 700; color: #475569; font-size: 0.75rem;">SPLIT PERCENTAGE (%)</label>
-                            <input type="number" id="set-split-ratio" class="cbt-input" value="${getVal('paystack_split_ratio') || 20}" style="height: 44px; border-radius: 8px;">
+                            <label style="font-weight: 800; color: #334155; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SERVICE CHARGE (%)</label>
+                            <input type="number" id="set-split-ratio" class="cbt-input" value="${getVal('paystack_split_ratio') || 20}" style="height: 48px; border-radius: 10px; border: 2px solid #cbd5e1; width: 100%; padding: 0 1rem;">
                         </div>
-                        <div style="font-size: 0.7rem; color: #64748b; line-height: 1.4; display: flex; align-items: center;">
-                            The specified percentage will be sent to the subaccount automatically for every transaction.
+                        <div style="font-size: 0.75rem; color: #475569; line-height: 1.5; display: flex; align-items: center; font-weight: 500;">
+                            This percentage of every transaction will be routed to the settlement account as a service fee.
                         </div>
                     </div>
                 </div>
