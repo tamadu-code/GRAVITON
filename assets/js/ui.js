@@ -1142,7 +1142,14 @@ export const UI = {
         const getFormMasterName = (className) => {
             const ft = formTeachers.find(f => f.class_name === className);
             if (!ft) return 'Unassigned';
-            const profile = profiles.find(p => p.id === ft.teacher_id || p.full_name === ft.teacher_id);
+            
+            // Search by ID, assigned_id, or direct name
+            const profile = profiles.find(p => 
+                p.id === ft.teacher_id || 
+                p.assigned_id === ft.teacher_id || 
+                p.full_name === ft.teacher_id
+            );
+            
             return profile ? profile.full_name : ft.teacher_id;
         };
 
@@ -5602,8 +5609,8 @@ export const UI = {
                     </div>
                     <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 1rem;">
                         <div class="form-group">
-                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">LOGIN EMAIL *</label>
-                            <input type="email" id="staff-email" class="input" placeholder="john.doe@school.edu" style="width: 100%;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">LOGIN EMAIL (Optional)</label>
+                            <input type="email" id="staff-email" class="input" placeholder="Leave blank to auto-generate" style="width: 100%;">
                         </div>
                         <div class="form-group">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">SYSTEM ROLE *</label>
@@ -5647,13 +5654,21 @@ export const UI = {
                 const dept = document.getElementById('staff-dept')?.value.trim() || '';
                 const quals = document.getElementById('staff-quals')?.value.trim() || '';
                 
-                if (!name || !email) {
-                    Notifications.show('Full name and login email are required', 'error');
+                if (!name) {
+                    Notifications.show('Full name is required', 'error');
                     throw new Error('Validation failed');
                 }
 
+                // Auto-generate email if missing
+                let finalEmail = email;
+                if (!finalEmail) {
+                    const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    const randomSuffix = Math.random().toString(36).substr(2, 4).toUpperCase();
+                    finalEmail = `${cleanName}.${randomSuffix}@school-portal.com`;
+                }
+
                 // Validate email format
-                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(finalEmail)) {
                     Notifications.show('Please enter a valid email address', 'error');
                     throw new Error('Validation failed');
                 }
@@ -5663,7 +5678,7 @@ export const UI = {
                 try {
                     // 1. Create Supabase auth account
                     Notifications.show('Creating login account...', 'info');
-                    const { data: authData, error: authError } = await registerUser(email, DEFAULT_PASSWORD, name, role);
+                    const { data: authData, error: authError } = await registerUser(finalEmail, DEFAULT_PASSWORD, name, role);
 
                     if (authError) {
                         // If it's a "user already registered" error, still create the local profile
@@ -5681,7 +5696,7 @@ export const UI = {
                     const newStaff = prepareForSync({
                         id: userId,
                         full_name: name,
-                        email: email,
+                        email: finalEmail,
                         role: role,
                         phone: phone,
                         employment_type: empType,
@@ -5693,7 +5708,7 @@ export const UI = {
 
                     await db.profiles.put(newStaff); // Use put in case auth trigger already created it
                     
-                    Notifications.show(`${name} onboarded successfully! They can log in with: ${email} / ${DEFAULT_PASSWORD}`, 'success');
+                    Notifications.show(`${name} onboarded successfully! They can log in with: ${finalEmail} / ${DEFAULT_PASSWORD}`, 'success');
                     this.renderStaff();
                     syncToCloud();
                 } catch (err) {
@@ -6097,7 +6112,14 @@ export const UI = {
             activeExams = exams.filter(e => e.status === 'Active');
             archivedExams = exams.filter(e => e.status === 'Archived');
         } else if (isTeacher) {
-            activeExams = exams.filter(e => e.teacher_id === teacherId && e.status === 'Active');
+            // Teachers see exams they created OR exams for their assigned classes
+            const myAssignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
+            const myForms = await db.form_teachers.where('teacher_id').equals(teacherId).toArray();
+            const myClasses = new Set([...myAssignments.map(a => a.class_name), ...myForms.map(f => f.class_name)]);
+            
+            activeExams = exams.filter(e => 
+                (e.teacher_id === teacherId || myClasses.has(e.class_name)) && e.status === 'Active'
+            );
         } else if (isStudent) {
             const now = new Date();
             const student = await db.students.get(this.currentUser.assigned_id || this.currentUser.id);
