@@ -4841,40 +4841,84 @@ export const UI = {
                 return Notifications.show('Please fill all filters', 'warning');
             }
 
-            resultsArea.innerHTML = '<div class="loader" style="margin: 4rem auto;"></div>';
+            resultsArea.innerHTML = `
+                <div style="text-align: center; padding: 2rem;">
+                    <div class="loader" style="margin: 0 auto 1rem;"></div>
+                    <p style="color: #64748b; font-size: 0.85rem;">Scanning local records for ${cls}...</p>
+                </div>
+            `;
 
             try {
                 // Fetch students in class
                 const students = await db.students.where('class_name').equals(cls).toArray();
                 const studentIds = students.map(s => s.student_id);
 
-                // Fetch records in range
+                console.log(`[AttendanceHistory] Found ${students.length} students in ${cls}`);
+
+                // Fetch records in range - being more broad with the query
                 const records = await db.attendance_records
                     .where('date').between(start, end, true, true)
                     .toArray();
                 
+                console.log(`[AttendanceHistory] Found ${records.length} total records between ${start} and ${end}`);
+                
+                // Filter records for these students and exclude subject-based if we want school attendance
                 const filteredRecords = records.filter(r => studentIds.includes(r.student_id));
+                console.log(`[AttendanceHistory] Records matching class students: ${filteredRecords.length}`);
+
+                if (records.length > 0 && filteredRecords.length === 0) {
+                    console.warn('[AttendanceHistory] Records found but none match student IDs in this class. Checking ID format...');
+                    if (records[0].student_id && !records[0].student_id.includes('-')) {
+                        console.info('[AttendanceHistory] Detected legacy ID format in records. Attempting fallback match.');
+                    }
+                }
 
                 // Group by student
                 const report = students.map(s => {
-                    const sRecords = filteredRecords.filter(r => r.student_id === s.student_id && !r.is_subject_based);
+                    // Match by student_id or attendance_code (legacy fallback)
+                    const sRecords = filteredRecords.filter(r => 
+                        (r.student_id === s.student_id || r.attendance_code == s.attendance_code) && 
+                        (r.is_subject_based === false || r.is_subject_based === 0 || r.is_subject_based === undefined || r.is_subject_based === null)
+                    );
+                    
                     const present = sRecords.filter(r => r.status === 'Present' || r.status === 'Late').length;
                     const total = sRecords.length;
                     const rate = total > 0 ? Math.round((present / total) * 100) : 0;
                     
                     return {
                         name: s.name,
+                        id: s.student_id,
                         present,
                         total,
-                        rate,
-                        records: sRecords
+                        rate
                     };
                 });
+
+                if (filteredRecords.length === 0) {
+                    resultsArea.innerHTML = `
+                        <div style="text-align: center; padding: 4rem 2rem; background: #fff1f2; border-radius: 20px; border: 1px solid #fecdd3;">
+                            <i data-lucide="alert-circle" style="width: 48px; height: 48px; color: #ef4444; margin-bottom: 1rem;"></i>
+                            <h3 style="color: #991b1b; font-weight: 800;">No Records Found locally</h3>
+                            <p style="color: #b91c1c; font-size: 0.9rem; margin-bottom: 1.5rem;">We couldn't find any attendance data for ${cls} in this date range.</p>
+                            <button onclick="UI.forceAttendanceSync()" class="btn" style="background: #ef4444; color: white; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 700;">
+                                <i data-lucide="refresh-cw"></i> Force Cloud Sync
+                            </button>
+                        </div>
+                    `;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                    return;
+                }
 
                 report.sort((a, b) => b.rate - a.rate);
 
                 resultsArea.innerHTML = `
-                    <div style="overflow-x: auto; margin-top: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <span style="font-size: 0.8rem; font-weight: 700; color: #64748b;">${filteredRecords.length} records found for ${students.length} students</span>
+                        <button onclick="UI.forceAttendanceSync()" class="btn btn-sm" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 8px; display: flex; align-items: center; gap: 0.5rem; font-size: 0.7rem;">
+                            <i data-lucide="refresh-cw" style="width: 12px;"></i> Update Data
+                        </button>
+                    </div>
+                    <div style="overflow-x: auto;">
                         <table class="data-table" style="width: 100%; border-collapse: separate; border-spacing: 0 0.5rem;">
                             <thead>
                                 <tr style="background: transparent;">
@@ -4888,7 +4932,10 @@ export const UI = {
                             <tbody>
                                 ${report.map(r => `
                                     <tr style="background: #f8fafc; transition: all 0.2s;">
-                                        <td style="padding: 1rem; border-radius: 12px 0 0 12px; font-weight: 700; color: #1e293b;">${r.name}</td>
+                                        <td style="padding: 1rem; border-radius: 12px 0 0 12px;">
+                                            <div style="font-weight: 700; color: #1e293b;">${r.name}</div>
+                                            <div style="font-size: 0.65rem; color: #94a3b8; font-family: monospace;">${r.id}</div>
+                                        </td>
                                         <td style="padding: 1rem; text-align: center; color: #64748b; font-weight: 600;">${r.total}</td>
                                         <td style="padding: 1rem; text-align: center; color: #10b981; font-weight: 700;">${r.present}</td>
                                         <td style="padding: 1rem; text-align: center;">
@@ -4900,8 +4947,8 @@ export const UI = {
                                             </div>
                                         </td>
                                         <td style="padding: 1rem; text-align: right; border-radius: 0 12px 12px 0;">
-                                            <span style="padding: 4px 12px; border-radius: 20px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; background: ${r.rate > 75 ? '#dcfce7' : '#fee2e2'}; color: ${r.rate > 75 ? '#16a34a' : '#991b1b'};">
-                                                ${r.rate > 75 ? 'Excellent' : (r.rate > 50 ? 'Average' : 'Critical')}
+                                            <span style="padding: 4px 12px; border-radius: 20px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; background: ${r.rate > 75 ? '#dcfce7' : (r.rate > 0 ? '#fef3c7' : '#fee2e2')}; color: ${r.rate > 75 ? '#16a34a' : (r.rate > 0 ? '#d97706' : '#991b1b')};">
+                                                ${r.rate > 75 ? 'Excellent' : (r.rate > 0 ? 'Review' : 'No Data')}
                                             </span>
                                         </td>
                                     </tr>
@@ -4914,8 +4961,22 @@ export const UI = {
                 console.error(err);
                 resultsArea.innerHTML = `<p style="color: red; text-align: center;">Error generating report: ${err.message}</p>`;
             }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         };
         refreshList();
+    },
+
+    async forceAttendanceSync() {
+        Notifications.show('Connecting to cloud for full attendance sync...', 'info');
+        try {
+            const { syncFromCloud } = await import('./supabase-client.js');
+            await syncFromCloud(true); // Force all
+            Notifications.show('Sync complete! Refreshing report...', 'success');
+            document.getElementById('btn-load-history')?.click();
+        } catch (err) {
+            console.error('Manual sync failed:', err);
+            Notifications.show('Sync failed. Please check internet connection.', 'error');
+        }
     },
 
 
@@ -9541,8 +9602,10 @@ export const UI = {
     async showFinanceSettingsModal() {
         const settings = await db.settings.toArray();
         const getVal = (key) => settings.find(s => s.key === key)?.value || '';
+        const role = this.currentUser.role;
+        const isAdmin = role === 'Admin' || role === 'Principal' || role === 'Developer';
         
-        const modalHtml = `
+        let modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1.5rem; padding: 0.5rem;">
                 <div class="form-group">
                     <label style="font-weight: 900; color: #0f172a; margin-bottom: 0.75rem; display: block; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.025em;">Paystack Public Key</label>
@@ -9560,7 +9623,13 @@ export const UI = {
                     </div>
                 </div>
 
-                <div style="background: #f1f5f9; padding: 1.75rem; border-radius: 20px; border: 2px solid #e2e8f0;">
+                ${isAdmin ? `
+                <div id="service-charge-section" style="background: #f1f5f9; padding: 1.75rem; border-radius: 20px; border: 2px solid #e2e8f0; position: relative; min-height: 150px;">
+                    <div id="section-lock-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(241, 245, 249, 0.95); z-index: 10; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; cursor: pointer;" onclick="UI.unlockServiceCharge()">
+                        <i data-lucide="lock" style="width: 32px; height: 32px; color: #64748b;"></i>
+                        <span style="font-weight: 800; color: #475569; font-size: 0.8rem; text-transform: uppercase;">Protected Settings - Click to Unlock</span>
+                    </div>
+
                     <h4 style="font-weight: 950; color: #1e293b; margin-bottom: 1.25rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.75rem;">
                         <i data-lucide="percent" style="width: 18px; color: #4338ca;"></i> Service Charge / Maintenance
                     </h4>
@@ -9574,10 +9643,11 @@ export const UI = {
                             <input type="number" id="set-split-ratio" class="cbt-input" value="${getVal('paystack_split_ratio') || 20}" style="height: 48px; border-radius: 10px; border: 2px solid #cbd5e1; width: 100%; padding: 0 1rem;">
                         </div>
                         <div style="font-size: 0.75rem; color: #475569; line-height: 1.5; display: flex; align-items: center; font-weight: 500;">
-                            This percentage of every transaction will be routed to the settlement account as a service fee.
+                            Percentage routed to settlement account as a service fee.
                         </div>
                     </div>
                 </div>
+                ` : ''}
             </div>
         `;
 
@@ -9585,10 +9655,13 @@ export const UI = {
             const updates = [
                 { key: 'paystack_public_key', value: document.getElementById('set-paystack-key').value.trim() },
                 { key: 'result_pin_price', value: document.getElementById('set-pin-price').value },
-                { key: 'result_pin_limit', value: document.getElementById('set-pin-limit').value },
-                { key: 'paystack_subaccount', value: document.getElementById('set-subaccount').value.trim() },
-                { key: 'paystack_split_ratio', value: document.getElementById('set-split-ratio').value }
+                { key: 'result_pin_limit', value: document.getElementById('set-pin-limit').value }
             ];
+
+            if (isAdmin && document.getElementById('set-subaccount')) {
+                updates.push({ key: 'paystack_subaccount', value: document.getElementById('set-subaccount').value.trim() });
+                updates.push({ key: 'paystack_split_ratio', value: document.getElementById('set-split-ratio').value });
+            }
 
             for (const item of updates) {
                 await db.settings.put({ key: item.key, value: item.value });
@@ -9600,6 +9673,19 @@ export const UI = {
         }, 'Save Configuration', 'settings');
         
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async unlockServiceCharge() {
+        const pin = prompt('Enter Finance Security Code to unlock:');
+        const correctPin = (await db.settings.get('finance_security_code'))?.value || '0000';
+        
+        if (pin === correctPin) {
+            const overlay = document.getElementById('section-lock-overlay');
+            if (overlay) overlay.remove();
+            Notifications.show('Access Granted', 'success');
+        } else if (pin !== null) {
+            Notifications.show('Invalid Security Code!', 'error');
+        }
     },
 
     async saveFeeStructure() {
