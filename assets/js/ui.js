@@ -6928,12 +6928,15 @@ export const UI = {
             // The timer (startExamTimer) will handle submission when timeLeft <= 0.
         } else {
             // Start New Session
+            const totalMarks = questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+            
             const newSession = prepareForSync({
                 id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                 exam_id: examId,
                 student_id: studentId,
                 score: 0,
                 total_questions: questions.length,
+                total_marks: totalMarks,
                 answers: {},
                 warnings: 0,
                 violations: [],
@@ -7325,7 +7328,7 @@ export const UI = {
                 
                 <div class="card" style="max-width: 400px; margin: 0 auto 3rem; padding: 2rem; border-radius: 20px;">
                     <div style="font-size: 0.85rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">FINAL SCORE</div>
-                    <div style="font-size: 4rem; font-weight: 900; color: #4338ca;">${score} <span style="font-size: 1.5rem; color: #94a3b8;">/ ${this.currentQuestions.length}</span></div>
+                    <div style="font-size: 4rem; font-weight: 900; color: #4338ca;">${score.toFixed(1)} <span style="font-size: 1.5rem; color: #94a3b8;">/ ${(existing?.total_marks || this.currentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0)).toFixed(1)}</span></div>
                 </div>
 
                 <button class="btn btn-primary" onclick="UI.renderCBT()" style="padding: 1rem 3rem; border-radius: 12px; font-weight: 800;">Return to Hub</button>
@@ -7372,7 +7375,8 @@ export const UI = {
             if (field === 'exam') multiplier = 60;
             else if (field.includes('test') || field.includes('project') || field.includes('assignment')) multiplier = 10;
 
-            const scoreValue = Math.round((result.score / result.total_questions) * multiplier);
+            const divisor = result.total_marks || result.total_questions;
+            const scoreValue = Math.round((result.score / divisor) * multiplier);
             console.log(`[SCORE POST] Posting ${scoreValue} to field "${field}" for student ${result.student_id}`);
 
             if (existingScore) {
@@ -10511,7 +10515,7 @@ export const UI = {
                                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                                                 <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
                                                     <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">SCORE</div>
-                                                    <div style="font-weight: 900; color: #4338ca; font-size: 1.25rem;">${r.score} / ${r.total_questions}</div>
+                                                    <div style="font-weight: 900; color: #4338ca; font-size: 1.25rem;">${r.score} / ${r.total_marks || r.total_questions}</div>
                                                 </div>
                                                 <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
                                                     <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">STARTED AT</div>
