@@ -4861,9 +4861,21 @@ export const UI = {
                     .toArray();
                 
                 console.log(`[AttendanceHistory] Found ${records.length} total records between ${start} and ${end}`);
+                if (records.length > 0) {
+                    console.log('[AttendanceHistory] Sample Record IDs in range:', records.slice(0, 3).map(r => r.student_id));
+                    console.log('[AttendanceHistory] Sample Student IDs in class:', studentIds.slice(0, 3));
+                }
                 
                 // Filter records for these students and exclude subject-based if we want school attendance
-                const filteredRecords = records.filter(r => studentIds.includes(r.student_id));
+                const filteredRecords = records.filter(r => {
+                    const rid = String(r.student_id || '').trim();
+                    return studentIds.some(sid => 
+                        rid === sid || 
+                        rid.endsWith(sid) || 
+                        sid.endsWith(rid) ||
+                        (rid.includes('-') && sid.includes('-') && rid.split('-').pop() === sid.split('-').pop())
+                    );
+                });
                 console.log(`[AttendanceHistory] Records matching class students: ${filteredRecords.length}`);
 
                 if (records.length > 0 && filteredRecords.length === 0) {
@@ -4875,11 +4887,23 @@ export const UI = {
 
                 // Group by student
                 const report = students.map(s => {
-                    // Match by student_id or attendance_code (legacy fallback)
-                    const sRecords = filteredRecords.filter(r => 
-                        (r.student_id === s.student_id || r.attendance_code == s.attendance_code) && 
-                        (r.is_subject_based === false || r.is_subject_based === 0 || r.is_subject_based === undefined || r.is_subject_based === null)
-                    );
+                    const sid = String(s.student_id || '').trim();
+                    const scode = String(s.attendance_code || '').trim();
+
+                    // Match by student_id (fuzzy) or attendance_code (exact)
+                    const sRecords = filteredRecords.filter(r => {
+                        const rid = String(r.student_id || '').trim();
+                        const rac = String(r.attendance_code || '').trim();
+
+                        const isMatch = rid === sid || 
+                                      rid.endsWith(sid) || 
+                                      sid.endsWith(rid) ||
+                                      (rid.includes('-') && sid.includes('-') && rid.split('-').pop() === sid.split('-').pop()) ||
+                                      rac === scode ||
+                                      rid === scode;
+
+                        return isMatch && (r.is_subject_based === false || r.is_subject_based === 0 || r.is_subject_based === undefined || r.is_subject_based === null);
+                    });
                     
                     const present = sRecords.filter(r => r.status === 'Present' || r.status === 'Late').length;
                     const total = sRecords.length;
