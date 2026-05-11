@@ -7047,6 +7047,9 @@ export const UI = {
             }
 
             let questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+            // Safety: Remove any null/undefined entries to prevent "option_a of undefined" errors
+            questions = questions.filter(q => q && typeof q === 'object');
+            
             console.log(`[CBT AUDIT] Loaded ${questions.length} questions for exam ${examId}`);
             
             // Data Integrity Check
