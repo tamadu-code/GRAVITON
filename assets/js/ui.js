@@ -4485,7 +4485,7 @@ export const UI = {
                 .where('date').equals(date)
                 .toArray();
 
-            let studentsToRender = filteredStudents;
+            let studentsToRender = students;
             
             // 0. Force Selection for Subject Mode (Teachers)
             if (currentTab === 'subject' && !cls) {
