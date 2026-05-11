@@ -7066,7 +7066,7 @@ export const UI = {
                 return Notifications.show('Unable to identify your student record. Please re-login.', 'error');
             }
 
-            console.log(`[CBT] Starting exam for Student: ${studentId}`);
+            console.log(`[CBT] Starting exam for Student: ${studentId} (Internal ID: ${this.currentUser.id})`);
 
             const now = new Date();
             const durationSeconds = (exam.duration || 30) * 60;
@@ -7179,7 +7179,8 @@ export const UI = {
             
         } catch (error) {
             console.error('[CBT START FATAL]', error);
-            Notifications.show('An unexpected error occurred while starting the exam. Please try again or contact support.', 'error');
+            const errorMsg = error.message || 'Unknown Error';
+            Notifications.show(`Initialization failed: ${errorMsg}. Please contact support with this message.`, 'error');
         }
     },
 
