@@ -7056,19 +7056,28 @@ export const UI = {
             questions = questions.slice(0, limit);
         }
 
+        console.log(`[CBT AUDIT] Rendering ${questions.length} questions. Checking for missing options...`);
+
         // Shuffle Options for each question - Only filter out completely empty questions
         questions = questions.filter(q => q && (q.option_a || q.option_b)).map((q, idx) => {
+            if (!q.option_c || !q.option_d) {
+                console.warn(`[CBT AUDIT] Question ID ${q.id} only has ${!q.option_c ? '2' : '3'} options!`, q);
+            }
             const options = [
                 { key: 'a', text: q.option_a },
                 { key: 'b', text: q.option_b },
                 { key: 'c', text: q.option_c },
                 { key: 'd', text: q.option_d },
                 { key: 'e', text: q.option_e }
-            ].filter(o => o && o.text && o.text.trim().length > 0);
+            ];
+
+            // If it's a multiple choice, we expect at least 4 options. 
+            // We only filter if the text is truly empty or null.
+            const validOptions = options.filter(o => o && o.text !== null && o.text !== undefined && o.text.toString().trim().length > 0);
 
             // Use a modified seed for each question to keep them distinct but deterministic
             let qSeed = seed + idx;
-            const shuffledOptions = seededShuffle([...options], qSeed);
+            const shuffledOptions = seededShuffle([...validOptions], qSeed);
             
             // SECURITY: Create a one-way hash of the correct answer.
             const correctKey = (q.correct_option || 'A').toLowerCase();
@@ -7129,6 +7138,14 @@ export const UI = {
         this.examDurationSeconds = durationSeconds;
 
         document.body.classList.add('exam-mode');
+        
+        // Request Fullscreen for security
+        try {
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen();
+            }
+        } catch (e) { console.warn('Fullscreen request failed:', e); }
+
         this.renderCBTExamInterface();
         this.startExamTimer();
         this.attachSecurityListeners();
@@ -7164,15 +7181,32 @@ export const UI = {
             const forbiddenKeys = ['c', 'v', 'x', 'u', 'a', 's', 'p'];
             const isForbiddenShortcut = e.ctrlKey && forbiddenKeys.includes(e.key.toLowerCase());
             
-            if (isForbiddenShortcut || e.key === 'F12' || e.key === 'PrintScreen' || e.key === 'Snapshot') {
+            // Block PrintScreen, F12, and Snipping Tool triggers if possible
+            if (isForbiddenShortcut || e.key === 'F12' || e.key === 'PrintScreen' || e.key === 'Snapshot' || e.key === 'Meta') {
                 e.preventDefault();
                 document.body.classList.add('window-blurred');
-                setTimeout(() => document.body.classList.remove('window-blurred'), 1000);
+                setTimeout(() => document.body.classList.remove('window-blurred'), 1500);
                 
                 log(`Attempted restricted action/shortcut: ${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`);
                 return false;
             }
         };
+
+        // Fullscreen Exit Detection
+        document.onfullscreenchange = () => {
+            if (!document.fullscreenElement) {
+                log('Student exited fullscreen mode (Security Violation)');
+                document.body.classList.add('window-blurred');
+                Notifications.show('Fullscreen is required for the exam. Click anywhere to resume.', 'warning');
+            } else {
+                document.body.classList.remove('window-blurred');
+            }
+        };
+
+        // Keyboard Lock (Chrome/Edge Only)
+        if (navigator.keyboard && navigator.keyboard.lock) {
+            navigator.keyboard.lock(['Escape', 'F11', 'F12', 'PrintScreen']).catch(e => console.warn('Keyboard lock failed:', e));
+        }
     },
 
     async logViolation(type) {
@@ -7236,6 +7270,8 @@ export const UI = {
     renderCBTExamInterface() {
         const q = this.currentQuestions[this.currentQuestionIndex];
         const progress = ((this.currentQuestionIndex + 1) / this.currentQuestions.length) * 100;
+        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const studentName = this.currentUser.name || 'Student';
 
         // Calculate current time remaining for instant-load (prevents 00:00 or NaN flickering)
         let timeStr = '00:00';
@@ -7252,7 +7288,11 @@ export const UI = {
         }
 
         this.contentArea.innerHTML = `
-            <div class="cbt-exam-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; background: #f8fafc; z-index: 10000;">
+            <div class="cbt-exam-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; background: #f8fafc; z-index: 10000; user-select: none; -webkit-user-select: none;">
+                <!-- Security Watermark -->
+                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999; display: flex; flex-wrap: wrap; opacity: 0.04; overflow: hidden; align-content: flex-start; gap: 100px; padding: 50px;">
+                    ${Array(20).fill(`<div style="transform: rotate(-30deg); font-weight: 900; font-size: 2rem; color: #000; white-space: nowrap;">${studentId} - ${studentName} - SECURE EXAM</div>`).join('')}
+                </div>
                 <!-- Header: Title & Timer -->
                 <header class="cbt-exam-header" style="flex-shrink: 0; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; background: white; z-index: 20;">
                     <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -7597,7 +7637,8 @@ export const UI = {
             if (!text) return;
 
             // Ultra-Flexible Scanner: Handles case variations, extra spaces, dots, and varied delimiters
-            const masterRegex = /([\s\S]*?)\s*[\(\[\.]?\s*[Aa][\)\]\.]?\s+([\s\S]*?)\s*[\(\[\.]?\s*[Bb][\)\]\.]?\s+([\s\S]*?)\s*[\(\[\.]?\s*[Cc][\)\]\.]?\s+([\s\S]*?)\s*[\(\[\.]?\s*[Dd][\)\]\.]?\s+([\s\S]*?)\s*(?:[\(\[\.]?\s*[Ee][\)\]\.]?\s+([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // Robust Scanner: Handles variations and ensures markers (A), (B) etc are not part of the text
+            const masterRegex = /([\s\S]*?)\s*(?:\s|[\r\n]|^)[\(\[\.]?\s*[Aa][\)\]\.]?\s+([\s\S]*?)\s*(?:\s|[\r\n])[\(\[\.]?\s*[Bb][\)\]\.]?\s+([\s\S]*?)\s*(?:\s|[\r\n])[\(\[\.]?\s*[Cc][\)\]\.]?\s+([\s\S]*?)\s*(?:\s|[\r\n])[\(\[\.]?\s*[Dd][\)\]\.]?\s+([\s\S]*?)\s*(?:\s|[\r\n])(?:[\(\[\.]?\s*[Ee][\)\]\.]?\s+([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
             let match;
             let count = 0;
