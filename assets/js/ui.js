@@ -7286,7 +7286,13 @@ export const UI = {
                 if (this.examTimeLeft <= 300) timerEl.style.color = '#ef4444';
             }
             if (this.examTimeLeft <= 0) {
-                renderCBTExamInterface() {
+                clearInterval(this.examTimerInterval);
+                this.submitExam();
+            }
+        }, 1000);
+    },
+
+    renderCBTExamInterface() {
         try {
             if (!this.currentQuestions || !this.currentQuestions[this.currentQuestionIndex]) {
                 throw new Error("No active question to render.");

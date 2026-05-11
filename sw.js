@@ -1,10 +1,10 @@
-const CACHE_NAME = 'graviton-cache-v40';
+const CACHE_NAME = 'graviton-cache-v41';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
   './assets/css/style.css',
-  './assets/js/main.js',
+  './assets/js/main.js?v=41',
   './assets/js/ui.js',
   './assets/js/db.js',
   './assets/js/utils.js',
