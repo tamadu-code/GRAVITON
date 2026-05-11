@@ -285,8 +285,6 @@ export const UI = {
         const today          = new Date().toISOString().split('T')[0];
         // Use primaryKeys() for faster turnout calculation if only needing counts
         const todayAttIds    = await db.attendance.where('date').equals(today).primaryKeys();
-        const turnoutPct     = 0; // Turnout calculation would need status, so stay with toArray for small daily set or use status index
-        
         const todayAtt       = await db.attendance.where('date').equals(today).toArray();
         const presentCount   = todayAtt.filter(r => r.status === 'Present').length;
         const totalMarked    = todayAtt.length;
@@ -4936,22 +4934,50 @@ export const UI = {
 
                 console.log(`[AttendanceHistory] Found ${students.length} students in ${cls}`);
 
-                // Fetch records in date range
-                const records = await db.attendance_records
-                    .where('date').between(start, end, true, true)
-                    .toArray();
+                // Fetch records from BOTH attendance (Daily) and attendance_records (Detailed)
+                const [dailyRecords, detailedRecords] = await Promise.all([
+                    db.attendance.where('date').between(start, end, true, true).toArray(),
+                    db.attendance_records.where('date').between(start, end, true, true).toArray()
+                ]);
+
+                // Merge and deduplicate records by [student_id + date + status]
+                const allRecords = [...dailyRecords, ...detailedRecords];
+                const seen = new Set();
+                const records = allRecords.filter(r => {
+                    const key = `${r.student_id}_${r.date}_${r.status}`;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+
+                console.log(`[AttendanceHistory] Found ${records.length} unique records (${dailyRecords.length} daily, ${detailedRecords.length} detailed) between ${start} and ${end}`);
                 
-                console.log(`[AttendanceHistory] Found ${records.length} total records between ${start} and ${end}`);
                 if (records.length > 0) {
-                    console.log('[AttendanceHistory] Sample record student_ids:', records.slice(0, 3).map(r => r.student_id));
-                    console.log('[AttendanceHistory] Sample student IDs in class:', [...studentIds].slice(0, 3));
-                    console.log('[AttendanceHistory] Resolved code→id map sample:', Object.entries(codeToId).slice(0, 3));
+                    const sampleRecIds = records.slice(0, 3).map(r => r.student_id);
+                    console.log('[AttendanceHistory] Sample Record IDs in range:', sampleRecIds);
+                    console.log('[AttendanceHistory] Sample Student IDs in class:', [...studentIds].slice(0, 3));
                 }
                 
                 // Match records: direct ID match OR suffix/code match
                 const filteredRecords = records.filter(r => {
                     const rid = String(r.student_id || '').trim();
-                    return allValidIds.has(rid);
+                    if (studentIds.has(rid)) return true; // Direct Match
+                    
+                    // Suffix/Code Match (for biometric system records)
+                    if (codeToId[rid]) {
+                        r._resolvedStudentId = codeToId[rid]; // Tag for UI
+                        return true;
+                    }
+                    
+                    // Check if the record ID is a suffix that matches a student in this class
+                    // (e.g. record student_id is "1057" and JSS 1 student is "NKQMS-2026-1057")
+                    for (const [code, canonicalId] of Object.entries(codeToId)) {
+                        if (rid === code || rid.endsWith(`-${code}`)) {
+                            r._resolvedStudentId = canonicalId;
+                            return true;
+                        }
+                    }
+                    return false;
                 });
 
                 // Normalise each record to a canonical student_id

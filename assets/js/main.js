@@ -138,7 +138,7 @@ async function initApp() {
             const isLoginVisible = window.getComputedStyle(loginScreen).display !== 'none';
             if (isLoginVisible) {
                 loginBtn.disabled = false;
-                loginBtn.innerHTML = 'Sign In to Dashboard <i data-lucide="arrow-right"></i>';
+                loginBtn.innerHTML = 'Login <i data-lucide="arrow-right"></i>';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             }
         }
@@ -332,7 +332,7 @@ if (loginForm) {
                 loginError.textContent = error.message || 'Invalid email or password.';
                 loginError.style.display = 'block';
                 loginBtn.disabled = false;
-                loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
+                loginBtn.innerHTML = '<span>Login</span><i data-lucide="log-in"></i>';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             } else if (data && data.session) {
                 console.log('Login successful, loading app...');
@@ -341,12 +341,12 @@ if (loginForm) {
                 loginError.textContent = 'Session could not be established. Please try again.';
                 loginError.style.display = 'block';
                 loginBtn.disabled = false;
-                loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
+                loginBtn.innerHTML = '<span>Login</span><i data-lucide="log-in"></i>';
             }
         } catch (err) {
             console.error('Login form error:', err);
             loginBtn.disabled = false;
-            loginBtn.innerHTML = '<span>Sign In to Account</span><i data-lucide="log-in"></i>';
+            loginBtn.innerHTML = '<span>Login</span><i data-lucide="log-in"></i>';
         }
     });
 }

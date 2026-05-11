@@ -180,15 +180,15 @@ export async function syncFromCloud(forceAll = false) {
             try {
                 let hasMore = true;
                 let offset = 0;
-                const BATCH_SIZE = table === 'attendance_records' ? 2000 : 1000;
+                const BATCH_SIZE = (table === 'attendance_records' || table === 'attendance') ? 2000 : 1000;
 
                 while (hasMore) {
                     let query = client.from(table).select('*').range(offset, offset + BATCH_SIZE - 1);
                     
                     if (!forceAll) {
-                        // For attendance_records: filter by EITHER updated_at OR date
+                        // For attendance tables: filter by EITHER updated_at OR date
                         // (biometric records may have null/stale updated_at but a valid date)
-                        if (table === 'attendance_records') {
+                        if (table === 'attendance_records' || table === 'attendance') {
                             const dateFilter = lastSyncTime
                                 ? new Date(lastSyncTime).toISOString().split('T')[0]
                                 : '1970-01-01';
