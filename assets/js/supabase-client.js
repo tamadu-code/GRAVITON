@@ -228,15 +228,15 @@ export async function syncFromCloud(forceAll = false) {
                 }
             } catch (e) { console.warn(`Pull error for ${table}:`, e); }
         }
+    } catch (err) {
+        console.error('[Sync] Fatal error in syncFromCloud:', err);
+        throw err;
     } finally {
         window._isSyncingFromCloud = false;
         if (!forceAll) {
             localStorage.setItem('last_sync_timestamp', new Date().toISOString());
         }
         console.log('[Sync] Cloud Pull sequence complete.');
-    } catch (err) {
-        console.error('[Sync] Fatal error in syncFromCloud:', err);
-        throw err;
     }
 }
 
