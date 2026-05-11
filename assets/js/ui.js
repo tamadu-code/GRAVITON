@@ -98,8 +98,8 @@ export const UI = {
             const isParent = role === 'parent';
 
             const restrictedForTeachers = ['academic', 'bulkimport', 'staff', 'promotion', 'config', 'reports'];
-            const allowedForStudents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
-            const allowedForParents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
+            const allowedForStudents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins'];
+            const allowedForParents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins'];
             
             let isRestricted = false;
             if (isTeacher && restrictedForTeachers.includes(viewName)) isRestricted = true;
@@ -279,7 +279,8 @@ export const UI = {
         let teacherCount = 0;
         try {
             // Optimize teacher count using indexed query
-            teacherCount = await db.profiles.where('role').anyOf('Teacher', 'Admin').filter(p => p.status !== 'Terminated' && p.status !== 'Inactive').count();
+            const roles = ['Teacher', 'Admin'];
+            teacherCount = await db.profiles.where('role').anyOf(roles).filter(p => p.status !== 'Terminated' && p.status !== 'Inactive').count();
         } catch(e) { console.error('Error fetching teacher count', e); }
 
         const today          = new Date().toISOString().split('T')[0];
@@ -436,7 +437,13 @@ export const UI = {
         if (isAdmin) {
             myStudents = await db.students.where('is_active').notEqual(false).toArray();
         } else {
-            myStudents = await db.students.where('class_name').anyOf(assignedClasses).filter(s => s.is_active !== false).toArray();
+            // Ensure assignedClasses is a flat array of strings and non-empty to prevent Dexie errors
+            const validClasses = Array.isArray(assignedClasses) ? assignedClasses.filter(c => typeof c === 'string' && c.trim() !== '') : [];
+            if (validClasses.length > 0) {
+                myStudents = await db.students.where('class_name').anyOf(validClasses).filter(s => s.is_active !== false).toArray();
+            } else {
+                myStudents = [];
+            }
         }
         
         const sessionSetting = await db.settings.get('currentSession') || await db.settings.get('current_session');
@@ -490,25 +497,24 @@ export const UI = {
             <div class="view-container animate-fade-in" style="padding: 1.5rem; background: #f8fafc;">
                 <!-- Header & Ticker -->
                 <header style="margin-bottom: 2rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                        <div style="display: flex; align-items: center; gap: 1.5rem;">
-                            <div class="passport-editable" onclick="UI.triggerPassportUpload('${teacherId}', 'staff')" style="width: 70px; height: 70px; border-radius: 20px; background: #e0e7ff; color: #4338ca; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 900; border: 3px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.05); overflow: hidden; position: relative;">
-                                ${this.currentUser.passport ? `<img src="${this.currentUser.passport}" style="width: 100%; height: 100%; object-fit: cover;">` : (this.currentUser.name || 'T').charAt(0)}
-                                <div class="camera-overlay"><i data-lucide="camera" style="width: 18px;"></i></div>
-                            </div>
-                            <div>
-                                <h1 style="font-size: 2.25rem; font-weight: 900; color: #1e293b; letter-spacing: -0.02em; font-family: 'Outfit', sans-serif; margin: 0;">Academic Command Center</h1>
-                                <p style="color: #64748b; font-weight: 500; margin: 0;">Hello, <span style="color: #2563eb; font-weight: 700;">${this.currentUser.name}</span>. Reviewing your ${term} status.</p>
-                            </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 1.5rem; margin-bottom: 2rem; text-align: center;">
+                        <div class="passport-editable" onclick="UI.triggerPassportUpload('${teacherId}', 'staff')" style="width: 110px; height: 110px; border-radius: 30px; background: #e0e7ff; color: #4338ca; display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: 900; border: 4px solid white; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden; position: relative;">
+                            ${this.currentUser.passport ? `<img src="${this.currentUser.passport}" style="width: 100%; height: 100%; object-fit: cover;">` : (this.currentUser.name || 'T').charAt(0)}
+                            <div class="camera-overlay"><i data-lucide="camera" style="width: 20px;"></i></div>
                         </div>
-                        <div style="text-align: right; background: white; padding: 0.75rem 1.25rem; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm); display: flex; align-items: center; gap: 1rem;">
-                            <button id="teacher-sync-btn" class="btn btn-primary" style="height: 40px; border-radius: 10px; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; background: #2563eb; color: white; border: none; padding: 0 1rem; cursor: pointer;">
-                                <i data-lucide="refresh-cw" style="width: 14px;"></i> Sync Data
-                            </button>
-                            <div style="height: 30px; width: 1px; background: #e2e8f0;"></div>
-                            <div>
-                                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Current Session</div>
-                                <div style="font-weight: 800; color: #1e293b;">${session} • ${term}</div>
+                        <div>
+                            <h1 style="font-size: 2.25rem; font-weight: 900; color: #1e293b; letter-spacing: -0.02em; font-family: 'Outfit', sans-serif; margin: 0;">Academic Command Center</h1>
+                            <p style="color: #64748b; font-weight: 500; margin-top: 0.5rem; font-size: 1.1rem;">Hello, <span style="color: #2563eb; font-weight: 700;">${this.currentUser.name}</span>. Reviewing your ${term} status.</p>
+                            
+                            <div style="display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 1.5rem;">
+                                <button id="teacher-sync-btn" class="btn btn-primary" style="height: 40px; border-radius: 12px; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; background: #2563eb; color: white; border: none; padding: 0 1.25rem; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+                                    <i data-lucide="refresh-cw" style="width: 14px;"></i> Sync Data
+                                </button>
+                                <div style="height: 30px; width: 1px; background: #e2e8f0;"></div>
+                                <div style="text-align: left;">
+                                    <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 800; text-transform: uppercase;">Session</div>
+                                    <div style="font-weight: 800; color: #1e293b; font-size: 0.9rem;">${session} • ${term}</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -765,29 +771,29 @@ export const UI = {
                         <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-radius: 30px; padding: 2rem; color: white; position: relative; overflow: hidden; box-shadow: 0 20px 40px -10px rgba(30, 27, 75, 0.3);">
                             <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
                             
-                            <div style="position: relative; z-index: 2; display: flex; gap: 2rem; align-items: center; flex-wrap: wrap;">
-                                <div class="passport-editable" onclick="UI.triggerPassportUpload('${student?.student_id}', 'student')" style="width: 110px; height: 110px; border-radius: 30px; border: 4px solid rgba(255,255,255,0.1); box-shadow: 0 10px 25px rgba(0,0,0,0.2); overflow: hidden; background: #f1f5f9; flex-shrink: 0;">
+                            <div style="position: relative; z-index: 2; display: flex; flex-direction: column; gap: 1.5rem; align-items: center; text-align: center;">
+                                <div class="passport-editable" onclick="UI.triggerPassportUpload('${student?.student_id}', 'student')" style="width: 120px; height: 120px; border-radius: 35px; border: 4px solid rgba(255,255,255,0.2); box-shadow: 0 15px 35px rgba(0,0,0,0.3); overflow: hidden; background: #f1f5f9; flex-shrink: 0;">
                                     <img src="${student?.passport_url || student?.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student?.student_id || 'Scholar'}`}" style="width: 100%; height: 100%; object-fit: cover;">
                                     <div class="camera-overlay"><i data-lucide="camera" style="width: 24px;"></i></div>
                                 </div>
                                 
-                                <div style="flex: 1; min-width: 0;">
-                                    <h2 class="banner-title" style="font-size: clamp(1.4rem, 4vw, 2.2rem); font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
-                                    <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; flex-wrap: wrap;">
+                                <div style="width: 100%;">
+                                    <h2 class="banner-title" style="font-size: clamp(1.8rem, 5vw, 2.8rem); font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
+                                    <div style="display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; justify-content: center;">
                                         <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ID: ${student?.student_id || 'PENDING'}</span>
                                         <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">CLASS: ${student?.class_name || 'N/A'}</span>
                                         <span style="background: #4f46e5; padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">CODE: ${student?.attendance_code || '---'}</span>
                                         <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ADMIT: ${student?.admission_year || 'N/A'}</span>
                                     </div>
                                     
-                                    <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap;">
-                                        <button class="btn btn-sm" onclick="UI.renderView('cbt')" style="background: #4f46e5; color: white; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.25rem;">
+                                    <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap; justify-content: center;">
+                                        <button class="btn btn-sm" onclick="UI.renderView('cbt')" style="background: #4f46e5; color: white; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.5rem;">
                                             <i data-lucide="play-circle" style="width: 16px;"></i> Start CBT
                                         </button>
-                                        <button class="btn btn-sm" onclick="UI.openResultPinModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; font-weight: 800; padding: 0.5rem 1.25rem;" ${hasFeeBalance ? 'disabled' : ''}>
+                                        <button class="btn btn-sm" onclick="UI.openResultPinModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; font-weight: 800; padding: 0.5rem 1.5rem;" ${hasFeeBalance ? 'disabled' : ''}>
                                             <i data-lucide="file-text" style="width: 16px;"></i> Grades
                                         </button>
-                                        <button class="btn btn-sm" onclick="UI.renderView('noticeboard')" style="background: white; color: #1e1b4b; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.25rem;">
+                                        <button class="btn btn-sm" onclick="UI.renderView('noticeboard')" style="background: white; color: #1e1b4b; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.5rem;">
                                             <i data-lucide="bell" style="width: 16px;"></i> Bulletins
                                         </button>
                                     </div>
@@ -8676,15 +8682,20 @@ export const UI = {
             const assignedSubIds = assignments.map(a => a.subject_id);
             const assignedClasses = [...new Set(assignments.map(a => a.class_name))];
             
-            // Use indexed anyOf for subjects
-            scores = await db.scores.where('subject_id').anyOf(assignedSubIds).toArray();
+            // Use indexed anyOf for subjects - Safeguarded
+            const validSubIds = Array.isArray(assignedSubIds) ? assignedSubIds.filter(id => id != null) : [];
+            const validClasses = Array.isArray(assignedClasses) ? assignedClasses.filter(c => typeof c === 'string' && c.trim() !== '') : [];
             
-            // Further filter by classes (could be indexed if we had class_name in scores)
-            // Wait, I just added class_name to scores!
-            scores = scores.filter(s => assignedClasses.includes(s.class_name));
+            if (validSubIds.length > 0) {
+                scores = await db.scores.where('subject_id').anyOf(validSubIds).toArray();
+                subjects = await db.subjects.where('id').anyOf(validSubIds).toArray();
+            }
             
-            students = await db.students.where('class_name').anyOf(assignedClasses).filter(s => s.is_active !== false).toArray();
-            subjects = await db.subjects.where('id').anyOf(assignedSubIds).toArray();
+            if (validClasses.length > 0) {
+                students = await db.students.where('class_name').anyOf(validClasses).filter(s => s.is_active !== false).toArray();
+                // Further filter scores by classes
+                scores = scores.filter(s => validClasses.includes(s.class_name));
+            }
         } else {
             scores = await db.scores.toArray(); // Admins still get all, but maybe limit?
             students = await db.students.where('is_active').notEqual(false).toArray();
