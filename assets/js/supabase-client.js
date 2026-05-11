@@ -212,8 +212,12 @@ export async function syncFromCloud(forceAll = false) {
                         const validData = data.filter(item => item[pk]).map(item => ({ ...item, is_synced: 1 }));
                         if (validData.length > 0) {
                             await db[table].bulkPut(validData);
-                            if (table === 'attendance_records') {
-                                console.log(`[Sync] Pulled ${validData.length} attendance_records from cloud`);
+                            if (table === 'attendance_records' || table === 'attendance') {
+                                console.log(`[Sync] Pulled ${validData.length} records into '${table}' table.`);
+                            }
+                        } else {
+                            if (table === 'attendance_records' || table === 'attendance') {
+                                console.log(`[Sync] No new records found for '${table}' in this batch.`);
                             }
                         }
                         if (data.length < BATCH_SIZE) hasMore = false;
@@ -226,7 +230,10 @@ export async function syncFromCloud(forceAll = false) {
         }
     } finally {
         window._isSyncingFromCloud = false;
-        localStorage.setItem('last_sync_timestamp', new Date().toISOString());
+        if (!forceAll) {
+            localStorage.setItem('last_sync_timestamp', new Date().toISOString());
+        }
+        console.log('[Sync] Cloud Pull sequence complete.');
     }
 }
 
