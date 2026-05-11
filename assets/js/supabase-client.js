@@ -84,7 +84,7 @@ export async function syncToCloud() {
                     subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'updated_at'],
                     form_teachers: ['id', 'teacher_id', 'class_name', 'updated_at'],
                     scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
-                    attendance: ['id', 'student_id', 'date', 'status', 'updated_at'],
+                    attendance: ['id', 'student_id', 'date', 'status', 'sign_in', 'sign_out', 'is_late', 'updated_at'],
                     attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
                     timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
                     notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'updated_at'],

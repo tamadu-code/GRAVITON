@@ -19,11 +19,11 @@ import requests
 # CONFIGURATION
 # ──────────────────────────────────────────────────────────────────────────────
 DOWNLOADS_DIR   = Path.home() / "Downloads"
-SUPABASE_URL    = "https://wuzliodvddzmhehffqfx.supabase.co"
+SUPABASE_URL    = "https://urqygjltionvaxuacfzr.supabase.co"
 ANON_KEY        = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-    ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1emxpb2R2ZGR6bWhlaGZmcWZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTkxNTEsImV4cCI6MjA5MjQzNTE1MX0"
-    ".0ASY-NuhdHPhyg9pB2XYiXOLJTnrocXxjkC6gpqO_vQ"
+    ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVycXlnamx0aW9udmF4dWFjZnpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzEzMDEsImV4cCI6MjA5MjYwNzMwMX0"
+    ".Vpk7rifsfjMCVBSYpEdVzkHv3w324iKp8B7urlKc_e4"
 )
 BATCH_SIZE      = 100
 REQUEST_TIMEOUT = 30
