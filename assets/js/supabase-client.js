@@ -177,6 +177,7 @@ export async function syncFromCloud(forceAll = false) {
 
     try {
         for (const table of tables) {
+            console.log(`[Sync] Pulling table: ${table}...`);
             try {
                 let hasMore = true;
                 let offset = 0;
@@ -233,6 +234,9 @@ export async function syncFromCloud(forceAll = false) {
             localStorage.setItem('last_sync_timestamp', new Date().toISOString());
         }
         console.log('[Sync] Cloud Pull sequence complete.');
+    } catch (err) {
+        console.error('[Sync] Fatal error in syncFromCloud:', err);
+        throw err;
     }
 }
 
