@@ -7037,161 +7037,150 @@ export const UI = {
     },
 
     async finalizeStartCBTExam(examId, isResume = false) {
-        Notifications.show('Initializing secure exam session...', 'info');
-        console.log(`[CBT] Finalizing start for exam: ${examId}, isResume: ${isResume}`);
-        const exam = await db.cbt_exams.get(examId);
-        if (!exam) {
-            console.error(`[CBT] Exam not found: ${examId}`);
-            return Notifications.show('Exam details could not be loaded.', 'error');
-        }
-
-        let questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
-        console.log(`[CBT AUDIT] Loaded ${questions.length} questions for exam ${examId}`);
-        
-        // Data Integrity Check
-        const brokenQuestions = questions.filter(q => !q.option_a && !q.option_b);
-        if (brokenQuestions.length > 0) {
-            console.warn(`[CBT AUDIT] WARNING: Found ${brokenQuestions.length} questions with ZERO options! IDs:`, brokenQuestions.map(q => q.id));
-        }
-
-        if (questions.length === 0) {
-            console.error(`[CBT] No questions found for exam: ${examId}`);
-            return Notifications.show('This exam has no questions assigned yet. Please contact your teacher.', 'error');
-        }
-
-        const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
-        if (!studentId) {
-            console.error(`[CBT] Student ID resolution failed. User:`, this.currentUser);
-            return Notifications.show('Unable to identify your student record. Please re-login.', 'error');
-        }
-
-        console.log(`[CBT] Starting exam for Student: ${studentId}`);
-
-        const now = new Date();
-        const durationSeconds = (exam.duration || 30) * 60;
-
-        // Seeded Shuffle and Limit Questions (Deterministic based on student + exam)
-        const seedStr = studentId + examId;
-        let seed = 0;
-        for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
-        
-        const seededShuffle = (array, seed) => {
-            let m = array.length, t, i;
-            while (m) {
-                seed = (seed * 9301 + 49297) % 233280;
-                i = Math.floor((seed / 233280) * m--);
-                t = array[m];
-                array[m] = array[i];
-                array[i] = t;
-            }
-            return array;
-        };
-
-        questions = seededShuffle([...questions], seed);
-        const limit = parseInt(exam.question_limit) || 0;
-        if (limit > 0) {
-            questions = questions.slice(0, limit);
-        }
-
-        console.log(`[CBT AUDIT] Rendering ${questions.length} questions. Checking for missing options...`);
-
-        // Prepare Questions - DO NOT filter out questions here, otherwise the total_questions count will mismatch
-        questions = questions.map((q, idx) => {
-            if (!q.option_a || !q.option_b) {
-                console.warn(`[CBT AUDIT] CRITICAL: Question ID ${q.id} has NO OPTIONS A/B!`, q);
-            }
-            
-            const options = [
-                { key: 'a', text: q.option_a || '[Empty Option A]' },
-                { key: 'b', text: q.option_b || '[Empty Option B]' },
-                { key: 'c', text: q.option_c },
-                { key: 'd', text: q.option_d },
-                { key: 'e', text: q.option_e }
-            ];
-
-            // Only show options that actually have text, but ensure A and B always exist if it's MCQ
-            const validOptions = options.filter(o => o && o.text && o.text.toString().trim().length > 0);
-            
-            // If it's truly empty, force A and B so the student can at least see something (and report it)
-            if (validOptions.length < 2) {
-                if (!q.option_a) validOptions.push({ key: 'a', text: 'Error: Option A missing in database' });
-                if (!q.option_b) validOptions.push({ key: 'b', text: 'Error: Option B missing in database' });
-            }
-
-            // Use a modified seed for each question to keep them distinct but deterministic
-            let qSeed = seed + idx;
-            const shuffledOptions = seededShuffle([...validOptions], qSeed);
-            
-            // SECURITY: Create a one-way hash of the correct answer.
-            const correctKey = (q.correct_option || 'A').toLowerCase();
-            const rawCorrectText = q[`option_${correctKey}`] || '';
-            const answerHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join(''); 
-
-            return { ...q, shuffledOptions, answerHash };
-        });
-
-        // Check for existing session
-        let session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
-
-        if (session && session.status === 'In Progress') {
-            // Resume session — calculate remaining time from cloud timer
-            const startTime = new Date(session.started_at);
-            const elapsedSeconds = Math.floor((now - startTime) / 1000);
-            this.examTimeLeft = durationSeconds - elapsedSeconds;
-
-            // We no longer auto-submit just for being away. 
-            // The timer (startExamTimer) will handle submission when timeLeft <= 0.
-        } else {
-            // Start New Session
-            const totalMarks = questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
-            
-            const newSession = prepareForSync({
-                id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                exam_id: examId,
-                student_id: studentId,
-                score: 0,
-                total_questions: questions.length,
-                total_marks: totalMarks,
-                answers: {},
-                warnings: 0,
-                violations: [],
-                started_at: now.toISOString(),
-                status: 'In Progress'
-            });
-            await db.cbt_results.add(newSession);
-            session = newSession;
-            this.examTimeLeft = durationSeconds;
-            this.debouncedSync();
-        }
-
-        // Store session state
-        this.currentExam = exam;
-        this.currentQuestions = questions;
-        this.currentQuestionIndex = 0;
-        this.userAnswers = session ? (session.answers || {}) : {};
-
-        // For resume: jump to the first unanswered question
-        if (isResume && this.userAnswers) {
-            const answeredCount = Object.keys(this.userAnswers).length;
-            if (answeredCount > 0) {
-                this.currentQuestionIndex = Math.min(answeredCount, questions.length - 1);
-            }
-        }
-
-        this.examDurationSeconds = durationSeconds;
-
-        document.body.classList.add('exam-mode');
-        
-        // Request Fullscreen for security
         try {
-            if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen();
+            Notifications.show('Initializing secure exam session...', 'info');
+            console.log(`[CBT] Finalizing start for exam: ${examId}, isResume: ${isResume}`);
+            const exam = await db.cbt_exams.get(examId);
+            if (!exam) {
+                console.error(`[CBT] Exam not found: ${examId}`);
+                return Notifications.show('Exam details could not be loaded.', 'error');
             }
-        } catch (e) { console.warn('Fullscreen request failed:', e); }
 
-        this.renderCBTExamInterface();
-        this.startExamTimer();
-        this.attachSecurityListeners();
+            let questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+            console.log(`[CBT AUDIT] Loaded ${questions.length} questions for exam ${examId}`);
+            
+            // Data Integrity Check
+            const brokenQuestions = questions.filter(q => !q.option_a && !q.option_b);
+            if (brokenQuestions.length > 0) {
+                console.warn(`[CBT AUDIT] WARNING: Found ${brokenQuestions.length} questions with ZERO options! IDs:`, brokenQuestions.map(q => q.id));
+            }
+
+            if (questions.length === 0) {
+                console.error(`[CBT] No questions found for exam: ${examId}`);
+                return Notifications.show('This exam has no questions assigned yet. Please contact your teacher.', 'error');
+            }
+
+            const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
+            if (!studentId) {
+                console.error(`[CBT] Student ID resolution failed. User:`, this.currentUser);
+                return Notifications.show('Unable to identify your student record. Please re-login.', 'error');
+            }
+
+            console.log(`[CBT] Starting exam for Student: ${studentId}`);
+
+            const now = new Date();
+            const durationSeconds = (exam.duration || 30) * 60;
+
+            // Seeded Shuffle and Limit Questions (Deterministic based on student + exam)
+            const seedStr = studentId + examId;
+            let seed = 0;
+            for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+            
+            const seededShuffle = (array, seed) => {
+                let m = array.length, t, i;
+                while (m) {
+                    seed = (seed * 9301 + 49297) % 233280;
+                    i = Math.floor((seed / 233280) * m--);
+                    t = array[m];
+                    array[m] = array[i];
+                    array[i] = t;
+                }
+                return array;
+            };
+
+            questions = seededShuffle([...questions], seed);
+            const limit = parseInt(exam.question_limit) || 0;
+            if (limit > 0) {
+                questions = questions.slice(0, limit);
+            }
+
+            console.log(`[CBT AUDIT] Rendering ${questions.length} questions. Checking for missing options...`);
+
+            // Prepare Questions
+            questions = questions.map((q, idx) => {
+                const options = [
+                    { key: 'a', text: q.option_a || '[Empty Option A]' },
+                    { key: 'b', text: q.option_b || '[Empty Option B]' },
+                    { key: 'c', text: q.option_c },
+                    { key: 'd', text: q.option_d },
+                    { key: 'e', text: q.option_e }
+                ];
+
+                const validOptions = options.filter(o => o && o.text && o.text.toString().trim().length > 0);
+                if (validOptions.length < 2) {
+                    if (!q.option_a) validOptions.push({ key: 'a', text: 'Error: Option A missing' });
+                    if (!q.option_b) validOptions.push({ key: 'b', text: 'Error: Option B missing' });
+                }
+
+                let qSeed = seed + idx;
+                const shuffledOptions = seededShuffle([...validOptions], qSeed);
+                
+                const correctKey = (q.correct_option || 'A').toLowerCase();
+                const rawCorrectText = q[`option_${correctKey}`] || '';
+                const answerHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join(''); 
+
+                return { ...q, shuffledOptions, answerHash };
+            });
+
+            // Check for existing session using compound index
+            let session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+
+            if (session && session.status === 'In Progress') {
+                const startTime = new Date(session.started_at);
+                const elapsedSeconds = Math.floor((now - startTime) / 1000);
+                this.examTimeLeft = durationSeconds - elapsedSeconds;
+            } else {
+                const totalMarks = questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+                
+                const newSession = prepareForSync({
+                    id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    exam_id: examId,
+                    student_id: studentId,
+                    score: 0,
+                    total_questions: questions.length,
+                    total_marks: totalMarks,
+                    answers: {},
+                    warnings: 0,
+                    violations: [],
+                    started_at: now.toISOString(),
+                    status: 'In Progress'
+                });
+                await db.cbt_results.add(newSession);
+                session = newSession;
+                this.examTimeLeft = durationSeconds;
+                this.debouncedSync();
+            }
+
+            // Store session state
+            this.currentExam = exam;
+            this.currentQuestions = questions;
+            this.currentQuestionIndex = 0;
+            this.userAnswers = session ? (session.answers || {}) : {};
+
+            if (isResume && this.userAnswers) {
+                const answeredCount = Object.keys(this.userAnswers).length;
+                if (answeredCount > 0) {
+                    this.currentQuestionIndex = Math.min(answeredCount, questions.length - 1);
+                }
+            }
+
+            this.examDurationSeconds = durationSeconds;
+            document.body.classList.add('exam-mode');
+            
+            try {
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                }
+            } catch (e) { console.warn('Fullscreen request failed:', e); }
+
+            this.renderCBTExamInterface();
+            this.startExamTimer();
+            this.attachSecurityListeners();
+            
+        } catch (error) {
+            console.error('[CBT START FATAL]', error);
+            Notifications.show('An unexpected error occurred while starting the exam. Please try again or contact support.', 'error');
+        }
     },
 
     attachSecurityListeners() {
@@ -7297,138 +7286,123 @@ export const UI = {
                 if (this.examTimeLeft <= 300) timerEl.style.color = '#ef4444';
             }
             if (this.examTimeLeft <= 0) {
-                clearInterval(this.examTimerInterval);
-                this.submitExam();
+                renderCBTExamInterface() {
+        try {
+            if (!this.currentQuestions || !this.currentQuestions[this.currentQuestionIndex]) {
+                throw new Error("No active question to render.");
             }
-        }, 1000);
-    },
 
-    escapeHTML(str) {
-        if (!str) return '';
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    },
+            const q = this.currentQuestions[this.currentQuestionIndex];
+            const progress = ((this.currentQuestionIndex + 1) / this.currentQuestions.length) * 100;
+            const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
+            const studentName = this.currentUser.name || 'Student';
 
-    renderCBTExamInterface() {
-        const q = this.currentQuestions[this.currentQuestionIndex];
-        const progress = ((this.currentQuestionIndex + 1) / this.currentQuestions.length) * 100;
-        const studentId = this.currentUser.assigned_id || this.currentUser.id;
-        const studentName = this.currentUser.name || 'Student';
+            let timeStr = '00:00';
+            if (this.examTimeLeft && !isNaN(this.examTimeLeft)) {
+                const mins = Math.floor(Math.max(0, this.examTimeLeft) / 60);
+                const secs = Math.max(0, this.examTimeLeft) % 60;
+                timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }
 
-        // Calculate current time remaining for instant-load (prevents 00:00 or NaN flickering)
-        let timeStr = '00:00';
-        const existingTimer = document.getElementById('exam-timer');
-        
-        if (this.examEndTime && !isNaN(this.examEndTime)) {
-            const timeRemaining = Math.max(0, Math.floor((this.examEndTime - Date.now()) / 1000));
-            const mins = Math.floor(timeRemaining / 60);
-            const secs = timeRemaining % 60;
-            timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        } else if (existingTimer) {
-            // If we don't have a valid end time yet, preserve what's on screen
-            timeStr = existingTimer.innerText;
-        }
+            this.contentArea.innerHTML = `
+                <div class="cbt-exam-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; background: #f8fafc; z-index: 10000; user-select: none; -webkit-user-select: none;">
+                    <!-- Security Watermark -->
+                    <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999; display: flex; flex-wrap: wrap; opacity: 0.04; overflow: hidden; align-content: flex-start; gap: 100px; padding: 50px;">
+                        ${Array(15).fill(`<div style="transform: rotate(-30deg); font-weight: 900; font-size: 2rem; color: #000; white-space: nowrap;">${studentId} - ${studentName} - SECURE</div>`).join('')}
+                    </div>
+                    <!-- Header -->
+                    <header class="cbt-exam-header" style="flex-shrink: 0; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; background: white; z-index: 20;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <button class="icon-btn" onclick="UI.toggleCBTMap()" style="background: #f5f7ff; border: 1px solid #e0e7ff; width: 36px; height: 36px; border-radius: 10px; color: #4338ca; display: flex; align-items: center; justify-content: center;">
+                                <i data-lucide="layout-grid" style="width: 18px;"></i>
+                            </button>
+                            <div>
+                                <h2 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 0.85rem; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${this.escapeHTML(this.currentExam.title)}</h2>
+                                <div style="font-size: 0.6rem; color: #64748b; font-weight: 700; letter-spacing: 0.05em;">Q${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}</div>
+                            </div>
+                        </div>
+                        <div id="exam-timer" class="cbt-exam-timer-box" style="font-size: 1rem; min-width: 80px; text-align: center; padding: 0.35rem 0.75rem; border-radius: 10px; background: #fff1f2; color: #e11d48; font-weight: 800; border: 1px solid #fecdd3;">${timeStr}</div>
+                    </header>
 
-        this.contentArea.innerHTML = `
-            <div class="cbt-exam-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; background: #f8fafc; z-index: 10000; user-select: none; -webkit-user-select: none;">
-                <!-- Security Watermark -->
-                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999; display: flex; flex-wrap: wrap; opacity: 0.04; overflow: hidden; align-content: flex-start; gap: 100px; padding: 50px;">
-                    ${Array(20).fill(`<div style="transform: rotate(-30deg); font-weight: 900; font-size: 2rem; color: #000; white-space: nowrap;">${studentId} - ${studentName} - SECURE EXAM</div>`).join('')}
-                </div>
-                <!-- Header: Title & Timer -->
-                <header class="cbt-exam-header" style="flex-shrink: 0; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; background: white; z-index: 20;">
-                    <div style="display: flex; align-items: center; gap: 0.75rem;">
-                        <button class="icon-btn" onclick="UI.toggleCBTMap()" style="background: #f5f7ff; border: 1px solid #e0e7ff; width: 36px; height: 36px; border-radius: 10px; color: #4338ca; display: flex; align-items: center; justify-content: center;">
-                            <i data-lucide="layout-grid" style="width: 18px;"></i>
+                    <!-- Progress -->
+                    <div style="width: 100%; height: 4px; background: #f1f5f9; flex-shrink: 0; z-index: 20;">
+                        <div style="width: ${progress}%; height: 100%; background: #4338ca; transition: width 0.4s ease;"></div>
+                    </div>
+
+                    <!-- Question Area -->
+                    <main style="flex: 1; overflow-y: auto; padding: 1rem; -webkit-overflow-scrolling: touch;">
+                        <div class="cbt-question-card" style="background: white; border-radius: 20px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; max-width: 800px; margin: 0 auto 5rem;">
+                            <div style="font-size: 1rem; font-weight: 700; color: #1e293b; line-height: 1.5; margin-bottom: 1.5rem;">
+                                ${this.parseCBTContent(q.question_text)}
+                            </div>
+
+                            <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+                                ${(q.shuffledOptions || []).map((opt, idx) => {
+                                    const isSelected = this.userAnswers[q.id] === opt.text;
+                                    return `
+                                        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 2px solid ${isSelected ? '#4338ca' : '#f1f5f9'}; border-radius: 12px; cursor: pointer; transition: all 0.2s; background: ${isSelected ? '#f5f7ff' : 'white'};" class="cbt-option-label">
+                                            <input type="radio" name="exam-option" value="${this.escapeHTML(opt.text)}" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
+                                            <div style="display: flex; align-items: center; gap: 0.75rem; width: 100%;">
+                                                <span style="font-weight: 800; color: ${isSelected ? '#4338ca' : '#94a3b8'}; background: ${isSelected ? '#eef2ff' : '#f8fafc'}; width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; flex-shrink: 0;">
+                                                    ${String.fromCharCode(64 + (idx + 1))}
+                                                </span>
+                                                <span style="font-weight: 600; color: #334155; font-size: 0.9rem; line-height: 1.4;">${this.parseCBTContent(opt.text)}</span>
+                                            </div>
+                                        </label>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    </main>
+
+                    <!-- Footer -->
+                    <footer class="cbt-exam-footer" style="position: fixed; bottom: 0; left: 0; width: 100%; background: white; padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; z-index: 10001; box-shadow: 0 -4px 15px rgba(0,0,0,0.05);">
+                        <button class="btn btn-secondary" style="border-radius: 10px; height: 44px; padding: 0 1rem; font-weight: 700; background: #f1f5f9; color: #475569; border: none; display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem;" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>
+                            <i data-lucide="arrow-left" style="width:16px;"></i> Prev
                         </button>
-                        <div>
-                            <h2 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 0.85rem; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${this.escapeHTML(this.currentExam.title)}</h2>
-                            <div style="font-size: 0.6rem; color: #64748b; font-weight: 700; letter-spacing: 0.05em;">Q${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}</div>
+                        
+                        <div style="display: flex; gap: 0.5rem;">
+                            ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
+                                <button class="btn btn-success" style="border-radius: 10px; height: 44px; padding: 0 1.5rem; background: #10b981; color: white; border: none; font-weight: 800; font-size: 0.8rem; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);" onclick="UI.confirmSubmitExam()">SUBMIT</button>
+                            ` : `
+                                <button class="btn btn-primary" style="border-radius: 10px; height: 44px; padding: 0 1.5rem; background: #4338ca; color: white; border: none; font-weight: 800; font-size: 0.8rem; display: flex; align-items: center; gap: 0.4rem; box-shadow: 0 4px 10px rgba(67, 56, 202, 0.2);" onclick="UI.nextQuestion()">NEXT <i data-lucide="arrow-right" style="width:16px;"></i></button>
+                            `}
                         </div>
-                    </div>
-                    <div id="exam-timer" class="cbt-exam-timer-box" style="font-size: 1rem; min-width: 80px; text-align: center; padding: 0.35rem 0.75rem; border-radius: 10px; background: #fff1f2; color: #e11d48; font-weight: 800; border: 1px solid #fecdd3;">${timeStr}</div>
-                </header>
+                    </footer>
 
-                <!-- Progress Bar -->
-                <div style="width: 100%; height: 4px; background: #f1f5f9; flex-shrink: 0; z-index: 20;">
-                    <div style="width: ${progress}%; height: 100%; background: #4338ca; transition: width 0.4s ease; box-shadow: 0 0 10px rgba(67, 56, 202, 0.3);"></div>
-                </div>
-
-                <!-- Main Content Area (Scrollable) -->
-                <main style="flex: 1; overflow-y: auto; padding: 1rem; -webkit-overflow-scrolling: touch;">
-                    <div class="cbt-question-card" style="background: white; border-radius: 20px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; max-width: 800px; margin: 0 auto 5rem;">
-                        <div style="font-size: 1rem; font-weight: 700; color: #1e293b; line-height: 1.5; margin-bottom: 1.5rem;">
-                            ${this.parseCBTContent(q.question_text)}
+                    <!-- Sidebar Drawer -->
+                    <div id="cbt-map-sidebar" style="position: fixed; top: 0; left: -320px; width: 280px; height: 100%; background: white; z-index: 10005; box-shadow: 20px 0 50px rgba(0,0,0,0.1); transition: left 0.4s; display: flex; flex-direction: column;">
+                        <div style="padding: 1rem; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #f8fafc;">
+                            <h3 style="margin:0; font-weight: 800; color: #1e293b; font-size: 0.9rem;">Exam Map</h3>
+                            <button onclick="UI.toggleCBTMap(false)" style="background: none; border: none; color: #94a3b8;"><i data-lucide="x" style="width: 20px;"></i></button>
                         </div>
-
-                        <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-                            ${(q.shuffledOptions || []).filter(opt => opt && opt.text).map((opt, idx) => {
-                                const isSelected = this.userAnswers[q.id] === opt.text;
-                                return `
-                                    <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 2px solid ${isSelected ? '#4338ca' : '#f1f5f9'}; border-radius: 12px; cursor: pointer; transition: all 0.2s; background: ${isSelected ? '#f5f7ff' : 'white'};" class="cbt-option-label">
-                                        <input type="radio" name="exam-option" value="${this.escapeHTML(opt.text)}" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
-                                        <div style="display: flex; align-items: center; gap: 0.75rem; width: 100%;">
-                                            <span style="font-weight: 800; color: ${isSelected ? '#4338ca' : '#94a3b8'}; background: ${isSelected ? '#eef2ff' : '#f8fafc'}; width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; flex-shrink: 0;">
-                                                ${String.fromCharCode(64 + (idx + 1))}
-                                            </span>
-                                            <span style="font-weight: 600; color: #334155; font-size: 0.9rem; line-height: 1.4;">${this.parseCBTContent(opt.text)}</span>
+                        <div style="flex: 1; overflow-y: auto; padding: 1rem;">
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
+                                ${this.currentQuestions.map((cq, i) => {
+                                    const isAnswered = this.userAnswers[cq.id];
+                                    const isActive = i === this.currentQuestionIndex;
+                                    return `
+                                        <div class="q-map-item" 
+                                             style="aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; border-radius: 10px; cursor: pointer; font-weight: 800; font-size: 0.75rem; border: 2px solid ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#f1f5f9')}; background: ${isActive ? '#eef2ff' : (isAnswered ? '#ecfdf5' : 'white')}; color: ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#64748b')};"
+                                             onclick="UI.goToQuestion(${i}); UI.toggleCBTMap(false);">
+                                            ${i + 1}
                                         </div>
-                                    </label>
-                                `;
-                            }).join('')}
+                                    `;
+                                }).join('')}
+                            </div>
                         </div>
                     </div>
-                </main>
-
-                <!-- Footer: PINNED Navigation -->
-                <footer class="cbt-exam-footer" style="position: fixed; bottom: 0; left: 0; width: 100%; background: white; padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; z-index: 10001; box-shadow: 0 -4px 15px rgba(0,0,0,0.05);">
-                    <button class="btn btn-secondary" style="border-radius: 10px; height: 44px; padding: 0 1rem; font-weight: 700; background: #f1f5f9; color: #475569; border: none; display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem;" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>
-                        <i data-lucide="arrow-left" style="width:16px;"></i> Prev
-                    </button>
-                    
-                    <div style="display: flex; gap: 0.5rem;">
-                        ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
-                            <button class="btn btn-success" style="border-radius: 10px; height: 44px; padding: 0 1.5rem; background: #10b981; color: white; border: none; font-weight: 800; font-size: 0.8rem; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);" onclick="UI.submitExam()">SUBMIT</button>
-                        ` : `
-                            <button class="btn btn-primary" style="border-radius: 10px; height: 44px; padding: 0 1.5rem; background: #4338ca; color: white; border: none; font-weight: 800; font-size: 0.8rem; display: flex; align-items: center; gap: 0.4rem; box-shadow: 0 4px 10px rgba(67, 56, 202, 0.2);" onclick="UI.nextQuestion()">NEXT <i data-lucide="arrow-right" style="width:16px;"></i></button>
-                        `}
-                    </div>
-                </footer>
-
-                <!-- Navigation Sidebar (Drawer) -->
-                <div id="cbt-map-sidebar" style="position: fixed; top: 0; left: -320px; width: 280px; height: 100%; background: white; z-index: 10005; box-shadow: 20px 0 50px rgba(0,0,0,0.1); transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column;">
-                    <div style="padding: 1rem; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #f8fafc;">
-                        <h3 style="margin:0; font-weight: 800; color: #1e293b; font-size: 0.9rem;">Exam Map</h3>
-                        <button onclick="UI.toggleCBTMap()" style="background: none; border: none; color: #94a3b8; cursor: pointer;"><i data-lucide="x" style="width: 20px;"></i></button>
-                    </div>
-                    <div style="flex: 1; overflow-y: auto; padding: 1rem;">
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem;">
-                            ${this.currentQuestions.map((cq, i) => {
-                                const isAnswered = this.userAnswers[cq.id];
-                                const isActive = i === this.currentQuestionIndex;
-                                return `
-                                    <div class="q-map-item" 
-                                         style="aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; border-radius: 10px; cursor: pointer; font-weight: 800; font-size: 0.75rem; border: 2px solid ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#f1f5f9')}; background: ${isActive ? '#eef2ff' : (isAnswered ? '#ecfdf5' : 'white')}; color: ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#64748b')};"
-                                         onclick="UI.goToQuestion(${i}); UI.toggleCBTMap(false);">
-                                        ${i + 1}
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </div>
+                    <div id="cbt-sidebar-backdrop" onclick="UI.toggleCBTMap(false)" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); z-index: 10004; display: none;"></div>
                 </div>
+            `;
 
-                <!-- Backdrop -->
-                <div id="cbt-sidebar-backdrop" onclick="UI.toggleCBTMap(false)" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); z-index: 10004; display: none; opacity: 0; transition: opacity 0.4s ease;"></div>
-            </div>
-            </div>
-        `;
-
-        if (window.MathJax && window.MathJax.typesetPromise) {
-            window.MathJax.typesetPromise();
+            if (window.MathJax && window.MathJax.typesetPromise) window.MathJax.typesetPromise();
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            
+        } catch (err) {
+            console.error('[CBT RENDER FATAL]', err);
+            Notifications.show("Failed to render question. Please contact support.", "error");
         }
-        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     /**

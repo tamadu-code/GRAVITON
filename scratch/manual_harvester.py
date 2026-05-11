@@ -1,8 +1,8 @@
 """
-NKQM Attendance Harvester (FIXED)
+NKQM Attendance Harvester (FINAL)
 =================================
-Reads the latest attendance CSV from the biometric system and
-upserts records into the ATTENDANCE SYSTEM cloud database (wuzliodvddzmhehffqfx).
+Reads the latest attendance CSV and upserts records into the cloud.
+Optimized to avoid overwriting existing cloud sign-out times with nulls.
 """
 
 import csv
@@ -16,7 +16,7 @@ from pathlib import Path
 import requests
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION - ATTENDANCE SYSTEM PROJECT
+# CONFIGURATION
 # ──────────────────────────────────────────────────────────────────────────────
 DOWNLOADS_DIR   = Path.home() / "Downloads"
 SUPABASE_URL    = "https://wuzliodvddzmhehffqfx.supabase.co"
@@ -78,17 +78,23 @@ def parse_csv(csv_path: str, student_map: dict) -> list[dict]:
             if not code or not date or code not in student_map:
                 continue
 
-            is_late = status.lower() == "late"
-            sign_in = row.get("In", "").strip() or None
-            sign_out = row.get("Out", "").strip() or None
-
-            records.append({
+            # Core record
+            rec = {
                 "student_id": student_map[code],
                 "date": date,
-                "sign_in": sign_in,
-                "sign_out": sign_out,
-                "is_late": is_late
-            })
+                "is_late": status.lower() == "late"
+            }
+            
+            # Only add sign_in/out if they have values in the CSV.
+            # This prevents overwriting cloud-calculated sign-outs with nulls.
+            in_val = row.get("In", "").strip()
+            if in_val: rec["sign_in"] = in_val
+            
+            out_val = row.get("Out", "").strip()
+            if out_val: rec["sign_out"] = out_val
+
+            records.append(rec)
+            
     log.info("Parsed %d records from CSV.", len(records))
     return records
 
@@ -109,7 +115,6 @@ def sync_data():
     records = parse_csv(csv_path, student_map)
     if not records: return
 
-    # Correct Upsert URL with on_conflict parameter
     url = f"{SUPABASE_URL}/rest/v1/attendance?on_conflict=student_id,date"
     upsert_headers = {**headers, "Prefer": "resolution=merge-duplicates"}
     
