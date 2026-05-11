@@ -4557,7 +4557,7 @@ export const UI = {
             const holidayStr = allSettings.find(s => s.key === 'holidays')?.value || '';
             const holidays = holidayStr.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
             
-            const selectedDateObj = new Date(date);
+            const selectedDateObj = new Date(date.replace(/-/g, '/'));
             const isWeekend = selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6; // 0=Sun, 6=Sat
             const isClosedDay = holidays.includes(date);
             const isTermInactive = termStatus === 'Inactive';
@@ -4584,10 +4584,8 @@ export const UI = {
                 }
                 
                 // Determine Row Status
-                const selectedDateObj = new Date(date);
-                const isWeekend = selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6;
-                const isClosedDay = holidays.includes(date);
-                const isTermInactive = termStatus === 'Inactive';
+                const isOffDayRow = isWeekend || isClosedDay || isTermInactive;
+                const offReasonRow = isTermInactive ? 'On Holiday' : (isWeekend ? 'Weekend' : 'Closed Day');
                 
                 let defaultStatus = 'Absent';
                 let statusLabel = 'Absent';

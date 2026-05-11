@@ -14,6 +14,7 @@ const SB_CONFIG = {
 let sb = null;
 
 function createClient() {
+    if (sb) return sb;
     if (SB_CONFIG.url && SB_CONFIG.key) {
         if (typeof window.supabase !== 'undefined') {
             try {
@@ -29,7 +30,7 @@ function createClient() {
 }
 
 // Initial attempt
-createClient();
+if (!sb) createClient();
 
 /**
  * Initialize Supabase Client
@@ -190,10 +191,10 @@ export async function syncFromCloud(forceAll = false) {
                         // For attendance tables: filter by EITHER updated_at OR date
                         // (biometric records may have null/stale updated_at but a valid date)
                         if (table === 'attendance_records' || table === 'attendance') {
-                            // Look back 30 days to catch biometric records that might have been uploaded late
-                            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                            // Look back 60 days to catch historical data correctly
+                            const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
                             query = client.from(table).select('*')
-                                .or(`updated_at.gt.${lastSync},date.gte.${thirtyDaysAgo}`)
+                                .or(`updated_at.gt.${lastSync},date.gte.${sixtyDaysAgo}`)
                                 .range(offset, offset + BATCH_SIZE - 1);
                         } else {
                             query = query.gt('updated_at', lastSync);
