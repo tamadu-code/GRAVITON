@@ -6350,10 +6350,9 @@ export const UI = {
                                             <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">TERM / SESSION</div>
                                             <div style="font-weight: 700; color: #334155;">${e.term} | ${e.session}</div>
                                         </div>
-                                        ${(result && result.status === 'Completed') ? `
                                         <div>
                                             <div style="font-size: 0.7rem; font-weight: 800; color: #10b981; margin-bottom: 0.25rem;">YOUR SCORE</div>
-                                            <div style="font-weight: 800; color: #064e3b; font-size: 1.25rem;">${result.score} / ${result.total_questions}</div>
+                                            <div style="font-weight: 800; color: #064e3b; font-size: 1.25rem;">${result.score.toFixed(1)} / ${(result.total_marks || result.total_questions).toFixed(1)}</div>
                                         </div>
                                         ` : `
                                         <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end;">
@@ -6779,14 +6778,18 @@ export const UI = {
         const q = {
             id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
             question_text: text,
-            option_a: document.getElementById('opt-a').value,
-            option_b: document.getElementById('opt-b').value,
-            option_c: document.getElementById('opt-c').value,
-            option_d: document.getElementById('opt-d').value,
-            option_e: document.getElementById('opt-e').value,
+            option_a: document.getElementById('opt-a').value.trim(),
+            option_b: document.getElementById('opt-b').value.trim(),
+            option_c: document.getElementById('opt-c').value.trim(),
+            option_d: document.getElementById('opt-d').value.trim(),
+            option_e: document.getElementById('opt-e').value.trim(),
             correct_option: document.getElementById('q-correct').value,
             marks: parseFloat(document.getElementById('q-marks').value) || 1
         };
+
+        if (document.getElementById('q-type').value === 'mcq' && (!q.option_a || !q.option_b)) {
+            return Notifications.show('Multiple choice questions must have at least Option A and Option B.', 'error');
+        }
 
         this.cbtQuestions.push(q);
         
@@ -6856,6 +6859,12 @@ export const UI = {
 
             if (!title || !subId || !cls) {
                 return Notifications.show('Please fill in required fields (Title, Subject, Class)', 'error');
+            }
+
+            // Data Integrity Check
+            const invalidQuestions = this.cbtQuestions.filter(q => !q.option_a || !q.option_b);
+            if (invalidQuestions.length > 0) {
+                return Notifications.show(`Cannot save exam: ${invalidQuestions.length} question(s) are missing options A or B.`, 'error');
             }
 
             const examId = existingId || `EXM${Math.random().toString(36).substr(2,9).toUpperCase()}`;
@@ -7058,22 +7067,28 @@ export const UI = {
 
         console.log(`[CBT AUDIT] Rendering ${questions.length} questions. Checking for missing options...`);
 
-        // Shuffle Options for each question - Only filter out completely empty questions
-        questions = questions.filter(q => q && (q.option_a || q.option_b)).map((q, idx) => {
-            if (!q.option_c || !q.option_d) {
-                console.warn(`[CBT AUDIT] Question ID ${q.id} only has ${!q.option_c ? '2' : '3'} options!`, q);
+        // Prepare Questions - DO NOT filter out questions here, otherwise the total_questions count will mismatch
+        questions = questions.map((q, idx) => {
+            if (!q.option_a || !q.option_b) {
+                console.warn(`[CBT AUDIT] CRITICAL: Question ID ${q.id} has NO OPTIONS A/B!`, q);
             }
+            
             const options = [
-                { key: 'a', text: q.option_a },
-                { key: 'b', text: q.option_b },
+                { key: 'a', text: q.option_a || '[Empty Option A]' },
+                { key: 'b', text: q.option_b || '[Empty Option B]' },
                 { key: 'c', text: q.option_c },
                 { key: 'd', text: q.option_d },
                 { key: 'e', text: q.option_e }
             ];
 
-            // If it's a multiple choice, we expect at least 4 options. 
-            // We only filter if the text is truly empty or null.
-            const validOptions = options.filter(o => o && o.text !== null && o.text !== undefined && o.text.toString().trim().length > 0);
+            // Only show options that actually have text, but ensure A and B always exist if it's MCQ
+            const validOptions = options.filter(o => o && o.text && o.text.toString().trim().length > 0);
+            
+            // If it's truly empty, force A and B so the student can at least see something (and report it)
+            if (validOptions.length < 2) {
+                if (!q.option_a) validOptions.push({ key: 'a', text: 'Error: Option A missing in database' });
+                if (!q.option_b) validOptions.push({ key: 'b', text: 'Error: Option B missing in database' });
+            }
 
             // Use a modified seed for each question to keep them distinct but deterministic
             let qSeed = seed + idx;

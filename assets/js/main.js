@@ -2,10 +2,10 @@
  * Graviton CMS - Main Entry Point
  */
 
-import { UI } from './ui.js?v=34';
-import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, registerUser, resetPassword, startSyncLoop, syncToCloud, syncFromCloud } from './supabase-client.js?v=34';
-import db from './db.js?v=34';
-import { Notifications } from './utils.js?v=34';
+import { UI } from './ui.js?v=35';
+import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, registerUser, resetPassword, startSyncLoop, syncToCloud, syncFromCloud } from './supabase-client.js?v=35';
+import db from './db.js?v=35';
+import { Notifications } from './utils.js?v=35';
 
 console.log('--- GRAVITON CORE v23.0 - INITIALIZING ---');
 window.UI = UI;
