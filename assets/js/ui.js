@@ -7352,15 +7352,16 @@ export const UI = {
 
                             <div style="display: flex; flex-direction: column; gap: 0.6rem;">
                                 ${(q.shuffledOptions || []).map((opt, idx) => {
+                                    if (!opt) return '';
                                     const isSelected = this.userAnswers[q.id] === opt.text;
                                     return `
                                         <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 2px solid ${isSelected ? '#4338ca' : '#f1f5f9'}; border-radius: 12px; cursor: pointer; transition: all 0.2s; background: ${isSelected ? '#f5f7ff' : 'white'};" class="cbt-option-label">
-                                            <input type="radio" name="exam-option" value="${this.escapeHTML(opt.text)}" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
+                                            <input type="radio" name="exam-option" value="${this.escapeHTML(opt.text || '')}" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
                                             <div style="display: flex; align-items: center; gap: 0.75rem; width: 100%;">
                                                 <span style="font-weight: 800; color: ${isSelected ? '#4338ca' : '#94a3b8'}; background: ${isSelected ? '#eef2ff' : '#f8fafc'}; width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; flex-shrink: 0;">
                                                     ${String.fromCharCode(64 + (idx + 1))}
                                                 </span>
-                                                <span style="font-weight: 600; color: #334155; font-size: 0.9rem; line-height: 1.4;">${this.parseCBTContent(opt.text)}</span>
+                                                <span style="font-weight: 600; color: #334155; font-size: 0.9rem; line-height: 1.4;">${this.parseCBTContent(opt.text || '')}</span>
                                             </div>
                                         </label>
                                     `;

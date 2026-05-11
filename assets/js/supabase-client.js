@@ -122,7 +122,22 @@ export async function syncToCloud() {
                     }
 
                     if (dataToSync.length > 0) {
-                        const { error } = await client.from(table).upsert(dataToSync);
+                        let { error } = await client.from(table).upsert(dataToSync);
+                        
+                        // Self-healing: If cloud schema is missing 'violations' or 'warnings' columns, retry without them
+                        // This allows scores to sync while the admin is updating the database schema.
+                        if (error && (error.message.includes('violations') || error.message.includes('warnings'))) {
+                            console.warn(`[Sync Self-Heal] Cloud schema mismatch for ${table}. Retrying without telemetry columns...`);
+                            dataToSync = dataToSync.map(item => {
+                                const sanitized = { ...item };
+                                delete sanitized.violations;
+                                delete sanitized.warnings;
+                                return sanitized;
+                            });
+                            const retry = await client.from(table).upsert(dataToSync);
+                            error = retry.error;
+                        }
+
                         if (error) {
                             console.error(`Sync error for ${table}:`, error);
                             failedTables.add(table);
@@ -171,9 +186,9 @@ export async function syncFromCloud(forceAll = false) {
     window._isSyncingFromCloud = true;
 
     const lastSyncTime = localStorage.getItem('last_sync_timestamp');
-    // Subtract 10 minutes as buffer to avoid missing records at boundary
+    // Subtract 60 minutes as buffer to avoid missing records at boundary
     const lastSync = (lastSyncTime && !forceAll)
-        ? new Date(new Date(lastSyncTime).getTime() - 600000).toISOString()
+        ? new Date(new Date(lastSyncTime).getTime() - 3600000).toISOString()
         : new Date(0).toISOString();
 
     try {
