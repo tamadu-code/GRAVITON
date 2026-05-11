@@ -136,7 +136,6 @@ serve(async (req) => {
     const { data: upsertData, error: upsertError } = await supabase
       .from('attendance_records')
       .upsert({
-        attendance_code,
         date,
         student_id: student.student_id,
         check_in: sign_in ? `${date}T${sign_in}` : undefined,

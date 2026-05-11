@@ -6278,14 +6278,19 @@ export const UI = {
         for (const r of studentResults) {
             const existing = resultDict[r.exam_id];
             
-            // CLEANUP: If we have an In Progress and a Completed record, delete the old Completed one
+            // CLEANUP: If we have an In Progress and a Completed record, delete the IN PROGRESS one
             if (existing && ((r.status === 'In Progress' && existing.status === 'Completed') || (r.status === 'Completed' && existing.status === 'In Progress'))) {
-                const toDelete = r.status === 'Completed' ? r.id : existing.id;
+                const toDelete = r.status === 'In Progress' ? r.id : existing.id;
                 await db.cbt_results.delete(toDelete);
-                console.log('Cleaned up duplicate exam result:', toDelete);
+                console.log('Cleaned up stale In Progress session:', toDelete);
             }
 
-            if (!existing || r.status === 'In Progress' || (existing.status !== 'In Progress' && new Date(r.updated_at) > new Date(existing.updated_at))) {
+            // Precedence: Completed wins. If same status, newest wins.
+            const shouldReplace = !existing || 
+                                (r.status === 'Completed' && existing.status === 'In Progress') || 
+                                (r.status === existing.status && new Date(r.updated_at) > new Date(existing.updated_at));
+            
+            if (shouldReplace) {
                 resultDict[r.exam_id] = r;
             }
         }
@@ -7049,15 +7054,15 @@ export const UI = {
             questions = questions.slice(0, limit);
         }
 
-        // Shuffle Options for each question - Skip broken/undefined questions
-        questions = questions.filter(q => q && q.option_a).map((q, idx) => {
+        // Shuffle Options for each question - Only filter out completely empty questions
+        questions = questions.filter(q => q && (q.option_a || q.option_b)).map((q, idx) => {
             const options = [
                 { key: 'a', text: q.option_a },
                 { key: 'b', text: q.option_b },
                 { key: 'c', text: q.option_c },
                 { key: 'd', text: q.option_d },
                 { key: 'e', text: q.option_e }
-            ].filter(o => o && o.text);
+            ].filter(o => o && o.text && o.text.trim().length > 0);
 
             // Use a modified seed for each question to keep them distinct but deterministic
             let qSeed = seed + idx;
