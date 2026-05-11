@@ -270,7 +270,7 @@ export const UI = {
     async renderAdminDashboard() {
         // ── Core counts ──────────────────────────────────────────────────
         // Filter to only active students - Use count() instead of filter().length
-        const studentCount = await db.students.where('is_active').notEqual(false).count();
+        const studentCount = await db.students.filter(s => s.is_active !== false).count();
         const classCount   = await db.classes.count();
         
         // Optimize subject count
@@ -435,7 +435,7 @@ export const UI = {
         const isAdmin = (this.currentUser.role || '').toLowerCase() === 'admin' || (this.currentUser.role || '').toLowerCase() === 'principal';
         let myStudents = [];
         if (isAdmin) {
-            myStudents = await db.students.where('is_active').notEqual(false).toArray();
+            myStudents = await db.students.filter(s => s.is_active !== false).toArray();
         } else {
             // Ensure assignedClasses is a flat array of strings and non-empty to prevent Dexie errors
             const validClasses = Array.isArray(assignedClasses) ? assignedClasses.filter(c => typeof c === 'string' && c.trim() !== '') : [];
@@ -4264,7 +4264,7 @@ export const UI = {
         }
         
         // Optimize fetching
-        const students = await db.students.where('is_active').notEqual(false).toArray();
+        const students = await db.students.filter(s => s.is_active !== false).toArray();
         const classes = await db.classes.toArray();
         const subjects = await db.subjects.toArray();
         const settings = await db.settings.toArray();
@@ -8698,7 +8698,7 @@ export const UI = {
             }
         } else {
             scores = await db.scores.toArray(); // Admins still get all, but maybe limit?
-            students = await db.students.where('is_active').notEqual(false).toArray();
+            students = await db.students.filter(s => s.is_active !== false).toArray();
             subjects = await db.subjects.toArray();
         }
 
