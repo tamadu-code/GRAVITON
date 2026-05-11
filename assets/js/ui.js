@@ -4480,10 +4480,13 @@ export const UI = {
             const search = searchInput.value.toLowerCase();
             const subjectName = subjectFilter.value;
 
-            // Load records
-            const records = await db.attendance_records
-                .where('date').equals(date)
-                .toArray();
+            // Load records from BOTH daily and detailed tables
+            const [dailyRecords, detailedRecords] = await Promise.all([
+                db.attendance.where('date').equals(date).toArray(),
+                db.attendance_records.where('date').equals(date).toArray()
+            ]);
+            
+            const records = [...dailyRecords, ...detailedRecords];
 
             let studentsToRender = students;
             
@@ -7098,6 +7101,7 @@ export const UI = {
             }
 
             console.log(`[CBT AUDIT] Rendering ${questions.length} questions. Checking for missing options...`);
+            questions = questions.filter(q => q && typeof q === 'object');
 
             // Prepare Questions
             questions = questions.map((q, idx) => {
