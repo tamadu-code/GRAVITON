@@ -6350,6 +6350,7 @@ export const UI = {
                                             <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">TERM / SESSION</div>
                                             <div style="font-weight: 700; color: #334155;">${e.term} | ${e.session}</div>
                                         </div>
+                                        ${(result && result.status === 'Completed') ? `
                                         <div>
                                             <div style="font-size: 0.7rem; font-weight: 800; color: #10b981; margin-bottom: 0.25rem;">YOUR SCORE</div>
                                             <div style="font-weight: 800; color: #064e3b; font-size: 1.25rem;">${result.score.toFixed(1)} / ${(result.total_marks || result.total_questions).toFixed(1)}</div>
