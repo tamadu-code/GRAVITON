@@ -1,87 +1,214 @@
+"""
+NKQM Attendance Harvester
+=========================
+Reads the latest attendance CSV exported from the biometric system and
+upserts ALL records into the Supabase cloud database.
+
+Run automatically (via Task Scheduler) or manually:
+    python manual_harvester.py
+
+Logs are written to: harvester.log (same folder as this script)
+"""
+
 import csv
-import requests
-import json
+import glob
+import logging
+import os
 import time
 from datetime import datetime
+from pathlib import Path
 
+import requests
+
+# ──────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
-CSV_PATH = r"C:\Users\ELECTRO-TECH\Downloads\attendance_report_2026-05-11.csv"
-SUPABASE_URL = "https://urqygjltionvaxuacfzr.supabase.co"
-ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVycXlnamx0aW9udmF4dWFjZnpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzEzMDEsImV4cCI6MjA5MjYwNzMwMX0.Vpk7rifsfjMCVBSYpEdVzkHv3w324iKp8B7urlKc_e4"
+# ──────────────────────────────────────────────────────────────────────────────
+DOWNLOADS_DIR   = Path.home() / "Downloads"
+SUPABASE_URL    = "https://urqygjltionvaxuacfzr.supabase.co"
+ANON_KEY        = (
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+    ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVycXlnamx0aW9udmF4dWFjZnpyIiwi"
+    "cm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzEzMDEsImV4cCI6MjA5MjYwNzMwMX0"
+    ".Vpk7rifsfjMCVBSYpEdVzkHv3w324iKp8B7urlKc_e4"
+)
+BATCH_SIZE      = 100   # records per API call
+REQUEST_TIMEOUT = 30    # seconds
 
-def manual_sync():
-    print(f"Starting Manual Sync from {CSV_PATH}")
-    
-    # 1. Fetch Student Map (attendance_code -> student_id)
-    print("Fetching student mapping from cloud...")
-    headers = {
-        "apikey": ANON_KEY,
-        "Authorization": f"Bearer {ANON_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/students?select=student_id,attendance_code", headers=headers)
+# ──────────────────────────────────────────────────────────────────────────────
+# LOGGING  (file + console)
+# ──────────────────────────────────────────────────────────────────────────────
+LOG_FILE = Path(__file__).parent / "harvester.log"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+log = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+def find_latest_csv() -> str | None:
+    """Return the path of the most recently modified attendance_report CSV."""
+    pattern = str(DOWNLOADS_DIR / "attendance_report_*.csv")
+    files = glob.glob(pattern)
+    if not files:
+        log.error("No attendance CSV files found matching: %s", pattern)
+        return None
+    latest = max(files, key=os.path.getmtime)
+    mtime  = datetime.fromtimestamp(os.path.getmtime(latest)).strftime("%Y-%m-%d %H:%M")
+    log.info("Using CSV: %s  (last modified: %s)", latest, mtime)
+    return latest
+
+
+def fetch_student_map(headers: dict) -> dict:
+    """Fetch attendance_code → student_id mapping from Supabase."""
+    url = f"{SUPABASE_URL}/rest/v1/students?select=student_id,attendance_code&limit=2000"
+    try:
+        r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.RequestException as exc:
+        log.error("Network error fetching students: %s", exc)
+        return {}
+
     if r.status_code != 200:
-        print(f"Failed to fetch students: {r.text}")
-        return
-    
-    students = r.json()
-    student_map = {str(s['attendance_code']): s['student_id'] for s in students if s['attendance_code']}
-    print(f"Mapped {len(student_map)} students.")
+        log.error("Failed to fetch students (%s): %s", r.status_code, r.text[:200])
+        return {}
 
-    # 2. Read CSV
-    print("Reading local CSV...")
-    records_to_sync = []
-    with open(CSV_PATH, mode='r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
+    rows = r.json()
+    mapping = {
+        str(s["attendance_code"]): s["student_id"]
+        for s in rows
+        if s.get("attendance_code")
+    }
+    log.info("Student map loaded: %d students", len(mapping))
+    return mapping
+
+
+def parse_csv(csv_path: str, student_map: dict) -> list[dict]:
+    """Read the CSV and convert every row into a Supabase-ready record."""
+    records     = []
+    skipped     = set()
+
+    with open(csv_path, mode="r", encoding="utf-8-sig") as fh:
+        reader = csv.DictReader(fh)
         for row in reader:
-            date = row['Date']
-            if "2026-05-04" <= date <= "2026-05-08":
-                code = row['Code']
-                if code in student_map:
-                    records_to_sync.append({
-                        "student_id": student_map[code],
-                        "date": date,
-                        "status": row['Status'],
-                        "check_in": f"{date}T{row['In']}:00Z" if row['In'] else None,
-                        "check_out": f"{date}T{row['Out']}:00Z" if row['Out'] else None,
-                        "updated_at": datetime.utcnow().isoformat() + "Z"
-                    })
+            code      = str(row.get("Code", "")).strip()
+            date      = str(row.get("Date", "")).strip()
+            status    = str(row.get("Status", "")).strip()
+            sign_in   = str(row.get("In",  "")).strip()
+            sign_out  = str(row.get("Out", "")).strip()
 
-    print(f"Found {len(records_to_sync)} valid records for May 4-8.")
+            if not code or not date:
+                continue
 
-    # 3. Upload to attendance_records
-    success = 0
-    fail = 0
-    
-    # Batch size of 50 for stability
-    for i in range(0, len(records_to_sync), 50):
-        batch = records_to_sync[i:i+50]
-        # Using Upsert via PostgREST
-        # Note: on_conflict requires columns that have a unique constraint.
-        # student_id, date is the unique constraint.
-        upsert_headers = {
-            **headers,
-            "Prefer": "resolution=merge-duplicates"
-        }
-        
+            if code not in student_map:
+                skipped.add(code)
+                continue
+
+            records.append({
+                "student_id" : student_map[code],
+                "date"       : date,
+                "status"     : status,
+                "check_in"   : f"{date}T{sign_in}:00" if sign_in  else None,
+                "check_out"  : f"{date}T{sign_out}:00" if sign_out else None,
+                "updated_at" : datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            })
+
+    if skipped:
+        sample = sorted(skipped)[:15]
+        log.warning(
+            "%d unmatched attendance codes (not in student roster): %s%s",
+            len(skipped),
+            ", ".join(sample),
+            " …" if len(skipped) > 15 else "",
+        )
+
+    log.info("Prepared %d records from CSV", len(records))
+    return records
+
+
+def upsert_records(records: list[dict], headers: dict) -> tuple[int, int]:
+    """Batch-upsert records into attendance_records. Returns (success, fail)."""
+    upsert_headers = {**headers, "Prefer": "resolution=merge-duplicates"}
+    url            = f"{SUPABASE_URL}/rest/v1/attendance_records"
+    success        = 0
+    fail           = 0
+
+    total  = len(records)
+    chunks = range(0, total, BATCH_SIZE)
+
+    for i in chunks:
+        batch = records[i : i + BATCH_SIZE]
+        batch_num = i // BATCH_SIZE + 1
         try:
-            res = requests.post(f"{SUPABASE_URL}/rest/v1/attendance_records", json=batch, headers=upsert_headers)
-            if res.status_code in [200, 201]:
+            res = requests.post(
+                url, json=batch, headers=upsert_headers, timeout=REQUEST_TIMEOUT
+            )
+            if res.status_code in (200, 201):
                 success += len(batch)
-                print(f"Synced {success}/{len(records_to_sync)}...")
+                done = min(i + BATCH_SIZE, total)
+                log.info("  [Batch %d] %d/%d uploaded ✓", batch_num, done, total)
             else:
                 fail += len(batch)
-                print(f"Batch failed: {res.status_code} - {res.text}")
-        except Exception as e:
+                log.error(
+                    "  [Batch %d] FAILED %s — %s",
+                    batch_num, res.status_code, res.text[:300],
+                )
+        except requests.exceptions.RequestException as exc:
             fail += len(batch)
-            print(f"Request error: {e}")
-        
-        time.sleep(0.5) # Slight delay to be nice to the API
+            log.error("  [Batch %d] Network error: %s", batch_num, exc)
 
-    print(f"\n--- SYNC COMPLETE ---")
-    print(f"Total Success: {success}")
-    print(f"Total Failed: {fail}")
+        time.sleep(0.3)   # polite delay
+
+    return success, fail
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ──────────────────────────────────────────────────────────────────────────────
+def run_sync():
+    log.info("=" * 65)
+    log.info("NKQM Attendance Harvester — %s", datetime.now().strftime("%A, %d %B %Y  %H:%M"))
+    log.info("=" * 65)
+
+    # Step 1 – find the CSV
+    csv_path = find_latest_csv()
+    if not csv_path:
+        log.error("Sync aborted: no CSV file found.")
+        return
+
+    # Step 2 – authenticate headers
+    headers = {
+        "apikey"       : ANON_KEY,
+        "Authorization": f"Bearer {ANON_KEY}",
+        "Content-Type" : "application/json",
+    }
+
+    # Step 3 – get student mapping
+    student_map = fetch_student_map(headers)
+    if not student_map:
+        log.error("Sync aborted: could not load student roster.")
+        return
+
+    # Step 4 – parse CSV (ALL dates — upsert is idempotent)
+    records = parse_csv(csv_path, student_map)
+    if not records:
+        log.info("No records to sync. Exiting.")
+        return
+
+    # Step 5 – upload
+    success, fail = upsert_records(records, headers)
+
+    log.info("-" * 65)
+    log.info("DONE  ✓ Success: %d  |  ✗ Failed: %d  |  Total: %d",
+             success, fail, success + fail)
+    log.info("=" * 65)
+
 
 if __name__ == "__main__":
-    manual_sync()
+    run_sync()
