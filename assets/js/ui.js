@@ -7013,12 +7013,23 @@ export const UI = {
                         </ul>
                     </div>
 
+                    <div style="margin-bottom: 2rem; background: #fffbeb; border: 1px solid #fef3c7; padding: 1.25rem; border-radius: 16px; display: flex; gap: 1rem; align-items: center;">
+                        <input type="checkbox" id="cbt-agree-checkbox" style="width: 24px; height: 24px; cursor: pointer; accent-color: #4338ca;" onchange="document.getElementById('btn-start-exam').disabled = !this.checked">
+                        <label for="cbt-agree-checkbox" style="color: #92400e; font-weight: 700; font-size: clamp(0.85rem, 3vw, 1rem); cursor: pointer; margin-bottom: 0;">
+                            I have read and I understand all the rules and regulations.
+                        </label>
+                    </div>
+
                     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                        <button class="btn btn-secondary" onclick="UI.renderCBT()" style="flex: 1; min-width: 100px; height: 52px; border-radius: 14px; font-weight: 800; background: #f1f5f9; color: #475569; border: none; font-size: clamp(0.8rem, 3vw, 1rem);">Go Back</button>
-                        <button class="btn btn-primary" id="btn-start-exam" onclick="UI.finalizeStartCBTExam('${examId}', false)" style="flex: 2; min-width: 160px; height: 52px; border-radius: 14px; font-weight: 900; background: #4338ca; color: white; border: none; font-size: clamp(0.8rem, 3vw, 1rem); box-shadow: 0 10px 15px -3px rgba(67, 56, 202, 0.4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                            ✓ I Understand — Start Exam
+                        <button class="btn btn-secondary" onclick="UI.renderCBT()" style="flex: 1; min-width: 120px; height: 56px; border-radius: 14px; font-weight: 800; background: #f1f5f9; color: #475569; border: none; font-size: 1rem;">Go Back</button>
+                        <button class="btn btn-primary" id="btn-start-exam" disabled onclick="UI.finalizeStartCBTExam('${examId}', false)" style="flex: 2; min-width: 200px; height: 56px; border-radius: 14px; font-weight: 900; background: #4338ca; color: white; border: none; font-size: 1.1rem; box-shadow: 0 10px 15px -3px rgba(67, 56, 202, 0.4); opacity: 0.5; cursor: not-allowed; transition: all 0.3s;" onmouseover="if(this.disabled) this.title='Please check the box above first'">
+                            START EXAMINATION
                         </button>
                     </div>
+                    <style>
+                        #btn-start-exam:not(:disabled) { opacity: 1 !important; cursor: pointer !important; }
+                        #btn-start-exam:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 15px 20px -5px rgba(67, 56, 202, 0.5); }
+                    </style>
                 </div>
             </div>
         `;
@@ -7026,8 +7037,13 @@ export const UI = {
     },
 
     async finalizeStartCBTExam(examId, isResume = false) {
+        Notifications.show('Initializing secure exam session...', 'info');
+        console.log(`[CBT] Finalizing start for exam: ${examId}, isResume: ${isResume}`);
         const exam = await db.cbt_exams.get(examId);
-        if (!exam) return;
+        if (!exam) {
+            console.error(`[CBT] Exam not found: ${examId}`);
+            return Notifications.show('Exam details could not be loaded.', 'error');
+        }
 
         let questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
         console.log(`[CBT AUDIT] Loaded ${questions.length} questions for exam ${examId}`);
@@ -7037,9 +7053,20 @@ export const UI = {
         if (brokenQuestions.length > 0) {
             console.warn(`[CBT AUDIT] WARNING: Found ${brokenQuestions.length} questions with ZERO options! IDs:`, brokenQuestions.map(q => q.id));
         }
-        if (questions.length === 0) return;
 
-        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        if (questions.length === 0) {
+            console.error(`[CBT] No questions found for exam: ${examId}`);
+            return Notifications.show('This exam has no questions assigned yet. Please contact your teacher.', 'error');
+        }
+
+        const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
+        if (!studentId) {
+            console.error(`[CBT] Student ID resolution failed. User:`, this.currentUser);
+            return Notifications.show('Unable to identify your student record. Please re-login.', 'error');
+        }
+
+        console.log(`[CBT] Starting exam for Student: ${studentId}`);
+
         const now = new Date();
         const durationSeconds = (exam.duration || 30) * 60;
 
@@ -10750,6 +10777,7 @@ export const UI = {
             const newBankExamId = `BANK-${newSub}__${newCls}__${newTerm.replace(/\s+/g, '')}__${newSess.replace(/\//g, '-')}`;
 
             // Update all questions in this category
+            // Update all questions in this category
             await db.cbt_questions.where('exam_id').equals('BANK-' + tag).modify({ 
                 exam_id: newBankExamId,
                 is_synced: 0
@@ -10762,6 +10790,7 @@ export const UI = {
     },
 
     async renderCBTParticipants(examId) {
+        console.log(`[CBT] Rendering participants for exam: ${examId}`);
         const exam = await db.cbt_exams.get(examId);
         if (!exam) return this.renderCBT();
 
@@ -10777,12 +10806,16 @@ export const UI = {
 
         const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
         const allStudents = await db.students.toArray();
+        console.log(`[CBT] Total students in DB: ${allStudents.length}. Results found: ${results.length}`);
         
         // Filter students assigned to this class
-        const targetClass = (exam.class_name || '').trim();
+        const targetClass = (exam.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
         const assignedStudents = allStudents.filter(s => {
-            if (!targetClass || targetClass === 'All Classes') return s.is_active === 1;
-            return s.is_active === 1 && s.class_name === targetClass;
+            const studentClass = (s.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
+            const isActive = s.is_active != 0;
+            
+            if (!targetClass || targetClass === 'allclasses') return isActive;
+            return isActive && studentClass === targetClass;
         }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
         // Map results for easy lookup
