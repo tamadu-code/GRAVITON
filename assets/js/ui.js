@@ -6983,8 +6983,12 @@ export const UI = {
                                 <div style="color: #475569; line-height: 1.6; font-weight: 500;">Do <strong>NOT</strong> switch tabs, minimize the browser, or leave the exam interface. Every exit is <strong>logged and reported</strong> to the proctor.</div>
                             </li>
                             <li style="display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 0; border-bottom: 1px solid #f1f5f9;">
+                                <div style="color: #ef4444; margin-top: 0.15rem;"><i data-lucide="camera-off" style="width: 18px;"></i></div>
+                                <div style="color: #475569; line-height: 1.6; font-weight: 500;"><strong>Screenshots and Screen Grabbing</strong> are strictly prohibited. The screen will <strong>automatically blur</strong> if you attempt to switch windows or use capture tools.</div>
+                            </li>
+                            <li style="display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 0; border-bottom: 1px solid #f1f5f9;">
                                 <div style="color: #ef4444; margin-top: 0.15rem;"><i data-lucide="alert-circle" style="width: 18px;"></i></div>
-                                <div style="color: #475569; line-height: 1.6; font-weight: 500;">Right-clicking and keyboard shortcuts (Ctrl+C, Ctrl+V, F12) are <strong>disabled and monitored</strong>. Attempts to use them will be recorded as violations.</div>
+                                <div style="color: #475569; line-height: 1.6; font-weight: 500;">Right-clicking, copying, and keyboard shortcuts (Ctrl+C, Ctrl+V, PrintScreen, F12) are <strong>disabled and monitored</strong>.</div>
                             </li>
                             <li style="display: flex; gap: 1rem; align-items: flex-start; padding: 1rem 0; border-bottom: 1px solid #f1f5f9;">
                                 <div style="color: #f59e0b; margin-top: 0.15rem;"><i data-lucide="wifi-off" style="width: 18px;"></i></div>
@@ -7135,17 +7139,19 @@ export const UI = {
     attachSecurityListeners() {
         const log = (msg) => this.logViolation(msg);
         
-        // Tab switching / Minimizing
-        window.onblur = () => log('Student left the exam interface (Switched tab/minimized)');
+        // Tab switching / Minimizing / Screen Grabbing Detection
+        window.onblur = () => {
+            document.body.classList.add('window-blurred');
+            log('Student left the exam interface (Potential switch or screenshot attempt)');
+        };
+        window.onfocus = () => {
+            document.body.classList.remove('window-blurred');
+        };
+
         document.onvisibilitychange = () => {
             if (document.visibilityState === 'hidden') {
                 log('Student navigated away from the exam screen');
             }
-        };
-
-        // Closing / Refreshing
-        window.onbeforeunload = () => {
-            log('Student attempted to close or refresh the exam interface');
         };
 
         // Right-click
@@ -7155,11 +7161,17 @@ export const UI = {
             return false;
         };
 
-        // Shortcuts
+        // Shortcuts & PrintScreen
         window.onkeydown = (e) => {
-            if ((e.ctrlKey && (e.key === 'c' || e.key === 'v' || e.key === 'x' || e.key === 'u' || e.key === 'a' || e.key === 's' || e.key === 'p')) || e.key === 'F12') {
+            const forbiddenKeys = ['c', 'v', 'x', 'u', 'a', 's', 'p'];
+            const isForbiddenShortcut = e.ctrlKey && forbiddenKeys.includes(e.key.toLowerCase());
+            
+            if (isForbiddenShortcut || e.key === 'F12' || e.key === 'PrintScreen' || e.key === 'Snapshot') {
                 e.preventDefault();
-                log(`Attempted restricted shortcut: ${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`);
+                document.body.classList.add('window-blurred');
+                setTimeout(() => document.body.classList.remove('window-blurred'), 1000);
+                
+                log(`Attempted restricted action/shortcut: ${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`);
                 return false;
             }
         };

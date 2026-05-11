@@ -1,4 +1,4 @@
-:root {
+﻿:root {
     /* Academic Precision Design System (Google Stitch) */
     --primary: #3525cd;
     --primary-container: #4f46e5;
@@ -897,14 +897,14 @@ label {
         transform: rotate(180deg);
     }
 
-    /* ── Global: Force ALL inline 2-col grids to stack on small screens ── */
+    /* â”€â”€ Global: Force ALL inline 2-col grids to stack on small screens â”€â”€ */
     .glass-collapse-content > div[style*="grid-template-columns"],
     .view-container div[style*="grid-template-columns: 1fr 1fr"],
     .view-container div[style*="grid-template-columns: 1.5fr 1fr"] {
         grid-template-columns: 1fr !important;
     }
 
-    /* ── Faculty Grid: Single column on mobile ── */
+    /* â”€â”€ Faculty Grid: Single column on mobile â”€â”€ */
     .faculty-grid {
         grid-template-columns: 1fr !important;
     }
@@ -937,7 +937,7 @@ label {
         margin-top: 0.75rem !important;
     }
 
-    /* ── Attendance: Match score-card collapsible styling ── */
+    /* â”€â”€ Attendance: Match score-card collapsible styling â”€â”€ */
     .attendance-row {
         border-radius: 12px;
         border: 1px solid var(--border-color);
@@ -968,17 +968,17 @@ label {
         animation: slideDown 0.25s ease-out;
     }
 
-    /* ── Lessons (Bulk Workload): Stack columns ── */
+    /* â”€â”€ Lessons (Bulk Workload): Stack columns â”€â”€ */
     .view-container .card div[style*="grid-template-columns: 1fr 1fr"] {
         grid-template-columns: 1fr !important;
     }
 
-    /* ── Settings & Config: Stack form grids ── */
+    /* â”€â”€ Settings & Config: Stack form grids â”€â”€ */
     .glass-collapse-content div[style*="display: grid"] {
         grid-template-columns: 1fr !important;
     }
 
-    /* ── Filter bars: Stack horizontally-laid-out filters ── */
+    /* â”€â”€ Filter bars: Stack horizontally-laid-out filters â”€â”€ */
     .actions-bar {
         flex-direction: column !important;
         gap: 0.75rem !important;
@@ -992,18 +992,18 @@ label {
         max-width: 100% !important;
     }
 
-    /* ── Stream cards: Make enrollment stat responsive ── */
+    /* â”€â”€ Stream cards: Make enrollment stat responsive â”€â”€ */
     .stream-card-body .enrollment-stat {
         flex-direction: column !important;
         align-items: flex-start !important;
     }
 
-    /* ── Reports filter grid: Stack filters ── */
+    /* â”€â”€ Reports filter grid: Stack filters â”€â”€ */
     .filter-grid {
         grid-template-columns: 1fr !important;
     }
 
-    /* ── Student directory biodata accordion ── */
+    /* â”€â”€ Student directory biodata accordion â”€â”€ */
     .student-biodata-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -1034,7 +1034,7 @@ label {
         color: #1e293b;
     }
 
-    /* ── Global: Prevent horizontal overflow ── */
+    /* â”€â”€ Global: Prevent horizontal overflow â”€â”€ */
     .view-container {
         overflow-x: hidden;
         max-width: 100vw;
@@ -1218,7 +1218,7 @@ label {
     line-height: 1.4;
 }
 
-/* ──── Orbital Animation Container ──── */
+/* â”€â”€â”€â”€ Orbital Animation Container â”€â”€â”€â”€ */
 .login-orbit-container {
     width: 140px;
     height: 140px;
@@ -1384,7 +1384,7 @@ label {
     height: 32px;
 }
 
-/* ──── Form Elements ──── */
+/* â”€â”€â”€â”€ Form Elements â”€â”€â”€â”€ */
 .login-label {
     display: block;
     font-size: 0.75rem;
@@ -1669,7 +1669,7 @@ label {
     margin-right: auto;
 }
 
-/* ──── Dashboard Premium Layout ──── */
+/* â”€â”€â”€â”€ Dashboard Premium Layout â”€â”€â”€â”€ */
 .dashboard-container {
     padding: 1.5rem;
     max-width: 1400px;
@@ -1858,7 +1858,7 @@ label {
     color: #64748b;
 }
 
-/* ─── Sidebar Layout (Student Directory) ────────────────────────── */
+/* â”€â”€â”€ Sidebar Layout (Student Directory) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .directory-container {
     display: grid;
     grid-template-columns: 350px 1fr;
@@ -1952,7 +1952,7 @@ label {
     color: #cbd5e1;
 }
 
-/* ─── Bulk Import UI ────────────────────────────────────────────── */
+/* â”€â”€â”€ Bulk Import UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .import-grid {
     display: grid;
     grid-template-columns: 1fr 400px;
@@ -2017,7 +2017,7 @@ label {
 .log-entry.error { color: #ef4444; }
 .log-entry.info { color: #2563eb; }
 
-/* ─── Responsive ────────────────────────────────────────────────── */
+/* â”€â”€â”€ Responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 1024px) {
     .directory-container, .import-grid {
         grid-template-columns: 1fr;
@@ -2101,9 +2101,9 @@ label {
 }
 
 
-/* ══════════════════════════════════════════════════════════════
-   ADMIN DASHBOARD — New Component Styles
-   ══════════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   ADMIN DASHBOARD â€” New Component Styles
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 /* Generic light-theme dashboard card */
 .dash-card {
@@ -2132,7 +2132,7 @@ label {
 }
 .chart-card-title i { width: 20px; height: 20px; color: #ec4899; }
 
-/* ── Attendance Performance Bars ── */
+/* â”€â”€ Attendance Performance Bars â”€â”€ */
 .perf-row { margin-bottom: 1rem; }
 .perf-row:last-child { margin-bottom: 0; }
 .perf-row-top {
@@ -2165,7 +2165,7 @@ label {
 }
 .perf-row-sub { font-size: 0.72rem; color: #94a3b8; margin-top: 0.2rem; }
 
-/* ── Gender Ratio Chart ── */
+/* â”€â”€ Gender Ratio Chart â”€â”€ */
 .gender-chart-wrap {
     display: flex;
     align-items: center;
@@ -2190,10 +2190,10 @@ label {
 }
 .g-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 
-/* ── Class Distribution bar chart ── */
+/* â”€â”€ Class Distribution bar chart â”€â”€ */
 .bar-chart-wrap { position: relative; height: 200px; width: 100%; }
 
-/* ── Empty state for charts ── */
+/* â”€â”€ Empty state for charts â”€â”€ */
 .empty-state-chart-label {
     height: 120px;
     display: flex;
@@ -2207,7 +2207,7 @@ label {
     margin-top: 0.75rem;
 }
 
-/* ── Turnout Card ── */
+/* â”€â”€ Turnout Card â”€â”€ */
 .turnout-split {
     display: flex;
     gap: 1.5rem;
@@ -2267,7 +2267,7 @@ label {
 }
 .ti-bar-fill { height: 100%; border-radius: 99px; transition: width 0.5s ease; }
 
-/* ── Admin actions card ── */
+/* â”€â”€ Admin actions card â”€â”€ */
 .admin-link-btn {
     display: flex;
     align-items: center;
@@ -2294,10 +2294,10 @@ label {
 }
 .admin-link-btn i { width: 17px; height: 17px; color: #4f46e5; flex-shrink: 0; }
 
-/* ── Dashboard col-left spacing ── */
+/* â”€â”€ Dashboard col-left spacing â”€â”€ */
 .dashboard-col-left { gap: 1.25rem; }
 
-/* ─── Universal View Container ───────────────────────────────────── */
+/* â”€â”€â”€ Universal View Container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .view-container {
     background: #f8fafc !important; /* Premium light grey/blue */
     min-height: calc(100vh - 64px);
@@ -2314,7 +2314,7 @@ label {
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* ─── Page Banners (Premium Glassmorphism) ───────────────────────── */
+/* â”€â”€â”€ Page Banners (Premium Glassmorphism) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .page-banner {
     padding: 0.75rem 1.5rem;
     min-height: 80px;
@@ -2385,7 +2385,7 @@ label {
     font-weight: 700;
 }
 
-/* ─── Responsive Sidebar (Half-Desktop Hamburger) ────────────────── */
+/* â”€â”€â”€ Responsive Sidebar (Half-Desktop Hamburger) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 1024px) {
     .sidebar {
         position: fixed;
@@ -2438,7 +2438,7 @@ label {
     visibility: visible;
 }
 
-/* ─── Comprehensive Responsive Adjustments ────────────────────────── */
+/* â”€â”€â”€ Comprehensive Responsive Adjustments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 /* Tablet & Half-Desktop Layout (max-width: 1024px) */
 @media (max-width: 1024px) {
@@ -2922,7 +2922,7 @@ label {
     /* Hide the middle action bar on tablet/mobile (duplicates exist at bottom) */
     .action-bar-container { display: none !important; }
 
-    /* ── Unified Collapsible Card Pattern ── */
+    /* â”€â”€ Unified Collapsible Card Pattern â”€â”€ */
     .score-card,
     .mobile-collapse-card {
         background: white;
@@ -3632,7 +3632,7 @@ label {
     flex-wrap: wrap;
 }
 
-/* ── Mobile overrides: Reports, Pins, Student modules ── */
+/* â”€â”€ Mobile overrides: Reports, Pins, Student modules â”€â”€ */
 @media (max-width: 768px) {
     .biodata-header-premium {
         padding: 1.25rem 1rem 2.5rem 1rem;
@@ -3819,7 +3819,7 @@ label {
     display: none;
 }
 
-/* Header label – clickable */
+/* Header label â€“ clickable */
 .glass-collapse-header {
     display: flex;
     justify-content: space-between;
@@ -3858,7 +3858,7 @@ label {
     height: 20px;
 }
 
-/* Content wrapper – collapsible part */
+/* Content wrapper â€“ collapsible part */
 .glass-collapse-content {
     max-height: 0;
     overflow: hidden;
@@ -3880,7 +3880,7 @@ label {
     transform: rotate(180deg);
 }
 
-/* ── Registry Grouped Cards ── */
+/* â”€â”€ Registry Grouped Cards â”€â”€ */
 .registry-toggle:checked ~ .registry-content {
     display: block !important;
     animation: slideDown 0.3s ease-out;
@@ -3907,7 +3907,7 @@ label {
     }
 }
 
-/* ── Nested Registry Grouping ── */
+/* â”€â”€ Nested Registry Grouping â”€â”€ */
 .registry-content div[style*="background: #fcfdfe"] {
     transition: all 0.2s ease;
 }
@@ -3917,8 +3917,8 @@ label {
     background: #f8fafc !important;
 }
 
-/* ── Form Checkbox Lists ── */
-/* ── Glass-Collapse-Card Design System ── */
+/* â”€â”€ Form Checkbox Lists â”€â”€ */
+/* â”€â”€ Glass-Collapse-Card Design System â”€â”€ */
 .glass-collapse-card {
     background: rgba(255, 255, 255, 0.7);
     backdrop-filter: blur(12px);
@@ -4383,9 +4383,9 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
     background: #f8fafc;
 }
 
-/* ═══════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    PASSPORT PHOTO UPLOAD OVERLAY
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .passport-editable {
     cursor: pointer;
     position: relative;
@@ -4409,9 +4409,9 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
     opacity: 1;
 }
 
-/* ═══════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    NOTICE BOARD - MOBILE RESPONSIVE
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 /* Composer collapse behaviour */
 .composer-collapse-content {
@@ -4834,9 +4834,9 @@ body.exam-mode .topbar {
     display: none !important;
 }
 
-/* ═══════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    CBT PARTICIPANT CARDS - COLLAPSIBLE
-   ═══════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .cbt-participant-card .participant-details {
     max-height: 0;
     overflow: hidden;
@@ -4912,3 +4912,40 @@ body.exam-mode .topbar {
 @keyframes insights-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
 .insights-spin { animation:insights-spin 1s linear infinite; }
 @media(max-width:768px){.insights-tab-btn{font-size:.72rem;padding:.5rem .6rem;min-width:80px;}.kpi-stat-card .kpi-value{font-size:1.5rem;}}
+
+ / *   C B T   E x a m   P r o t e c t i o n   * / 
+ b o d y . e x a m - m o d e   { 
+         u s e r - s e l e c t :   n o n e   ! i m p o r t a n t ; 
+         - w e b k i t - u s e r - s e l e c t :   n o n e   ! i m p o r t a n t ; 
+         - m o z - u s e r - s e l e c t :   n o n e   ! i m p o r t a n t ; 
+         - m s - u s e r - s e l e c t :   n o n e   ! i m p o r t a n t ; 
+ } 
+ 
+ b o d y . e x a m - m o d e   . c b t - e x a m - c o n t a i n e r   { 
+         f i l t e r :   n o n e ; 
+         t r a n s i t i o n :   f i l t e r   0 . 3 s   e a s e ; 
+ } 
+ 
+ / *   B l u r   c o n t e n t   i f   w i n d o w   l o s e s   f o c u s   t o   d e t e r   s c r e e n s h o t s   * / 
+ w i n d o w - b l u r r e d   b o d y . e x a m - m o d e   . c b t - e x a m - c o n t a i n e r   { 
+         f i l t e r :   b l u r ( 1 5 p x ) ; 
+ } 
+  
+ 
+/* CBT Exam Protection */
+body.exam-mode {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+}
+
+body.exam-mode .cbt-exam-container {
+    filter: none;
+    transition: filter 0.3s ease;
+}
+
+/* Blur content if window loses focus to deter screenshots */
+body.window-blurred.exam-mode .cbt-exam-container {
+    filter: blur(15px);
+}
