@@ -351,10 +351,21 @@ export async function loginUser(identifier, password) {
                 .or(`assigned_id.eq.${identifier},full_name.ilike.%${identifier}%`)
                 .maybeSingle();
 
-            if (profile && profile.email && profile.email !== portalEmail) {
-                console.log(`[Auth] Found linked email in profile: ${profile.email}`);
-                const retry2 = await client.auth.signInWithPassword({ email: profile.email, password: loginPassword });
-                if (!retry2.error) return retry2;
+            if (profile && profile.email) {
+                const actualEmail = profile.email.trim();
+                console.log(`[Auth] Retrying login with linked email: ${actualEmail}`);
+                
+                const retry2 = await client.auth.signInWithPassword({ 
+                    email: actualEmail, 
+                    password: loginPassword 
+                });
+
+                if (!retry2.error) {
+                    console.log('[Auth] Login successful via profile lookup!');
+                    return retry2;
+                } else {
+                    console.error('[Auth] Login retry failed:', retry2.error.message);
+                }
             }
         } catch (lookupError) {
             console.warn('[Auth] Profile/Name lookup failed:', lookupError);
