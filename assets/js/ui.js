@@ -11674,12 +11674,31 @@ export const UI = {
 
             const allProgress = await db.exam_progress.where('exam_id').equals(examId).toArray();
             const progress = allProgress.find(p => possibleIds.includes(p.student_id));
-            const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+            let rawQuestions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
             
             const answers = progress ? progress.current_answers : (result ? result.answers : {});
             
             const exam = await db.cbt_exams.get(examId);
             const limit = parseInt(exam.question_limit) || 0;
+
+            // *** Normalise options — must match student-side pipeline exactly ***
+            rawQuestions = rawQuestions.filter(q => q && typeof q === 'object').map(q => ({
+                ...q,
+                option_a: (q.option_a || '').toString().trim(),
+                option_b: (q.option_b || '').toString().trim(),
+                option_c: (q.option_c || '').toString().trim(),
+                option_d: (q.option_d || '').toString().trim(),
+                option_e: (q.option_e || '').toString().trim(),
+                correct_option: (q.correct_option || 'A').toUpperCase(),
+                marks: parseFloat(q.marks) || 1
+            }));
+
+            // *** Filter broken questions (< 2 valid options) — must match student-side ***
+            const validQuestions = rawQuestions.filter(q => {
+                const optCount = [q.option_a, q.option_b, q.option_c, q.option_d, q.option_e]
+                    .filter(o => o && o.trim().length > 0).length;
+                return optCount >= 2;
+            });
             
             // Replicate student-side shuffled question set for accurate scoring
             const seedStr = studentId + examId;
@@ -11696,7 +11715,7 @@ export const UI = {
                 return array;
             };
 
-            let studentQuestions = seededShuffle([...questions], seed);
+            let studentQuestions = seededShuffle([...validQuestions], seed);
             if (limit > 0) studentQuestions = studentQuestions.slice(0, limit);
 
             // Calculate score based on SHUFFLED questions and HASHED answers
@@ -11774,12 +11793,31 @@ export const UI = {
         if (!confirm('CRITICAL: Are you sure you want to FORCE SUBMIT ALL active participants? This will end the exam for everyone currently taking it.')) return;
 
         try {
-            const [activeResults, questions, exam, profiles] = await Promise.all([
+            const [activeResults, rawQuestions, exam, profiles] = await Promise.all([
                 db.cbt_results.where('exam_id').equals(examId).and(r => r.status === 'In Progress').toArray(),
                 db.cbt_questions.where('exam_id').equals(examId).toArray(),
                 db.cbt_exams.get(examId),
                 db.profiles.toArray()
             ]);
+
+            // *** Normalise options — must match student-side pipeline exactly ***
+            const questions = rawQuestions.filter(q => q && typeof q === 'object').map(q => ({
+                ...q,
+                option_a: (q.option_a || '').toString().trim(),
+                option_b: (q.option_b || '').toString().trim(),
+                option_c: (q.option_c || '').toString().trim(),
+                option_d: (q.option_d || '').toString().trim(),
+                option_e: (q.option_e || '').toString().trim(),
+                correct_option: (q.correct_option || 'A').toUpperCase(),
+                marks: parseFloat(q.marks) || 1
+            }));
+
+            // *** Filter broken questions (< 2 valid options) — must match student-side ***
+            const validQuestions = questions.filter(q => {
+                const optCount = [q.option_a, q.option_b, q.option_c, q.option_d, q.option_e]
+                    .filter(o => o && o.trim().length > 0).length;
+                return optCount >= 2;
+            });
 
             for (const r of activeResults) {
                 // Find associated profile to ensure we get the right progress ID
@@ -11806,7 +11844,7 @@ export const UI = {
                     return array;
                 };
 
-                let studentQuestions = seededShuffle([...questions], seed);
+                let studentQuestions = seededShuffle([...validQuestions], seed);
                 if (limit > 0) studentQuestions = studentQuestions.slice(0, limit);
 
                 let score = 0;
