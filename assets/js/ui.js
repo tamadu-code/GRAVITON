@@ -5000,7 +5000,15 @@ export const UI = {
                     console.warn('[AttendanceHistory] No match found. Record student_ids:', records.slice(0,5).map(r=>r.student_id), '| Expected one of:', [...allValidIds].slice(0,5));
                 }
 
-                // Group by student — use _resolvedStudentId for reliable matching
+                // 1. Identify all unique dates where school-wide attendance was recorded for ANY student in this class
+                const classDates = new Set(
+                    filteredRecords
+                        .filter(r => r.is_subject_based === false || r.is_subject_based === 0 || r.is_subject_based === undefined || r.is_subject_based === null)
+                        .map(r => r.date)
+                );
+                const totalPossibleSessions = classDates.size;
+
+                // 2. Group by student — use _resolvedStudentId for reliable matching
                 const report = students.map(s => {
                     const sid = String(s.student_id || '').trim();
 
@@ -5012,7 +5020,9 @@ export const UI = {
                     });
                     
                     const present = sRecords.filter(r => r.status === 'Present' || r.status === 'Late').length;
-                    const total = sRecords.length;
+                    
+                    // Use the class-wide denominator for accurate percentage
+                    const total = totalPossibleSessions;
                     const rate = total > 0 ? Math.round((present / total) * 100) : 0;
                     
                     return {
