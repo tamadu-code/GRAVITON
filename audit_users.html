@@ -61,16 +61,22 @@
 
                 users.forEach(u => {
                     const isMissing = !u.email || u.email.trim() === '';
-                    const assignedId = u.assigned_id || '';
+                    const assignedId = (u.assigned_id || '').trim();
                     const isStudentId = assignedId.startsWith('NKQMS-');
-                    const isRoleMismatch = (isStudentId && u.role !== 'Student') || (!isStudentId && assignedId !== '' && u.role === 'Student');
+                    
+                    // A mismatch occurs if:
+                    // 1. It's a Student ID but role is NOT Student
+                    // 2. It's a Teacher/Staff ID (contains /STF/) but role is NOT Teacher
+                    const isRoleMismatch = (isStudentId && u.role !== 'Student') || 
+                                         (assignedId.includes('/STF/') && u.role !== 'Teacher' && u.role !== 'Admin');
 
                     if (isMissing) missingCount++;
                     if (u.role === 'Admin') adminCount++;
                     if (u.role === 'Teacher') teacherCount++;
 
                     const row = document.createElement('tr');
-                    row.style.background = isRoleMismatch ? '#fff1f2' : 'transparent';
+                    // Only highlight if it's a genuine mismatch, ignore Admins with empty IDs
+                    row.style.background = (isRoleMismatch && u.role !== 'Admin') ? '#fff1f2' : 'transparent';
                     
                     row.innerHTML = `
                         <td>
