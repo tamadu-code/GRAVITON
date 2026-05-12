@@ -10,10 +10,34 @@ serve(async (req) => {
   try {
     const { record } = await req.json()
 
-    // SAFETY: If the student already has an attendance_code, do nothing
-    if (record.attendance_code) {
-      console.log(`Student ${record.name} already has code ${record.attendance_code}. Skipping.`)
-      return new Response(JSON.stringify({ success: true, skipped: true }), {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    const baseUrl = ATTENDANCE_SYSTEM_URL.endsWith('/') ? ATTENDANCE_SYSTEM_URL.slice(0, -1) : ATTENDANCE_SYSTEM_URL
+    const classNameFull = record.sub_class ? `${record.class_name}${record.sub_class}` : record.class_name
+
+    // If the student already has an attendance_code, we update their class/arm in biometric system
+    const isUpdate = !!record.attendance_code;
+    if (isUpdate) {
+      console.log(`Updating student ${record.name} (Code: ${record.attendance_code}) to class ${classNameFull}`)
+      
+      const updateUrl = `${baseUrl}/rest/v1/students?code=eq.${record.attendance_code}`
+      const response = await fetch(updateUrl, {
+        method: 'PATCH',
+        headers: {
+          'apikey': ATTENDANCE_TOKEN,
+          'Authorization': `Bearer ${ATTENDANCE_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: record.name,
+          class: classNameFull
+        }),
+      })
+
+      if (!response.ok) {
+        console.error(`Failed to update biometric record: ${response.statusText}`)
+      }
+
+      return new Response(JSON.stringify({ success: true, updated: true, attendance_code: record.attendance_code }), {
         headers: { 'Content-Type': 'application/json' },
         status: 200,
       })
@@ -21,15 +45,8 @@ serve(async (req) => {
 
     console.log(`Syncing new student: ${record.name}`)
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-    // Build Attendance System URL
-    const baseUrl = ATTENDANCE_SYSTEM_URL.endsWith('/') ? ATTENDANCE_SYSTEM_URL.slice(0, -1) : ATTENDANCE_SYSTEM_URL
-
     // SAFETY: Check if student already exists in Attendance System
     const checkUrl = `${baseUrl}/rest/v1/students?name=eq.${encodeURIComponent(record.name)}&select=code`
-    console.log(`Checking if student exists at: ${checkUrl}`)
-    
     const checkResponse = await fetch(checkUrl, {
       headers: {
         'apikey': ATTENDANCE_TOKEN,

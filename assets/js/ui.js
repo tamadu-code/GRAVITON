@@ -2504,6 +2504,7 @@ export const UI = {
                             </div>
                               <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
                                  ${!((this.currentUser.role || '').toLowerCase() === 'teacher') ? `
+                                 <button id="btn-sync-biometric" class="btn btn-secondary" title="Update Biometric Record" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;"><i data-lucide="refresh-cw"></i> Sync Biometric</button>
                                  <button id="btn-repair-auth" class="btn btn-secondary" title="Fix Login Issues" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a;"><i data-lucide="shield-alert"></i> Repair Auth</button>
                                  <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
                                  ${student.is_active !== false ? 
@@ -2648,6 +2649,43 @@ export const UI = {
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        
+        // --- NEW: Sync Biometric Logic ---
+        const syncBiometricBtn = document.getElementById('btn-sync-biometric');
+        if (syncBiometricBtn) {
+            syncBiometricBtn.onclick = async () => {
+                syncBiometricBtn.disabled = true;
+                const originalHtml = syncBiometricBtn.innerHTML;
+                syncBiometricBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Syncing...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                try {
+                    const client = window.getSupabase ? window.getSupabase() : null;
+                    if (!client) throw new Error('Supabase not available');
+
+                    // Manually trigger the edge function
+                    const { data, error } = await client.functions.invoke('sync-new-student', {
+                        body: { record: student }
+                    });
+
+                    if (error) throw error;
+
+                    Notifications.show(`Biometric record synced for ${student.name}.`, 'success');
+                    // Refresh view in case ID changed
+                    if (data?.new_student_id) {
+                         await this.renderStudentDetail(data.new_student_id);
+                    }
+                } catch (err) {
+                    console.error('Biometric sync error:', err);
+                    Notifications.show(`Sync failed: ${err.message}`, 'error');
+                } finally {
+                    syncBiometricBtn.disabled = false;
+                    syncBiometricBtn.innerHTML = originalHtml;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        }
+
 
         // Repair Auth Logic
         const repairBtn = document.getElementById('btn-repair-auth');
@@ -2755,7 +2793,17 @@ export const UI = {
                     <div style="display: flex; flex-direction: column; gap: 1rem;">
                         <div class="modal-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                             <div><label>Full Name</label><input type="text" id="edit-std-name" class="input" value="${student.name}" style="width:100%;"></div>
-                            <div><label>Class</label><select id="edit-std-class" class="input" style="width:100%;">${classOptions}</select></div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <div style="flex: 2;"><label>Class</label><select id="edit-std-class" class="input" style="width:100%;">${classOptions}</select></div>
+                                <div style="flex: 1;"><label>Arm</label><select id="edit-std-arm" class="input" style="width:100%;">
+                                    <option value="A" ${student.sub_class === 'A' ? 'selected' : ''}>A</option>
+                                    <option value="B" ${student.sub_class === 'B' ? 'selected' : ''}>B</option>
+                                    <option value="C" ${student.sub_class === 'C' ? 'selected' : ''}>C</option>
+                                    <option value="D" ${student.sub_class === 'D' ? 'selected' : ''}>D</option>
+                                    <option value="E" ${student.sub_class === 'E' ? 'selected' : ''}>E</option>
+                                    <option value="F" ${student.sub_class === 'F' ? 'selected' : ''}>F</option>
+                                </select></div>
+                            </div>
                             <div><label>Gender</label><select id="edit-std-gender" class="input" style="width:100%;"><option value="Male" ${student.gender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${student.gender === 'Female' ? 'selected' : ''}>Female</option></select></div>
                             <div><label>Date of Birth</label><input type="date" id="edit-std-dob" class="input" value="${student.dob || ''}" style="width:100%;"></div>
                         </div>
@@ -6409,6 +6457,14 @@ export const UI = {
                 </div>
                 
                 <button id="save-settings" class="btn btn-primary">Save Configuration</button>
+
+                <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e2e8f0;">
+                
+                <h3>Biometric Maintenance</h3>
+                <p class="text-secondary mb-2">Synchronize and fix class divisions (Arms) for all students based on the biometric system data.</p>
+                <button id="btn-bulk-repair-arms" class="btn btn-secondary" style="background: #fdf2f7; color: #9d174d; border: 1px solid #fce7f3; font-weight: 800;">
+                    <i data-lucide="wrench"></i> Bulk Repair Class Arms
+                </button>
             </div>
         `;
 
@@ -6421,6 +6477,41 @@ export const UI = {
             
             Notifications.show('Settings saved. Please refresh the page to apply.', 'success');
         });
+
+        const repairBtn = document.getElementById('btn-bulk-repair-arms');
+        if (repairBtn) {
+            repairBtn.onclick = async () => {
+                if (!confirm("This will scan all students and match their classes with the Biometric System to fix Arms (e.g. JSS 1 -> JSS 1A). This may take a few moments. Proceed?")) return;
+                
+                repairBtn.disabled = true;
+                repairBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Repairing in Cloud...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                try {
+                    const client = window.getSupabase ? window.getSupabase() : null;
+                    if (!client) throw new Error('Cloud connection not established');
+
+                    const { data, error } = await client.functions.invoke('bulk-repair-biometrics');
+                    if (error) throw error;
+
+                    const results = data.results;
+                    Notifications.show(`Repair Complete: ${results.updated} students updated. Syncing local data...`, 'success');
+                    
+                    // Trigger local sync to pull the changes
+                    if (window.syncFromCloud) {
+                        await window.syncFromCloud();
+                    }
+                    
+                } catch (err) {
+                    console.error('Bulk repair error:', err);
+                    Notifications.show(`Repair failed: ${err.message}`, 'error');
+                } finally {
+                    repairBtn.disabled = false;
+                    repairBtn.innerHTML = '<i data-lucide="wrench"></i> Bulk Repair Class Arms';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        }
     },
 
     cbtQuestions: [],
