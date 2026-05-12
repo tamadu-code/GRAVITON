@@ -11539,13 +11539,21 @@ export const UI = {
 
         try {
             const result = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            if (result && result.status === 'Completed') {
+                Notifications.show('Student has already completed this exam.', 'info');
+                return;
+            }
+
+            const progress = await db.exam_progress.where('[student_id+exam_id]').equals([studentId, examId]).first();
             const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+            
+            const answers = progress ? progress.current_answers : (result ? result.answers : {});
             
             // Calculate score based on current answers
             let score = 0;
             questions.forEach(q => {
                 const correctText = q[`option_${q.correct_option.toLowerCase()}`];
-                if (result.answers && result.answers[q.id] === correctText) {
+                if (answers && answers[q.id] === correctText) {
                     score += (parseFloat(q.marks) || 1);
                 }
             });
@@ -11553,18 +11561,38 @@ export const UI = {
             const finalResultUpdate = {
                 status: 'Completed',
                 score: score,
+                answers: answers,
                 updated_at: new Date().toISOString(),
                 is_synced: 0
             };
 
-            await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify(finalResultUpdate);
+            if (result) {
+                await db.cbt_results.update(result.id, finalResultUpdate);
+            } else {
+                await db.cbt_results.add({
+                    student_id: studentId,
+                    exam_id: examId,
+                    ...finalResultUpdate
+                });
+            }
+
+            // Cleanup progress
+            if (progress) await db.exam_progress.delete(progress.id);
 
             // Auto-post score to gradebook
-            await this.postCBTToScoresheet({ ...result, ...finalResultUpdate });
+            await this.postCBTToScoresheet({ student_id: studentId, exam_id: examId, ...finalResultUpdate });
 
             Notifications.show('Exam force-submitted and scored successfully.', 'success');
             this.debouncedSync();
-            this.renderCBTParticipants(examId);
+            
+            // Instant UI update
+            const exam = await db.cbt_exams.get(examId);
+            const [results, allProgress] = await Promise.all([
+                db.cbt_results.where('exam_id').equals(examId).toArray(),
+                db.exam_progress.where('exam_id').equals(examId).toArray()
+            ]);
+            this.updateCBTParticipantsList(exam, results, allProgress);
+
         } catch (err) {
             console.error('Force submit error:', err);
             Notifications.show('Failed to force submit exam.', 'error');
@@ -11577,12 +11605,17 @@ export const UI = {
         try {
             const activeResults = await db.cbt_results.where('exam_id').equals(examId).and(r => r.status === 'In Progress').toArray();
             const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+            const exam = await db.cbt_exams.get(examId);
 
             for (const r of activeResults) {
+                // Check for progress to get real-time answers
+                const progress = await db.exam_progress.where('[student_id+exam_id]').equals([r.student_id, examId]).first();
+                const answers = progress ? progress.current_answers : (r.answers || {});
+
                 let score = 0;
                 questions.forEach(q => {
                     const correctText = q[`option_${q.correct_option.toLowerCase()}`];
-                    if (r.answers && r.answers[q.id] === correctText) {
+                    if (answers && answers[q.id] === correctText) {
                         score += (parseFloat(q.marks) || 1);
                     }
                 });
@@ -11590,21 +11623,30 @@ export const UI = {
                 const finalResultUpdate = {
                     status: 'Completed',
                     score: score,
+                    answers: answers,
                     updated_at: new Date().toISOString(),
                     is_synced: 0
                 };
 
                 await db.cbt_results.update(r.id, finalResultUpdate);
+                if (progress) await db.exam_progress.delete(progress.id);
                 
                 // Auto-post each to gradebook
                 await this.postCBTToScoresheet({ ...r, ...finalResultUpdate });
             }
 
-            Notifications.show(`Successfully force-submitted ${activeResults.length} students.`, 'success');
+            Notifications.show(`Successfully force-submitted ${activeResults.length} participants.`, 'success');
             this.debouncedSync();
-            this.renderCBTParticipants(examId);
+            
+            // Instant UI update
+            const [updatedResults, updatedProgress] = await Promise.all([
+                db.cbt_results.where('exam_id').equals(examId).toArray(),
+                db.exam_progress.where('exam_id').equals(examId).toArray()
+            ]);
+            this.updateCBTParticipantsList(exam, updatedResults, updatedProgress);
+
         } catch (err) {
-            console.error('Force submit all error:', err);
+            console.error('Bulk force submit error:', err);
             Notifications.show('Failed to force submit all participants.', 'error');
         }
     },
