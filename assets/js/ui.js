@@ -11314,23 +11314,39 @@ export const UI = {
             }
         }, 15000); 
 
-        // Initial cloud pull
-        await syncFromCloud(['cbt_results', 'exam_progress']);
-        
-        const [results, progress] = await Promise.all([
-            db.cbt_results.where('exam_id').equals(examId).toArray(),
-            db.exam_progress.where('exam_id').equals(examId).toArray()
-        ]);
-        const allStudents = await db.students.toArray();
-        
-        // Filter students assigned to this class
-        const targetClass = (exam.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
-        const assignedStudents = allStudents.filter(s => {
-            const studentClass = (s.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
-            const isActive = s.is_active != 0;
-            if (!targetClass || targetClass === 'allclasses') return isActive;
-            return isActive && studentClass === targetClass;
-        }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        // Initial immediate render from local data
+        const loadInitial = async () => {
+            const [results, progress] = await Promise.all([
+                db.cbt_results.where('exam_id').equals(examId).toArray(),
+                db.exam_progress.where('exam_id').equals(examId).toArray()
+            ]);
+            const allStudents = await db.students.toArray();
+            
+            // Filter students assigned to this class
+            const targetClass = (exam.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
+            const assignedStudents = allStudents.filter(s => {
+                const studentClass = (s.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
+                const isActive = s.is_active != 0;
+                if (!targetClass || targetClass === 'allclasses') return isActive;
+                return isActive && studentClass === targetClass;
+            }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+            this.updateCBTParticipantsList(exam, results, progress);
+        };
+        loadInitial();
+
+        // Background cloud pull (Refresh once done)
+        const refreshFromCloud = async () => {
+            try {
+                await syncFromCloud(['cbt_results', 'exam_progress']);
+                const [results, progress] = await Promise.all([
+                    db.cbt_results.where('exam_id').equals(examId).toArray(),
+                    db.exam_progress.where('exam_id').equals(examId).toArray()
+                ]);
+                this.updateCBTParticipantsList(exam, results, progress);
+            } catch (e) { console.warn('[CBT] Background sync failed:', e); }
+        };
+        refreshFromCloud();
 
         this.currentView = 'cbt_participants';
         this.currentViewData = examId;
@@ -11417,21 +11433,21 @@ export const UI = {
             const violationCount = violations.length;
 
             return `
-                <div class="card cbt-participant-card" style="border-radius: 16px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02); background: white;">
-                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '600px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1rem; cursor: pointer; gap: 0.75rem;">
-                        <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 0;">
-                            <div style="background: ${isCompleted ? '#ecfdf5' : isNotStarted ? '#f8fafc' : '#e0e7ff'}; color: ${isCompleted ? '#059669' : isNotStarted ? '#94a3b8' : '#4338ca'}; width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem; flex-shrink: 0;">
+                <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #e2e8f0; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); background: white;">
+                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '800px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; flex-direction: column; padding: 1.25rem; cursor: pointer; gap: 0.75rem;">
+                        <div style="display: flex; align-items: flex-start; gap: 1rem;">
+                            <div style="background: ${isCompleted ? '#ecfdf5' : isNotStarted ? '#f8fafc' : '#e0e7ff'}; color: ${isCompleted ? '#059669' : isNotStarted ? '#94a3b8' : '#4338ca'}; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1rem; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.03);">
                                 ${idx + 1}
                             </div>
-                            <div style="min-width: 0; flex: 1;">
-                                <div style="font-weight: 800; color: #1e293b; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">${studentName}</div>
-                                <div style="font-size: 0.6rem; color: #94a3b8; font-weight: 700; font-family: monospace;">${s.student_id}</div>
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="font-weight: 800; color: #1e293b; font-size: 1rem; line-height: 1.2; margin-bottom: 0.4rem; width: 100%; word-break: break-word;">${studentName}</div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 800; font-family: 'Outfit', sans-serif; background: #f1f5f9; padding: 2px 8px; border-radius: 6px;">${s.student_id}</div>
+                                    <div style="background: ${statusBg}; color: ${statusColor}; padding: 0.25rem 0.75rem; border-radius: 8px; font-weight: 900; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.02em;">${status}</div>
+                                    ${violationCount > 0 ? `<span style="background: #fee2e2; color: #ef4444; padding: 0.25rem 0.6rem; border-radius: 8px; font-weight: 900; font-size: 0.7rem; border: 1px solid #fecdd3;">⚠ ${violationCount} VIOLATION${violationCount !== 1 ? 'S' : ''}</span>` : ''}
+                                </div>
                             </div>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
-                            ${violationCount > 0 ? `<span style="background: #fee2e2; color: #ef4444; padding: 0.2rem 0.4rem; border-radius: 5px; font-weight: 900; font-size: 0.65rem;">⚠ ${violationCount}</span>` : ''}
-                            <span style="background: ${statusBg}; color: ${statusColor}; padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 800; font-size: 0.65rem; white-space: nowrap;">${status}</span>
-                            <i data-lucide="chevron-down" class="chevron-icon" style="width: 16px; color: #94a3b8; transition: transform 0.3s ease;"></i>
+                            <i data-lucide="chevron-down" class="chevron-icon" style="width: 20px; color: #cbd5e1; transition: transform 0.3s ease; flex-shrink: 0; margin-top: 4px;"></i>
                         </div>
                     </div>
 
