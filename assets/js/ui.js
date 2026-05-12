@@ -2363,8 +2363,8 @@ export const UI = {
                         throw new Error('Validation failed');
                     }
 
-                    if (!attendanceCodeInput || attendanceCodeInput.length !== 4) {
-                        Notifications.show('A valid 4-digit Attendance Code is required', 'error');
+                    if (!attendanceCodeInput || attendanceCodeInput.length < 1 || attendanceCodeInput.length > 10) {
+                        Notifications.show('A valid Attendance Code (1-10 digits) is required', 'error');
                         throw new Error('Validation failed');
                     }
 

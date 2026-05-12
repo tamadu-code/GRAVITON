@@ -1,11 +1,8 @@
 """
-NKQM Attendance Harvester (PIPELINE RECOVERY)
-============================================
-Reads the latest attendance CSV and upserts records into the 
-ATTENDANCE SYSTEM cloud database (wuzliodvddzmhehffqfx).
-
-The data is then automatically forwarded to the SMS project 
-via the repaired database webhook trigger.
+NKQM Attendance Harvester (ROBUST)
+==================================
+Reads the latest attendance CSV and merges it with existing cloud data
+to ensure no data is lost and all records follow the same schema.
 """
 
 import csv
@@ -19,7 +16,7 @@ from pathlib import Path
 import requests
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION - ATTENDANCE SYSTEM PROJECT
+# CONFIGURATION
 # ──────────────────────────────────────────────────────────────────────────────
 DOWNLOADS_DIR   = Path.home() / "Downloads"
 SUPABASE_URL    = "https://wuzliodvddzmhehffqfx.supabase.co"
@@ -29,7 +26,7 @@ ANON_KEY        = (
     ".0ASY-NuhdHPhyg9pB2XYiXOLJTnrocXxjkC6gpqO_vQ"
 )
 BATCH_SIZE      = 100
-REQUEST_TIMEOUT = 30
+REQUEST_TIMEOUT = 60
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LOGGING
@@ -61,45 +58,88 @@ def fetch_student_map(headers: dict) -> dict:
     try:
         r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         r.raise_for_status()
-        rows = r.json()
-        mapping = {str(s["code"]): s["id"] for s in rows if s.get("code")}
+        mapping = {str(s["code"]): s["id"] for s in r.json() if s.get("code")}
         log.info("Loaded %d students from cloud.", len(mapping))
         return mapping
     except Exception as e:
         log.error("Failed to load students: %s", e)
         return {}
 
-def parse_csv(csv_path: str, student_map: dict) -> list[dict]:
-    records = []
+def fetch_cloud_attendance(headers: dict, date_str: str) -> dict:
+    """Fetch existing attendance records for a specific date to prevent overwriting with nulls."""
+    url = f"{SUPABASE_URL}/rest/v1/attendance?date=eq.{date_str}&select=student_id,sign_in,sign_out,is_late"
+    try:
+        r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        # Map student_id -> record
+        return {a["student_id"]: a for a in r.json()}
+    except Exception as e:
+        log.warn("Could not fetch existing cloud attendance: %s. Proceeding without merge.", e)
+        return {}
+
+def parse_csv(csv_path: str, student_map: dict, headers: dict) -> list[dict]:
+    # We'll group records by date to fetch cloud data efficiently
+    temp_records = []
+    unique_dates = set()
+    
     with open(csv_path, mode="r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
             code = str(row.get("Code", "")).strip()
             date = str(row.get("Date", "")).strip()
-            status = str(row.get("Status", "")).strip()
+            if not code or not date or code not in student_map: continue
             
-            if not code or not date or code not in student_map:
-                continue
-
-            rec = {
+            temp_records.append({
+                "code": code,
                 "student_id": student_map[code],
                 "date": date,
-                "is_late": status.lower() == "late"
-            }
-            
-            in_val = row.get("In", "").strip()
-            if in_val: rec["sign_in"] = in_val
-            
-            out_val = row.get("Out", "").strip()
-            if out_val: rec["sign_out"] = out_val
+                "in": row.get("In", "").strip() or None,
+                "out": row.get("Out", "").strip() or None,
+                "late": row.get("Status", "").strip().lower() == "late"
+            })
+            unique_dates.add(date)
 
-            records.append(rec)
+    # Fetch cloud data for all relevant dates
+    cloud_cache = {}
+    for d in unique_dates:
+        cloud_cache[d] = fetch_cloud_attendance(headers, d)
+
+    # Merge logic
+    final_records = []
+    for r in temp_records:
+        sid = r["student_id"]
+        date = r["date"]
+        cloud_rec = cloud_cache.get(date, {}).get(sid)
+
+        # Start with a full schema (all keys present to satisfy PostgREST)
+        merged = {
+            "student_id": sid,
+            "date": date,
+            "sign_in": r["in"],
+            "sign_out": r["out"],
+            "is_late": r["late"]
+        }
+
+        if cloud_rec:
+            # ONLY update sign_in if CSV has a value and cloud doesn't, or CSV is newer (not applicable here)
+            # Actually, if cloud HAS a value and CSV has a value, we keep cloud if it looks like staggered signout?
+            # Better: If CSV is empty but cloud is NOT, keep cloud!
+            if not merged["sign_in"] and cloud_rec.get("sign_in"):
+                merged["sign_in"] = cloud_rec["sign_in"]
             
-    log.info("Parsed %d records from CSV.", len(records))
-    return records
+            if not merged["sign_out"] and cloud_rec.get("sign_out"):
+                merged["sign_out"] = cloud_rec["sign_out"]
+            
+            # Keep late status if either is late
+            merged["is_late"] = merged["is_late"] or cloud_rec.get("is_late", False)
+
+        final_records.append(merged)
+        
+    log.info("Processed and merged %d records.", len(final_records))
+    return final_records
 
 def sync_data():
-    log.info("Starting sync to Attendance System...")
+    log.info("Starting robust sync to Attendance System...")
     csv_path = find_latest_csv()
     if not csv_path: return
 
@@ -112,7 +152,7 @@ def sync_data():
     student_map = fetch_student_map(headers)
     if not student_map: return
 
-    records = parse_csv(csv_path, student_map)
+    records = parse_csv(csv_path, student_map, headers)
     if not records: return
 
     url = f"{SUPABASE_URL}/rest/v1/attendance?on_conflict=student_id,date"
