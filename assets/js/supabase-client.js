@@ -320,16 +320,23 @@ export async function loginUser(identifier, password) {
     const { data, error } = await client.auth.signInWithPassword({ email: email, password: loginPassword });
     
     // Fallback 1: Lowercase Student ID failed -> Try exact casing
-    if (error && isStandardId && email !== identifier + '@student.school') {
-        const fallbackEmail = `${identifier}@student.school`;
-        console.log(`[Auth] Fallback 1 (Exact Casing): ${fallbackEmail}`);
-        const retry = await client.auth.signInWithPassword({ email: fallbackEmail, password: loginPassword });
+    if (error && isStandardId) {
+        // Try @school-portal.com as it seems to be the project default
+        const portalEmail = `${identifier.toLowerCase()}@school-portal.com`;
+        console.log(`[Auth] Fallback 1 (Portal Domain): ${portalEmail}`);
+        const retry = await client.auth.signInWithPassword({ email: portalEmail, password: loginPassword });
         if (!retry.error) return retry;
+
+        // Try exact casing @student.school
+        const fallbackEmail = `${identifier}@student.school`;
+        console.log(`[Auth] Fallback 1b (Exact Casing): ${fallbackEmail}`);
+        const retry2 = await client.auth.signInWithPassword({ email: fallbackEmail, password: loginPassword });
+        if (!retry2.error) return retry2;
     }
 
     // Fallback 2: Maybe it's a staff ID being used as an email?
     if (error && !identifier.includes('@') && !isStandardId) {
-        const staffEmail = `${identifier.toLowerCase()}@school.edu`;
+        const staffEmail = `${identifier.toLowerCase()}@school-portal.com`;
         console.log(`[Auth] Fallback 2 (Staff ID -> Email): ${staffEmail}`);
         const retry = await client.auth.signInWithPassword({ email: staffEmail, password: loginPassword });
         if (!retry.error) return retry;

@@ -150,19 +150,46 @@ async function initApp() {
 async function loadAuthenticatedApp(authUser) {
     console.log('Loading authenticated app for:', authUser.email);
     
+    const client = getSupabase();
+    
     // Fetch user profile from Supabase
     let profile = null;
     try {
         profile = await getUserProfile(authUser.id);
         
-        // If not found in profiles (Staff), check students table
-        if (!profile && authUser.user_metadata?.role === 'Student') {
-            const studentId = authUser.email.split('@')[0].toUpperCase();
-            profile = await db.students.get(studentId);
-            if (profile) {
-                profile.full_name = profile.name;
-                profile.role = 'Student';
-                profile.assigned_id = profile.student_id;
+        // --- AUTO-REPAIR / PROVISIONING ---
+        // If not found in profiles, we need to recover from the respective source table
+        if (!profile) {
+            console.log('[AutoRepair] Profile missing, attempting recovery...');
+            const email = authUser.email.toLowerCase();
+            const identifier = email.split('@')[0].toUpperCase();
+
+            if (email.includes('@student.school') || email.includes('@school-portal.com')) {
+                // Recover Student
+                // 1. Try local first (faster)
+                let sourceData = await db.students.get(identifier);
+                
+                // 2. Try cloud if local is empty
+                if (!sourceData && client) {
+                    const { data } = await client.from('students').select('*').eq('student_id', identifier).maybeSingle();
+                    sourceData = data;
+                }
+
+                if (sourceData) {
+                    profile = {
+                        id: authUser.id,
+                        full_name: sourceData.name,
+                        role: 'Student',
+                        assigned_id: sourceData.student_id,
+                        email: authUser.email,
+                        status: 'Active',
+                        updated_at: new Date().toISOString()
+                    };
+                    
+                    // Force save to profiles table
+                    if (client) await client.from('profiles').upsert(profile);
+                    console.log('[AutoRepair] Successfully re-provisioned student profile:', identifier);
+                }
             }
         }
     } catch (e) {
@@ -170,20 +197,18 @@ async function loadAuthenticatedApp(authUser) {
     }
 
     if (!profile) {
-        console.warn('Profile fetch failed — using auth metadata as fallback. Check Supabase RLS policies on the profiles table.');
+        console.warn('Profile fetch failed — using auth metadata as fallback.');
         const { full_name, role: metaRole } = authUser.user_metadata || {};
         
-        // Smarter role detection based on email pattern
         let detectedRole = metaRole || 'Admin'; 
-        if (authUser.email.toLowerCase().includes('@student.school')) detectedRole = 'Student';
-        else if (authUser.email.toLowerCase().includes('@parent.school')) detectedRole = 'Parent';
-        else if (authUser.email.toLowerCase().includes('@staff.school')) detectedRole = 'Staff';
-
+        if (authUser.email.toLowerCase().includes('student')) detectedRole = 'Student';
+        else if (authUser.email.toLowerCase().includes('parent')) detectedRole = 'Parent';
+        
         profile = {
             id: authUser.id,
-            full_name: full_name || authUser.email.split('@')[0],
+            full_name: full_name || authUser.email,
             role: detectedRole,
-            assigned_id: authUser.email.split('@')[0].toUpperCase(), // Fallback attempt at assigned ID
+            assigned_id: authUser.email.split('@')[0].toUpperCase(),
             email: authUser.email,
             status: 'Active',
             updated_at: new Date().toISOString()
