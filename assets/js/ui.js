@@ -6614,10 +6614,18 @@ export const UI = {
         }
 
         // Merge live progress BUT prioritize Completed results
+        // Also merge cbt_results that are 'In Progress' (e.g. from admin re-open)
+        for (const r of studentResults) {
+            if (r.status === 'In Progress') {
+                // Admin may have re-opened this exam — ensure it shows as In Progress
+                resultDict[r.exam_id] = { ...r, status: 'In Progress' };
+            }
+        }
+
         for (const p of liveProgress) {
             const existing = resultDict[p.exam_id];
-            if (existing && (existing.status === 'Completed' || existing.score !== '...')) {
-                // If we already have a completed result, this progress is STALE. Delete it.
+            if (existing && existing.status === 'Completed') {
+                // Only delete progress if the result is ACTUALLY completed (not just score !== '...')
                 await db.exam_progress.delete(p.id);
                 console.log('Cleared stale exam progress for completed exam:', p.exam_id);
             } else if (!existing) {
@@ -7304,11 +7312,17 @@ export const UI = {
             return Notifications.show('This exam has no questions yet.', 'error');
         }
 
-        const studentId = this.currentUser.assigned_id || this.currentUser.id;
-        const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+        // Broad ID matching: find ANY result for this student (handles admin re-opens under different ID variant)
+        const studentId = this.resolveCBTStudentId();
+        const profiles = await db.profiles.toArray();
+        const studentProfiles = profiles.filter(p => p.assigned_id === studentId || p.id === studentId);
+        const possibleIds = [studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
+        
+        const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
+        const session = results.find(r => possibleIds.includes(r.student_id));
 
         if (session && session.status === 'In Progress') {
-            // RESUME: Skip instructions, go straight to exam
+            // RESUME: Skip instructions, go straight to exam (includes admin re-opened exams)
             return this.finalizeStartCBTExam(examId, true);
         }
 
@@ -7453,6 +7467,13 @@ export const UI = {
             if (validQuestions.length === 0) {
                 console.error(`[CBT] No valid questions found for exam: ${examId}`);
                 return Notifications.show('This exam has no valid questions assigned yet. Please contact your teacher.', 'error');
+            }
+
+            // Warn if valid questions are fewer than requested limit
+            const requestedLimit = parseInt(exam.question_limit) || 0;
+            if (requestedLimit > 0 && validQuestions.length < requestedLimit) {
+                console.warn(`[CBT AUDIT] Only ${validQuestions.length} valid questions available, but exam requires ${requestedLimit}.`);
+                Notifications.show(`Note: Only ${validQuestions.length} valid questions available (exam expected ${requestedLimit}). You will answer all available questions.`, 'warning');
             }
 
             const studentId = this.resolveCBTStudentId();
