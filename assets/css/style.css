@@ -2468,6 +2468,26 @@ label {
         width: 100%;
     }
 
+    /* Mobile View Switching */
+    .directory-container.mobile-show-detail .directory-sidebar {
+        display: none !important;
+    }
+    
+    .directory-container.mobile-show-detail .directory-main {
+        display: block !important;
+        min-height: calc(100vh - 120px);
+    }
+    
+    .directory-container:not(.mobile-show-detail) .directory-main {
+        display: none !important;
+    }
+
+    .directory-container:not(.mobile-show-detail) .directory-sidebar {
+        display: block !important;
+        height: auto !important;
+        max-height: none !important;
+    }
+
     /* Wrap banner stats */
     .banner-content {
         flex-direction: column;

@@ -2502,7 +2502,13 @@ export const UI = {
     async renderStudentDetail(studentId) {
         const student = await db.students.get(studentId);
         const detailView = document.getElementById('student-detail-view');
+        const container = document.querySelector('.directory-container');
         if (!student || !detailView) return;
+
+        // On mobile, show detail and hide sidebar
+        if (window.innerWidth < 1024 && container) {
+            container.classList.add('mobile-show-detail');
+        }
 
         const scores = await db.scores.where('student_id').equals(studentId).toArray();
         const avgScore = scores.length > 0 ? Math.round(scores.reduce((acc, s) => acc + (s.total || 0), 0) / scores.length) : 0;
@@ -2513,6 +2519,13 @@ export const UI = {
 
         detailView.innerHTML = `
             <div style="padding: 1.5rem;">
+                <!-- Mobile Back Button -->
+                <div class="mobile-only" style="margin-bottom: 1rem;">
+                    <button onclick="document.querySelector('.directory-container').classList.remove('mobile-show-detail')" class="btn" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 10px; width: 100%; justify-content: flex-start; padding: 0.75rem 1rem;">
+                        <i data-lucide="arrow-left"></i> Back to Student List
+                    </button>
+                </div>
+
                 <div class="profile-header" style="margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;">
                     <div class="profile-avatar-big passport-editable" onclick="UI.triggerPassportUpload('${student.student_id}', 'student')" style="width: 120px; height: 120px; background: #f8fafc; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-radius: 30px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
                         <img src="${student.passport_url || student.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${student.name}`}" style="width: 100%; height: 100%; object-fit: cover;" alt="${student.name}">
