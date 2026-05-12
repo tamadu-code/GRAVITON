@@ -256,7 +256,7 @@ export const UI = {
                     ${contentHtml}
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="document.getElementById('ui-modal').remove()" style="background: rgba(255,255,255,0.1); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 12px;">Cancel</button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('ui-modal').remove()" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 600;">Cancel</button>
                     <button id="modal-confirm-btn" class="btn" style="background: white; color: #1e293b; border: none; font-weight: 700; padding: 0.75rem 1.5rem; border-radius: 12px; display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="${confirmIcon}"></i> ${confirmText}</button>
                 </div>
             </div>
