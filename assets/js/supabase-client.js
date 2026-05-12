@@ -252,6 +252,26 @@ export async function syncFromCloud(forceAll = false) {
                             .map(item => ({ ...item, is_synced: 1 }));
                             
                         if (validData.length > 0) {
+                            // --- NEW: Smart ID Rename Handling for Students ---
+                            if (table === 'students') {
+                                for (const item of validData) {
+                                    // Search for local records that match by name and class but have a DIFFERENT primary key
+                                    // This catches cases where the cloud function renamed the student after biometric assignment
+                                    const matches = await db.students.where('name').equals(item.name).toArray();
+                                    const oldRecord = matches.find(m => m.class_name === item.class_name && m.student_id !== item.student_id);
+                                    
+                                    if (oldRecord) {
+                                        console.log(`[Sync] ID Rename detected for ${item.name}: ${oldRecord.student_id} -> ${item.student_id}`);
+                                        // Delete the old record locally before putting the new one
+                                        await db.students.delete(oldRecord.student_id);
+                                        // Cleanup local dependencies to point to the new ID
+                                        await db.scores.where('student_id').equals(oldRecord.student_id).modify({ student_id: item.student_id });
+                                        await db.attendance_records.where('student_id').equals(oldRecord.student_id).modify({ student_id: item.student_id });
+                                        await db.attendance.where('student_id').equals(oldRecord.student_id).modify({ student_id: item.student_id });
+                                    }
+                                }
+                            }
+                            
                             await db[table].bulkPut(validData);
                         }
                         
