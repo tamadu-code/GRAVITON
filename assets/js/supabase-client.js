@@ -197,16 +197,15 @@ export async function syncFromCloud(forceAll = false) {
             try {
                 let hasMore = true;
                 let offset = 0;
-                const BATCH_SIZE = (table === 'attendance_records' || table === 'attendance') ? 2000 : 1000;
+                let totalPulled = 0;
+                const BATCH_SIZE = 1000; // Match standard Supabase default limit
 
                 while (hasMore) {
                     let query = client.from(table).select('*').range(offset, offset + BATCH_SIZE - 1);
                     
                     if (!forceAll) {
                         // For attendance tables: filter by EITHER updated_at OR date
-                        // (biometric records may have null/stale updated_at but a valid date)
                         if (table === 'attendance_records' || table === 'attendance') {
-                            // Look back 60 days to catch historical data correctly
                             const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
                             query = client.from(table).select('*')
                                 .or(`updated_at.gt.${lastSync},date.gte.${sixtyDaysAgo}`)
@@ -228,19 +227,20 @@ export async function syncFromCloud(forceAll = false) {
                         const validData = data.filter(item => item[pk]).map(item => ({ ...item, is_synced: 1 }));
                         if (validData.length > 0) {
                             await db[table].bulkPut(validData);
-                            if (table === 'attendance_records' || table === 'attendance') {
-                                console.log(`[Sync] Pulled ${validData.length} records into '${table}' table.`);
-                            }
-                        } else {
-                            if (table === 'attendance_records' || table === 'attendance') {
-                                console.log(`[Sync] No new records found for '${table}' in this batch.`);
-                            }
                         }
-                        if (data.length < BATCH_SIZE) hasMore = false;
-                        else offset += BATCH_SIZE;
+                        
+                        totalPulled += data.length;
+                        if (data.length < BATCH_SIZE) {
+                            hasMore = false;
+                        } else {
+                            offset += data.length;
+                        }
                     } else {
                         hasMore = false;
                     }
+                }
+                if (totalPulled > 0) {
+                    console.log(`[Sync] Pulled ${totalPulled} total records into '${table}' table.`);
                 }
             } catch (e) { console.warn(`Pull error for ${table}:`, e); }
         }
