@@ -5019,8 +5019,10 @@ export const UI = {
                         return resolvedId === sid && isSchoolAtt;
                     });
                     
-                    const present = sRecords.filter(r => r.status === 'Present' || r.status === 'Late').length;
-                    
+                    const presentRecords = sRecords.filter(r => r.status === 'Present' || r.status === 'Late');
+                    const uniquePresentDates = new Set(presentRecords.map(r => r.date));
+                    const present = uniquePresentDates.size;
+
                     // Use the class-wide denominator for accurate percentage
                     const total = totalPossibleSessions;
                     const rate = total > 0 ? Math.round((present / total) * 100) : 0;
