@@ -4544,8 +4544,22 @@ export const UI = {
             // Stats Calculation - Count UNIQUE students only
             const uniqueSchoolMap = new Map();
             records.filter(r => !r.is_subject_based).forEach(r => {
-                // If multiple records exist, we take the one with better status or later time
-                uniqueSchoolMap.set(r.student_id, r);
+                const existing = uniqueSchoolMap.get(r.student_id);
+                if (existing) {
+                    // Merge records to preserve both sign_in and sign_out
+                    uniqueSchoolMap.set(r.student_id, {
+                        ...existing,
+                        ...r,
+                        sign_in: existing.sign_in || r.sign_in,
+                        sign_out: r.sign_out || existing.sign_out,
+                        check_in: existing.check_in || r.check_in,
+                        check_out: r.check_out || existing.check_out,
+                        // Prioritize 'Present' or 'Late' status over others
+                        status: (r.status === 'Present' || r.status === 'Late') ? r.status : existing.status
+                    });
+                } else {
+                    uniqueSchoolMap.set(r.student_id, r);
+                }
             });
 
             const uniqueArrived = Array.from(uniqueSchoolMap.values());
