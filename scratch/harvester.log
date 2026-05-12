@@ -68,3 +68,6 @@
 2026-05-12 16:00:14 [INFO] Starting sync to Attendance System...
 2026-05-12 16:00:14 [INFO] Latest CSV: C:\Users\ELECTRO-TECH\Downloads\attendance_report_2026-05-11.csv
 2026-05-12 16:00:18 [ERROR] Failed to load students: 400 Client Error: Bad Request for url: https://urqygjltionvaxuacfzr.supabase.co/rest/v1/students?select=id,code&is_active=eq.true
+2026-05-12 19:00:03 [INFO] Starting sync to Attendance System...
+2026-05-12 19:00:03 [INFO] Latest CSV: C:\Users\ELECTRO-TECH\Downloads\attendance_report_2026-05-11.csv
+2026-05-12 19:00:04 [ERROR] Failed to load students: 400 Client Error: Bad Request for url: https://urqygjltionvaxuacfzr.supabase.co/rest/v1/students?select=id,code&is_active=eq.true

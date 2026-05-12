@@ -4938,6 +4938,64 @@ export const UI = {
         refreshList();
     },
 
+    async updateAttendanceStats(students, date) {
+        try {
+            console.log(`[Attendance] Updating stats for ${date}...`);
+            const [dailyRecords, detailedRecords] = await Promise.all([
+                db.attendance.where('date').equals(date).toArray(),
+                db.attendance_records.where('date').equals(date).toArray()
+            ]);
+            const records = [...dailyRecords, ...detailedRecords];
+            
+            const uniqueSchoolMap = new Map();
+            records.filter(r => !r.is_subject_based).forEach(r => {
+                const existing = uniqueSchoolMap.get(r.student_id);
+                if (existing) {
+                    uniqueSchoolMap.set(r.student_id, { 
+                        ...existing, 
+                        ...r, 
+                        status: (r.status === 'Present' || r.status === 'Late') ? r.status : existing.status 
+                    });
+                } else {
+                    uniqueSchoolMap.set(r.student_id, r);
+                }
+            });
+
+            const uniqueArrived = Array.from(uniqueSchoolMap.values());
+            const presentCount = uniqueArrived.filter(r => r.status === 'Present').length;
+            const lateCount = uniqueArrived.filter(r => r.status === 'Late').length;
+            const totalArrived = presentCount + lateCount;
+
+            const turnout = students.length > 0 ? Math.round((totalArrived / students.length) * 100) : 0;
+            const absentCount = Math.max(0, students.length - totalArrived);
+
+            const statPresent = document.getElementById('stat-present');
+            const statLate = document.getElementById('stat-late');
+            const statAbsent = document.getElementById('stat-absent');
+            const statTurnout = document.getElementById('stat-turnout');
+            const statBar = document.getElementById('stat-turnout-bar');
+
+            if (statPresent) statPresent.textContent = totalArrived;
+            if (statLate) statLate.textContent = lateCount;
+            if (statAbsent) statAbsent.textContent = absentCount;
+            if (statTurnout) statTurnout.textContent = `${turnout}%`;
+            if (statBar) statBar.style.width = `${turnout}%`;
+
+            // Debounced list refresh to show new records in the list itself
+            const listContainer = document.getElementById('attendance-list-container');
+            if (listContainer && (!this.lastListRefresh || Date.now() - this.lastListRefresh > 10000)) {
+                console.log('[Attendance] Triggering list refresh via Date change event...');
+                const dateInput = document.getElementById('att-date');
+                if (dateInput) {
+                    dateInput.dispatchEvent(new Event('change'));
+                    this.lastListRefresh = Date.now();
+                }
+            }
+        } catch (e) {
+            console.warn('[Attendance] Stats refresh failed:', e);
+        }
+    },
+
     async renderAttendanceHistory() {
         const listBody = document.getElementById('attendance-list-container');
         const role = (this.currentUser.role || '').toLowerCase();
