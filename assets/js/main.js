@@ -167,7 +167,6 @@ async function initApp() {
             }
         });
     }
-    }
 }
 
 async function loadAuthenticatedApp(authUser) {
