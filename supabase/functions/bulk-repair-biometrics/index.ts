@@ -58,39 +58,39 @@ serve(async (req) => {
           const attStudent = attStudents[0]
           const bioClass = attStudent.class || '' // e.g. "JSS 1A"
           
-          // Check if we can extract the arm (e.g. from "JSS 1A" get "A")
-          // Assuming class_name is "JSS 1", and bioClass is "JSS 1A"
-          if (bioClass.startsWith(student.class_name)) {
-            const arm = bioClass.replace(student.class_name, '').trim()
-            if (arm && arm !== student.sub_class) {
-              console.log(`Repairing ${student.name}: ${student.sub_class} -> ${arm}`)
-              
-              const { error: updateError } = await supabase
-                .from('students')
-                .update({ sub_class: arm, updated_at: new Date().toISOString() })
-                .eq('student_id', student.student_id)
+          if (bioClass && bioClass !== student.class_name) {
+            console.log(`Repairing ${student.name}: ${student.class_name} -> ${bioClass}`)
+            
+            // 1. Ensure the new class exists in the 'classes' table
+            const { data: existingClass } = await supabase
+              .from('classes')
+              .select('id')
+              .eq('name', bioClass)
+              .maybeSingle()
 
-              if (updateError) throw updateError
-              results.updated++
-            } else {
-              results.skipped++
+            if (!existingClass) {
+              console.log(`Creating new class: ${bioClass}`)
+              await supabase.from('classes').insert({
+                name: bioClass,
+                level: student.class_name.match(/\d+/) ? student.class_name.match(/\d+/)[0] : '1',
+                updated_at: new Date().toISOString()
+              })
             }
+
+            // 2. Update the student's class and clear sub_class (since it's now part of the name)
+            const { error: updateError } = await supabase
+              .from('students')
+              .update({ 
+                class_name: bioClass, 
+                sub_class: '', 
+                updated_at: new Date().toISOString() 
+              })
+              .eq('student_id', student.student_id)
+
+            if (updateError) throw updateError
+            results.updated++
           } else {
-             // Maybe the whole class name is different (e.g. "JSS1A" vs "JSS 1")
-             // We try a regex match for the last character if it's a letter
-             const match = bioClass.match(/([A-Z])$/)
-             if (match) {
-                 const arm = match[1]
-                 if (arm !== student.sub_class) {
-                     console.log(`Regex Repair for ${student.name}: ${student.sub_class} -> ${arm}`)
-                     await supabase.from('students').update({ sub_class: arm }).eq('student_id', student.student_id)
-                     results.updated++
-                 } else {
-                     results.skipped++
-                 }
-             } else {
-                 results.skipped++
-             }
+            results.skipped++
           }
         } else {
           results.skipped++
