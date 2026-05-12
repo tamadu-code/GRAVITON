@@ -7688,7 +7688,7 @@ export const UI = {
                         </div>
                         <div>
                             <strong style="color: #1e293b;">• Fill in the Blank:</strong><br>
-                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">The capital of Nigeria is _____. [Ans: Abuja] [Marks: 2]</code>
+                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">The capital of Nigeria is _____. [Ans: Abuja]</code>
                         </div>
                         <div>
                             <strong style="color: #1e293b;">• Math / Formulas:</strong><br>
@@ -10667,7 +10667,7 @@ export const UI = {
                         </div>
                         <div>
                             <strong style="color: #1e293b;">• Fill in the Blank:</strong><br>
-                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">The capital of Nigeria is _____. [Ans: Abuja] [Marks: 2]</code>
+                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">The capital of Nigeria is _____. [Ans: Abuja]</code>
                         </div>
                         <div>
                             <strong style="color: #1e293b;">• Math / Formulas:</strong><br>
