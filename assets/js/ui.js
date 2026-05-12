@@ -11645,9 +11645,12 @@ export const UI = {
         if (!confirm('CRITICAL: Are you sure you want to FORCE SUBMIT ALL active participants? This will end the exam for everyone currently taking it.')) return;
 
         try {
-            const activeResults = await db.cbt_results.where('exam_id').equals(examId).and(r => r.status === 'In Progress').toArray();
-            const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
-            const exam = await db.cbt_exams.get(examId);
+            const [activeResults, questions, exam, profiles] = await Promise.all([
+                db.cbt_results.where('exam_id').equals(examId).and(r => r.status === 'In Progress').toArray(),
+                db.cbt_questions.where('exam_id').equals(examId).toArray(),
+                db.cbt_exams.get(examId),
+                db.profiles.toArray()
+            ]);
 
             for (const r of activeResults) {
                 // Find associated profile to ensure we get the right progress ID
