@@ -7138,10 +7138,15 @@ export const UI = {
             // Check for existing session using compound index
             let session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
 
-            if (session && session.status === 'In Progress') {
-                const startTime = new Date(session.started_at);
-                const elapsedSeconds = Math.floor((now - startTime) / 1000);
-                this.examTimeLeft = durationSeconds - elapsedSeconds;
+            if (session) {
+                if (session.status === 'In Progress') {
+                    const startTime = new Date(session.started_at);
+                    const elapsedSeconds = Math.floor((now - startTime) / 1000);
+                    this.examTimeLeft = durationSeconds - elapsedSeconds;
+                } else if (session.status === 'Completed') {
+                    // Prevent starting if already completed
+                    return Notifications.show('You have already completed this exam and your score has been recorded.', 'info');
+                }
             } else {
                 const totalMarks = questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
                 
@@ -10861,7 +10866,14 @@ export const UI = {
             return isActive && studentClass === targetClass;
         }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-        const resultEntries = results.reduce((acc, r) => ({...acc, [r.student_id]: r}), {});
+        // Prioritize 'Completed' status if multiple records exist for the same student
+        const resultEntries = results.reduce((acc, r) => {
+            const existing = acc[r.student_id];
+            if (!existing || (r.status === 'Completed' && existing.status !== 'Completed')) {
+                acc[r.student_id] = r;
+            }
+            return acc;
+        }, {});
         const registryContainer = document.getElementById('cbt-registry-list');
         if (!registryContainer) return;
 
@@ -11001,12 +11013,17 @@ export const UI = {
                 }
             });
 
-            await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
+            const finalResultUpdate = {
                 status: 'Completed',
                 score: score,
                 updated_at: new Date().toISOString(),
                 is_synced: 0
-            });
+            };
+
+            await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify(finalResultUpdate);
+
+            // Auto-post score to gradebook
+            await this.postCBTToScoresheet({ ...result, ...finalResultUpdate });
 
             Notifications.show('Exam force-submitted and scored successfully.', 'success');
             this.debouncedSync();
@@ -11033,12 +11050,17 @@ export const UI = {
                     }
                 });
 
-                await db.cbt_results.update(r.id, {
+                const finalResultUpdate = {
                     status: 'Completed',
                     score: score,
                     updated_at: new Date().toISOString(),
                     is_synced: 0
-                });
+                };
+
+                await db.cbt_results.update(r.id, finalResultUpdate);
+                
+                // Auto-post each to gradebook
+                await this.postCBTToScoresheet({ ...r, ...finalResultUpdate });
             }
 
             Notifications.show(`Successfully force-submitted ${activeResults.length} students.`, 'success');
