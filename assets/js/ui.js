@@ -11629,11 +11629,11 @@ export const UI = {
             
             // Instant UI update
             const exam = await db.cbt_exams.get(examId);
-            const [finalResults, allProgress] = await Promise.all([
+            const [finalResults, finalProgress] = await Promise.all([
                 db.cbt_results.where('exam_id').equals(examId).toArray(),
                 db.exam_progress.where('exam_id').equals(examId).toArray()
             ]);
-            this.updateCBTParticipantsList(exam, finalResults, allProgress);
+            this.updateCBTParticipantsList(exam, finalResults, finalProgress);
 
         } catch (err) {
             console.error('Force submit error:', err);
