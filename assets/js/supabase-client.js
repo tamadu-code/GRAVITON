@@ -112,6 +112,15 @@ export async function syncToCloud() {
                         columns.forEach(col => {
                             if (item[col] !== undefined) sanitized[col] = item[col];
                         });
+
+                        // Defensive check for profiles role constraint
+                        if (table === 'profiles' && sanitized.role) {
+                            const allowedRoles = ['Admin', 'Teacher', 'Student', 'Parent', 'Staff'];
+                            if (!allowedRoles.includes(sanitized.role)) {
+                                sanitized.role = 'Student'; // Default to safest
+                            }
+                        }
+
                         return sanitized;
                     });
 

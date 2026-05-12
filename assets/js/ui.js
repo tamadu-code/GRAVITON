@@ -2195,6 +2195,10 @@ export const UI = {
             }
         });
 
+        this.editStudent = (id) => {
+            document.getElementById('btn-modify-student')?.click();
+        };
+
         // Header click for desktop quick-view
         listContainer.addEventListener('click', async (e) => {
             const header = e.target.closest('.glass-collapse-header');
