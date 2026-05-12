@@ -167,13 +167,6 @@ async function initApp() {
             }
         });
     }
-}
-            if (isLoginVisible) {
-                loginBtn.disabled = false;
-                loginBtn.innerHTML = 'Login <i data-lucide="arrow-right"></i>';
-                if (typeof lucide !== 'undefined') lucide.createIcons();
-            }
-        }
     }
 }
 
