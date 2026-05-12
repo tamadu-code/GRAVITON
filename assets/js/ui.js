@@ -8055,10 +8055,9 @@ export const UI = {
                 console.log(`[SCORE POST] Created NEW record with Standard ID: ${newScore.id}`);
             }
             
-            // Force a cloud sync attempt
-            if (typeof syncToCloud === 'function') {
-                this.debouncedSync().then(r => console.log(`[SCORE POST] Cloud sync triggered: ${r.success ? 'Success' : 'Queued'}`));
-            }
+            // Fire cloud sync (debouncedSync is fire-and-forget, not a Promise)
+            this.debouncedSync();
+            console.log('[SCORE POST] Cloud sync triggered.');
         } catch (e) {
             console.error('Error posting CBT score:', e);
         }
