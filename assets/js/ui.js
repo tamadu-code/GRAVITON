@@ -7114,9 +7114,15 @@ export const UI = {
                 ];
 
                 const validOptions = options.filter(o => o && o.text && o.text.toString().trim().length > 0);
+                if (validOptions.length < 4) {
+                    console.warn(`[CBT DATA] Question ${q.id} has only ${validOptions.length} valid options.`, {
+                        a: q.option_a, b: q.option_b, c: q.option_c, d: q.option_d, e: q.option_e
+                    });
+                }
+                
                 if (validOptions.length < 2) {
-                    if (!q.option_a) validOptions.push({ key: 'a', text: 'Error: Option A missing' });
-                    if (!q.option_b) validOptions.push({ key: 'b', text: 'Error: Option B missing' });
+                    if (!q.option_a) validOptions.push({ key: 'a', text: '[Missing Option A]' });
+                    if (!q.option_b) validOptions.push({ key: 'b', text: '[Missing Option B]' });
                 }
 
                 let qSeed = seed + idx;
@@ -7355,13 +7361,13 @@ export const UI = {
                                     if (!opt) return '';
                                     const isSelected = this.userAnswers[q.id] === opt.text;
                                     return `
-                                        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 2px solid ${isSelected ? '#4338ca' : '#f1f5f9'}; border-radius: 12px; cursor: pointer; transition: all 0.2s; background: ${isSelected ? '#f5f7ff' : 'white'};" class="cbt-option-label">
-                                            <input type="radio" name="exam-option" value="${this.escapeHTML(opt.text || '')}" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
-                                            <div style="display: flex; align-items: center; gap: 0.75rem; width: 100%;">
-                                                <span style="font-weight: 800; color: ${isSelected ? '#4338ca' : '#94a3b8'}; background: ${isSelected ? '#eef2ff' : '#f8fafc'}; width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; flex-shrink: 0;">
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border: 2px solid ${isSelected ? '#4338ca' : '#f1f5f9'}; border-radius: 10px; cursor: pointer; transition: all 0.2s; background: ${isSelected ? '#f5f7ff' : 'white'};" class="cbt-option-label">
+                                            <input type="radio" name="exam-option" value="${this.escapeHTML(opt.text || '')}" ${isSelected ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
+                                            <div style="display: flex; align-items: center; gap: 0.5rem; width: 100%;">
+                                                <span style="font-weight: 800; color: ${isSelected ? '#4338ca' : '#94a3b8'}; background: ${isSelected ? '#eef2ff' : '#f8fafc'}; width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; flex-shrink: 0;">
                                                     ${String.fromCharCode(64 + (idx + 1))}
                                                 </span>
-                                                <span style="font-weight: 600; color: #334155; font-size: 0.9rem; line-height: 1.4;">${this.parseCBTContent(opt.text || '')}</span>
+                                                <span style="font-weight: 600; color: #334155; font-size: 0.8rem; line-height: 1.3;">${this.parseCBTContent(opt.text || '')}</span>
                                             </div>
                                         </label>
                                     `;
@@ -10783,159 +10789,165 @@ export const UI = {
         const exam = await db.cbt_exams.get(examId);
         if (!exam) return this.renderCBT();
 
-        // Auto-refresh logic (every 30 seconds while on this view)
+        // Auto-refresh logic (Optimized to prevent flickering and snap-back)
         if (this.participantsInterval) clearInterval(this.participantsInterval);
-        this.participantsInterval = setInterval(() => {
-            if (this.currentView === 'cbt_participants') {
-                this.renderCBTParticipants(examId);
+        this.participantsInterval = setInterval(async () => {
+            // Check if we are still in the participants view and for the SAME exam
+            if (this.currentView === 'cbt_participants' && this.currentViewData === examId) {
+                const registryContainer = document.getElementById('cbt-registry-list');
+                if (registryContainer) {
+                    const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
+                    this.updateCBTParticipantsList(exam, results);
+                }
             } else {
+                console.log('[CBT] View changed, clearing participants refresh interval.');
                 clearInterval(this.participantsInterval);
+                this.participantsInterval = null;
             }
         }, 30000);
 
         const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
         const allStudents = await db.students.toArray();
-        console.log(`[CBT] Total students in DB: ${allStudents.length}. Results found: ${results.length}`);
         
         // Filter students assigned to this class
         const targetClass = (exam.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
         const assignedStudents = allStudents.filter(s => {
             const studentClass = (s.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
             const isActive = s.is_active != 0;
-            
             if (!targetClass || targetClass === 'allclasses') return isActive;
             return isActive && studentClass === targetClass;
         }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-        // Map results for easy lookup
-        const resultEntries = results.reduce((acc, r) => ({...acc, [r.student_id]: r}), {});
-        
-        const isAdmin = this.currentUser.role === 'Admin' || this.currentUser.role === 'Principal';
         this.currentView = 'cbt_participants';
         this.currentViewData = examId;
 
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in">
-                <div class="view-header" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 2rem; gap: 1rem;">
-                    <div>
-                        <h1 class="text-2xl font-bold text-slate-800">Exam Participants</h1>
-                        <p class="text-slate-500">${exam.title} — ${exam.subject_id} (${exam.class_name || 'All Classes'})</p>
-                        <p style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; margin-top: 0.25rem;">${results.length} attempt${results.length !== 1 ? 's' : ''} out of ${assignedStudents.length} assigned students</p>
+            <div class="view-container animate-fade-in" style="padding: 1rem 0.5rem;">
+                <div class="view-header" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <h1 class="text-xl font-bold text-slate-800" style="margin-bottom: 0.25rem;">Exam Participants</h1>
+                        <p class="text-slate-500" style="font-size: 0.75rem; font-weight: 600;">${exam.title} — ${exam.subject_id}</p>
                     </div>
-                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                        ${(results.some(r => r.status === 'In Progress') && (isAdmin || this.currentUser.id === exam.teacher_id)) ? `
-                            <button class="btn btn-danger" onclick="UI.forceSubmitAllParticipants('${examId}')" style="background: #ef4444; border: none; font-weight: 800; border-radius: 12px; height: 44px;">
-                                <i data-lucide="stop-circle"></i> FORCE SUBMIT ALL
-                            </button>
-                        ` : ''}
-                        <button class="btn btn-secondary" onclick="UI.renderCBT()" style="border-radius: 12px; height: 44px;"><i data-lucide="arrow-left"></i> Back to Hub</button>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" onclick="UI.renderCBT()" style="border-radius: 10px; height: 38px; font-size: 0.75rem;"><i data-lucide="arrow-left" style="width: 14px;"></i> Back</button>
                     </div>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-                    <h3 style="font-weight: 800; color: #1e293b; font-size: 1.1rem; margin: 0; display: flex; align-items: center; gap: 0.75rem;">
-                        <i data-lucide="users" style="width: 20px; color: #4338ca;"></i> Participant Registry (${assignedStudents.length})
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3 style="font-weight: 800; color: #1e293b; font-size: 0.9rem; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="users" style="width: 18px; color: #4338ca;"></i> Registry (${assignedStudents.length})
                     </h3>
-                    ${(results.length > 0 && isAdmin) ? `
-                        <button type="button" class="btn btn-sm" style="background: #fffbeb; color: #b45309; border: 1px solid #fde68a; font-weight: 800; border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem;" onclick="if(confirm('Re-open all attempts? This will allow all students who have finished to continue their exams.')){UI.reopenAllCBTAttempts('${examId}')}">
-                            <i data-lucide="refresh-ccw" style="width: 14px;"></i> Re-open All
-                        </button>
-                    ` : ''}
                 </div>
 
-                ${assignedStudents.length === 0 ? `
-                    <div class="card" style="text-align: center; padding: 4rem 2rem; border-radius: 24px; border: none;">
-                        <div style="color: #94a3b8; margin-bottom: 1rem;"><i data-lucide="inbox" style="width: 48px; height: 48px;"></i></div>
-                        <p style="color: #94a3b8; font-weight: 700;">No students assigned to this class (${exam.class_name}).</p>
-                    </div>
-                ` : `
-                    <div style="display: flex; flex-direction: column; gap: 1rem;">
-                        ${assignedStudents.map((s, idx) => {
-                            const r = resultEntries[s.student_id];
-                            const studentName = s.name || 'Unknown Student';
-                            const status = r ? r.status : 'Not Started';
-                            const isCompleted = status === 'Completed';
-                            const isInProgress = status === 'In Progress';
-                            const isNotStarted = status === 'Not Started';
-
-                            let statusBg = '#f1f5f9';
-                            let statusColor = '#64748b';
-                            if (isCompleted) { statusBg = '#ecfdf5'; statusColor = '#059669'; }
-                            else if (isInProgress) { statusBg = '#fff7ed'; statusColor = '#d97706'; }
-                            
-                            const violations = r?.violations || [];
-                            const violationCount = violations.length;
-
-                            return `
-                                <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); margin-bottom: 1rem;">
-                                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '500px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem; background: white;">
-                                        <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0;">
-                                            <div style="background: ${isCompleted ? '#ecfdf5' : isNotStarted ? '#f8fafc' : '#e0e7ff'}; color: ${isCompleted ? '#059669' : isNotStarted ? '#94a3b8' : '#4338ca'}; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; flex-shrink: 0;">
-                                                ${idx + 1}
-                                            </div>
-                                            <div style="min-width: 0;">
-                                                <div style="font-weight: 800; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${studentName}</div>
-                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${s.student_id}</div>
-                                            </div>
-                                        </div>
-                                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
-                                            ${violationCount > 0 ? `<span style="background: #fee2e2; color: #ef4444; padding: 0.3rem 0.6rem; border-radius: 6px; font-weight: 800; font-size: 0.75rem;">⚠ ${violationCount}</span>` : ''}
-                                            <span style="background: ${statusBg}; color: ${statusColor}; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 0.75rem;">${status}</span>
-                                            <i data-lucide="chevron-down" class="chevron-icon" style="width: 18px; color: #94a3b8; transition: transform 0.3s ease;"></i>
-                                        </div>
-                                    </div>
-
-                                    <!-- Expandable Details -->
-                                    <div class="participant-details-area" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
-                                        <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
-                                            ${r ? `
-                                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                                                    <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
-                                                        <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">SCORE</div>
-                                                        <div style="font-weight: 900; color: #4338ca; font-size: 1.25rem;">${r.score} / ${r.total_marks || r.total_questions}</div>
-                                                    </div>
-                                                    <div style="background: #f8fafc; padding: 1rem; border-radius: 12px;">
-                                                        <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem;">STARTED AT</div>
-                                                        <div style="font-weight: 700; color: #1e293b; font-size: 0.85rem;">${new Date(r.started_at).toLocaleString()}</div>
-                                                    </div>
-                                                </div>
-
-                                                ${violationCount > 0 ? `
-                                                    <button type="button" onclick="UI.showViolationLog('${s.student_id}', '${examId}')" style="width: 100%; background: #fef2f2; color: #ef4444; border: 1px solid #fecdd3; padding: 0.75rem; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                                                        <i data-lucide="shield-alert" style="width: 16px;"></i> View ${violationCount} Violation${violationCount !== 1 ? 's' : ''}
-                                                    </button>
-                                                ` : ''}
-
-                                                <div style="display: flex; gap: 0.75rem; border-top: 1px solid #f1f5f9; padding-top: 1.25rem; margin-top: 0.5rem;">
-                                                    ${isCompleted ? `
-                                                        ${isAdmin ? `
-                                                        <button type="button" class="btn btn-warning" onclick="event.stopPropagation(); UI.reopenCBTExam('${s.student_id}', '${examId}')" style="flex: 1; border-radius: 12px; font-weight: 800; background: #fffbeb; color: #92400e; border: 1px solid #fde68a; height: 48px; text-decoration: none !important; display: flex; align-items: center; justify-content: center; gap: 0.5rem; box-shadow: 0 2px 4px rgba(251, 191, 36, 0.1);">
-                                                            <i data-lucide="refresh-ccw" style="width: 18px;"></i> Re-open Student Attempt
-                                                        </button>
-                                                        ` : `
-                                                        <div style="flex: 1; text-align: center; color: #94a3b8; font-size: 0.8rem; font-weight: 700;">Attempt Locked (Admin Only Restart)</div>
-                                                        `}
-                                                    ` : `
-                                                        <button type="button" class="btn btn-danger" onclick="event.stopPropagation(); UI.forceSubmitCBTExam('${s.student_id}', '${examId}')" style="flex: 1; border-radius: 12px; font-weight: 800; background: #fee2e2; color: #b91c1c; border: 1px solid #fecdd3; height: 48px; text-decoration: none !important; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                                                            <i data-lucide="log-out" style="width: 18px;"></i> Force Submit Exam
-                                                        </button>
-                                                    `}
-                                                </div>
-                                            ` : `
-                                                <div style="text-align: center; padding: 2rem; color: #94a3b8; font-weight: 600; background: #f8fafc; border-radius: 12px;">
-                                                    <i data-lucide="clock" style="width: 32px; height: 32px; display: block; margin: 0 auto 0.75rem; opacity: 0.5;"></i>
-                                                    Student has not initiated this exam session.
-                                                </div>
-                                            `}
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                `}
+                <div id="cbt-registry-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <!-- List will be populated by updateCBTParticipantsList -->
+                    <div class="loader" style="margin: 2rem auto;"></div>
+                </div>
             </div>
         `;
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        this.updateCBTParticipantsList(exam, results);
+    },
+
+    async updateCBTParticipantsList(exam, results) {
+        const examId = exam.id;
+        const allStudents = await db.students.toArray();
+        const targetClass = (exam.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
+        const assignedStudents = allStudents.filter(s => {
+            const studentClass = (s.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
+            const isActive = s.is_active != 0;
+            if (!targetClass || targetClass === 'allclasses') return isActive;
+            return isActive && studentClass === targetClass;
+        }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+        const resultEntries = results.reduce((acc, r) => ({...acc, [r.student_id]: r}), {});
+        const registryContainer = document.getElementById('cbt-registry-list');
+        if (!registryContainer) return;
+
+        const isAdmin = this.currentUser.role === 'Admin' || this.currentUser.role === 'Principal';
+
+        registryContainer.innerHTML = assignedStudents.map((s, idx) => {
+            const r = resultEntries[s.student_id];
+            const studentName = s.name || 'Unknown Student';
+            const status = r ? r.status : 'Not Started';
+            const isCompleted = status === 'Completed';
+            const isInProgress = status === 'In Progress';
+            const isNotStarted = status === 'Not Started';
+
+            let statusBg = '#f1f5f9';
+            let statusColor = '#64748b';
+            if (isCompleted) { statusBg = '#ecfdf5'; statusColor = '#059669'; }
+            else if (isInProgress) { statusBg = '#fff7ed'; statusColor = '#d97706'; }
+            
+            const violations = r?.violations || [];
+            const violationCount = violations.length;
+
+            return `
+                <div class="card cbt-participant-card" style="border-radius: 16px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02); background: white;">
+                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '600px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1rem; cursor: pointer; gap: 0.75rem;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 0;">
+                            <div style="background: ${isCompleted ? '#ecfdf5' : isNotStarted ? '#f8fafc' : '#e0e7ff'}; color: ${isCompleted ? '#059669' : isNotStarted ? '#94a3b8' : '#4338ca'}; width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem; flex-shrink: 0;">
+                                ${idx + 1}
+                            </div>
+                            <div style="min-width: 0; flex: 1;">
+                                <div style="font-weight: 800; color: #1e293b; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">${studentName}</div>
+                                <div style="font-size: 0.6rem; color: #94a3b8; font-weight: 700; font-family: monospace;">${s.student_id}</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                            ${violationCount > 0 ? `<span style="background: #fee2e2; color: #ef4444; padding: 0.2rem 0.4rem; border-radius: 5px; font-weight: 900; font-size: 0.65rem;">⚠ ${violationCount}</span>` : ''}
+                            <span style="background: ${statusBg}; color: ${statusColor}; padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 800; font-size: 0.65rem; white-space: nowrap;">${status}</span>
+                            <i data-lucide="chevron-down" class="chevron-icon" style="width: 16px; color: #94a3b8; transition: transform 0.3s ease;"></i>
+                        </div>
+                    </div>
+
+                    <!-- Expandable Details -->
+                    <div class="participant-details-area" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
+                        <div style="padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${r ? `
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                                    <div style="background: #f8fafc; padding: 0.75rem; border-radius: 10px;">
+                                        <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.2rem;">SCORE</div>
+                                        <div style="font-weight: 900; color: #4338ca; font-size: 1.1rem;">${r.score} / ${r.total_marks || r.total_questions}</div>
+                                    </div>
+                                    <div style="background: #f8fafc; padding: 0.75rem; border-radius: 10px;">
+                                        <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.2rem;">STATUS</div>
+                                        <div style="font-weight: 700; color: #1e293b; font-size: 0.8rem;">${status}</div>
+                                    </div>
+                                </div>
+
+                                ${violationCount > 0 ? `
+                                    <button type="button" onclick="UI.showViolationLog('${s.student_id}', '${examId}')" style="width: 100%; background: #fef2f2; color: #ef4444; border: 1px solid #fecdd3; padding: 0.6rem; border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.4rem; font-size: 0.75rem;">
+                                        <i data-lucide="shield-alert" style="width: 14px;"></i> View ${violationCount} Violation${violationCount !== 1 ? 's' : ''}
+                                    </button>
+                                ` : ''}
+
+                                <div style="display: flex; gap: 0.5rem; border-top: 1px solid #f1f5f9; padding-top: 1rem;">
+                                    ${isCompleted ? `
+                                        ${isAdmin ? `
+                                        <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); UI.reopenCBTExam('${s.student_id}', '${examId}')" style="flex: 1; border-radius: 8px; font-weight: 800; background: #fffbeb; color: #92400e; border: 1px solid #fde68a; height: 40px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; gap: 0.4rem;">
+                                            <i data-lucide="refresh-ccw" style="width: 14px;"></i> Re-open Attempt
+                                        </button>
+                                        ` : `
+                                        <div style="flex: 1; text-align: center; color: #94a3b8; font-size: 0.7rem; font-weight: 700;">Attempt Locked</div>
+                                        `}
+                                    ` : `
+                                        <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); UI.forceSubmitCBTExam('${s.student_id}', '${examId}')" style="flex: 1; border-radius: 8px; font-weight: 800; background: #fee2e2; color: #b91c1c; border: 1px solid #fecdd3; height: 40px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; gap: 0.4rem;">
+                                            <i data-lucide="log-out" style="width: 14px;"></i> Force Submit
+                                        </button>
+                                    `}
+                                </div>
+                            ` : `
+                                <div style="text-align: center; padding: 1.5rem; color: #94a3b8; font-weight: 600; background: #f8fafc; border-radius: 10px; font-size: 0.75rem;">
+                                    Student has not started yet.
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
