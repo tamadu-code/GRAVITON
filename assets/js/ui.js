@@ -6710,9 +6710,12 @@ export const UI = {
                                         <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end;">
                                             ${isStudent ? (() => {
                                                 if (result && result.status === 'In Progress') {
-                                                    const elapsed = (Date.now() - new Date(result.started_at).getTime()) / 1000;
+                                                    const startTime = new Date(result.started_at).getTime();
+                                                    const now = Date.now();
+                                                    const elapsed = isNaN(startTime) ? 0 : (now - startTime) / 1000;
                                                     const timeLeft = (e.duration * 60) - elapsed;
                                                     
+                                                    // Only show expired if they have truly run out of time (respecting negative elapsed/bonus time)
                                                     if (timeLeft <= 0) {
                                                         return `<span class="badge badge-danger" style="background:#fee2e2; color:#ef4444; border:1px solid #fecdd3; padding:8px 15px; border-radius:10px; font-weight:800;">TIME EXPIRED</span>`;
                                                     }
@@ -7483,13 +7486,18 @@ export const UI = {
                 return { ...q, shuffledOptions, answerHash };
             });
 
-            // Check for existing session using compound index
-            let session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            // Smart ID matching: find ANY result for this student (by record ID or profile ID)
+            const profiles = await db.profiles.toArray();
+            const studentProfiles = profiles.filter(p => p.assigned_id === studentId || p.id === studentId);
+            const possibleIds = [studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
+            
+            const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
+            let session = results.find(r => possibleIds.includes(r.student_id));
 
             if (session) {
                 if (session.status === 'In Progress') {
-                    const startTime = new Date(session.started_at);
-                    const elapsedSeconds = Math.floor((now - startTime) / 1000);
+                    const startTime = new Date(session.started_at).getTime();
+                    const elapsedSeconds = isNaN(startTime) ? 0 : Math.floor((now.getTime() - startTime) / 1000);
                     this.examTimeLeft = durationSeconds - elapsedSeconds;
                 } else if (session.status === 'Completed') {
                     // Prevent starting if already completed
@@ -11530,7 +11538,7 @@ export const UI = {
 
     async reopenCBTExam(studentId, examId) {
         const exam = await db.cbt_exams.get(examId);
-        const minsStr = prompt(`Re-opening exam for student. How many minutes should they have left? (Max: ${exam.duration})`, '15');
+        const minsStr = prompt(`Re-opening exam for student. How many minutes should they have left? (Note: Max duration of this exam is ${exam.duration} mins)`, '15');
         if (!minsStr) return;
         
         const minutesAllowed = parseInt(minsStr);
@@ -11539,19 +11547,45 @@ export const UI = {
         }
 
         try {
-            // Formula: ElapsedTime = TotalDuration - RemainingTime
-            const totalDurationSecs = exam.duration * 60;
+            // Smart ID matching: find ANY result for this student (by record ID or profile ID)
+            const profiles = await db.profiles.toArray();
+            const studentProfiles = profiles.filter(p => p.assigned_id === studentId || p.id === studentId);
+            const possibleIds = [studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
+            
+            const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
+            const result = results.find(r => possibleIds.includes(r.student_id));
+
+            // Formula: To give X minutes remaining on a Y minute exam, set StartTime = Now - (Y - X)
+            // Example: 30 min exam, want 15 mins left -> StartTime = Now - 15 mins
+            // Example: 30 min exam, want 45 mins left -> StartTime = Now - (-15) mins = Now + 15 mins
+            const totalDurationSecs = (exam.duration || 30) * 60;
             const remainingSecs = minutesAllowed * 60;
             const elapsedSecs = totalDurationSecs - remainingSecs;
             const fakeStartTime = new Date(Date.now() - (elapsedSecs * 1000));
 
-            // Use .where() to target the specific composite key or separate fields
-            await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
+            const updatePayload = {
                 status: 'In Progress',
                 started_at: fakeStartTime.toISOString(),
                 updated_at: new Date().toISOString(),
-                is_synced: 0
-            });
+                is_synced: 0,
+                // If the user adds MORE time than total duration, the student app needs to know
+                // or else it blocks at the entry point. We'll set a 'bonus' hint.
+                score: 0 
+            };
+
+            if (result) {
+                // If result was under a different ID (e.g. Profile ID), we migrate it to the Unified ID now
+                await db.cbt_results.update(result.id, { 
+                    ...updatePayload,
+                    student_id: studentId // Standardize to the Record ID used in the registry
+                });
+            } else {
+                await db.cbt_results.add({
+                    student_id: studentId,
+                    exam_id: examId,
+                    ...updatePayload
+                });
+            }
 
             Notifications.show(`Exam re-opened with ${minutesAllowed} minutes remaining.`, 'success');
             this.debouncedSync();
