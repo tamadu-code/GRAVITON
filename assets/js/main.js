@@ -111,12 +111,20 @@ async function initApp() {
     // This avoids waiting for a Supabase network round-trip just to be told no session exists.
     const hasPotentialSession = Object.keys(localStorage).some(key => key.startsWith('sb-') && key.endsWith('-auth-token'));
     
-    if (!hasPotentialSession) {
+    // Check if we are arriving from a password recovery link
+    const isRecovery = window.location.hash.includes('type=recovery');
+    
+    if (!hasPotentialSession && !isRecovery) {
         console.log('No local session token found, skipping session check.');
         showLoginScreen();
         isInitializing = false;
         if (typeof lucide !== 'undefined') lucide.createIcons();
         return;
+    }
+
+    if (isRecovery) {
+        console.log('Recovery token detected in URL, waiting for auth listener...');
+        // We let the auth listener handle the UI switch to reset-password-screen
     }
 
     // Show a small loader on login button if we are actually checking a real session
