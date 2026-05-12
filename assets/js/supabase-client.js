@@ -115,8 +115,13 @@ export async function syncToCloud() {
 
                         // Defensive check for profiles role constraint
                         if (table === 'profiles') {
-                            const allowedRoles = ['Admin', 'Teacher', 'Student', 'Parent', 'Staff'];
-                            if (!sanitized.role || !allowedRoles.includes(sanitized.role)) {
+                            const allowedRoles = ['Admin', 'Teacher', 'Student', 'Parent', 'Staff', 'Principal'];
+                            const currentRole = (sanitized.role || '').trim();
+                            const matchedRole = allowedRoles.find(r => r.toLowerCase() === currentRole.toLowerCase());
+                            
+                            if (matchedRole) {
+                                sanitized.role = matchedRole; // Normalize to exact DB case
+                            } else {
                                 sanitized.role = 'Student'; // Default to safest
                             }
                         }
