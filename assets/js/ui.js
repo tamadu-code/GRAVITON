@@ -6602,7 +6602,7 @@ export const UI = {
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
         // Fetch results and live progress
-        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const studentId = this.resolveCBTStudentId();
         const studentResults = isStudent ? await db.cbt_results.where('student_id').equals(studentId).toArray() : [];
         const liveProgress = isStudent ? await db.exam_progress.where('student_id').equals(studentId).toArray() : [];
         
@@ -7414,13 +7414,13 @@ export const UI = {
                 return Notifications.show('This exam has no questions assigned yet. Please contact your teacher.', 'error');
             }
 
-            const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
+            const studentId = this.resolveCBTStudentId();
             if (!studentId) {
                 console.error(`[CBT] Student ID resolution failed. User:`, this.currentUser);
                 return Notifications.show('Unable to identify your student record. Please re-login.', 'error');
             }
 
-            console.log(`[CBT] Starting exam for Student: ${studentId} (Internal ID: ${this.currentUser.id})`);
+            console.log(`[CBT] Starting exam for Student: ${studentId}`);
 
             const now = new Date();
             const durationSeconds = (exam.duration || 30) * 60;
@@ -7609,7 +7609,7 @@ export const UI = {
     },
 
     async logViolation(type) {
-        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const studentId = this.resolveCBTStudentId();
         const examId = this.currentExam.id;
         const timestamp = new Date().toLocaleTimeString();
         const entry = `[${timestamp}] ${type}`;
@@ -7718,8 +7718,12 @@ export const UI = {
     
                     <!-- Question Area -->
                     <main style="flex: 1; overflow-y: auto; padding: 1rem; padding-bottom: 120px; -webkit-overflow-scrolling: touch;">
-                        <div class="cbt-question-card" style="background: white; border-radius: 20px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; max-width: 800px; margin: 0 auto; min-height: 350px;">
-                            <div style="font-size: 1rem; font-weight: 700; color: #1e293b; line-height: 1.5; margin-bottom: 1.5rem;">
+                        <div class="cbt-question-card animate-fade-in" style="background: white; border-radius: 24px; padding: clamp(1rem, 5vw, 2.5rem); border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); min-height: 400px; height: auto !important; margin-bottom: 2rem; max-width: 800px; margin: 0 auto;">
+                            <div style="font-size: 0.75rem; font-weight: 800; color: #4338ca; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 1rem; display: flex; justify-content: space-between;">
+                                <span>Question ${this.currentQuestionIndex + 1} of ${this.currentQuestions.length}</span>
+                                <span style="color: #64748b;">${q.marks || 1} Mark(s)</span>
+                            </div>
+                            <div id="cbt-question-text" style="font-size: 1.1rem; font-weight: 700; color: #1e293b; line-height: 1.6; margin-bottom: 2rem; overflow: visible !important; height: auto !important;">
                                 ${this.parseCBTContent(q.question_text)}
                             </div>
 
@@ -7794,6 +7798,15 @@ export const UI = {
     },
 
     /**
+     * Unified ID Resolver: Ensures student results are tied to a consistent ID
+     */
+    resolveCBTStudentId() {
+        if (!this.currentUser) return null;
+        // Priority: assigned_id (Student Record ID) > student_id (Legacy/Profile ID) > id (Auth ID)
+        return this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
+    },
+
+    /**
      * Smart Content Parser: Detects images and prepares Math
      */
     parseCBTContent(text) {
@@ -7801,7 +7814,7 @@ export const UI = {
         
         // 1. Detect [IMG:url] or [IMG:base64]
         let parsed = text.replace(/\[IMG:(.*?)\]/gi, (match, url) => {
-            return `<div style="margin: 1rem 0; text-align: center;"><img src="${url.trim()}" style="max-width: 100%; max-height: 300px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\'color:#f43f5e; font-size:0.75rem; font-weight:700;\'>[⚠️ Image failed to load]</div>'"></div>`;
+            return `<div style="margin: 1rem 0; text-align: center;"><img src="${url.trim()}" style="max-width: 100%; max-height: 500px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\'color:#f43f5e; font-size:0.75rem; font-weight:700;\'>[⚠️ Image failed to load]</div>'"></div>`;
         });
         
         return parsed;
@@ -7836,8 +7849,7 @@ export const UI = {
     async saveExamProgress(questionId, value) {
         this.userAnswers[questionId] = value;
         
-        // Save to Local Database instantly
-        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const studentId = this.resolveCBTStudentId();
         const examId = this.currentExam.id;
         
         try {
@@ -7889,7 +7901,7 @@ export const UI = {
     async submitExam(isExternal = false) {
         if (this.examTimerInterval) clearInterval(this.examTimerInterval);
         
-        const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
+        const studentId = this.resolveCBTStudentId();
         const examId = this.currentExam.id;
         const existing = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
 
