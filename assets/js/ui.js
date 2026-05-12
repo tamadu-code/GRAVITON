@@ -69,7 +69,7 @@ export const UI = {
     debouncedSync(delay = 5000) {
         if (this.syncTimeout) clearTimeout(this.syncTimeout);
         this.syncTimeout = setTimeout(() => {
-            if (typeof syncToCloud === 'function') this.debouncedSync();
+            if (typeof syncToCloud === 'function') syncToCloud();
         }, delay);
     },
     
@@ -11644,6 +11644,35 @@ export const UI = {
                     exam_id: examId,
                     ...updatePayload
                 });
+            }
+
+            // *** CRITICAL: Push to cloud IMMEDIATELY so syncFromCloud never overwrites with stale data ***
+            try {
+                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (client && navigator.onLine) {
+                    const cloudPayload = {
+                        id: result ? result.id : undefined,
+                        exam_id: examId,
+                        student_id: studentId,
+                        status: 'In Progress',
+                        started_at: fakeStartTime.toISOString(),
+                        updated_at: new Date().toISOString(),
+                        score: 0
+                    };
+                    if (result) {
+                        cloudPayload.id = result.id;
+                    }
+                    const { error: cloudErr } = await client.from('cbt_results').upsert(cloudPayload);
+                    if (cloudErr) {
+                        console.warn('[CBT Reopen] Cloud push failed, will retry via sync:', cloudErr.message);
+                    } else {
+                        console.log('[CBT Reopen] Successfully pushed In Progress status to cloud.');
+                        // Mark as synced locally since we just pushed
+                        if (result) await db.cbt_results.update(result.id, { is_synced: 1 });
+                    }
+                }
+            } catch (cloudPushErr) {
+                console.warn('[CBT Reopen] Cloud push error (non-fatal):', cloudPushErr);
             }
 
             Notifications.show(`Exam re-opened with ${minutesAllowed} minutes remaining.`, 'success');
