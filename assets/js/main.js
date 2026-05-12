@@ -338,6 +338,27 @@ async function loadAuthenticatedApp(authUser) {
         updateSyncStatus('Offline', 'offline');
     });
 
+    // ─── Data Health Check & Auto-Purge ───
+    async function checkInactiveHealth() {
+        if (currentRole !== 'Admin') return;
+        
+        try {
+            const ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90); // ~1 Term (3 months)
+            
+            // Find students deactivated more than 90 days ago
+            const oldInactive = await db.students.filter(s => s.is_active === 0 && s.deactivated_at && new Date(s.deactivated_at) < ninetyDaysAgo).toArray();
+            
+            if (oldInactive.length > 0) {
+                Notifications.show(`Data Maintenance: ${oldInactive.length} students have been inactive for over 1 term. You can purge them in Settings to save space.`, 'info');
+                console.log(`[HealthCheck] Found ${oldInactive.length} stale inactive records.`);
+            }
+        } catch (e) {
+            console.warn('Health check failed:', e);
+        }
+    }
+    checkInactiveHealth();
+
     // ─── Data Health Check & Auto-Repair ───
     async function repairCBTData() {
         try {

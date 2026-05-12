@@ -2761,6 +2761,7 @@ export const UI = {
                     await db.students.update(studentId, { 
                         is_active: false, 
                         status: 'Inactive', 
+                        deactivated_at: new Date().toISOString(),
                         updated_at: new Date().toISOString(),
                         is_synced: 0 
                     });
@@ -2777,6 +2778,7 @@ export const UI = {
                 await db.students.update(studentId, { 
                     is_active: true, 
                     status: 'Active', 
+                    deactivated_at: null,
                     updated_at: new Date().toISOString(),
                     is_synced: 0 
                 });
@@ -8902,13 +8904,23 @@ export const UI = {
                         </button>
                     </div>
 
-                    <div style="background: #f0fdf4; border: 1px solid #dcfce7; padding: 1.5rem; border-radius: 20px; margin-top: 1.5rem; grid-column: span 2;">
+                    <div style="background: #f0fdf4; border: 1px solid #dcfce7; padding: 1.5rem; border-radius: 20px; margin-top: 1.5rem; grid-column: span 1;">
                         <h4 style="font-size: 0.9rem; font-weight: 800; color: #16a34a; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
                             <i data-lucide="fingerprint" style="width: 18px;"></i> Biometric Sync Maintenance
                         </h4>
-                        <p style="font-size: 0.75rem; color: #15803d; margin-bottom: 1rem;">Automatically split classes into Arms (e.g. JSS 1 -> JSS 1A, JSS 1B) based on the Biometric Attendance System records.</p>
+                        <p style="font-size: 0.75rem; color: #15803d; margin-bottom: 1rem;">Automatically split classes into Arms (e.g. JSS 1 -> JSS 1A) based on Biometric records.</p>
                         <button id="btn-bulk-repair-arms" class="btn" style="width: 100%; height: 44px; border-radius: 10px; background: #22c55e; color: white; border: none; font-weight: 800;">
-                            <i data-lucide="wrench"></i> Run Global Class-Arm Repair
+                            <i data-lucide="wrench"></i> Run Global Repair
+                        </button>
+                    </div>
+
+                    <div style="background: #fff1f2; border: 1px solid #ffe4e6; padding: 1.5rem; border-radius: 20px; margin-top: 1.5rem; grid-column: span 1;">
+                        <h4 style="font-size: 0.9rem; font-weight: 800; color: #e11d48; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="trash-2" style="width: 18px;"></i> Data Cleanup
+                        </h4>
+                        <p style="font-size: 0.75rem; color: #9f1239; margin-bottom: 1rem;">Permanently delete students marked as "Inactive". <strong>Warning: This cannot be undone.</strong></p>
+                        <button id="btn-purge-inactive" class="btn" style="width: 100%; height: 44px; border-radius: 10px; background: #e11d48; color: white; border: none; font-weight: 800;">
+                            <i data-lucide="user-x"></i> Purge Inactive Students
                         </button>
                     </div>
 
@@ -8983,6 +8995,45 @@ export const UI = {
                 } finally {
                     repairBtn.disabled = false;
                     repairBtn.innerHTML = originalHtml;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        }
+
+        // --- NEW: Purge Inactive Students Logic ---
+        const purgeBtn = document.getElementById('btn-purge-inactive');
+        if (purgeBtn) {
+            purgeBtn.onclick = async () => {
+                const inactiveStudents = await db.students.where('is_active').equals(0).toArray();
+                if (inactiveStudents.length === 0) {
+                    Notifications.show("No inactive students found to purge.", "info");
+                    return;
+                }
+
+                if (!confirm(`CRITICAL WARNING: This will PERMANENTLY delete ${inactiveStudents.length} inactive students and ALL their associated data. Proceed?`)) return;
+                
+                const confirmPurge = prompt("Please type 'PURGE' to confirm:");
+                if (confirmPurge !== 'PURGE') return;
+
+                purgeBtn.disabled = true;
+                const originalHtml = purgeBtn.innerHTML;
+                
+                try {
+                    let deleted = 0;
+                    for (const s of inactiveStudents) {
+                        deleted++;
+                        purgeBtn.innerHTML = `<i data-lucide="loader" class="spin"></i> Purging ${deleted}/${inactiveStudents.length}...`;
+                        await this.safeDelete('students', s.student_id, null);
+                        await db.scores.where('student_id').equals(s.student_id).delete();
+                        await db.attendance.where('student_id').equals(s.student_id).delete();
+                    }
+                    Notifications.show(`Successfully purged ${deleted} records.`, 'success');
+                    await this.debouncedSync();
+                } catch (err) {
+                    Notifications.show(`Purge failed: ${err.message}`, 'error');
+                } finally {
+                    purgeBtn.disabled = false;
+                    purgeBtn.innerHTML = originalHtml;
                     if (typeof lucide !== 'undefined') lucide.createIcons();
                 }
             };
@@ -9096,7 +9147,7 @@ export const UI = {
                 else if (currentClass.includes('SSS 1') || currentClass.includes('SS 1')) nextClass = 'SSS 2';
                 else if (currentClass.includes('SSS 2') || currentClass.includes('SS 2')) nextClass = 'SSS 3';
                 else if (currentClass.includes('SSS 3') || currentClass.includes('SS 3')) {
-                    await db.students.update(s.student_id, prepareForSync({ status: 'Graduated', is_active: 0 }));
+                    await db.students.update(s.student_id, prepareForSync({ status: 'Graduated', is_active: 0, deactivated_at: new Date().toISOString() }));
                     graduated++;
                     continue;
                 }
