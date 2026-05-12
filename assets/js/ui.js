@@ -2165,23 +2165,44 @@ export const UI = {
                             viewProfileBtn.addEventListener('click', async (btnEv) => {
                                 btnEv.preventDefault();
                                 btnEv.stopPropagation();
-                                const studentId = viewProfileBtn.dataset.id;
-                                await this.renderStudentDetail(studentId);
-                                // Smooth scroll on mobile
-                                if (window.innerWidth < 1024) {
-                                    document.getElementById('student-detail-view')?.scrollIntoView({ behavior: 'smooth' });
+                                const sid = viewProfileBtn.dataset.id;
+                                try {
+                                    viewProfileBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Loading...';
+                                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                                    
+                                    await this.renderStudentDetail(sid);
+                                    
+                                    // Robust scroll for mobile
+                                    const target = document.getElementById('student-detail-view');
+                                    if (target) {
+                                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                        // Highlight the view to show it updated
+                                        target.style.outline = '2px solid #2563eb';
+                                        setTimeout(() => target.style.outline = 'none', 1000);
+                                    }
+                                } catch (err) {
+                                    console.error('Profile View Error:', err);
+                                    Notifications.show('Failed to load profile.', 'error');
+                                } finally {
+                                    viewProfileBtn.innerHTML = '<i data-lucide="user" style="width: 14px;"></i> View Full Profile';
+                                    if (typeof lucide !== 'undefined') lucide.createIcons();
                                 }
                             });
                         }
-
+                        
                         if (editBtn) {
                             editBtn.addEventListener('click', async (btnEv) => {
+                                btnEv.preventDefault();
                                 btnEv.stopPropagation();
-                                await this.renderStudentDetail(student.student_id);
-                                document.getElementById('btn-modify-student')?.click();
-                                // Smooth scroll on mobile
-                                if (window.innerWidth < 1024) {
-                                    document.getElementById('student-detail-view').scrollIntoView({ behavior: 'smooth' });
+                                const sid = editBtn.dataset.id;
+                                try {
+                                    await this.renderStudentDetail(sid);
+                                    document.getElementById('btn-modify-student')?.click();
+                                    
+                                    const target = document.getElementById('student-detail-view');
+                                    if (target) target.scrollIntoView({ behavior: 'smooth' });
+                                } catch (err) {
+                                    Notifications.show('Failed to open editor.', 'error');
                                 }
                             });
                         }
