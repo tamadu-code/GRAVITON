@@ -23,6 +23,7 @@ if (typeof lucide !== 'undefined') {
 }
 
 // ─── DOM Elements ───
+const splashScreen = document.getElementById('splash-screen');
 const loginScreen = document.getElementById('login-screen');
 const createAccountScreen = document.getElementById('create-account-screen');
 const forgotPasswordScreen = document.getElementById('forgot-password-screen');
@@ -73,6 +74,7 @@ document.querySelectorAll('.pw-toggle').forEach(button => {
 
 // ─── Screen Switching Helpers ───
 function showScreen(screen) {
+    if (splashScreen) splashScreen.style.display = 'none';
     loginScreen.style.display = 'none';
     createAccountScreen.style.display = 'none';
     forgotPasswordScreen.style.display = 'none';
@@ -264,6 +266,7 @@ async function loadAuthenticatedApp(authUser) {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     // Hide all auth screens, show app (Done last to ensure app is ready)
+    if (splashScreen) splashScreen.style.display = 'none';
     loginScreen.style.display = 'none';
     createAccountScreen.style.display = 'none';
     forgotPasswordScreen.style.display = 'none';
@@ -507,29 +510,28 @@ window.addEventListener('sync-error', (e) => {
 const logoutBtn = document.getElementById('logout-btn');
 if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
-        // Optimistic UI: Hide app immediately
-        appContainer.style.display = 'none';
-        loginScreen.style.display = 'flex';
+        // Instant Feedback: Show premium splash instead of freezing on login
+        if (splashScreen) {
+            splashScreen.style.display = 'flex';
+            splashScreen.style.opacity = '1';
+        }
         
-        logoutBtn.textContent = 'Clearing Session...';
-        logoutBtn.disabled = true;
-
         try {
-            // Give Supabase 2 seconds to sign out, then force reload anyway
-            await Promise.race([
-                logoutUser(),
-                new Promise(resolve => setTimeout(resolve, 2000))
-            ]);
-        } catch(e) {
-            console.error('Logout error:', e);
-        } finally {
-            // Clear any lingering auth keys in localStorage
-            for (let key in localStorage) {
-                if (key.includes('supabase.auth.token') || key.includes('sb-')) {
+            // Sign out in the background (don't await it if it's slow)
+            logoutUser(); 
+            
+            // Clear local auth tokens immediately
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.includes('supabase.auth.token') || key.startsWith('sb-'))) {
                     localStorage.removeItem(key);
                 }
             }
-            window.location.href = window.location.origin + window.location.pathname;
+        } catch(e) {
+            console.error('Logout error:', e);
+        } finally {
+            // Quick redirect to reset the app state cleanly
+            window.location.reload();
         }
     });
 }

@@ -1,4 +1,4 @@
-﻿:root {
+:root {
     /* Academic Precision Design System (Google Stitch) */
     --primary: #3525cd;
     --primary-container: #4f46e5;
@@ -4948,4 +4948,100 @@ body.exam-mode .cbt-exam-container {
 /* Blur content if window loses focus to deter screenshots */
 body.window-blurred.exam-mode .cbt-exam-container {
     filter: blur(15px);
+}
+
+/* =============================================
+   PREMIUM SPLASH SCREEN
+   ============================================= */
+.splash-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(circle at center, #1e40af 0%, #1e1b4b 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    color: white;
+    transition: opacity 0.5s ease-out, visibility 0.5s;
+}
+
+.splash-content {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.splash-logo {
+    position: relative;
+    width: 100px;
+    height: 100px;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+
+.splash-logo i {
+    width: 48px;
+    height: 48px;
+    color: white;
+}
+
+.splash-ripple {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    border: 2px solid white;
+    border-radius: 24px;
+    animation: splash-ripple 2s infinite;
+    opacity: 0;
+}
+
+@keyframes splash-ripple {
+    0% { width: 100%; height: 100%; opacity: 0.5; }
+    100% { width: 180%; height: 180%; opacity: 0; }
+}
+
+.splash-text {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: 0.3em;
+    text-indent: 0.3em;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.splash-loader {
+    width: 200px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+}
+
+.splash-loader-bar {
+    position: absolute;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: white;
+    animation: splash-loading 1.5s infinite ease-in-out;
+}
+
+@keyframes splash-loading {
+    0% { left: -100%; }
+    100% { left: 100%; }
 }

@@ -43,8 +43,22 @@
     <script src="https://js.paystack.co/v1/inline.js"></script>
 </head>
 <body>
+    <!-- Splash Screen: Shown while verifying session -->
+    <div id="splash-screen" class="splash-screen">
+        <div class="splash-content">
+            <div class="splash-logo">
+                <i data-lucide="building-2"></i>
+                <div class="splash-ripple"></div>
+            </div>
+            <div class="splash-text">GRAVITON</div>
+            <div class="splash-loader">
+                <div class="splash-loader-bar"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Auth Screen: Login -->
-    <div id="login-screen" class="login-screen">
+    <div id="login-screen" class="login-screen" style="display: none;">
         <div class="login-card">
             <div class="login-header text-center">
                 <!-- Orbital Animation -->
