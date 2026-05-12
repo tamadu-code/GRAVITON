@@ -207,8 +207,11 @@ export async function syncFromCloud(forceAll = false) {
                         // For attendance tables: filter by EITHER updated_at OR date
                         if (table === 'attendance_records' || table === 'attendance') {
                             const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                            const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                            
+                            // Deep sync the last 3 days regardless of lastSync to catch late clock-outs
                             query = client.from(table).select('*')
-                                .or(`updated_at.gt.${lastSync},date.gte.${sixtyDaysAgo}`)
+                                .or(`updated_at.gt.${lastSync},date.gte.${threeDaysAgo}`)
                                 .range(offset, offset + BATCH_SIZE - 1);
                         } else {
                             query = query.gt('updated_at', lastSync);

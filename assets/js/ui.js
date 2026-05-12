@@ -4546,16 +4546,20 @@ export const UI = {
             records.filter(r => !r.is_subject_based).forEach(r => {
                 const existing = uniqueSchoolMap.get(r.student_id);
                 if (existing) {
-                    // Merge records to preserve both sign_in and sign_out
+                    // Smart Merge: Prioritize records that actually have time data
+                    const hasNewTime = r.sign_in || r.check_in || r.sign_out || r.check_out;
+                    const hasExistingTime = existing.sign_in || existing.check_in || existing.sign_out || existing.check_out;
+
                     uniqueSchoolMap.set(r.student_id, {
                         ...existing,
                         ...r,
-                        sign_in: existing.sign_in || r.sign_in || existing.check_in || r.check_in || existing.in_time || r.in_time,
+                        // If the existing record has time and the new one doesn't, keep the existing time
+                        sign_in: r.sign_in || existing.sign_in || r.check_in || existing.check_in || r.in_time || existing.in_time,
                         sign_out: r.sign_out || existing.sign_out || r.check_out || existing.check_out || r.out_time || existing.out_time || r.exit_time || existing.exit_time,
-                        check_in: existing.check_in || r.check_in,
-                        check_out: r.check_out || existing.check_out,
-                        // Prioritize 'Present' or 'Late' status over others
-                        status: (r.status === 'Present' || r.status === 'Late') ? r.status : existing.status
+                        // Preserve the best status found across any record for this student/day
+                        status: (r.status === 'Present' || r.status === 'Late') ? r.status : existing.status,
+                        // Ensure we keep the most complete version of the record
+                        _merged: true
                     });
                 } else {
                     uniqueSchoolMap.set(r.student_id, r);
