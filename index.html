@@ -244,7 +244,10 @@
                     <label class="text-xs font-bold uppercase tracking-wider text-secondary">New Password</label>
                     <div class="input-with-icon">
                         <i data-lucide="lock"></i>
-                        <input type="password" id="new-password-input" placeholder="••••••••" required minlength="6">
+                        <input type="password" id="new-password-input" class="login-input login-input-pw" placeholder="••••••••" required minlength="6">
+                        <button type="button" class="pw-toggle" data-target="new-password-input" aria-label="Toggle password visibility">
+                            <i data-lucide="eye-off"></i>
+                        </button>
                     </div>
                 </div>
                 
