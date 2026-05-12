@@ -109,3 +109,6 @@
 2026-05-12 19:12:22 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
 2026-05-12 19:12:24 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
 2026-05-12 19:12:24 [INFO] Sync complete. Total success: 0
+2026-05-12 19:12:36 [INFO] Starting robust sync to Attendance System...
+2026-05-12 19:12:36 [INFO] Latest CSV: C:\Users\ELECTRO-TECH\Downloads\attendance_report_2026-05-11.csv
+2026-05-12 19:13:20 [INFO] Loaded 219 students from cloud.

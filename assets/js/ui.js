@@ -2363,13 +2363,8 @@ export const UI = {
                         throw new Error('Validation failed');
                     }
 
-                    if (!attendanceCodeInput || attendanceCodeInput.length < 1 || attendanceCodeInput.length > 10) {
-                        Notifications.show('A valid Attendance Code (1-10 digits) is required', 'error');
-                        throw new Error('Validation failed');
-                    }
-
-                    serial = `NKQMS-${year}-${attendanceCodeInput}`;
-                    attendanceCode = attendanceCodeInput;
+                    serial = `NKQMS-${year}-${attendanceCodeInput || Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+                    attendanceCode = attendanceCodeInput || null;
                     
                     const newStudent = prepareForSync({
                         student_id: serial,
