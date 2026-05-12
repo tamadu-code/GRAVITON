@@ -343,16 +343,21 @@ export async function loginUser(identifier, password) {
         const retry1 = await client.auth.signInWithPassword({ email: portalEmail, password: loginPassword });
         if (!retry1.error) return retry1;
 
-        // 2. Perform a database lookup to find the ACTUAL email linked to this Staff ID
+        // 2. Perform a database lookup to find the ACTUAL email linked to this ID or Name
         try {
-            const { data: profile } = await client.from('profiles').select('email').eq('assigned_id', identifier).maybeSingle();
+            console.log(`[Auth] Searching profiles for: ${identifier}`);
+            const { data: profile } = await client.from('profiles')
+                .select('email')
+                .or(`assigned_id.eq.${identifier},full_name.ilike.%${identifier}%`)
+                .maybeSingle();
+
             if (profile && profile.email && profile.email !== portalEmail) {
                 console.log(`[Auth] Found linked email in profile: ${profile.email}`);
                 const retry2 = await client.auth.signInWithPassword({ email: profile.email, password: loginPassword });
                 if (!retry2.error) return retry2;
             }
         } catch (lookupError) {
-            console.warn('[Auth] Profile lookup failed:', lookupError);
+            console.warn('[Auth] Profile/Name lookup failed:', lookupError);
         }
     }
 
