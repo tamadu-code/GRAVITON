@@ -11402,11 +11402,20 @@ export const UI = {
             return isActive && studentClass === targetClass;
         }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-        // Prioritize 'Completed' status if multiple records exist for the same student
+        // Fetch profiles to map Auth IDs back to Student IDs for legacy/mismatched records
+        const profiles = await db.profiles.toArray();
+        const profileMap = profiles.reduce((acc, p) => {
+            if (p.assigned_id) acc[p.id] = p.assigned_id;
+            return acc;
+        }, {});
+
+        // Prioritize 'Completed' status and resolve ID mismatches
         const resultEntries = results.reduce((acc, r) => {
-            const existing = acc[r.student_id];
+            const resolvedId = profileMap[r.student_id] || r.student_id;
+            const existing = acc[resolvedId];
+            
             if (!existing || (r.status === 'Completed' && existing.status !== 'Completed')) {
-                acc[r.student_id] = { ...r, status: r.status || 'Completed' };
+                acc[resolvedId] = { ...r, student_id: resolvedId, status: r.status || 'Completed' };
             }
             return acc;
         }, {});
@@ -11556,13 +11565,21 @@ export const UI = {
         if (!confirm('Are you sure you want to FORCE SUBMIT this student\'s exam? They will not be able to continue.')) return;
 
         try {
-            const result = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            // Smart ID matching: find ANY result for this student (by record ID or profile ID)
+            const profiles = await db.profiles.toArray();
+            const studentProfiles = profiles.filter(p => p.assigned_id === studentId || p.id === studentId);
+            const possibleIds = [studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
+            
+            const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
+            const result = results.find(r => possibleIds.includes(r.student_id));
+
             if (result && result.status === 'Completed') {
                 Notifications.show('Student has already completed this exam.', 'info');
                 return;
             }
 
-            const progress = await db.exam_progress.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            const allProgress = await db.exam_progress.where('exam_id').equals(examId).toArray();
+            const progress = allProgress.find(p => possibleIds.includes(p.student_id));
             const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
             
             const answers = progress ? progress.current_answers : (result ? result.answers : {});
@@ -11633,8 +11650,12 @@ export const UI = {
             const exam = await db.cbt_exams.get(examId);
 
             for (const r of activeResults) {
-                // Check for progress to get real-time answers
-                const progress = await db.exam_progress.where('[student_id+exam_id]').equals([r.student_id, examId]).first();
+                // Find associated profile to ensure we get the right progress ID
+                const studentProfiles = profiles.filter(p => p.assigned_id === r.student_id || p.id === r.student_id);
+                const possibleIds = [r.student_id, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
+
+                const allProgress = await db.exam_progress.where('exam_id').equals(examId).toArray();
+                const progress = allProgress.find(p => possibleIds.includes(p.student_id));
                 const answers = progress ? progress.current_answers : (r.answers || {});
 
                 let score = 0;
