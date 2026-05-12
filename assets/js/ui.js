@@ -11349,6 +11349,7 @@ export const UI = {
                         <p class="text-slate-500" style="font-size: 0.75rem; font-weight: 600;">${exam.title} — ${exam.subject_id}</p>
                     </div>
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button class="btn btn-warning" onclick="UI.forceSubmitAllParticipants('${examId}')" style="border-radius: 10px; height: 38px; font-size: 0.75rem; background: #fff7ed; color: #d97706; border: 1px solid #ffedd5; font-weight: 800;"><i data-lucide="stop-circle" style="width: 14px;"></i> Force Stop All</button>
                         <button class="btn btn-secondary" onclick="UI.renderCBT()" style="border-radius: 10px; height: 38px; font-size: 0.75rem;"><i data-lucide="arrow-left" style="width: 14px;"></i> Back</button>
                     </div>
                 </div>
@@ -11584,19 +11585,42 @@ export const UI = {
             
             const answers = progress ? progress.current_answers : (result ? result.answers : {});
             
-            // Calculate score using standard hashing to match student-side logic
+            const exam = await db.cbt_exams.get(examId);
+            const limit = parseInt(exam.question_limit) || 0;
+            
+            // Replicate student-side shuffled question set for accurate scoring
+            const seedStr = studentId + examId;
+            let seed = 0;
+            for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+            
+            const seededShuffle = (array, seed) => {
+                let m = array.length, t, i;
+                while (m) {
+                    seed = (seed * 9301 + 49297) % 233280;
+                    i = Math.floor((seed / 233280) * m--);
+                    t = array[m]; array[m] = array[i]; array[i] = t;
+                }
+                return array;
+            };
+
+            let studentQuestions = seededShuffle([...questions], seed);
+            if (limit > 0) studentQuestions = studentQuestions.slice(0, limit);
+
+            // Calculate score based on SHUFFLED questions and HASHED answers
             let score = 0;
-            questions.forEach(q => {
+            studentQuestions.forEach(q => {
                 const studentChoice = answers[q.id];
                 if (studentChoice) {
                     const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + examId))).split('').reverse().join('');
-                    if (choiceHash === q.answerHash) {
+                    const rawCorrectText = q[`option_${(q.correct_option || 'A').toLowerCase()}`] || '';
+                    const correctHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join('');
+                    if (choiceHash === correctHash) {
                         score += (parseFloat(q.marks) || 1);
                     }
                 }
             });
 
-            const totalMarks = questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+            const totalMarks = studentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
 
             const finalResultUpdate = {
                 status: 'Completed',
@@ -11608,8 +11632,21 @@ export const UI = {
                 is_synced: 0
             };
 
-            if (result) {
-                await db.cbt_results.update(result.id, finalResultUpdate);
+            // Clean up ANY duplicate/split records for this student/exam to prevent sync ghosts
+            if (possibleIds.length > 1) {
+                await db.cbt_results.where('exam_id').equals(examId)
+                    .and(r => possibleIds.includes(r.student_id))
+                    .delete();
+            }
+
+            if (result || possibleIds.length > 1) {
+                const targetId = result ? result.id : `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`;
+                await db.cbt_results.put({
+                    id: targetId,
+                    student_id: studentId,
+                    exam_id: examId,
+                    ...finalResultUpdate
+                });
             } else {
                 await db.cbt_results.add({
                     student_id: studentId,
@@ -11661,23 +11698,44 @@ export const UI = {
                 const progress = allProgress.find(p => possibleIds.includes(p.student_id));
                 const answers = progress ? progress.current_answers : (r.answers || {});
 
+                // Replicate student-side shuffled question set for accurate scoring
+                const limit = parseInt(exam.question_limit) || 0;
+                const seedStr = r.student_id + examId;
+                let seed = 0;
+                for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+                
+                const seededShuffle = (array, seed) => {
+                    let m = array.length, t, i;
+                    while (m) {
+                        seed = (seed * 9301 + 49297) % 233280;
+                        i = Math.floor((seed / 233280) * m--);
+                        t = array[m]; array[m] = array[i]; array[i] = t;
+                    }
+                    return array;
+                };
+
+                let studentQuestions = seededShuffle([...questions], seed);
+                if (limit > 0) studentQuestions = studentQuestions.slice(0, limit);
+
                 let score = 0;
-                questions.forEach(q => {
+                studentQuestions.forEach(q => {
                     const studentChoice = answers[q.id];
                     if (studentChoice) {
                         const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + examId))).split('').reverse().join('');
-                        if (choiceHash === q.answerHash) {
+                        const rawCorrectText = q[`option_${(q.correct_option || 'A').toLowerCase()}`] || '';
+                        const correctHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join('');
+                        if (choiceHash === correctHash) {
                             score += (parseFloat(q.marks) || 1);
                         }
                     }
                 });
 
-                const totalMarks = questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+                const totalMarks = studentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
 
                 const finalResultUpdate = {
                     status: 'Completed',
                     score: score,
-                    total_questions: questions.length,
+                    total_questions: studentQuestions.length,
                     total_marks: totalMarks,
                     answers: answers,
                     updated_at: new Date().toISOString(),
