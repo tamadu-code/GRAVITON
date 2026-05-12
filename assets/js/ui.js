@@ -6664,8 +6664,10 @@ export const UI = {
                                             <i data-lucide="file-text"></i>
                                         </div>
                                         <div>
-                                            <div style="font-weight: 800; color: #1e293b; font-size: 1.05rem;">${e.title}</div>
-                                            <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">${subMap[e.subject_id] || 'General Subject'} | ${e.class_name}</div>
+                                            <div style="font-weight: 800; color: #1e293b; font-size: 1.05rem;">
+                                                ${subMap[e.subject_id] || 'General'}: ${e.title}
+                                            </div>
+                                            <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">${e.class_name} | ${e.term} | ${e.session}</div>
                                         </div>
                                     </div>
                                     <div style="display: flex; align-items: center; gap: 1rem;">
