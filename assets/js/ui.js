@@ -11294,13 +11294,10 @@ export const UI = {
         // Auto-refresh logic (Optimized to prevent flickering and snap-back)
         if (this.participantsInterval) clearInterval(this.participantsInterval);
         this.participantsInterval = setInterval(async () => {
-            // Check if we are still in the participants view and for the SAME exam
             if (this.currentView === 'cbt_participants' && this.currentViewData === examId) {
                 const registryContainer = document.getElementById('cbt-registry-list');
                 if (registryContainer) {
-                    // Force a cloud pull for results to see if anyone submitted
                     await syncFromCloud(['cbt_results', 'exam_progress']);
-                    
                     const [results, progress] = await Promise.all([
                         db.cbt_results.where('exam_id').equals(examId).toArray(),
                         db.exam_progress.where('exam_id').equals(examId).toArray()
@@ -11308,49 +11305,16 @@ export const UI = {
                     this.updateCBTParticipantsList(exam, results, progress);
                 }
             } else {
-                console.log('[CBT] View changed, clearing participants refresh interval.');
                 clearInterval(this.participantsInterval);
                 this.participantsInterval = null;
             }
         }, 15000); 
 
-        // Initial immediate render from local data
-        const loadInitial = async () => {
-            const [results, progress] = await Promise.all([
-                db.cbt_results.where('exam_id').equals(examId).toArray(),
-                db.exam_progress.where('exam_id').equals(examId).toArray()
-            ]);
-            const allStudents = await db.students.toArray();
-            
-            // Filter students assigned to this class
-            const targetClass = (exam.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
-            const assignedStudents = allStudents.filter(s => {
-                const studentClass = (s.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
-                const isActive = s.is_active != 0;
-                if (!targetClass || targetClass === 'allclasses') return isActive;
-                return isActive && studentClass === targetClass;
-            }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-
-            this.updateCBTParticipantsList(exam, results, progress);
-        };
-        loadInitial();
-
-        // Background cloud pull (Refresh once done)
-        const refreshFromCloud = async () => {
-            try {
-                await syncFromCloud(['cbt_results', 'exam_progress']);
-                const [results, progress] = await Promise.all([
-                    db.cbt_results.where('exam_id').equals(examId).toArray(),
-                    db.exam_progress.where('exam_id').equals(examId).toArray()
-                ]);
-                this.updateCBTParticipantsList(exam, results, progress);
-            } catch (e) { console.warn('[CBT] Background sync failed:', e); }
-        };
-        refreshFromCloud();
-
+        // Set current view flags immediately
         this.currentView = 'cbt_participants';
         this.currentViewData = examId;
 
+        // 1. Initial shell render (Instant feedback)
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="padding: 1rem 0.5rem;">
                 <div class="view-header" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem;">
@@ -11364,20 +11328,41 @@ export const UI = {
                 </div>
 
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h3 style="font-weight: 800; color: #1e293b; font-size: 0.9rem; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
-                        <i data-lucide="users" style="width: 18px; color: #4338ca;"></i> Registry (${assignedStudents.length})
+                    <h3 id="participant-count-header" style="font-weight: 800; color: #1e293b; font-size: 0.9rem; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="users" style="width: 18px; color: #4338ca;"></i> Registry...
                     </h3>
                 </div>
 
                 <div id="cbt-registry-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
-                    <!-- List will be populated by updateCBTParticipantsList -->
                     <div class="loader" style="margin: 2rem auto;"></div>
                 </div>
             </div>
         `;
         
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        this.updateCBTParticipantsList(exam, results, progress);
+
+        // 2. Load data after shell is in DOM
+        const loadInitial = async () => {
+            const [results, progress] = await Promise.all([
+                db.cbt_results.where('exam_id').equals(examId).toArray(),
+                db.exam_progress.where('exam_id').equals(examId).toArray()
+            ]);
+            this.updateCBTParticipantsList(exam, results, progress);
+        };
+
+        const refreshFromCloud = async () => {
+            try {
+                await syncFromCloud(['cbt_results', 'exam_progress']);
+                const [results, progress] = await Promise.all([
+                    db.cbt_results.where('exam_id').equals(examId).toArray(),
+                    db.exam_progress.where('exam_id').equals(examId).toArray()
+                ]);
+                this.updateCBTParticipantsList(exam, results, progress);
+            } catch (e) { console.warn('[CBT] Background sync failed:', e); }
+        };
+
+        await loadInitial(); // Local data first
+        refreshFromCloud(); // Cloud pull in background
     },
 
     async updateCBTParticipantsList(exam, results, progress = []) {
@@ -11412,7 +11397,14 @@ export const UI = {
             }
         });
         const registryContainer = document.getElementById('cbt-registry-list');
+        const countHeader = document.getElementById('participant-count-header');
         if (!registryContainer) return;
+
+        // Update header count
+        if (countHeader) {
+            countHeader.innerHTML = `<i data-lucide="users" style="width: 18px; color: #4338ca;"></i> Registry (${assignedStudents.length})`;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
 
         const isAdmin = this.currentUser.role === 'Admin' || this.currentUser.role === 'Principal';
 
