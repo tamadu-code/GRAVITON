@@ -7643,7 +7643,7 @@ export const UI = {
 
     startExamTimer() {
         if (this.examTimerInterval) clearInterval(this.examTimerInterval);
-        this.examTimerInterval = setInterval(() => {
+        this.examTimerInterval = setInterval(async () => {
             this.examTimeLeft--;
             const timerEl = document.getElementById('exam-timer');
             if (timerEl) {
@@ -7652,6 +7652,20 @@ export const UI = {
                 timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
                 if (this.examTimeLeft <= 300) timerEl.style.color = '#ef4444';
             }
+
+            // Background status check every 15 seconds to detect external force-stop
+            if (this.examTimeLeft > 0 && this.examTimeLeft % 15 === 0) {
+                const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
+                const examId = this.currentExam.id;
+                const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+                if (session && session.status === 'Completed') {
+                    console.log('[CBT] External completion detected, ending session.');
+                    clearInterval(this.examTimerInterval);
+                    this.submitExam(true);
+                    return;
+                }
+            }
+
             if (this.examTimeLeft <= 0) {
                 clearInterval(this.examTimerInterval);
                 this.submitExam();
@@ -7678,7 +7692,7 @@ export const UI = {
             }
 
             this.contentArea.innerHTML = `
-                <div class="cbt-exam-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; background: #f8fafc; z-index: 10000; user-select: none; -webkit-user-select: none;">
+                <div class="cbt-exam-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100dvh; display: flex; flex-direction: column; background: #f8fafc; z-index: 10000; user-select: none; -webkit-user-select: none;">
                     <!-- Security Watermark -->
                     <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999; display: flex; flex-wrap: wrap; opacity: 0.04; overflow: hidden; align-content: flex-start; gap: 100px; padding: 50px;">
                         ${Array(15).fill(`<div style="transform: rotate(-30deg); font-weight: 900; font-size: 2rem; color: #000; white-space: nowrap;">${studentId} - ${studentName} - SECURE</div>`).join('')}
@@ -7696,15 +7710,15 @@ export const UI = {
                         </div>
                         <div id="exam-timer" class="cbt-exam-timer-box" style="font-size: 1rem; min-width: 80px; text-align: center; padding: 0.35rem 0.75rem; border-radius: 10px; background: #fff1f2; color: #e11d48; font-weight: 800; border: 1px solid #fecdd3;">${timeStr}</div>
                     </header>
-
+    
                     <!-- Progress -->
                     <div style="width: 100%; height: 4px; background: #f1f5f9; flex-shrink: 0; z-index: 20;">
                         <div style="width: ${progress}%; height: 100%; background: #4338ca; transition: width 0.4s ease;"></div>
                     </div>
-
+    
                     <!-- Question Area -->
-                    <main style="flex: 1; overflow-y: auto; padding: 1rem; -webkit-overflow-scrolling: touch;">
-                        <div class="cbt-question-card" style="background: white; border-radius: 20px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; max-width: 800px; margin: 0 auto 5rem;">
+                    <main style="flex: 1; overflow-y: auto; padding: 1rem; padding-bottom: 120px; -webkit-overflow-scrolling: touch;">
+                        <div class="cbt-question-card" style="background: white; border-radius: 20px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; max-width: 800px; margin: 0 auto; min-height: 350px;">
                             <div style="font-size: 1rem; font-weight: 700; color: #1e293b; line-height: 1.5; margin-bottom: 1.5rem;">
                                 ${this.parseCBTContent(q.question_text)}
                             </div>
@@ -7872,55 +7886,55 @@ export const UI = {
         }
     },
 
-    async submitExam() {
+    async submitExam(isExternal = false) {
         if (this.examTimerInterval) clearInterval(this.examTimerInterval);
         
-        let score = 0;
-        this.currentQuestions.forEach(q => {
-            const studentChoice = this.userAnswers[q.id];
-            if (studentChoice) {
-                // Verify by hashing the student's choice and comparing
-                const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + this.currentExam.id))).split('').reverse().join('');
-                if (choiceHash === q.answerHash) {
-                    score += (q.marks || 1);
-                }
-            }
-        });
-
-        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
         const examId = this.currentExam.id;
-
-        // Update EXISTING session instead of adding new one
         const existing = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
-        
-        const totalMarks = this.currentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
-        
-        const resultUpdate = {
-            score: score,
-            total_questions: this.currentQuestions.length,
-            total_marks: totalMarks,
-            answers: this.userAnswers,
-            status: 'Completed',
-            updated_at: new Date().toISOString(),
-            is_synced: 0
-        };
 
-        const finalResult = existing ? { ...existing, ...resultUpdate } : { 
-            id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-            exam_id: examId,
-            student_id: studentId,
-            ...resultUpdate 
-        };
+        let score = isExternal && existing ? (parseFloat(existing.score) || 0) : 0;
+        let totalMarks = isExternal && existing ? (parseFloat(existing.total_marks) || 0) : this.currentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
 
-        if (existing) {
-            await db.cbt_results.update(existing.id, resultUpdate);
+        if (!isExternal) {
+            this.currentQuestions.forEach(q => {
+                const studentChoice = this.userAnswers[q.id];
+                if (studentChoice) {
+                    const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + this.currentExam.id))).split('').reverse().join('');
+                    if (choiceHash === q.answerHash) {
+                        score += (parseFloat(q.marks) || 1);
+                    }
+                }
+            });
+
+            const resultUpdate = {
+                score: score,
+                total_questions: this.currentQuestions.length,
+                total_marks: totalMarks,
+                answers: this.userAnswers,
+                status: 'Completed',
+                updated_at: new Date().toISOString(),
+                is_synced: 0
+            };
+
+            const finalResult = existing ? { ...existing, ...resultUpdate } : { 
+                id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                exam_id: examId,
+                student_id: studentId,
+                ...resultUpdate 
+            };
+
+            if (existing) {
+                await db.cbt_results.update(existing.id, resultUpdate);
+            } else {
+                await db.cbt_results.add(finalResult);
+            }
+            
+            if (this.currentExam.score_field) {
+                await this.postCBTToScoresheet(finalResult);
+            }
         } else {
-            await db.cbt_results.add(finalResult);
-        }
-        
-        // Auto-post to scoresheet if configured
-        if (this.currentExam.score_field) {
-            await this.postCBTToScoresheet(finalResult);
+            Notifications.show('Your exam has been submitted and scored by an administrator.', 'info');
         }
 
         this.contentArea.innerHTML = `
@@ -11013,7 +11027,7 @@ export const UI = {
                                         </div>
                                     </div>
                                     <div class="bank-details-area" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
-                                        <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; max-height: 450px; overflow-y: auto;">
+                                        <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; overflow-y: auto;">
                                             ${questions.map((q, i) => `
                                                 <div style="background: #f8fafc; border-radius: 12px; padding: 1rem; border: 1px solid #f1f5f9;">
                                                     <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; margin-bottom: 0.5rem;">
@@ -11361,7 +11375,7 @@ export const UI = {
             } catch (e) { console.warn('[CBT] Background sync failed:', e); }
         };
 
-        await loadInitial(); // Local data first
+        loadInitial(); // Local data first (No await to keep shell instant)
         refreshFromCloud(); // Cloud pull in background
     },
 
@@ -11427,19 +11441,19 @@ export const UI = {
             return `
                 <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #e2e8f0; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); background: white;">
                     <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '800px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; flex-direction: column; padding: 1.25rem; cursor: pointer; gap: 0.75rem;">
-                        <div style="display: flex; align-items: flex-start; gap: 1rem;">
-                            <div style="background: ${isCompleted ? '#ecfdf5' : isNotStarted ? '#f8fafc' : '#e0e7ff'}; color: ${isCompleted ? '#059669' : isNotStarted ? '#94a3b8' : '#4338ca'}; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1rem; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.03);">
-                                ${idx + 1}
-                            </div>
-                            <div style="flex: 1; min-width: 0;">
-                                <div style="font-weight: 800; color: #1e293b; font-size: 1rem; line-height: 1.2; margin-bottom: 0.4rem; width: 100%; word-break: break-word;">${studentName}</div>
-                                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 800; font-family: 'Outfit', sans-serif; background: #f1f5f9; padding: 2px 8px; border-radius: 6px;">${s.student_id}</div>
-                                    <div style="background: ${statusBg}; color: ${statusColor}; padding: 0.25rem 0.75rem; border-radius: 8px; font-weight: 900; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.02em;">${status}</div>
-                                    ${violationCount > 0 ? `<span style="background: #fee2e2; color: #ef4444; padding: 0.25rem 0.6rem; border-radius: 8px; font-weight: 900; font-size: 0.7rem; border: 1px solid #fecdd3;">⚠ ${violationCount} VIOLATION${violationCount !== 1 ? 'S' : ''}</span>` : ''}
+                        <div style="font-weight: 900; color: #1e293b; font-size: 1.1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem; width: 100%; word-break: break-word;">${studentName}</div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <div style="background: ${isCompleted ? '#ecfdf5' : isNotStarted ? '#f8fafc' : '#e0e7ff'}; color: ${isCompleted ? '#059669' : isNotStarted ? '#94a3b8' : '#4338ca'}; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.85rem; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.03);">
+                                    ${idx + 1}
                                 </div>
+                                <div style="font-size: 0.8rem; color: #64748b; font-weight: 800; font-family: 'Outfit', sans-serif; background: #f1f5f9; padding: 4px 10px; border-radius: 8px;">${s.student_id}</div>
                             </div>
-                            <i data-lucide="chevron-down" class="chevron-icon" style="width: 20px; color: #cbd5e1; transition: transform 0.3s ease; flex-shrink: 0; margin-top: 4px;"></i>
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <div style="background: ${statusBg}; color: ${statusColor}; padding: 0.35rem 0.8rem; border-radius: 10px; font-weight: 900; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">${status}</div>
+                                ${violationCount > 0 ? `<span style="background: #fee2e2; color: #ef4444; padding: 0.35rem 0.6rem; border-radius: 10px; font-weight: 900; font-size: 0.7rem; border: 1px solid #fecdd3;">⚠ ${violationCount}</span>` : ''}
+                                <i data-lucide="chevron-down" class="chevron-icon" style="width: 20px; color: #cbd5e1; transition: transform 0.3s ease; flex-shrink: 0;"></i>
+                            </div>
                         </div>
                     </div>
 
@@ -11541,18 +11555,25 @@ export const UI = {
             
             const answers = progress ? progress.current_answers : (result ? result.answers : {});
             
-            // Calculate score based on current answers
+            // Calculate score using standard hashing to match student-side logic
             let score = 0;
             questions.forEach(q => {
-                const correctText = q[`option_${q.correct_option.toLowerCase()}`];
-                if (answers && answers[q.id] === correctText) {
-                    score += (parseFloat(q.marks) || 1);
+                const studentChoice = answers[q.id];
+                if (studentChoice) {
+                    const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + examId))).split('').reverse().join('');
+                    if (choiceHash === q.answerHash) {
+                        score += (parseFloat(q.marks) || 1);
+                    }
                 }
             });
+
+            const totalMarks = questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
 
             const finalResultUpdate = {
                 status: 'Completed',
                 score: score,
+                total_questions: questions.length,
+                total_marks: totalMarks,
                 answers: answers,
                 updated_at: new Date().toISOString(),
                 is_synced: 0
@@ -11606,15 +11627,22 @@ export const UI = {
 
                 let score = 0;
                 questions.forEach(q => {
-                    const correctText = q[`option_${q.correct_option.toLowerCase()}`];
-                    if (answers && answers[q.id] === correctText) {
-                        score += (parseFloat(q.marks) || 1);
+                    const studentChoice = answers[q.id];
+                    if (studentChoice) {
+                        const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + examId))).split('').reverse().join('');
+                        if (choiceHash === q.answerHash) {
+                            score += (parseFloat(q.marks) || 1);
+                        }
                     }
                 });
+
+                const totalMarks = questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
 
                 const finalResultUpdate = {
                     status: 'Completed',
                     score: score,
+                    total_questions: questions.length,
+                    total_marks: totalMarks,
                     answers: answers,
                     updated_at: new Date().toISOString(),
                     is_synced: 0
