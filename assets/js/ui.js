@@ -10921,17 +10921,23 @@ export const UI = {
             if (this.currentView === 'cbt_participants' && this.currentViewData === examId) {
                 const registryContainer = document.getElementById('cbt-registry-list');
                 if (registryContainer) {
-                    const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
-                    this.updateCBTParticipantsList(exam, results);
+                    const [results, progress] = await Promise.all([
+                        db.cbt_results.where('exam_id').equals(examId).toArray(),
+                        db.exam_progress.where('exam_id').equals(examId).toArray()
+                    ]);
+                    this.updateCBTParticipantsList(exam, results, progress);
                 }
             } else {
                 console.log('[CBT] View changed, clearing participants refresh interval.');
                 clearInterval(this.participantsInterval);
                 this.participantsInterval = null;
             }
-        }, 30000);
+        }, 15000); // Faster refresh (15s) for live monitoring
 
-        const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
+        const [results, progress] = await Promise.all([
+            db.cbt_results.where('exam_id').equals(examId).toArray(),
+            db.exam_progress.where('exam_id').equals(examId).toArray()
+        ]);
         const allStudents = await db.students.toArray();
         
         // Filter students assigned to this class
@@ -10972,10 +10978,10 @@ export const UI = {
         `;
         
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        this.updateCBTParticipantsList(exam, results);
+        this.updateCBTParticipantsList(exam, results, progress);
     },
 
-    async updateCBTParticipantsList(exam, results) {
+    async updateCBTParticipantsList(exam, results, progress = []) {
         const examId = exam.id;
         const allStudents = await db.students.toArray();
         const targetClass = (exam.class_name || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -10990,10 +10996,22 @@ export const UI = {
         const resultEntries = results.reduce((acc, r) => {
             const existing = acc[r.student_id];
             if (!existing || (r.status === 'Completed' && existing.status !== 'Completed')) {
-                acc[r.student_id] = r;
+                acc[r.student_id] = { ...r, status: r.status || 'Completed' };
             }
             return acc;
         }, {});
+
+        // Inject 'In Progress' for those currently taking the exam
+        progress.forEach(p => {
+            if (!resultEntries[p.student_id]) {
+                resultEntries[p.student_id] = {
+                    student_id: p.student_id,
+                    status: 'In Progress',
+                    score: '...',
+                    answers: p.current_answers
+                };
+            }
+        });
         const registryContainer = document.getElementById('cbt-registry-list');
         if (!registryContainer) return;
 
