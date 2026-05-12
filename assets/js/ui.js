@@ -6341,27 +6341,32 @@ export const UI = {
 
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
-        // Fetch results if student - Prioritize 'In Progress' and CLEAN UP duplicates
-        const studentResults = isStudent ? await db.cbt_results.where('student_id').equals(this.currentUser.assigned_id).toArray() : [];
+        // Fetch results and live progress
+        const studentId = this.currentUser.assigned_id || this.currentUser.id;
+        const studentResults = isStudent ? await db.cbt_results.where('student_id').equals(studentId).toArray() : [];
+        const liveProgress = isStudent ? await db.exam_progress.where('student_id').equals(studentId).toArray() : [];
+        
         const resultDict = {};
         
+        // Process final results first
         for (const r of studentResults) {
-            const existing = resultDict[r.exam_id];
-            
-            // CLEANUP: If we have an In Progress and a Completed record, delete the IN PROGRESS one
-            if (existing && ((r.status === 'In Progress' && existing.status === 'Completed') || (r.status === 'Completed' && existing.status === 'In Progress'))) {
-                const toDelete = r.status === 'In Progress' ? r.id : existing.id;
-                await db.cbt_results.delete(toDelete);
-                console.log('Cleaned up stale In Progress session:', toDelete);
-            }
+            resultDict[r.exam_id] = r;
+        }
 
-            // Precedence: Completed wins. If same status, newest wins.
-            const shouldReplace = !existing || 
-                                (r.status === 'Completed' && existing.status === 'In Progress') || 
-                                (r.status === existing.status && new Date(r.updated_at) > new Date(existing.updated_at));
-            
-            if (shouldReplace) {
-                resultDict[r.exam_id] = r;
+        // Merge live progress BUT prioritize Completed results
+        for (const p of liveProgress) {
+            const existing = resultDict[p.exam_id];
+            if (existing && (existing.status === 'Completed' || existing.score !== '...')) {
+                // If we already have a completed result, this progress is STALE. Delete it.
+                await db.exam_progress.delete(p.id);
+                console.log('Cleared stale exam progress for completed exam:', p.exam_id);
+            } else if (!existing) {
+                // If no result exists yet, show as In Progress
+                resultDict[p.exam_id] = {
+                    status: 'In Progress',
+                    updated_at: p.updated_at,
+                    score: '...'
+                };
             }
         }
 
@@ -10921,6 +10926,9 @@ export const UI = {
             if (this.currentView === 'cbt_participants' && this.currentViewData === examId) {
                 const registryContainer = document.getElementById('cbt-registry-list');
                 if (registryContainer) {
+                    // Force a cloud pull for results to see if anyone submitted
+                    await syncFromCloud(['cbt_results', 'exam_progress']);
+                    
                     const [results, progress] = await Promise.all([
                         db.cbt_results.where('exam_id').equals(examId).toArray(),
                         db.exam_progress.where('exam_id').equals(examId).toArray()
@@ -10932,8 +10940,11 @@ export const UI = {
                 clearInterval(this.participantsInterval);
                 this.participantsInterval = null;
             }
-        }, 15000); // Faster refresh (15s) for live monitoring
+        }, 15000); 
 
+        // Initial cloud pull
+        await syncFromCloud(['cbt_results', 'exam_progress']);
+        
         const [results, progress] = await Promise.all([
             db.cbt_results.where('exam_id').equals(examId).toArray(),
             db.exam_progress.where('exam_id').equals(examId).toArray()

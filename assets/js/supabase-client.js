@@ -315,6 +315,21 @@ export async function loginUser(identifier, password) {
     }
 
     const { data, error } = await client.auth.signInWithPassword({ email: email, password: loginPassword });
+    
+    // Fallback 1: Lowercase Student ID failed -> Try exact casing
+    if (error && isStandardId && email !== identifier + '@student.school') {
+        const fallbackEmail = `${identifier}@student.school`;
+        const retry = await client.auth.signInWithPassword({ email: fallbackEmail, password: loginPassword });
+        if (!retry.error) return retry;
+    }
+
+    // Fallback 2: Maybe it's a staff ID being used as an email?
+    if (error && !identifier.includes('@') && !isStandardId) {
+        const staffEmail = `${identifier.toLowerCase()}@school.edu`;
+        const retry = await client.auth.signInWithPassword({ email: staffEmail, password: loginPassword });
+        if (!retry.error) return retry;
+    }
+
     return { data, error };
 }
 
