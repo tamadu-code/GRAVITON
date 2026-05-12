@@ -2394,25 +2394,44 @@ export const UI = {
                     });
 
                     try {
+                        // 0. Pre-check: Does this student ID or Attendance Code already exist?
+                        const existingStudent = await db.students.get(serial);
+                        if (existingStudent) {
+                            Notifications.show(`Error: Student ID ${serial} already exists!`, 'error');
+                            throw new Error('Duplicate student ID');
+                        }
+
                         // 1. Create Auth Account for Student
-                        // Email: student_id@student.school, Password: student_id
                         const studentEmail = `${serial.toLowerCase()}@student.school`;
-                        Notifications.show(`Provisioning dashboard for ${serial}...`, 'info');
+                        Notifications.show(`Provisioning cloud account for ${name}...`, 'info');
                         
-                        const { data: authData, error: authError } = await registerUser(studentEmail, serial, name, 'Student');
+                        // Set a 12s timeout for cloud registration to prevent hanging if offline/slow
+                        const authPromise = registerUser(studentEmail, serial, name, 'Student');
+                        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Cloud timeout')), 12000));
+                        
+                        let authData, authError;
+                        try {
+                            const result = await Promise.race([authPromise, timeoutPromise]);
+                            authData = result.data;
+                            authError = result.error;
+                        } catch (e) {
+                            console.warn('Auth registration timed out or failed, proceeding locally:', e);
+                            authError = { message: 'Timeout' };
+                        }
                         
                         if (authError) {
                             if (authError.message.includes('already registered')) {
                                 console.warn('Student auth already exists');
                             } else {
                                 console.error('Student auth error:', authError);
+                                Notifications.show('Cloud account creation delayed, saving locally...', 'warning');
                             }
                         }
 
                         // Use Supabase ID if available, else use generated serial
                         if (authData?.user) newStudent.id = authData.user.id;
 
-                        console.log('Registering Student with ID:', serial);
+                        console.log('[Enrollment] Adding student to local DB:', serial);
                         await db.students.add(newStudent);
                         
                         // Also add to profiles table for role-based login detection
@@ -2422,16 +2441,20 @@ export const UI = {
                             email: studentEmail,
                             role: 'Student',
                             assigned_id: serial,
-                            updated_at: new Date().toISOString()
+                            updated_at: new Date().toISOString(),
+                            is_synced: 0
                         });
 
                         this.debouncedSync(); 
-                        Notifications.show(`Student ${name} registered! Login: ${serial} / ${serial}`, 'success');
+                        Notifications.show(`Student ${name} successfully registered!`, 'success');
                     } catch (err) {
                         console.error('Enrollment error:', err);
-                        // Still save locally even if auth fails
-                        await db.students.add(newStudent);
-                        Notifications.show(`Registered ${name} locally. Cloud account pending.`, 'warning');
+                        if (err.message.includes('ConstraintError') || err.message.includes('already exists')) {
+                            Notifications.show('Registration failed: This ID or Attendance Code is already in use.', 'error');
+                        } else if (err.message !== 'Duplicate student ID') {
+                            Notifications.show(`Registration error: ${err.message}`, 'error');
+                        }
+                        throw err; // Re-throw to keep modal open if it's a validation/duplicate failure
                     }
                     this.renderStudents();
                 }, 'Finalize Registration', 'save');

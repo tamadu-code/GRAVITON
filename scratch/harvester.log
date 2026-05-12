@@ -71,3 +71,22 @@
 2026-05-12 19:00:03 [INFO] Starting sync to Attendance System...
 2026-05-12 19:00:03 [INFO] Latest CSV: C:\Users\ELECTRO-TECH\Downloads\attendance_report_2026-05-11.csv
 2026-05-12 19:00:04 [ERROR] Failed to load students: 400 Client Error: Bad Request for url: https://urqygjltionvaxuacfzr.supabase.co/rest/v1/students?select=id,code&is_active=eq.true
+2026-05-12 19:05:53 [INFO] Starting sync to Attendance System...
+2026-05-12 19:05:53 [INFO] Latest CSV: C:\Users\ELECTRO-TECH\Downloads\attendance_report_2026-05-11.csv
+2026-05-12 19:05:56 [INFO] Loaded 219 students from cloud.
+2026-05-12 19:05:56 [INFO] Parsed 1308 records from CSV.
+2026-05-12 19:05:57 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:05:59 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:00 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:02 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:03 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:04 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:06 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:07 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:08 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:10 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:11 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:13 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:14 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:16 [ERROR] Batch failed (400): {"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}
+2026-05-12 19:06:16 [INFO] Sync complete. Total success: 0

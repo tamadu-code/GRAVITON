@@ -1,8 +1,11 @@
 """
-NKQM Attendance Harvester (FINAL)
-=================================
-Reads the latest attendance CSV and upserts records into the cloud.
-Optimized to avoid overwriting existing cloud sign-out times with nulls.
+NKQM Attendance Harvester (PIPELINE RECOVERY)
+============================================
+Reads the latest attendance CSV and upserts records into the 
+ATTENDANCE SYSTEM cloud database (wuzliodvddzmhehffqfx).
+
+The data is then automatically forwarded to the SMS project 
+via the repaired database webhook trigger.
 """
 
 import csv
@@ -16,14 +19,14 @@ from pathlib import Path
 import requests
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
+# CONFIGURATION - ATTENDANCE SYSTEM PROJECT
 # ──────────────────────────────────────────────────────────────────────────────
 DOWNLOADS_DIR   = Path.home() / "Downloads"
-SUPABASE_URL    = "https://urqygjltionvaxuacfzr.supabase.co"
+SUPABASE_URL    = "https://wuzliodvddzmhehffqfx.supabase.co"
 ANON_KEY        = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-    ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVycXlnamx0aW9udmF4dWFjZnpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzEzMDEsImV4cCI6MjA5MjYwNzMwMX0"
-    ".Vpk7rifsfjMCVBSYpEdVzkHv3w324iKp8B7urlKc_e4"
+    ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1emxpb2R2ZGR6bWhlaGZmcWZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTkxNTEsImV4cCI6MjA5MjQzNTE1MX0"
+    ".0ASY-NuhdHPhyg9pB2XYiXOLJTnrocXxjkC6gpqO_vQ"
 )
 BATCH_SIZE      = 100
 REQUEST_TIMEOUT = 30
@@ -78,15 +81,12 @@ def parse_csv(csv_path: str, student_map: dict) -> list[dict]:
             if not code or not date or code not in student_map:
                 continue
 
-            # Core record
             rec = {
                 "student_id": student_map[code],
                 "date": date,
                 "is_late": status.lower() == "late"
             }
             
-            # Only add sign_in/out if they have values in the CSV.
-            # This prevents overwriting cloud-calculated sign-outs with nulls.
             in_val = row.get("In", "").strip()
             if in_val: rec["sign_in"] = in_val
             
