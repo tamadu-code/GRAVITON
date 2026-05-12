@@ -13,6 +13,9 @@ window.UI = UI;
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
 window.Notifications = Notifications;
 window.db = db;
+window.getSupabase = getSupabase;
+window.syncToCloud = syncToCloud;
+window.syncFromCloud = syncFromCloud;
 
 
 // Initialize Lucide Icons safely
