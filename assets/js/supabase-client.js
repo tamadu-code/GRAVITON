@@ -334,12 +334,26 @@ export async function loginUser(identifier, password) {
         if (!retry2.error) return retry2;
     }
 
-    // Fallback 2: Maybe it's a staff ID being used as an email?
+    // Fallback 2: Maybe it's a staff ID? (e.g. SCH/STF/...)
     if (error && !identifier.includes('@') && !isStandardId) {
-        const staffEmail = `${identifier.toLowerCase()}@school-portal.com`;
-        console.log(`[Auth] Fallback 2 (Staff ID -> Email): ${staffEmail}`);
-        const retry = await client.auth.signInWithPassword({ email: staffEmail, password: loginPassword });
-        if (!retry.error) return retry;
+        console.log(`[Auth] Staff ID detected, performing profile lookup for: ${identifier}`);
+        
+        // 1. Try the default portal domain first (fastest)
+        const portalEmail = `${identifier.toLowerCase()}@school-portal.com`;
+        const retry1 = await client.auth.signInWithPassword({ email: portalEmail, password: loginPassword });
+        if (!retry1.error) return retry1;
+
+        // 2. Perform a database lookup to find the ACTUAL email linked to this Staff ID
+        try {
+            const { data: profile } = await client.from('profiles').select('email').eq('assigned_id', identifier).maybeSingle();
+            if (profile && profile.email && profile.email !== portalEmail) {
+                console.log(`[Auth] Found linked email in profile: ${profile.email}`);
+                const retry2 = await client.auth.signInWithPassword({ email: profile.email, password: loginPassword });
+                if (!retry2.error) return retry2;
+            }
+        } catch (lookupError) {
+            console.warn('[Auth] Profile lookup failed:', lookupError);
+        }
     }
 
     if (error) console.error(`[Auth] Login failed: ${error.message}`);
