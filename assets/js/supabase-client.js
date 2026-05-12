@@ -288,7 +288,25 @@ export async function syncFromCloud(forceAll = false) {
                                 }
                             }
                             
-                            await db[table].bulkPut(validData);
+                        let processedData = validData;
+
+                            // --- 1A: API-layer null normalisation for cbt_questions ---
+                            // Coerce null option fields to '' before writing to IndexedDB
+                            // so the exam renderer never receives null values
+                            if (table === 'cbt_questions') {
+                                processedData = validData.map(q => ({
+                                    ...q,
+                                    option_a: q.option_a ?? '',
+                                    option_b: q.option_b ?? '',
+                                    option_c: q.option_c ?? '',
+                                    option_d: q.option_d ?? '',
+                                    option_e: q.option_e ?? '',
+                                    correct_option: q.correct_option ?? 'A',
+                                    marks: q.marks ?? 1
+                                }));
+                            }
+
+                            await db[table].bulkPut(processedData);
                         }
                         
                         totalPulled += data.length;
