@@ -4442,6 +4442,29 @@ export const UI = {
         // Register Internal Event Listeners
         this.initAttendanceLogic(students);
 
+        // Auto-sync on page load and setup interval
+        if (this.attRefreshInterval) clearInterval(this.attRefreshInterval);
+        
+        // Immediate background pull (optional: only if online)
+        if (navigator.onLine) {
+            console.log('[Attendance] Triggering immediate background pull...');
+            syncFromCloud(true).then(() => {
+                if (document.getElementById('att-class-filter')) { // Check if we are still on the attendance page
+                    this.updateAttendanceStats(students, today);
+                }
+            }).catch(e => console.warn('[Attendance] Initial background pull failed:', e));
+        }
+
+        this.attRefreshInterval = setInterval(async () => {
+            if (navigator.onLine && document.getElementById('att-class-filter')) {
+                console.log('[Attendance] Background refreshing data...');
+                await syncFromCloud(true);
+                this.updateAttendanceStats(students, today);
+            } else if (!document.getElementById('att-class-filter')) {
+                clearInterval(this.attRefreshInterval);
+            }
+        }, 120000); // 2 minutes
+
         // Sync Data Button
         const btnSyncAtt = document.getElementById('btn-sync-attendance');
         if (btnSyncAtt) {
@@ -6409,7 +6432,21 @@ export const UI = {
                                         </div>
                                     </div>
                                     <div style="display: flex; align-items: center; gap: 1rem;">
-                                        ${result ? (result.status === 'Completed' ? '<span class="badge success">COMPLETED</span>' : '<span class="badge warning">IN PROGRESS</span>') : `<span class="badge badge-${e.status === 'Active' ? 'success' : 'warning'}" style="padding: 6px 12px; border-radius: 8px;">${e.status}</span>`}
+                                        ${(() => {
+                                            if (result) {
+                                                return result.status === 'Completed' ? '<span class="badge success">COMPLETED</span>' : '<span class="badge warning">IN PROGRESS</span>';
+                                            }
+                                            
+                                            const now = new Date();
+                                            const end = e.end_time ? new Date(e.end_time) : null;
+                                            const isExpired = end && now > end;
+                                            
+                                            if (isExpired && e.status === 'Active') {
+                                                return `<span class="badge badge-danger" style="padding: 6px 12px; border-radius: 8px; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3;">EXPIRED</span>`;
+                                            }
+                                            
+                                            return `<span class="badge badge-${e.status === 'Active' ? 'success' : 'warning'}" style="padding: 6px 12px; border-radius: 8px;">${e.status}</span>`;
+                                        })()}
                                         <i data-lucide="chevron-down" class="chevron-icon" style="width: 20px; color: #94a3b8; transition: transform 0.3s ease;"></i>
                                     </div>
                                 </div>
