@@ -7419,20 +7419,40 @@ export const UI = {
             }
 
             let questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
-            // Safety: Remove any null/undefined entries to prevent "option_a of undefined" errors
+            // Safety: Remove any null/undefined entries
             questions = questions.filter(q => q && typeof q === 'object');
             
             console.log(`[CBT AUDIT] Loaded ${questions.length} questions for exam ${examId}`);
-            
-            // Data Integrity Check
-            const brokenQuestions = questions.filter(q => !q.option_a && !q.option_b);
-            if (brokenQuestions.length > 0) {
-                console.warn(`[CBT AUDIT] WARNING: Found ${brokenQuestions.length} questions with ZERO options! IDs:`, brokenQuestions.map(q => q.id));
-            }
 
-            if (questions.length === 0) {
-                console.error(`[CBT] No questions found for exam: ${examId}`);
-                return Notifications.show('This exam has no questions assigned yet. Please contact your teacher.', 'error');
+            // Normalise every question's option fields from DB — fixes cloud-sync nulls
+            questions = questions.map(q => ({
+                ...q,
+                option_a: (q.option_a || '').toString().trim(),
+                option_b: (q.option_b || '').toString().trim(),
+                option_c: (q.option_c || '').toString().trim(),
+                option_d: (q.option_d || '').toString().trim(),
+                option_e: (q.option_e || '').toString().trim(),
+                correct_option: (q.correct_option || 'A').toUpperCase(),
+                marks: parseFloat(q.marks) || 1
+            }));
+
+            // *** CRITICAL FIX: Filter broken questions (< 2 valid options) BEFORE applying limit ***
+            // This ensures question_limit always yields the requested number of VALID questions
+            const validQuestions = questions.filter(q => {
+                const optCount = [q.option_a, q.option_b, q.option_c, q.option_d, q.option_e]
+                    .filter(o => o && o.trim().length > 0).length;
+                if (optCount < 2) {
+                    console.warn(`[CBT AUDIT] Skipping broken question ${q.id} — only ${optCount} valid option(s).`);
+                    return false;
+                }
+                return true;
+            });
+
+            console.log(`[CBT AUDIT] ${validQuestions.length} valid questions after integrity check (${questions.length - validQuestions.length} skipped).`);
+
+            if (validQuestions.length === 0) {
+                console.error(`[CBT] No valid questions found for exam: ${examId}`);
+                return Notifications.show('This exam has no valid questions assigned yet. Please contact your teacher.', 'error');
             }
 
             const studentId = this.resolveCBTStudentId();
@@ -7463,36 +7483,27 @@ export const UI = {
                 return array;
             };
 
-            questions = seededShuffle([...questions], seed);
+            // Shuffle the VALID questions, then apply limit
+            questions = seededShuffle([...validQuestions], seed);
             const limit = parseInt(exam.question_limit) || 0;
             if (limit > 0) {
                 questions = questions.slice(0, limit);
             }
 
-            console.log(`[CBT AUDIT] Rendering ${questions.length} questions. Checking for missing options...`);
-            questions = questions.filter(q => q && typeof q === 'object');
+            console.log(`[CBT AUDIT] Rendering ${questions.length} questions.`);
 
-            // Prepare Questions
+            // Prepare Questions — all options already normalised above
             questions = questions.map((q, idx) => {
                 const options = [
-                    { key: 'a', text: q.option_a || '[Empty Option A]' },
-                    { key: 'b', text: q.option_b || '[Empty Option B]' },
+                    { key: 'a', text: q.option_a },
+                    { key: 'b', text: q.option_b },
                     { key: 'c', text: q.option_c },
                     { key: 'd', text: q.option_d },
                     { key: 'e', text: q.option_e }
                 ];
 
-                const validOptions = options.filter(o => o && o.text && o.text.toString().trim().length > 0);
-                if (validOptions.length < 4) {
-                    console.warn(`[CBT DATA] Question ${q.id} has only ${validOptions.length} valid options.`, {
-                        a: q.option_a, b: q.option_b, c: q.option_c, d: q.option_d, e: q.option_e
-                    });
-                }
-                
-                if (validOptions.length < 2) {
-                    if (!q.option_a) validOptions.push({ key: 'a', text: '[Missing Option A]' });
-                    if (!q.option_b) validOptions.push({ key: 'b', text: '[Missing Option B]' });
-                }
+                // Only include options that have actual content
+                const validOptions = options.filter(o => o.text && o.text.trim().length > 0);
 
                 let qSeed = seed + idx;
                 const shuffledOptions = seededShuffle([...validOptions], qSeed);
@@ -8220,11 +8231,21 @@ export const UI = {
             
             if (sourceQuestions.length === 0) return Notifications.show('That source has no questions.', 'error');
 
-            // Copy and generate new IDs to avoid duplicates
+            // Copy and generate new IDs, normalising all option fields to prevent missing-option bugs
             sourceQuestions.forEach(q => {
-                const newQ = { ...q };
-                delete newQ.id;
-                newQ.id = `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`;
+                const newQ = {
+                    ...q,
+                    id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
+                    // Explicitly normalise every option field — undefined/null becomes empty string
+                    option_a: (q.option_a || '').toString().trim(),
+                    option_b: (q.option_b || '').toString().trim(),
+                    option_c: (q.option_c || '').toString().trim(),
+                    option_d: (q.option_d || '').toString().trim(),
+                    option_e: (q.option_e || '').toString().trim(),
+                    correct_option: (q.correct_option || 'A').toUpperCase(),
+                    marks: parseFloat(q.marks) || 1
+                };
+                delete newQ.exam_id; // Will be set correctly on save
                 this.cbtQuestions.push(newQ);
             });
 
