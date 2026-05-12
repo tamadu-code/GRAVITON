@@ -107,7 +107,7 @@ db.version(20).stores({
     exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
 });
 
-db.version(27).stores({
+db.version(28).stores({
     profiles: 'id, full_name, role, assigned_id, email, status, updated_at, is_synced',
     students: 'student_id, name, gender, address, class_name, status, is_active, deactivated_at, attendance_code, admission_year, sub_class, legacy_student_id, updated_at, is_synced',
     classes: 'id, name, level, updated_at, is_synced',
