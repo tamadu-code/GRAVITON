@@ -72,7 +72,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         name: record.name,
-        class: record.class_name
+        class: record.sub_class ? `${record.class_name}${record.sub_class}` : record.class_name
       }),
     })
 

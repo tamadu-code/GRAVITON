@@ -2280,11 +2280,24 @@ export const UI = {
                             <label>Full Student Name</label>
                             <input type="text" id="std-name" class="input" placeholder="e.g. Samuel Adekunle" style="width: 100%; box-sizing: border-box;">
                         </div>
-                        <div>
-                            <label>Class Assignment</label>
-                            <select id="std-class" class="input" style="width: 100%; box-sizing: border-box;">
-                                ${classOptions}
-                            </select>
+                        <div class="modal-grid">
+                            <div>
+                                <label>Class Assignment</label>
+                                <select id="std-class" class="input" style="width: 100%; box-sizing: border-box;">
+                                    ${classOptions}
+                                </select>
+                            </div>
+                            <div>
+                                <label>Class Arm (e.g. A, B)</label>
+                                <select id="std-arm" class="input" style="width: 100%; box-sizing: border-box;">
+                                    <option value="A">A</option>
+                                    <option value="B">B</option>
+                                    <option value="C">C</option>
+                                    <option value="D">D</option>
+                                    <option value="E">E</option>
+                                    <option value="F">F</option>
+                                </select>
+                            </div>
                         </div>
                         <div>
                             <label>Gender Identity</label>
@@ -2366,17 +2379,19 @@ export const UI = {
                     serial = `NKQMS-${year}-${attendanceCodeInput || Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
                     attendanceCode = attendanceCodeInput || null;
                     
+                    const arm = document.getElementById('std-arm').value;
+                    
                     const newStudent = prepareForSync({
                         student_id: serial,
                         name: name,
                         class_name: className,
                         gender: gender,
-                        role: 'Student', // Explicitly set role
+                        role: 'Student', 
                         status: 'Active',
                         is_active: true,
                         attendance_code: attendanceCode,
                         admission_year: admissionYear,
-                        sub_class: className.charAt(0).toUpperCase(),
+                        sub_class: arm,
                         parent_email: document.getElementById('std-parent-email').value.trim(),
                         dob: document.getElementById('std-dob').value,
                         phone: document.getElementById('std-phone').value.trim(),
