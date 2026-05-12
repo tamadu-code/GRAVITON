@@ -77,8 +77,8 @@ export async function syncToCloud() {
                 
                 // Table-level field whitelists
                 const whitelist = {
-                    profiles: ['id', 'full_name', 'role', 'assigned_id', 'email', 'phone', 'department', 'qualification', 'emp_type', 'status', 'is_archived', 'passport', 'updated_at'],
-                    students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'dob', 'phone', 'parent_name', 'parent_phone', 'parent_email', 'passport_url', 'updated_at'],
+                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'updated_at'],
+                    students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'passport_url', 'updated_at'],
                     classes: ['id', 'name', 'level', 'updated_at'],
                     subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
                     subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'updated_at'],
@@ -124,22 +124,24 @@ export async function syncToCloud() {
                     if (dataToSync.length > 0) {
                         let { error } = await client.from(table).upsert(dataToSync);
                         
-                        // Self-healing: If cloud schema is missing 'violations' or 'warnings' columns, retry without them
-                        // This allows scores to sync while the admin is updating the database schema.
-                        if (error && (error.message.includes('violations') || error.message.includes('warnings'))) {
-                            console.warn(`[Sync Self-Heal] Cloud schema mismatch for ${table}. Retrying without telemetry columns...`);
-                            dataToSync = dataToSync.map(item => {
-                                const sanitized = { ...item };
-                                delete sanitized.violations;
-                                delete sanitized.warnings;
-                                return sanitized;
-                            });
-                            const retry = await client.from(table).upsert(dataToSync);
-                            error = retry.error;
+                        if (error) {
+                            console.error(`Sync error for ${table}:`, error, "Data:", dataToSync);
+                            
+                            // Self-healing for schema mismatches
+                            if (error.message.includes('violations') || error.message.includes('warnings')) {
+                                console.warn(`[Sync Self-Heal] Cloud schema mismatch for ${table}. Retrying without telemetry columns...`);
+                                const sanitizedData = dataToSync.map(item => {
+                                    const cleaned = { ...item };
+                                    delete cleaned.violations;
+                                    delete cleaned.warnings;
+                                    return cleaned;
+                                });
+                                const retry = await client.from(table).upsert(sanitizedData);
+                                error = retry.error;
+                            }
                         }
 
                         if (error) {
-                            console.error(`Sync error for ${table}:`, error);
                             failedTables.add(table);
                             continue; 
                         }
