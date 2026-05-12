@@ -6098,22 +6098,37 @@ export const UI = {
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1.25rem;">
                         <div class="form-group">
+                         <div class="form-group">
                             <label>Full Name</label>
                             <input type="text" id="edit-staff-name" class="input" value="${staff.full_name || ''}" style="width: 100%;">
+                        </div>
+                        <div class="form-group">
+                            <label>Email Address / Login</label>
+                            <input type="email" id="edit-staff-email" class="input" value="${staff.email || ''}" style="width: 100%;" placeholder="e.g. teacher@gmail.com">
                         </div>
                         <div class="form-group">
                             <label>Role</label>
                             <select id="edit-staff-role" class="input" style="width: 100%;">
                                 <option value="Teacher" ${staff.role === 'Teacher' ? 'selected' : ''}>Teacher</option>
                                 <option value="Admin" ${staff.role === 'Admin' ? 'selected' : ''}>Administrator</option>
+                                <option value="Principal" ${staff.role === 'Principal' ? 'selected' : ''}>Principal</option>
                             </select>
                         </div>
                     </div>
                 `;
                 this.showModal('Update Staff Records', modalHtml, async () => {
                     const name = document.getElementById('edit-staff-name').value;
+                    const email = document.getElementById('edit-staff-email').value.trim();
                     const role = document.getElementById('edit-staff-role').value;
-                    await db.profiles.update(staffId, { full_name: name, role, updated_at: new Date().toISOString() });
+                    
+                    if (!email) return Notifications.show('Email is required for staff login.', 'warning');
+                    
+                    await db.profiles.update(staffId, { 
+                        full_name: name, 
+                        email: email,
+                        role: role, 
+                        updated_at: new Date().toISOString() 
+                    });
                     Notifications.show('Staff records updated', 'success');
                     this.renderStaffDetail(staffId);
                     this.debouncedSync();
