@@ -4550,8 +4550,8 @@ export const UI = {
                     uniqueSchoolMap.set(r.student_id, {
                         ...existing,
                         ...r,
-                        sign_in: existing.sign_in || r.sign_in,
-                        sign_out: r.sign_out || existing.sign_out,
+                        sign_in: existing.sign_in || r.sign_in || existing.check_in || r.check_in || existing.in_time || r.in_time,
+                        sign_out: r.sign_out || existing.sign_out || r.check_out || existing.check_out || r.out_time || existing.out_time || r.exit_time || existing.exit_time,
                         check_in: existing.check_in || r.check_in,
                         check_out: r.check_out || existing.check_out,
                         // Prioritize 'Present' or 'Late' status over others
@@ -4613,21 +4613,27 @@ export const UI = {
                 const status = record ? record.status : defaultStatus;
                 const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : (['Holiday', 'Weekend', 'Closed'].includes(status) ? '#64748b' : '#ef4444'));
                 
-                const formatTime = (iso) => {
-                    if (!iso) return '--:--';
-                    const d = new Date(iso);
-                    if (isNaN(d.getTime())) {
-                        // Try parsing if it's just a time string (e.g. "08:30:00")
-                        if (typeof iso === 'string' && iso.includes(':') && !iso.includes('-')) {
-                            return iso.substring(0, 5); 
-                        }
-                        return '--:--';
+                const formatTime = (val) => {
+                    if (!val) return '--:--';
+                    // If it's a full ISO string or Date object
+                    const d = new Date(val);
+                    if (!isNaN(d.getTime()) && String(val).includes('T')) {
+                        return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true});
                     }
-                    return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    // If it's a simple time string like "08:30:00"
+                    if (typeof val === 'string' && val.includes(':')) {
+                        const parts = val.split(':');
+                        let h = parseInt(parts[0]);
+                        const m = parts[1];
+                        const ampm = h >= 12 ? 'PM' : 'AM';
+                        h = h % 12 || 12;
+                        return `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+                    }
+                    return '--:--';
                 };
 
-                const signIn = formatTime(record?.sign_in || record?.check_in);
-                const signOut = formatTime(record?.sign_out || record?.check_out);
+                const signIn = formatTime(record?.sign_in || record?.check_in || record?.in_time);
+                const signOut = formatTime(record?.sign_out || record?.check_out || record?.out_time || record?.exit_time);
 
                 return `
                     <div class="glass-collapse-card attendance-card ${record ? 'active' : ''}" style="margin: 0; background: white; border: 1px solid #e2e8f0; border-radius: 16px; transition: all 0.3s ease;">
