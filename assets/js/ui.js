@@ -4612,8 +4612,8 @@ export const UI = {
                     return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 };
 
-                const signIn = formatTime(record?.check_in);
-                const signOut = formatTime(record?.check_out);
+                const signIn = formatTime(record?.sign_in || record?.check_in);
+                const signOut = formatTime(record?.sign_out || record?.check_out);
 
                 return `
                     <div class="glass-collapse-card attendance-card ${record ? 'active' : ''}" style="margin: 0; background: white; border: 1px solid #e2e8f0; border-radius: 16px; transition: all 0.3s ease;">
