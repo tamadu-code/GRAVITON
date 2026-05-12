@@ -27,6 +27,7 @@ const splashScreen = document.getElementById('splash-screen');
 const loginScreen = document.getElementById('login-screen');
 const createAccountScreen = document.getElementById('create-account-screen');
 const forgotPasswordScreen = document.getElementById('forgot-password-screen');
+const resetPasswordScreen = document.getElementById('reset-password-screen');
 const appContainer = document.getElementById('app');
 
 // Login form
@@ -45,6 +46,11 @@ const forgotPasswordForm = document.getElementById('forgot-password-form');
 const resetSubmitBtn = document.getElementById('reset-submit-btn');
 const resetError = document.getElementById('reset-error');
 const resetSuccess = document.getElementById('reset-success');
+
+// Reset password (new password) form
+const resetPasswordForm = document.getElementById('reset-password-form');
+const newPasswordInput = document.getElementById('new-password-input');
+const updatePasswordBtn = document.getElementById('update-password-btn');
 
 // Navigation links between auth screens
 const showCreateAccountLink = document.getElementById('show-create-account');
@@ -87,6 +93,10 @@ function showScreen(screen) {
 
 function showLoginScreen() {
     showScreen(loginScreen);
+}
+
+function showResetPasswordScreen() {
+    showScreen(resetPasswordScreen);
 }
 
 // ─── App Initialization ───
@@ -138,6 +148,26 @@ async function initApp() {
         // Re-enable login button if we ended up on the login screen
         if (loginBtn) {
             const isLoginVisible = window.getComputedStyle(loginScreen).display !== 'none';
+            if (isLoginVisible) {
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = '<span>Login</span><i data-lucide="arrow-right"></i>';
+                lucide.createIcons();
+            }
+        }
+    }
+
+    // ─── Setup Auth Listener for Password Recovery ───
+    const client = getSupabase();
+    if (client) {
+        client.auth.onAuthStateChange(async (event, session) => {
+            console.log('[Auth] State Change:', event);
+            if (event === 'PASSWORD_RECOVERY') {
+                console.log('[Auth] Entering Password Recovery mode...');
+                showResetPasswordScreen();
+            }
+        });
+    }
+}
             if (isLoginVisible) {
                 loginBtn.disabled = false;
                 loginBtn.innerHTML = 'Login <i data-lucide="arrow-right"></i>';
@@ -375,6 +405,40 @@ if (loginForm) {
             console.error('Login form error:', err);
             loginBtn.disabled = false;
             loginBtn.innerHTML = '<span>Login</span><i data-lucide="log-in"></i>';
+        }
+    });
+}
+
+// ─── Reset Password (New Password) Form Submit ───
+if (resetPasswordForm) {
+    resetPasswordForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const newPassword = newPasswordInput.value;
+
+        if (newPassword.length < 6) {
+            Notifications.show('Password must be at least 6 characters.', 'error');
+            return;
+        }
+
+        updatePasswordBtn.disabled = true;
+        updatePasswordBtn.innerHTML = '<span>Updating...</span><div class="loader" style="width:14px; height:14px; border:2px solid white; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></div>';
+
+        try {
+            const { error } = await updateUserPassword(null, newPassword);
+            if (error) throw error;
+
+            Notifications.show('Password updated successfully! Logging you in...', 'success');
+            
+            // Redirect to login or load app if session is now active
+            setTimeout(() => {
+                window.location.href = window.location.origin + window.location.pathname;
+            }, 1500);
+        } catch (err) {
+            console.error('Password reset error:', err);
+            Notifications.show(err.message || 'Failed to update password.', 'error');
+            updatePasswordBtn.disabled = false;
+            updatePasswordBtn.innerHTML = '<span>Update Password</span><i data-lucide="arrow-right"></i>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
     });
 }

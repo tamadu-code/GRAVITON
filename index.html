@@ -220,6 +220,48 @@
         </div>
     </div>
 
+    <!-- Auth Screen: Set New Password -->
+    <div id="reset-password-screen" class="login-screen" style="display: none;">
+        <div class="login-card">
+            <div class="login-header text-center">
+                <div class="login-orbit-container">
+                    <div class="orbit-ring orbit-ring-1"></div>
+                    <div class="orbit-ring orbit-ring-2"></div>
+                    <div class="orbit-ring orbit-ring-3"></div>
+                    <div class="orbit-dot orbit-dot-1"></div>
+                    <div class="orbit-dot orbit-dot-2"></div>
+                    <div class="orbit-dot orbit-dot-3"></div>
+                    <div class="login-logo-glow">
+                        <i data-lucide="shield-check"></i>
+                    </div>
+                </div>
+                <h2>Create New Password</h2>
+                <p class="text-secondary text-sm mt-1">Please enter a new secure password<br>for your account</p>
+            </div>
+            
+            <form id="reset-password-form" class="mt-4">
+                <div class="input-group">
+                    <label class="text-xs font-bold uppercase tracking-wider text-secondary">New Password</label>
+                    <div class="input-with-icon">
+                        <i data-lucide="lock"></i>
+                        <input type="password" id="new-password-input" placeholder="••••••••" required minlength="6">
+                    </div>
+                </div>
+                
+                <button type="submit" id="update-password-btn" class="btn btn-primary w-full mt-4">
+                    <span>Update Password</span>
+                    <i data-lucide="arrow-right"></i>
+                </button>
+            </form>
+            
+            <div class="text-center mt-6">
+                <button onclick="showLoginScreen()" class="text-primary font-bold text-sm hover-link">
+                    Back to Login
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Main App -->
     <div id="app" class="app-container" style="display: none;">
         <!-- Sidebar -->
