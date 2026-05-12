@@ -114,9 +114,9 @@ export async function syncToCloud() {
                         });
 
                         // Defensive check for profiles role constraint
-                        if (table === 'profiles' && sanitized.role) {
+                        if (table === 'profiles') {
                             const allowedRoles = ['Admin', 'Teacher', 'Student', 'Parent', 'Staff'];
-                            if (!allowedRoles.includes(sanitized.role)) {
+                            if (!sanitized.role || !allowedRoles.includes(sanitized.role)) {
                                 sanitized.role = 'Student'; // Default to safest
                             }
                         }
