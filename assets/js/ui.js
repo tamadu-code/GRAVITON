@@ -8897,6 +8897,17 @@ export const UI = {
                             Upload & Restore (.json)
                         </button>
                     </div>
+
+                    <div style="background: #f0fdf4; border: 1px solid #dcfce7; padding: 1.5rem; border-radius: 20px; margin-top: 1.5rem; grid-column: span 2;">
+                        <h4 style="font-size: 0.9rem; font-weight: 800; color: #16a34a; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="fingerprint" style="width: 18px;"></i> Biometric Sync Maintenance
+                        </h4>
+                        <p style="font-size: 0.75rem; color: #15803d; margin-bottom: 1rem;">Automatically split classes into Arms (e.g. JSS 1 -> JSS 1A, JSS 1B) based on the Biometric Attendance System records.</p>
+                        <button id="btn-bulk-repair-arms" class="btn" style="width: 100%; height: 44px; border-radius: 10px; background: #22c55e; color: white; border: none; font-weight: 800;">
+                            <i data-lucide="wrench"></i> Run Global Class-Arm Repair
+                        </button>
+                    </div>
+
                     </div>
                 </div>
 
@@ -8934,6 +8945,44 @@ export const UI = {
                 reader.readAsDataURL(file);
             }
         };
+        
+        // --- NEW: Global Class-Arm Repair Logic ---
+        const repairBtn = document.getElementById('btn-bulk-repair-arms');
+        if (repairBtn) {
+            repairBtn.onclick = async () => {
+                if (!confirm("This will scan all students and match their classes with the Biometric System to fix Arms (e.g. JSS 1 -> JSS 1A). Proceed?")) return;
+                
+                repairBtn.disabled = true;
+                const originalHtml = repairBtn.innerHTML;
+                repairBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Repairing...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                try {
+                    const client = window.getSupabase ? window.getSupabase() : null;
+                    if (!client) throw new Error('Cloud connection not established');
+
+                    const { data, error } = await client.functions.invoke('bulk-repair-biometrics');
+                    if (error) throw error;
+
+                    Notifications.show(`Repair Complete: ${data.results.updated} students updated. Syncing local data...`, 'success');
+                    
+                    if (window.syncFromCloud) {
+                        await window.syncFromCloud();
+                    }
+                    
+                    // Refresh view to show new classes
+                    setTimeout(() => this.renderSettings(), 3000);
+                    
+                } catch (err) {
+                    console.error('Bulk repair error:', err);
+                    Notifications.show(`Repair failed: ${err.message}`, 'error');
+                } finally {
+                    repairBtn.disabled = false;
+                    repairBtn.innerHTML = originalHtml;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        }
     },
 
     addClosedDay() {
