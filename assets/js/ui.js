@@ -6717,60 +6717,63 @@ export const UI = {
                                                 <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">TERM / SESSION</div>
                                                 <div style="font-weight: 700; color: #334155;">${e.term} | ${e.session}</div>
                                             </div>
-                                            ${(result && result.status === 'Completed') ? `
-                                            <div>
-                                                <div style="font-size: 0.7rem; font-weight: 800; color: #10b981; margin-bottom: 0.25rem;">YOUR SCORE</div>
-                                                <div style="font-weight: 800; color: #064e3b; font-size: 1.25rem;">${result.score.toFixed(1)} / ${(result.total_marks || result.total_questions).toFixed(1)}</div>
-                                            </div>
-                                            ` : `
                                             <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end;">
-                                                ${isStudent ? (() => {
-                                                    if (result && result.status === 'In Progress') {
-                                                        const startTime = new Date(result.started_at).getTime();
-                                                        const now = Date.now();
-                                                        const elapsed = isNaN(startTime) ? 0 : (now - startTime) / 1000;
-                                                        const timeLeft = (e.duration * 60) - elapsed;
-                                                        
-                                                        // Only show expired if they have truly run out of time (respecting negative elapsed/bonus time)
-                                                        if (timeLeft <= 0) {
-                                                            return `<span class="badge badge-danger" style="background:#fee2e2; color:#ef4444; border:1px solid #fecdd3; padding:8px 15px; border-radius:10px; font-weight:800;">TIME EXPIRED</span>`;
+                                                ${(() => {
+                                                    if (isStudent) {
+                                                        if (result && result.status === 'Completed') {
+                                                            return `
+                                                                <div>
+                                                                    <div style="font-size: 0.7rem; font-weight: 800; color: #10b981; margin-bottom: 0.25rem;">YOUR SCORE</div>
+                                                                    <div style="font-weight: 800; color: #064e3b; font-size: 1.25rem;">${result.score.toFixed(1)} / ${(result.total_marks || result.total_questions).toFixed(1)}</div>
+                                                                </div>
+                                                            `;
                                                         }
-                                                        
+                                                        if (result && result.status === 'In Progress') {
+                                                            const startTime = new Date(result.started_at).getTime();
+                                                            const elapsed = isNaN(startTime) ? 0 : (Date.now() - startTime) / 1000;
+                                                            const timeLeft = (e.duration * 60) - elapsed;
+                                                            if (timeLeft <= 0) {
+                                                                return `<span class="badge badge-danger" style="background:#fee2e2; color:#ef4444; border:1px solid #fecdd3; padding:8px 15px; border-radius:10px; font-weight:800;">TIME EXPIRED</span>`;
+                                                            }
+                                                            return `
+                                                                <button class="btn btn-warning btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #f59e0b; color: white; border: none; font-weight: 800;">
+                                                                    <i data-lucide="rotate-ccw" style="width: 16px;"></i> Resume Exam
+                                                                </button>
+                                                            `;
+                                                        }
                                                         return `
-                                                            <button class="btn btn-warning btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #f59e0b; color: white; border: none; font-weight: 800;">
-                                                                <i data-lucide="rotate-ccw" style="width: 16px;"></i> Resume Exam
+                                                            <button class="btn btn-primary btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #4338ca;">
+                                                                <i data-lucide="play" style="width: 16px;"></i> Start Exam
                                                             </button>
                                                         `;
+                                                    } else {
+                                                        // Admin Actions
+                                                        if (isAdmin || e.teacher_id === teacherId) {
+                                                            return `
+                                                                ${isAdmin ? `
+                                                                <button class="btn btn-primary btn-sm" title="View Participants" onclick="UI.renderCBTParticipants('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #e0e7ff; color: #4338ca; border: none;">
+                                                                    <i data-lucide="users" style="width: 18px;"></i>
+                                                                </button>
+                                                                <button class="btn btn-warning btn-sm" title="Archive Exam" onclick="UI.archiveExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #fef3c7; color: #d97706; border: none;">
+                                                                    <i data-lucide="archive" style="width: 18px;"></i>
+                                                                </button>
+                                                                <button class="btn btn-danger btn-sm" title="Delete Exam" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                                                                    <i data-lucide="trash-2" style="width: 18px;"></i>
+                                                                </button>
+                                                                ` : `
+                                                                <button class="btn btn-primary btn-sm" title="View Participants" onclick="UI.renderCBTParticipants('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #e0e7ff; color: #4338ca; border: none;">
+                                                                    <i data-lucide="users" style="width: 18px;"></i>
+                                                                </button>
+                                                                `}
+                                                                <button class="btn btn-secondary btn-sm" onclick="UI.renderCBTEditor('${e.id}')" style="height: 40px; padding: 0 1.25rem; border-radius: 10px;">
+                                                                    <i data-lucide="edit-3" style="width: 16px;"></i> Edit
+                                                                </button>
+                                                            `;
+                                                        }
+                                                        return '';
                                                     }
-                                                    return `
-                                                        <button class="btn btn-primary btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #4338ca;">
-                                                            <i data-lucide="play" style="width: 16px;"></i> Start Exam
-                                                        </button>
-                                                    `;
-                                                })() : `
-                                                    ${(isAdmin || e.teacher_id === teacherId) ? `
-                                                    ${isAdmin ? `
-                                                    <button class="btn btn-primary btn-sm" title="View Participants" onclick="UI.renderCBTParticipants('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #e0e7ff; color: #4338ca; border: none;">
-                                                        <i data-lucide="users" style="width: 18px; height: 18px;"></i>
-                                                    </button>
-                                                    <button class="btn btn-warning btn-sm" title="Archive Exam" onclick="UI.archiveExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #fef3c7; color: #d97706; border: none;">
-                                                        <i data-lucide="archive" style="width: 18px; height: 18px;"></i>
-                                                    </button>
-                                                    <button class="btn btn-danger btn-sm" title="Delete Exam" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                                                        <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
-                                                    </button>
-                                                    ` : `
-                                                    <button class="btn btn-primary btn-sm" title="View Participants" onclick="UI.renderCBTParticipants('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #e0e7ff; color: #4338ca; border: none;">
-                                                        <i data-lucide="users" style="width: 18px; height: 18px;"></i>
-                                                    </button>
-                                                    `}
-                                                    <button class="btn btn-secondary btn-sm" onclick="UI.renderCBTEditor('${e.id}')" style="height: 40px; padding: 0 1.25rem; border-radius: 10px;">
-                                                        <i data-lucide="edit-3" style="width: 16px;"></i> Edit
-                                                    </button>
-                                                    `}
-                                                `}
+                                                })()}
                                             </div>
-                                            `}
                                         `}
                                     </div>
                                 </div>
