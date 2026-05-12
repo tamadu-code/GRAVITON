@@ -7693,23 +7693,23 @@ export const UI = {
 
             // Ultra-Flexible Scanner: Handles case variations, extra spaces, dots, and varied delimiters
             // Robust Scanner: Handles variations and ensures markers (A), (B) etc are not part of the text
-            const masterRegex = /([\s\S]*?)\s*(?:\s|[\r\n]|^)[\(\[\.]?\s*[Aa][\)\]\.]?\s+([\s\S]*?)\s*(?:\s|[\r\n])[\(\[\.]?\s*[Bb][\)\]\.]?\s+([\s\S]*?)\s*(?:\s|[\r\n])[\(\[\.]?\s*[Cc][\)\]\.]?\s+([\s\S]*?)\s*(?:\s|[\r\n])[\(\[\.]?\s*[Dd][\)\]\.]?\s+([\s\S]*?)\s*(?:\s|[\r\n])(?:[\(\[\.]?\s*[Ee][\)\]\.]?\s+([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
             let match;
             let count = 0;
 
             while ((match = masterRegex.exec(text)) !== null) {
                 const questionText = match[1].replace(/^\d+[\.\)]\s*/, '').trim(); 
-                const marks = match[8] ? parseFloat(match[8]) : 1;
+                const marks = match[7] ? parseFloat(match[7]) : 1;
 
                 this.cbtQuestions.push({
                     id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
                     question_text: questionText,
-                    option_a: match[2].trim(),
-                    option_b: match[3].trim(),
-                    option_c: match[4].trim(),
-                    option_d: match[5].trim(),
-                    option_e: match[6] ? match[6].trim() : '',
+                    option_a: (match[2] || '').trim(),
+                    option_b: (match[3] || '').trim(),
+                    option_c: (match[4] || '').trim(),
+                    option_d: (match[5] || '').trim(),
+                    option_e: (match[6] || '').trim(),
                     correct_option: match[7].toUpperCase(),
                     marks: marks
                 });
@@ -10675,7 +10675,7 @@ export const UI = {
                 if (!confirm(`This category already has ${existingCount} questions. Append the new questions to it?`)) return;
             }
 
-            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
 
             let match;
             let count = 0;
@@ -10689,12 +10689,12 @@ export const UI = {
                     id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                     exam_id: bankExamId,
                     question_text: questionText,
-                    option_a: match[2].trim(),
-                    option_b: match[3].trim(),
-                    option_c: match[4].trim(),
-                    option_d: match[5].trim(),
-                    option_e: '',
-                    correct_option: match[6].toUpperCase(),
+                    option_a: (match[2] || '').trim(),
+                    option_b: (match[3] || '').trim(),
+                    option_c: (match[4] || '').trim(),
+                    option_d: (match[5] || '').trim(),
+                    option_e: (match[6] || '').trim(),
+                    correct_option: match[7].toUpperCase(),
                     marks: marks
                 }));
                 count++;
