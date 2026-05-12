@@ -145,6 +145,20 @@ export async function syncToCloud() {
                         }
                     }
 
+                    // --- NEW: Process Deletions from Cloud ---
+                    if (table === 'audit_logs') {
+                        const deletions = chunk.filter(log => log.operation === 'DELETE');
+                        for (const del of deletions) {
+                            try {
+                                const pk = (del.table === 'students' || del.table === 'student_analytics') ? 'student_id' : 'id';
+                                await client.from(del.table).delete().eq(pk, del.record_id);
+                                console.log(`[Sync] Successfully deleted ${del.record_id} from ${del.table} in cloud.`);
+                            } catch (e) {
+                                console.warn(`[Sync] Deferred cloud deletion for ${del.record_id}:`, e);
+                            }
+                        }
+                    }
+
                     // Mark as synced locally
                     const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
                     for (const item of chunk) {
@@ -227,7 +241,16 @@ export async function syncFromCloud(forceAll = false) {
 
                     if (data && data.length > 0) {
                         const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
-                        const validData = data.filter(item => item[pk]).map(item => ({ ...item, is_synced: 1 }));
+                        
+                        // --- NEW: Deletion Shield ---
+                        // Don't pull back items that we have recently deleted locally but haven't synced yet
+                        const pendingDeletes = await db.audit_logs.where('table').equals(table).and(log => log.operation === 'DELETE').toArray();
+                        const deletedIds = new Set(pendingDeletes.map(log => String(log.record_id)));
+                        
+                        const validData = data
+                            .filter(item => item[pk] && !deletedIds.has(String(item[pk])))
+                            .map(item => ({ ...item, is_synced: 1 }));
+                            
                         if (validData.length > 0) {
                             await db[table].bulkPut(validData);
                         }

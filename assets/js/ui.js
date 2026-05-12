@@ -21,6 +21,40 @@ export const UI = {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
     },
+
+    // ─── Sync-Aware Deletion Engine ───
+    async safeDelete(table, id, successMessage = 'Record deleted') {
+        try {
+            // 1. Log the deletion in audit_logs for sync engine
+            await db.audit_logs.add({
+                operation: 'DELETE',
+                table: table,
+                record_id: String(id),
+                timestamp: new Date().toISOString(),
+                user_id: this.currentUser?.id || 'system',
+                is_synced: 0
+            });
+
+            // 2. Perform local deletion
+            await db[table].delete(id);
+            
+            // 3. Optional: Immediate Cloud attempt if online
+            if (navigator.onLine) {
+                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (client) {
+                    const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
+                    await client.from(table).delete().eq(pk, id);
+                }
+            }
+
+            if (successMessage) Notifications.show(successMessage, 'success');
+            return true;
+        } catch (err) {
+            console.error(`SafeDelete failed for ${table}/${id}:`, err);
+            Notifications.show('Failed to delete record', 'error');
+            return false;
+        }
+    },
     currentUser: {
         role: localStorage.getItem('user_role') || 'Admin',
         name: 'Admin User'
@@ -8220,23 +8254,10 @@ export const UI = {
 
     async deleteAssignment(id) {
         if (confirm('Are you sure you want to delete this assignment?')) {
-            try {
-                await db.subject_assignments.delete(id);
-                
-                // Cloud Clean-up
-                if (navigator.onLine) {
-                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
-                    if (client) {
-                        await client.from('subject_assignments').delete().eq('id', id);
-                    }
-                }
-
-                Notifications.show('Assignment removed', 'success');
+            const success = await this.safeDelete('subject_assignments', id, 'Assignment removed');
+            if (success) {
                 this.renderLessons();
                 this.debouncedSync();
-            } catch (err) {
-                console.error('Delete assignment error:', err);
-                Notifications.show('Failed to delete assignment', 'error');
             }
         }
     },
@@ -9166,25 +9187,10 @@ export const UI = {
     async deleteNotice(id) {
         if (!confirm('Are you sure you want to delete this broadcast? This cannot be undone.')) return;
 
-        try {
-            await db.notices.delete(id);
-            
-            // Cloud Clean-up
-            if (navigator.onLine) {
-                try {
-                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
-                    if (client) {
-                        await client.from('notices').delete().eq('id', id);
-                    }
-                } catch (e) { console.warn('Cloud clean-up deferred:', e); }
-            }
-
-            Notifications.show('Broadcast deleted successfully', 'success');
+        const success = await this.safeDelete('notices', id, 'Broadcast deleted successfully');
+        if (success) {
             this.renderNoticeBoard();
             this.debouncedSync();
-        } catch (err) {
-            console.error('Delete notice error:', err);
-            Notifications.show('Failed to delete notice', 'error');
         }
     },
 
@@ -10179,23 +10185,10 @@ export const UI = {
 
     async deleteFeeStructure(id) {
         if (confirm('Delete this fee structure?')) {
-            try {
-                await db.fee_structures.delete(id);
-                
-                // Cloud Clean-up
-                if (navigator.onLine) {
-                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
-                    if (client) {
-                        await client.from('fee_structures').delete().eq('id', id);
-                    }
-                }
-                
+            const success = await this.safeDelete('fee_structures', id, 'Fee structure removed');
+            if (success) {
                 this.renderFeeStructures();
                 this.debouncedSync();
-                Notifications.show('Fee structure removed', 'success');
-            } catch (err) {
-                console.error('Delete fee structure error:', err);
-                Notifications.show('Failed to delete fee structure', 'error');
             }
         }
     },
@@ -10506,8 +10499,11 @@ export const UI = {
 
     async deleteRosterEntry(id) {
         if (confirm('Remove this duty assignment?')) {
-            await db.duty_assignments.delete(id);
-            this.renderRoster();
+            const success = await this.safeDelete('duty_assignments', id, 'Duty removed');
+            if (success) {
+                this.renderRoster();
+                this.debouncedSync();
+            }
         }
     },
 
