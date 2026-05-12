@@ -7678,12 +7678,28 @@ export const UI = {
 
     bulkImportQuestions() {
         const modalHtml = `
-            <div class="form-group">
-                <label>Paste questions below in this format:</label>
-                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.5rem; background:#f1f5f9; padding:0.5rem; border-radius:8px;">
-                    Question text? (A) Option 1 (B) Option 2 (C) Option 3 (D) Option 4 [Ans: A] [Marks: 5]
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; font-size: 0.8rem;">
+                    <div style="font-weight: 800; color: #4338ca; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem;">Formatting Guide & Samples</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem; color: #475569;">
+                        <div>
+                            <strong style="color: #1e293b;">• Multiple Choice:</strong><br>
+                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">What is 2+2? (A) 3 (B) 4 (C) 5 [Ans: B]</code>
+                        </div>
+                        <div>
+                            <strong style="color: #1e293b;">• Fill in the Blank:</strong><br>
+                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">The capital of Nigeria is _____. [Ans: Abuja] [Marks: 2]</code>
+                        </div>
+                        <div>
+                            <strong style="color: #1e293b;">• Math / Formulas:</strong><br>
+                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">Solve \( x^2 = 16 \). [Ans: 4]</code>
+                        </div>
+                    </div>
                 </div>
-                <textarea id="bulk-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.8rem;" placeholder="Question 1... [Ans: B] [Marks: 2]\nQuestion 2... [Ans: C]"></textarea>
+                <div class="form-group">
+                    <label style="font-weight: 700;">Paste questions below:</label>
+                    <textarea id="bulk-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.85rem; padding: 1rem;" placeholder="Paste questions here..."></textarea>
+                </div>
             </div>
         `;
 
@@ -7693,25 +7709,54 @@ export const UI = {
 
             // Ultra-Flexible Scanner: Handles case variations, extra spaces, dots, and varied delimiters
             // Robust Scanner: Handles variations and ensures markers (A), (B) etc are not part of the text
-            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // 1. First attempt to parse MCQs (A, B, C...)
+            const mcqRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            
+            // 2. Second attempt to parse Fill-in-the-Blank (No options, just [Ans: ...])
+            const fillRegex = /([\s\S]*?)\s*\[Ans:\s*([\s\S]*?)\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
             let match;
             let count = 0;
+            const seenQuestions = new Set();
 
-            while ((match = masterRegex.exec(text)) !== null) {
-                const questionText = match[1].replace(/^\d+[\.\)]\s*/, '').trim(); 
-                const marks = match[7] ? parseFloat(match[7]) : 1;
-
+            // Try MCQ first
+            while ((match = mcqRegex.exec(text)) !== null) {
+                const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
+                seenQuestions.add(match[0]); // Mark this segment as processed
                 this.cbtQuestions.push({
                     id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
-                    question_text: questionText,
+                    type: 'mcq',
+                    question_text: qText,
                     option_a: (match[2] || '').trim(),
                     option_b: (match[3] || '').trim(),
                     option_c: (match[4] || '').trim(),
                     option_d: (match[5] || '').trim(),
                     option_e: (match[6] || '').trim(),
                     correct_option: match[7].toUpperCase(),
-                    marks: marks
+                    marks: match[8] ? parseFloat(match[8]) : 1
+                });
+                count++;
+            }
+
+            // Try Fill-in-the-blank for the remaining text
+            while ((match = fillRegex.exec(text)) !== null) {
+                if (seenQuestions.has(match[0])) continue; // Skip already processed MCQs
+                
+                const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
+                const ans = match[2].trim();
+                
+                // If it looks like an MCQ that we missed (contains (A) or (B)), skip it or handle as MCQ
+                if (qText.includes('(A)') || qText.includes('(B)') || qText.includes('A.') || qText.includes('B.')) {
+                    continue; 
+                }
+
+                this.cbtQuestions.push({
+                    id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
+                    type: 'fill',
+                    question_text: qText,
+                    option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
+                    correct_option: ans, // For fill-in-the-blank, correct_option is the literal answer
+                    marks: match[3] ? parseFloat(match[3]) : 1
                 });
                 count++;
             }
@@ -10613,6 +10658,24 @@ export const UI = {
 
         const modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; font-size: 0.8rem;">
+                    <div style="font-weight: 800; color: #4338ca; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem;">Formatting Guide & Samples</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem; color: #475569;">
+                        <div>
+                            <strong style="color: #1e293b;">• Multiple Choice:</strong><br>
+                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">What is 2+2? (A) 3 (B) 4 (C) 5 [Ans: B]</code>
+                        </div>
+                        <div>
+                            <strong style="color: #1e293b;">• Fill in the Blank:</strong><br>
+                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">The capital of Nigeria is _____. [Ans: Abuja] [Marks: 2]</code>
+                        </div>
+                        <div>
+                            <strong style="color: #1e293b;">• Math / Formulas:</strong><br>
+                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">Solve \( x^2 = 16 \). [Ans: 4]</code>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                     <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Class</label>
@@ -10648,10 +10711,7 @@ export const UI = {
                 </div>
                 <div class="form-group" style="margin: 0;">
                     <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Paste questions below:</label>
-                    <div style="font-size:0.75rem; color:#64748b; margin-bottom:0.5rem; background:#f1f5f9; padding:0.75rem; border-radius:10px; line-height: 1.6;">
-                        <strong>Format:</strong> Question text? (A) Option 1 (B) Option 2 (C) Option 3 (D) Option 4 [Ans: A] [Marks: 5]
-                    </div>
-                    <textarea id="bank-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.8rem; border-radius: 12px; color: #1e293b !important; background: #ffffff !important;" placeholder="Question 1... [Ans: B] [Marks: 2]\nQuestion 2... [Ans: C]"></textarea>
+                    <textarea id="bank-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.85rem; border-radius: 12px; color: #1e293b !important; background: #ffffff !important;" placeholder="Paste questions here..."></textarea>
                 </div>
             </div>
         `;
@@ -10669,33 +10729,62 @@ export const UI = {
 
             const bankExamId = `BANK-${subjectId}__${className}__${term.replace(/\s+/g, '')}__${session.replace(/\//g, '-')}`;
 
-            // Check for existing questions in this category to inform the user
+            // Check for existing questions
             const existingCount = await db.cbt_questions.where('exam_id').equals(bankExamId).count();
             if (existingCount > 0) {
                 if (!confirm(`This category already has ${existingCount} questions. Append the new questions to it?`)) return;
             }
 
-            const masterRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // 1. First attempt to parse MCQs (A, B, C...)
+            const mcqRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            
+            // 2. Second attempt to parse Fill-in-the-Blank (No options, just [Ans: ...])
+            const fillRegex = /([\s\S]*?)\s*\[Ans:\s*([\s\S]*?)\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
 
             let match;
             let count = 0;
             const newQuestions = [];
+            const seenQuestions = new Set();
 
-            while ((match = masterRegex.exec(text)) !== null) {
-                const questionText = match[1].replace(/^\d+[\.)\]]\s*/, '').trim();
-                const marks = match[7] ? parseFloat(match[7]) : 1;
-
+            // Try MCQ first
+            while ((match = mcqRegex.exec(text)) !== null) {
+                const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
+                seenQuestions.add(match[0]);
                 newQuestions.push(prepareForSync({
                     id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                     exam_id: bankExamId,
-                    question_text: questionText,
+                    type: 'mcq',
+                    question_text: qText,
                     option_a: (match[2] || '').trim(),
                     option_b: (match[3] || '').trim(),
                     option_c: (match[4] || '').trim(),
                     option_d: (match[5] || '').trim(),
                     option_e: (match[6] || '').trim(),
                     correct_option: match[7].toUpperCase(),
-                    marks: marks
+                    marks: match[8] ? parseFloat(match[8]) : 1
+                }));
+                count++;
+            }
+
+            // Try Fill-in-the-blank
+            while ((match = fillRegex.exec(text)) !== null) {
+                if (seenQuestions.has(match[0])) continue;
+                
+                const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
+                const ans = match[2].trim();
+                
+                if (qText.includes('(A)') || qText.includes('(B)') || qText.includes('A.') || qText.includes('B.')) {
+                    continue; 
+                }
+
+                newQuestions.push(prepareForSync({
+                    id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    exam_id: bankExamId,
+                    type: 'fill',
+                    question_text: qText,
+                    option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
+                    correct_option: ans,
+                    marks: match[3] ? parseFloat(match[3]) : 1
                 }));
                 count++;
             }
