@@ -11665,7 +11665,6 @@ export const UI = {
             this.debouncedSync();
             
             // Instant UI update
-            const exam = await db.cbt_exams.get(examId);
             const [finalResults, finalProgress] = await Promise.all([
                 db.cbt_results.where('exam_id').equals(examId).toArray(),
                 db.exam_progress.where('exam_id').equals(examId).toArray()
