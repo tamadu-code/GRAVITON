@@ -314,11 +314,15 @@ export async function loginUser(identifier, password) {
         return { data: null, error: { message: 'Please use your full Student ID (NKQMS-...) to login.' } };
     }
 
+    // ─── DIAGNOSTIC LOG ───
+    console.log(`[Auth] Attempting login for: ${identifier} -> Translated Email: ${email}`);
+
     const { data, error } = await client.auth.signInWithPassword({ email: email, password: loginPassword });
     
     // Fallback 1: Lowercase Student ID failed -> Try exact casing
     if (error && isStandardId && email !== identifier + '@student.school') {
         const fallbackEmail = `${identifier}@student.school`;
+        console.log(`[Auth] Fallback 1 (Exact Casing): ${fallbackEmail}`);
         const retry = await client.auth.signInWithPassword({ email: fallbackEmail, password: loginPassword });
         if (!retry.error) return retry;
     }
@@ -326,10 +330,12 @@ export async function loginUser(identifier, password) {
     // Fallback 2: Maybe it's a staff ID being used as an email?
     if (error && !identifier.includes('@') && !isStandardId) {
         const staffEmail = `${identifier.toLowerCase()}@school.edu`;
+        console.log(`[Auth] Fallback 2 (Staff ID -> Email): ${staffEmail}`);
         const retry = await client.auth.signInWithPassword({ email: staffEmail, password: loginPassword });
         if (!retry.error) return retry;
     }
 
+    if (error) console.error(`[Auth] Login failed: ${error.message}`);
     return { data, error };
 }
 
