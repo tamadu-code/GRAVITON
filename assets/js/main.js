@@ -237,6 +237,9 @@ async function loadAuthenticatedApp(authUser) {
         if (authUser.email.toLowerCase().includes('student')) detectedRole = 'Student';
         else if (authUser.email.toLowerCase().includes('parent')) detectedRole = 'Parent';
         
+        const allowedRoles = ['Admin', 'Teacher', 'Student', 'Parent', 'Staff'];
+        if (!allowedRoles.includes(detectedRole)) detectedRole = 'Student';
+
         profile = {
             id: authUser.id,
             full_name: full_name || authUser.email,
@@ -247,16 +250,13 @@ async function loadAuthenticatedApp(authUser) {
             updated_at: new Date().toISOString()
         };
 
-        // Self-provision the missing profile row in Supabase (Staff/Admin only)
-        // Students and Parents are not stored in the admin profiles table.
-        if (detectedRole !== 'Student' && detectedRole !== 'Parent') {
-            const client = getSupabase();
-            if (client) {
-                client.from('profiles').upsert(profile).then(({ error }) => {
-                    if (error) console.warn('Automatic profile provisioning deferred:', error.message);
-                    else console.log('Profile successfully self-provisioned for:', authUser.email);
-                });
-            }
+        // Self-provision the missing profile row in Supabase
+        const client = getSupabase();
+        if (client) {
+            client.from('profiles').upsert(profile).then(({ error }) => {
+                if (error) console.warn('Automatic profile provisioning deferred:', error.message);
+                else console.log('Profile successfully self-provisioned for:', authUser.email);
+            });
         }
     }
 
