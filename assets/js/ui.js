@@ -7697,6 +7697,10 @@ export const UI = {
                 // Only include options that have actual content
                 const validOptions = options.filter(o => o.text && o.text.length > 0);
 
+                if (validOptions.length < 4) {
+                    console.warn(`[CBT Integrity] Question ${idx + 1} (${q.id}) only has ${validOptions.length} options.`);
+                }
+
                 let qSeed = seed + idx;
                 const shuffledOptions = seededShuffle([...validOptions], qSeed);
                 
@@ -8137,7 +8141,7 @@ export const UI = {
                             </div>
 
                             <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                                <button class="btn btn-primary" onclick="UI.confirmSubmitExam()" style="height: 50px; border-radius: 12px; font-weight: 800; background: #4338ca; font-size: 1rem;">Yes, Submit Now</button>
+                                <button class="btn btn-primary" onclick="UI.submitExam()" style="height: 50px; border-radius: 12px; font-weight: 800; background: #4338ca; font-size: 1rem;">Yes, Submit Now</button>
                                 <button class="btn btn-secondary" onclick="document.getElementById('cbt-submit-review').style.display='none'" style="height: 44px; border-radius: 12px; font-weight: 700; background: #f1f5f9; color: #475569; border: none;">Go Back to Review</button>
                             </div>
                         </div>
