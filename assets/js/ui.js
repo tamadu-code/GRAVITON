@@ -7466,21 +7466,61 @@ export const UI = {
 
     async finalizeStartCBTExam(examId, isResume = false) {
         try {
-            Notifications.show('Initializing secure exam session...', 'info');
-            console.log(`[CBT] Finalizing start for exam: ${examId}, isResume: ${isResume}`);
-            const exam = await db.cbt_exams.get(examId);
-            if (!exam) {
-                console.error(`[CBT] Exam not found: ${examId}`);
-                return Notifications.show('Exam details could not be loaded.', 'error');
+            if (!navigator.onLine) {
+                return Notifications.show('Cloud-Direct mode requires an active internet connection to start.', 'error');
             }
 
-            let questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
-            // Safety: Remove any null/undefined entries
-            questions = questions.filter(q => q && typeof q === 'object');
+            Notifications.show('Connecting to Cloud Exam Server...', 'info');
             
-            console.log(`[CBT AUDIT] Loaded ${questions.length} questions for exam ${examId}`);
+            // 1. Fetch EVERYTHING directly from the cloud to ensure 100% data integrity
+            const [examRes, questionsRes, studentId] = await Promise.all([
+                client.from('cbt_exams').select('*').eq('id', examId).single(),
+                client.from('cbt_questions').select('*').eq('exam_id', examId),
+                this.resolveCBTStudentId()
+            ]);
 
-            // Normalise every question's option fields from DB — fixes cloud-sync nulls
+            if (examRes.error) throw new Error('Failed to fetch exam settings.');
+            if (questionsRes.error) throw new Error('Failed to fetch questions.');
+            if (!studentId) throw new Error('Unable to identify student record.');
+
+            const exam = examRes.data;
+            let rawQuestions = questionsRes.data || [];
+
+            // 2. Fetch existing result directly from cloud
+            const { data: cloudResults } = await client.from('cbt_results')
+                .select('*')
+                .eq('exam_id', examId)
+                .in('student_id', [studentId, this.currentUser.id].filter(Boolean));
+            
+            // Latest Wins among cloud results
+            let session = cloudResults?.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
+
+            // Mirror to local DB to keep it in sync
+            await db.cbt_exams.put(exam);
+            if (rawQuestions.length > 0) {
+                // Coerce nulls during local mirroring
+                const processedQuestions = rawQuestions.map(q => ({
+                    ...q,
+                    option_a: q.option_a ?? '',
+                    option_b: q.option_b ?? '',
+                    option_c: q.option_c ?? '',
+                    option_d: q.option_d ?? '',
+                    option_e: q.option_e ?? '',
+                    correct_option: q.correct_option ?? 'A',
+                    marks: q.marks ?? 1
+                }));
+                await db.cbt_questions.where('exam_id').equals(examId).delete();
+                await db.cbt_questions.bulkPut(processedQuestions);
+                rawQuestions = processedQuestions;
+            }
+            if (session) await db.cbt_results.put(session);
+
+            console.log(`[CBT CLOUD] Fetched ${rawQuestions.length} questions for exam ${examId}`);
+
+            // Safety: Remove any null/undefined entries
+            let questions = rawQuestions.filter(q => q && typeof q === 'object');
+            
+            // Normalise every question's option fields for rendering
             questions = questions.map(q => ({
                 ...q,
                 option_a: (q.option_a || '').toString().trim(),
@@ -7492,36 +7532,20 @@ export const UI = {
                 marks: parseFloat(q.marks) || 1
             }));
 
-            // *** CRITICAL FIX: Filter broken questions (< 2 valid options) BEFORE applying limit ***
-            // This ensures question_limit always yields the requested number of VALID questions
+            // *** Integrity Check: Filter broken questions ***
             const validQuestions = questions.filter(q => {
                 const optCount = [q.option_a, q.option_b, q.option_c, q.option_d, q.option_e]
                     .filter(o => o && o.trim().length > 0).length;
-                if (optCount < 2) {
-                    console.warn(`[CBT AUDIT] Skipping broken question ${q.id} — only ${optCount} valid option(s).`);
-                    return false;
-                }
-                return true;
+                return optCount >= 2;
             });
 
-            console.log(`[CBT AUDIT] ${validQuestions.length} valid questions after integrity check (${questions.length - validQuestions.length} skipped).`);
-
             if (validQuestions.length === 0) {
-                console.error(`[CBT] No valid questions found for exam: ${examId}`);
-                return Notifications.show('This exam has no valid questions assigned yet. Please contact your teacher.', 'error');
+                return Notifications.show('This exam has no valid questions in the cloud. Please contact your teacher.', 'error');
             }
 
-            // Warn if valid questions are fewer than requested limit
             const requestedLimit = parseInt(exam.question_limit) || 0;
             if (requestedLimit > 0 && validQuestions.length < requestedLimit) {
-                console.warn(`[CBT AUDIT] Only ${validQuestions.length} valid questions available, but exam requires ${requestedLimit}.`);
-                Notifications.show(`Note: Only ${validQuestions.length} valid questions available (exam expected ${requestedLimit}). You will answer all available questions.`, 'warning');
-            }
-
-            const studentId = this.resolveCBTStudentId();
-            if (!studentId) {
-                console.error(`[CBT] Student ID resolution failed. User:`, this.currentUser);
-                return Notifications.show('Unable to identify your student record. Please re-login.', 'error');
+                Notifications.show(`Note: Only ${validQuestions.length} valid questions available (expected ${requestedLimit}).`, 'warning');
             }
 
             console.log(`[CBT] Starting exam for Student: ${studentId}`);
@@ -7623,9 +7647,16 @@ export const UI = {
                     status: 'In Progress'
                 });
                 await db.cbt_results.add(newSession);
+                
+                // Real-time Cloud Push
+                if (navigator.onLine) {
+                    client.from('cbt_results').upsert(newSession, { onConflict: 'student_id,exam_id' })
+                        .then(() => console.log('[CBT CLOUD] New session initialized.'))
+                        .catch(e => console.warn('[CBT CLOUD] Init push failed:', e));
+                }
+
                 session = newSession;
                 this.examTimeLeft = durationSeconds;
-                this.debouncedSync();
             }
 
             // Store session state
@@ -7722,23 +7753,34 @@ export const UI = {
     async logViolation(type) {
         const studentId = this.resolveCBTStudentId();
         const examId = this.currentExam.id;
-        const timestamp = new Date().toLocaleTimeString();
-        const entry = `[${timestamp}] ${type}`;
+        const timestamp = new Date().toISOString();
+        const entry = `[${new Date().toLocaleTimeString()}] ${type}`;
 
         try {
             const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
-            const violations = session.violations || [];
-            violations.push(entry);
+            if (session) {
+                const violations = session.violations || [];
+                violations.push(entry);
 
-            await db.cbt_results.update(session.id, {
-                violations: violations,
-                warnings: (session.warnings || 0) + 1,
-                is_synced: 0
-            });
-            
-            // Subtle notification for student? No, keep it silent as requested "silently watch".
-            console.warn('Security violation logged:', entry);
-            this.debouncedSync();
+                await db.cbt_results.update(session.id, {
+                    violations: violations,
+                    warnings: (session.warnings || 0) + 1,
+                    is_synced: 0
+                });
+                
+                // Real-time Cloud Push
+                if (navigator.onLine) {
+                    client.from('cbt_results')
+                        .update({ 
+                            violations: violations, 
+                            warnings: (session.warnings || 0) + 1,
+                            updated_at: timestamp 
+                        })
+                        .match({ student_id: studentId, exam_id: examId })
+                        .then(() => console.log('[CBT CLOUD] Violation logged.'))
+                        .catch(e => console.warn('[CBT CLOUD] Violation push failed:', e));
+                }
+            }
         } catch (e) {
             console.error('Failed to log violation:', e);
         }
@@ -7978,12 +8020,23 @@ export const UI = {
         try {
             await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
                 answers: this.userAnswers,
+                updated_at: new Date().toISOString(),
                 is_synced: 0
             });
-            // Background cloud sync
-            this.debouncedSync();
-        } catch (e) {
-            console.error('Failed to auto-save progress:', e);
+
+            // Direct Cloud Push for Real-Time Monitoring
+            if (navigator.onLine) {
+                client.from('cbt_results')
+                    .upsert({
+                        student_id: studentId,
+                        exam_id: examId,
+                        answers: this.userAnswers,
+                        updated_at: new Date().toISOString()
+                    }, { onConflict: 'student_id,exam_id' })
+                    .catch(e => console.warn('[CBT CLOUD] Save failed:', e));
+            }
+        } catch (err) {
+            console.error('Failed to auto-save progress:', err);
         }
         
         this.renderCBTExamInterface();
@@ -8063,6 +8116,13 @@ export const UI = {
                 await db.cbt_results.update(existing.id, resultUpdate);
             } else {
                 await db.cbt_results.add(finalResult);
+            }
+
+            // Real-time Cloud Finalization
+            if (navigator.onLine) {
+                client.from('cbt_results').upsert(finalResult, { onConflict: 'student_id,exam_id' })
+                    .then(() => console.log('[CBT CLOUD] Exam submitted.'))
+                    .catch(e => console.warn('[CBT CLOUD] Submission push failed:', e));
             }
             
             if (this.currentExam.score_field) {
