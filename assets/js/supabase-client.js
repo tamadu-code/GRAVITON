@@ -129,10 +129,30 @@ export async function syncToCloud() {
                         return sanitized;
                     });
 
+                    // --- NEW: Cloud Protection ---
+                    // Prevent local stale records from overwriting newer cloud data (e.g. Admin re-opens or corrections)
+                    if ((table === 'cbt_results' || table === 'scores') && dataToSync.length > 0) {
+                        const ids = dataToSync.map(d => d.id).filter(Boolean);
+                        if (ids.length > 0) {
+                            try {
+                                const { data: cloudStates } = await client.from(table).select('id, updated_at').in('id', ids);
+                                if (cloudStates && cloudStates.length > 0) {
+                                    dataToSync = dataToSync.filter(local => {
+                                        const remote = cloudStates.find(c => c.id === local.id);
+                                        if (!remote) return true;
+                                        // Only push if local is actually NEWER
+                                        const isNewer = new Date(local.updated_at || 0) > new Date(remote.updated_at || 0);
+                                        if (!isNewer) console.log(`[Sync] Skipping push for ${table} ${local.id} - Cloud has newer data.`);
+                                        return isNewer;
+                                    });
+                                }
+                            } catch (e) { console.warn(`Cloud protection check failed for ${table}:`, e); }
+                        }
+                    }
+
                     // We now allow BANK questions to sync to the cloud
-                    // Note: Requires the cloud DB to have the FK constraint relaxed or Bank IDs added to cbt_exams
                     if (table === 'cbt_questions') {
-                        dataToSync = dataToSync.filter(r => r.question_text); // Only skip empty records
+                        dataToSync = dataToSync.filter(r => r.question_text);
                     }
 
                     if (dataToSync.length > 0) {

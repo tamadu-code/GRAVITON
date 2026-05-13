@@ -6601,24 +6601,43 @@ export const UI = {
 
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
-        // Fetch results and live progress
+        // Fetch results and live progress using BROAD ID matching
+        // The admin re-open may have stored the result under a different ID variant
         const studentId = this.resolveCBTStudentId();
-        const studentResults = isStudent ? await db.cbt_results.where('student_id').equals(studentId).toArray() : [];
-        const liveProgress = isStudent ? await db.exam_progress.where('student_id').equals(studentId).toArray() : [];
+        let studentResults = [];
+        let liveProgress = [];
+        if (isStudent) {
+            const profiles = await db.profiles.toArray();
+            const studentProfiles = profiles.filter(p => p.assigned_id === studentId || p.id === studentId);
+            const possibleIds = [...new Set([studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean))];
+            
+            const allResults = await db.cbt_results.toArray();
+            studentResults = allResults.filter(r => possibleIds.includes(r.student_id));
+            
+            const allProgress = await db.exam_progress.toArray();
+            liveProgress = allProgress.filter(p => possibleIds.includes(p.student_id));
+        }
         
         const resultDict = {};
         
-        // Process final results first
+        // Process results: when multiple records exist for the same exam (e.g. ID variants),
+        // prefer the one with the most recent updated_at — this ensures admin re-opens win
         for (const r of studentResults) {
-            resultDict[r.exam_id] = r;
-        }
-
-        // Merge live progress BUT prioritize Completed results
-        // Also merge cbt_results that are 'In Progress' (e.g. from admin re-open)
-        for (const r of studentResults) {
-            if (r.status === 'In Progress') {
-                // Admin may have re-opened this exam — ensure it shows as In Progress
-                resultDict[r.exam_id] = { ...r, status: 'In Progress' };
+            const existing = resultDict[r.exam_id];
+            if (!existing) {
+                resultDict[r.exam_id] = r;
+            } else {
+                const existingTime = new Date(existing.updated_at || 0).getTime();
+                const newTime = new Date(r.updated_at || 0).getTime();
+                
+                if (newTime > existingTime) {
+                    // New record r is the winner. Silencing the stale existing record.
+                    if (existing.is_synced === 0) db.cbt_results.update(existing.id, { is_synced: 1 });
+                    resultDict[r.exam_id] = r;
+                } else {
+                    // Existing record is the winner. Silencing the stale record r.
+                    if (r.is_synced === 0) db.cbt_results.update(r.id, { is_synced: 1 });
+                }
             }
         }
 
@@ -7319,7 +7338,12 @@ export const UI = {
         const possibleIds = [studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
         
         const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
-        const session = results.find(r => possibleIds.includes(r.student_id));
+        const studentResults = results.filter(r => possibleIds.includes(r.student_id));
+        
+        // Pick the most recent record (admin re-open has latest timestamp)
+        const session = studentResults.sort((a, b) => 
+            new Date(b.updated_at || 0) - new Date(a.updated_at || 0)
+        )[0];
 
         if (session && session.status === 'In Progress') {
             // RESUME: Skip instructions, go straight to exam (includes admin re-opened exams)
@@ -11477,12 +11501,15 @@ export const UI = {
             return acc;
         }, {});
 
-        // Prioritize 'Completed' status and resolve ID mismatches
+        // Prioritize the latest record (by updated_at) to handle re-opens and ID mismatches
         const resultEntries = results.reduce((acc, r) => {
             const resolvedId = profileMap[r.student_id] || r.student_id;
             const existing = acc[resolvedId];
             
-            if (!existing || (r.status === 'Completed' && existing.status !== 'Completed')) {
+            const rTime = new Date(r.updated_at || 0).getTime();
+            const existingTime = existing ? new Date(existing.updated_at || 0).getTime() : 0;
+
+            if (!existing || rTime > existingTime) {
                 acc[resolvedId] = { ...r, student_id: resolvedId, status: r.status || 'Completed' };
             }
             return acc;
