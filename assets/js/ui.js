@@ -7605,14 +7605,32 @@ export const UI = {
             }));
 
             // *** Integrity Check: Filter broken questions ***
-            const validQuestions = questions.filter(q => {
-                const optCount = [q.option_a, q.option_b, q.option_c, q.option_d, q.option_e]
-                    .filter(o => o && o.trim().length > 0).length;
-                return optCount >= 2;
+            const validQuestions = questions.filter((q, i) => {
+                const optMap = {
+                    'A': (q.option_a || '').trim(),
+                    'B': (q.option_b || '').trim(),
+                    'C': (q.option_c || '').trim(),
+                    'D': (q.option_d || '').trim(),
+                    'E': (q.option_e || '').trim()
+                };
+                const validOpts = Object.values(optMap).filter(v => v.length > 0);
+                const correctVal = optMap[q.correct_option];
+
+                // 1. Must have at least 2 options
+                if (validOpts.length < 2) {
+                    console.warn(`[CBT Audit] Question ${i+1} skipped: Too few options (${validOpts.length}).`);
+                    return false;
+                }
+                // 2. Correct option MUST have content
+                if (!correctVal || correctVal.length === 0) {
+                    console.warn(`[CBT Audit] Question ${i+1} skipped: Correct key '${q.correct_option}' points to an empty option.`);
+                    return false;
+                }
+                return true;
             });
 
             if (validQuestions.length === 0) {
-                return Notifications.show('This exam has no valid questions in the cloud. Please contact your teacher.', 'error');
+                return Notifications.show('This exam has no valid questions in the cloud. Please verify your question bank (options and correct keys).', 'error');
             }
 
             const requestedLimit = parseInt(exam.question_limit) || 0;
@@ -8274,14 +8292,9 @@ export const UI = {
     },
 
     confirmSubmitExam() {
-        const unanswered = this.currentQuestions.length - Object.keys(this.userAnswers).length;
-        const msg = unanswered > 0 
-            ? `You have ${unanswered} unanswered questions. Are you sure you want to submit?`
-            : `Are you sure you want to submit your exam now?`;
-            
-        if (confirm(msg)) {
-            this.submitExam();
-        }
+        // ALWAYS use the custom Submission Review dashboard instead of native confirm()
+        // This avoids taking the browser out of fullscreen and prevents security violations.
+        this.showSubmitReview();
     },
 
     async submitExam(isExternal = false) {
