@@ -8193,27 +8193,38 @@ export const UI = {
                         ${Array(15).fill(`<div style="transform: rotate(-30deg); font-weight: 900; font-size: 2rem; color: #000; white-space: nowrap;">${studentId} - ${studentName} - SECURE</div>`).join('')}
                     </div>
                     <style>
-                        .jamb-sidebar { width: 300px; background: #f8fafc; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; }
-                        .jamb-main { flex: 1; display: flex; flex-direction: column; background: white; overflow: hidden; }
-                        .jamb-question-box { flex: 1; overflow-y: auto; padding: 2rem; }
-                        .jamb-option { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 0.75rem; cursor: pointer; transition: all 0.2s; background: white; }
-                        .jamb-option:hover { background: #f1f5f9; }
-                        .jamb-option.selected { background: #eef2ff; border-color: #4338ca; box-shadow: 0 0 0 1px #4338ca; }
-                        .jamb-option-label { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; color: #64748b; flex-shrink: 0; }
-                        .selected .jamb-option-label { border-color: #4338ca; background: #4338ca; color: white; }
-                        .jamb-nav-btn { height: 48px; padding: 0 1.5rem; border-radius: 8px; font-weight: 800; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s; border: none; cursor: pointer; }
-                        .jamb-nav-prev { background: #64748b; color: white; }
-                        .jamb-nav-next { background: #059669; color: white; }
-                        .jamb-nav-submit { background: #e11d48; color: white; }
-                        .q-map-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 1rem; }
-                        .q-map-item { aspect-ratio: 1; border: 1px solid #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; cursor: pointer; background: white; color: #64748b; }
-                        .q-map-item.active { background: #4338ca; color: white; border-color: #4338ca; }
-                        .q-map-item.answered { background: #dcfce7; color: #059669; border-color: #059669; }
+                        .exam-wrapper { display: flex; height: 100vh; height: 100dvh; width: 100vw; overflow: hidden; font-family: 'Outfit', sans-serif; background: #f1f5f9; }
+                        .jamb-sidebar { width: 280px; background: #f8fafc; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
+                        .jamb-main { flex: 1; display: flex; flex-direction: column; background: white; min-width: 0; position: relative; }
+                        .jamb-question-box { flex: 1; overflow-y: auto; padding: 1.5rem; position: relative; }
+                        .jamb-option { display: flex; align-items: flex-start; gap: 1rem; padding: 1rem; border: 2px solid #e2e8f0; border-radius: 12px; margin-bottom: 0.75rem; cursor: pointer; transition: all 0.2s; background: white; }
+                        .jamb-option:hover { border-color: #cbd5e1; background: #f8fafc; }
+                        .jamb-option.selected { background: #eff6ff; border-color: #2563eb; }
+                        .jamb-option-label { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; color: #64748b; flex-shrink: 0; transition: all 0.2s; }
+                        .selected .jamb-option-label { border-color: #2563eb; background: #2563eb; color: white; }
+                        .jamb-nav-btn { height: 50px; padding: 0 1.25rem; border-radius: 10px; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s; border: none; cursor: pointer; white-space: nowrap; }
+                        .jamb-nav-prev { background: #475569; color: white; }
+                        .jamb-nav-next { background: #2563eb; color: white; }
+                        .jamb-nav-submit { background: #e11d48; color: white; box-shadow: 0 4px 6px -1px rgba(225, 29, 72, 0.3); }
+                        .q-map-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 1rem; }
+                        .q-map-item { aspect-ratio: 1; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800; cursor: pointer; background: white; color: #64748b; transition: all 0.2s; }
+                        .q-map-item.active { background: #2563eb; color: white; border-color: #2563eb; }
+                        .q-map-item.answered { background: #dcfce7; color: #059669; border-color: #bbf7d0; }
+                        
+                        /* Mobile Palette Overlay */
+                        .mobile-palette-trigger { display: none; position: fixed; bottom: 80px; right: 20px; width: 50px; height: 50px; border-radius: 50%; background: #2563eb; color: white; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.4); z-index: 100; border: none; cursor: pointer; align-items: center; justify-content: center; }
+
                         @media (max-width: 1024px) {
-                            .jamb-sidebar { display: none; }
+                            .jamb-sidebar { position: fixed; right: -300px; top: 0; height: 100%; transition: all 0.3s; box-shadow: -10px 0 30px rgba(0,0,0,0.1); }
+                            .jamb-sidebar.open { right: 0; }
+                            .mobile-palette-trigger { display: flex; }
+                            .jamb-question-box { padding: 1rem; }
                         }
                     </style>
-                    <div style="display: flex; height: 100vh; width: 100vw; overflow: hidden; font-family: 'Outfit', sans-serif;">
+                    <div class="exam-wrapper">
+                        <button class="mobile-palette-trigger" onclick="document.querySelector('.jamb-sidebar').classList.toggle('open')">
+                            <i data-lucide="grid-3x3"></i>
+                        </button>
                         <!-- Main Exam Area -->
                         <div class="jamb-main">
                             <!-- Top Bar -->
@@ -8471,15 +8482,22 @@ export const UI = {
 
         // Instant Targeted Update (Avoid Full Re-render Flicker)
         const qIdx = this.currentQuestions.findIndex(q => q.id === questionId);
+        
+        // 1. Update Option Highlights in current question
+        const options = document.querySelectorAll('.jamb-option');
+        options.forEach(opt => {
+            const optText = opt.querySelector('div:last-child').innerText.trim();
+            // We use simple comparison; for HTML content, it might be trickier, but usually works
+            const isSelected = (value === optText);
+            opt.classList.toggle('selected', isSelected);
+        });
+
+        // 2. Update Question Palette
         if (qIdx !== -1) {
             const mapItems = document.querySelectorAll('.q-map-item');
-            mapItems.forEach(item => {
-                if (item.innerText.trim() == (qIdx + 1)) {
-                    item.style.borderColor = '#10b981';
-                    item.style.background = '#ecfdf5';
-                    item.style.color = '#10b981';
-                }
-            });
+            if (mapItems[qIdx]) {
+                mapItems[qIdx].classList.add('answered');
+            }
         }
         
         try {
