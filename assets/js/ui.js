@@ -7634,8 +7634,15 @@ export const UI = {
             }
 
             const requestedLimit = parseInt(exam.question_limit) || 0;
+            
+            console.log(`[CBT AUDIT] Pool Analysis:
+                - Total Raw: ${questions.length}
+                - Passed Integrity: ${validQuestions.length}
+                - Requested Limit: ${requestedLimit || 'No Limit'}
+            `);
+
             if (requestedLimit > 0 && validQuestions.length < requestedLimit) {
-                Notifications.show(`Note: Only ${validQuestions.length} valid questions available (expected ${requestedLimit}).`, 'warning');
+                Notifications.show(`Note: Only ${validQuestions.length} valid questions available (limit was ${requestedLimit}).`, 'warning');
             }
 
             console.log(`[CBT] Starting exam for Student: ${studentId}`);
@@ -7670,7 +7677,7 @@ export const UI = {
             // Final filter to ensure NO holes or undefined elements exist before mapping
             shuffledQuestions = shuffledQuestions.filter(Boolean);
 
-            console.log(`[CBT AUDIT] Rendering ${shuffledQuestions.length} questions.`);
+            console.log(`[CBT AUDIT] Final Rendering: ${shuffledQuestions.length} questions.`);
 
             // Prepare Questions — all options already normalised above
             const finalQuestions = shuffledQuestions.map((q, idx) => {
