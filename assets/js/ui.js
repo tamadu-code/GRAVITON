@@ -7518,19 +7518,28 @@ export const UI = {
 
             Notifications.show('Connecting to Cloud Exam Server...', 'info');
             
-            // 1. Fetch EVERYTHING directly from the cloud to ensure 100% data integrity
-            const [examRes, questionsRes, studentId] = await Promise.all([
-                supabase.from('cbt_exams').select('*').eq('id', examId).single(),
-                supabase.from('cbt_questions').select('*').eq('exam_id', examId),
-                this.resolveCBTStudentId()
-            ]);
-
-            if (examRes.error) throw new Error('Failed to fetch exam settings.');
-            if (questionsRes.error) throw new Error('Failed to fetch questions.');
+            // 1. Fetch exam & questions — Cloud first, local IndexedDB fallback
+            let exam = null;
+            let rawQuestions = [];
+            const studentId = await this.resolveCBTStudentId();
             if (!studentId) throw new Error('Unable to identify student record.');
 
-            const exam = examRes.data;
-            let rawQuestions = questionsRes.data || [];
+            try {
+                const [examRes, questionsRes] = await Promise.all([
+                    supabase.from('cbt_exams').select('*').eq('id', examId).single(),
+                    supabase.from('cbt_questions').select('*').eq('exam_id', examId)
+                ]);
+                if (examRes.error) throw examRes.error;
+                exam = examRes.data;
+                rawQuestions = questionsRes.data || [];
+            } catch (cloudErr) {
+                console.warn('[CBT] Cloud fetch failed, using local data:', cloudErr.message);
+                // Fallback: load from local IndexedDB (already synced)
+                exam = await db.cbt_exams.get(examId);
+                rawQuestions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+            }
+
+            if (!exam) throw new Error('Exam not found. Please sync and try again.');
 
             // 2. Fetch existing result directly from cloud
             const { data: cloudResults } = await supabase.from('cbt_results')
@@ -8222,16 +8231,16 @@ export const UI = {
 
         if (nextState) {
             sidebar.style.left = '0';
-            backdrop.style.display = 'block';
-            setTimeout(() => {
-                backdrop.style.opacity = '1';
-            }, 10);
+            if (backdrop) {
+                backdrop.style.display = 'block';
+                setTimeout(() => { backdrop.style.opacity = '1'; }, 10);
+            }
         } else {
             sidebar.style.left = '-320px';
-            backdrop.style.opacity = '0';
-            setTimeout(() => {
-                backdrop.style.display = 'none';
-            }, 400);
+            if (backdrop) {
+                backdrop.style.opacity = '0';
+                setTimeout(() => { backdrop.style.display = 'none'; }, 400);
+            }
         }
     },
 

@@ -1,10 +1,10 @@
-const CACHE_NAME = 'graviton-cache-v89';
+const CACHE_NAME = 'graviton-cache-v90';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './assets/css/style.css',
-  './assets/js/main.js?v=87',
+  './assets/css/style.css?v=33',
+  './assets/js/main.js?v=90',
   './assets/js/ui.js',
   './assets/js/db.js',
   './assets/js/utils.js',
@@ -26,69 +26,89 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('Opened cache');
+        console.log('[SW] Opened cache:', CACHE_NAME);
         return cache.addAll(ASSETS_TO_CACHE);
       })
   );
+  // Force the new SW to activate immediately, replacing the old one
   self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up ALL old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
+            console.log('[SW] Purging old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     })
   );
+  // Take control of all pages immediately (no reload needed)
   self.clients.claim();
 });
 
-// Fetch event - network first for API calls, cache first for static assets
+// Fetch event - NETWORK FIRST for own assets, cache fallback for offline
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  // Don't intercept Supabase API calls
+  // Don't intercept Supabase API calls at all
   if (url.hostname.includes('supabase.co')) {
     return;
   }
 
+  // For our own origin assets (JS, CSS, HTML): Network First
+  // This ensures updates propagate immediately while still working offline
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          // Got a fresh response - cache it and return
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          // Network failed - serve from cache (offline mode)
+          return caches.match(event.request).then((cachedResponse) => {
+            if (cachedResponse) return cachedResponse;
+            // Last resort: return index.html for navigation requests
+            if (event.request.mode === 'navigate') {
+              return caches.match('./index.html');
+            }
+          });
+        })
+    );
+    return;
+  }
+
+  // For external CDN resources: Cache First (they don't change often)
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
+        if (response) return response;
 
-        // Clone the request because it's a one-time use stream
         const fetchRequest = event.request.clone();
-
         return fetch(fetchRequest).then((networkResponse) => {
-          // Check if we received a valid response
           if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
             return networkResponse;
           }
-
-          // Clone the response because it's a one-time use stream
           const responseToCache = networkResponse.clone();
-
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
           return networkResponse;
         }).catch(() => {
-          // Return an offline fallback page if network fails and resource not in cache
-          if (event.request.mode === 'navigate') {
-            return caches.match('./index.html');
-          }
+          // CDN unavailable and not cached - nothing we can do
+          return new Response('', { status: 503 });
         });
       })
   );
