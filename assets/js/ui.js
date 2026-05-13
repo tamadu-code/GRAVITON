@@ -11320,26 +11320,24 @@ export const UI = {
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem;">
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Subject</label>
+                        <select id="bank-subject" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem;">
+                            <option value="">Subject...</option>
+                            ${subjects.map(s => `<option value="${s.id}" style="color: #1e293b; background: #ffffff;">${s.name}</option>`).join('')}
+                        </select>
+                    </div>
                     <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Class</label>
-                        <select id="bank-class" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
-                            <option value="">— Select Class —</option>
+                        <select id="bank-class" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem;">
+                            <option value="">Class...</option>
                             ${classes.map(c => `<option value="${c.name}" style="color: #1e293b; background: #ffffff;">${c.name}</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group" style="margin: 0;">
-                        <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Subject</label>
-                        <select id="bank-subject" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
-                            <option value="">— Select Subject —</option>
-                            ${subjects.map(s => `<option value="${s.id}" style="color: #1e293b; background: #ffffff;">${s.name}</option>`).join('')}
-                        </select>
-                    </div>
-                </div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                    <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Term</label>
-                        <select id="bank-term" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
+                        <select id="bank-term" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem;">
                             <option value="1st Term">1st Term</option>
                             <option value="2nd Term">2nd Term</option>
                             <option value="3rd Term">3rd Term</option>
@@ -11347,7 +11345,7 @@ export const UI = {
                     </div>
                     <div class="form-group" style="margin: 0;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Session</label>
-                        <select id="bank-session" class="cbt-input" style="height: 44px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important;">
+                        <select id="bank-session" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem;">
                             <option value="2024/2025">2024/2025</option>
                             <option value="2025/2026">2025/2026</option>
                         </select>
@@ -11374,7 +11372,7 @@ export const UI = {
             const bankExamId = `BANK-${subjectId}__${className}__${term.replace(/\s+/g, '')}__${session.replace(/\//g, '-')}`;
 
             // MCQ Regex: Captures Question, A, B, C, D, E (optional), Answer, and Marks (optional)
-            // Fix: Ensured Option D doesn't leak into E when E is missing
+            // Improved: More robust whitespace handling and boundary detection
             const mcqRegex = /([\s\S]*?)\s*(?:[\(\[]?A[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?B[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*)([\s\S]*?)\s*(?:(?:[\(\[]?E[\)\]\.]\s*)([\s\S]*?))?\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
             // Simpler MCQ Regex for just A and B
@@ -11454,8 +11452,8 @@ export const UI = {
                         const BATCH_SIZE = 50;
                         for (let i = 0; i < newQuestions.length; i += BATCH_SIZE) {
                             const batch = newQuestions.slice(i, i + BATCH_SIZE);
-                            // Strip is_synced before cloud push
-                            const cloudBatch = batch.map(({ is_synced, ...rest }) => rest);
+                            // Strip is_synced and type before cloud push
+                            const cloudBatch = batch.map(({ is_synced, type, ...rest }) => rest);
                             const { error } = await client.from('cbt_questions').upsert(cloudBatch);
                             if (error) console.warn('[CBT BANK] Batch push failed:', error);
                         }
