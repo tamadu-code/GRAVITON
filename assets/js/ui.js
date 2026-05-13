@@ -7474,9 +7474,9 @@ export const UI = {
     },
 
     async finalizeStartCBTExam(examId, isResume = false) {
-        let session;
-        const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
         try {
+            const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+            let session;
             if (!navigator.onLine || !client) {
                 return Notifications.show('Cloud-Direct mode requires an active internet connection to start.', 'error');
             }
@@ -11261,7 +11261,7 @@ export const UI = {
 
                             return `
                                 <div class="card cbt-bank-card" id="bank-cat-${tag}" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); margin-bottom: 1rem;">
-                                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '2000px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)'; UI.lastOpenedBankCategory = isExp ? null : '${tag}';" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem; background: white;">
+                                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.closest('.cbt-bank-card').querySelector('.bank-details-area'); if(!details) return; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '2000px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)'; UI.lastOpenedBankCategory = isExp ? null : '${tag}';" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem; background: white;">
                                         <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0;">
                                             <div style="background: #e0e7ff; color: #4338ca; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                                                 <i data-lucide="book-open" style="width: 20px;"></i>
