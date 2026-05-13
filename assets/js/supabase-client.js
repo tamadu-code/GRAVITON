@@ -401,11 +401,28 @@ export async function syncFromCloud(forceAll = false) {
 
 
 export function startSyncLoop(intervalMs = 60000) {
-    const initialSync = syncFromCloud().then(() => syncToCloud());
-    setInterval(async () => {
-        await syncFromCloud();
-        await syncToCloud();
-    }, intervalMs);
+    // Run the initial sync immediately and return the promise
+    // (so callers can .then() on it to know when first sync is done)
+    const initialSync = syncFromCloud().then(() => syncToCloud()).catch(err => {
+        console.warn('[Sync] Initial sync error:', err);
+    });
+
+    // Sequential loop: wait for each sync to FULLY FINISH before scheduling next
+    // This prevents parallel requests on slow mobile connections
+    const scheduleNext = () => {
+        setTimeout(async () => {
+            try {
+                await syncFromCloud();
+                await syncToCloud();
+            } catch (err) {
+                console.warn('[Sync] Periodic sync error:', err);
+            }
+            // Only schedule next AFTER this one completes
+            scheduleNext();
+        }, intervalMs);
+    };
+
+    scheduleNext();
     return initialSync;
 }
 
