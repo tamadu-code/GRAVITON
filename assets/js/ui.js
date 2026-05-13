@@ -7170,6 +7170,18 @@ export const UI = {
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
+        // Dynamic Title -> Score Field Sync
+        const titleSelect = document.getElementById('exam-title');
+        const scoreFieldSelect = document.getElementById('exam-score-field');
+        if (titleSelect && scoreFieldSelect) {
+            titleSelect.onchange = () => {
+                const val = titleSelect.value.toLowerCase();
+                if (val.includes('test 1')) scoreFieldSelect.value = 'test1';
+                else if (val.includes('test 2')) scoreFieldSelect.value = 'test2';
+                else if (val.includes('exam')) scoreFieldSelect.value = 'exam';
+            };
+        }
+
         // Dynamic Filtering Logic
         const classSelect = document.getElementById('exam-class');
         const subjectSelect = document.getElementById('exam-subject');
@@ -7184,20 +7196,39 @@ export const UI = {
             const teacherId = this.currentUser.id;
             const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
 
-            let filteredAssignments = assignments;
+            let classSubjects = [];
+            
             if (isTeacher) {
-                filteredAssignments = assignments.filter(a => a.teacher_id === teacherId);
+                // Teachers only see subjects assigned to THEM in this class
+                const filteredAssignments = assignments.filter(a => a.teacher_id === teacherId);
+                const subIds = [...new Set(filteredAssignments.map(a => a.subject_id))];
+                classSubjects = (await Promise.all(subIds.map(id => db.subjects.get(id)))).filter(Boolean);
+            } else {
+                // Admins see ALL subjects in the registry for this class
+                // First try to find any subjects ever assigned to this class
+                const allAssignedSubIds = [...new Set(assignments.map(a => a.subject_id))];
+                const assignedSubjects = (await Promise.all(allAssignedSubIds.map(id => db.subjects.get(id)))).filter(Boolean);
+                
+                // If there are assigned subjects, show them, otherwise show the entire registry
+                if (assignedSubjects.length > 0) {
+                    classSubjects = assignedSubjects;
+                    // Add a separator and then the rest of the registry if needed, 
+                    // but for now let's just show ALL subjects for admins to avoid blocking
+                    const allRegistry = await db.subjects.toArray();
+                    const remaining = allRegistry.filter(s => !allAssignedSubIds.includes(s.id));
+                    classSubjects = [...assignedSubjects, ...remaining];
+                } else {
+                    classSubjects = await db.subjects.toArray();
+                }
             }
 
-            const subIds = [...new Set(filteredAssignments.map(a => a.subject_id))];
-            const classSubjects = (await Promise.all(subIds.map(id => db.subjects.get(id))))
-                .filter(Boolean)
-                .sort((a, b) => a.name.localeCompare(b.name));
+            classSubjects.sort((a, b) => a.name.localeCompare(b.name));
             
             classSubjects.forEach(s => {
                 const opt = document.createElement('option');
                 opt.value = s.id;
                 opt.textContent = s.name;
+                opt.selected = exam && exam.subject_id === s.id;
                 subjectSelect.appendChild(opt);
             });
         };
@@ -7266,23 +7297,24 @@ export const UI = {
             ].filter(o => o.text && o.text.trim().length > 0);
 
             return `
-                <div class="card" style="margin-bottom:0.75rem; padding:1rem; border-radius:12px; background:#f8fafc; border:1px solid #e2e8f0; position:relative;">
-                    <div style="font-weight:800; color:#4338ca; font-size:0.75rem; margin-bottom:0.5rem; text-transform:uppercase;">Question ${idx + 1} <span style="margin-left:0.5rem; color:#64748b;">[${(q.marks || 1).toFixed(1)} Marks]</span></div>
-                    <div style="font-size:0.95rem; color:#1e293b; line-height:1.5; margin-bottom:0.75rem; font-weight: 500;">${q.question_text}</div>
+                <div id="admin-q-${idx}" class="card" style="margin-bottom:0.75rem; padding:1.25rem; border-radius:16px; background:white; border:1px solid #e2e8f0; position:relative; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                    <div style="font-weight:900; color:#4338ca; font-size:0.7rem; margin-bottom:0.75rem; text-transform:uppercase; letter-spacing: 0.05em;">Question ${idx + 1}</div>
+                    <div style="font-size:1rem; color:#1e293b; line-height:1.6; margin-bottom:1rem; font-weight: 600;">${q.question_text}</div>
                     
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+                    <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 1rem;">
                         ${options.map(o => `
-                            <div style="font-size: 0.8rem; color: ${q.correct_option === o.key ? '#059669' : '#64748b'}; font-weight: ${q.correct_option === o.key ? '800' : '500'}; background: ${q.correct_option === o.key ? '#ecfdf5' : 'transparent'}; padding: 4px 8px; border-radius: 6px; border: ${q.correct_option === o.key ? '1px solid #bbf7d0' : 'none'};">
-                                <span style="font-weight: 900; margin-right: 4px;">${o.key}:</span> ${o.text}
+                            <div style="font-size: 0.85rem; color: ${q.correct_option === o.key ? '#059669' : '#475569'}; font-weight: ${q.correct_option === o.key ? '800' : '500'}; background: ${q.correct_option === o.key ? '#ecfdf5' : '#f8fafc'}; padding: 10px 14px; border-radius: 10px; border: 1px solid ${q.correct_option === o.key ? '#bbf7d0' : '#f1f5f9'};">
+                                <span style="font-weight: 900; margin-right: 8px; color: ${q.correct_option === o.key ? '#059669' : '#94a3b8'};">${o.key}</span> ${o.text}
                             </div>
                         `).join('')}
                     </div>
 
-                    <div style="font-size:0.75rem; color:#475569; font-weight:700; background: #e2e8f0; display: inline-block; padding: 2px 8px; border-radius: 4px;">Correct: ${q.correct_option}</div>
-                    
-                    <button onclick="UI.removeTempQuestion('${q.id}')" style="position:absolute; top:12px; right:12px; background:none; border:none; color:#ef4444; cursor:pointer; padding:4px;">
-                        <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
-                    </button>
+                    <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #f1f5f9; padding-top: 0.75rem;">
+                        <div style="font-size:0.7rem; color:#4338ca; font-weight:800; background: #eef2ff; padding: 4px 10px; border-radius: 6px;">Correct Option: ${q.correct_option}</div>
+                        <button onclick="UI.removeTempQuestion('${q.id}')" style="background:#fee2e2; border:none; color:#ef4444; cursor:pointer; padding:6px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                            <i data-lucide="trash-2" style="width:14px; height:14px;"></i> Delete
+                        </button>
+                    </div>
                 </div>
             `;
         }).join('');
@@ -7291,6 +7323,9 @@ export const UI = {
         const total = this.cbtQuestions.reduce((acc, q) => acc + (parseFloat(q.marks) || 1), 0);
         const badge = document.getElementById('exam-total-badge');
         if (badge) badge.innerText = `TOTAL: ${total.toFixed(1)}`;
+        
+        // ADDED: Navigation Palette for Admin View
+        this.renderAdminQuestionNav();
         
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
@@ -7311,6 +7346,31 @@ export const UI = {
     removeTempQuestion(id) {
         this.cbtQuestions = this.cbtQuestions.filter(q => q.id !== id);
         this.refreshQuestionPreview();
+    },
+
+    renderAdminQuestionNav() {
+        let nav = document.getElementById('admin-q-nav');
+        if (!nav) {
+            nav = document.createElement('div');
+            nav.id = 'admin-q-nav';
+            nav.style = "position: fixed; bottom: 30px; left: 30px; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 1.5rem; width: 200px; max-height: 400px; overflow-y: auto; z-index: 1000; border: 1px solid #e2e8f0; display: none;";
+            document.body.appendChild(nav);
+        }
+
+        if (this.cbtQuestions.length === 0 || !document.getElementById('q-preview-area')) {
+            nav.style.display = 'none';
+            return;
+        }
+
+        nav.style.display = 'block';
+        nav.innerHTML = `
+            <div style="font-weight: 900; color: #1e293b; font-size: 0.75rem; margin-bottom: 1rem; text-transform: uppercase;">Question Map</div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                ${this.cbtQuestions.map((_, i) => `
+                    <button onclick="document.getElementById('admin-q-${i}').scrollIntoView({behavior:'smooth', block:'center'})" style="width: 34px; height: 34px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.2s;">${i+1}</button>
+                `).join('')}
+            </div>
+        `;
     },
 
     async saveExam(existingId) {
@@ -7779,8 +7839,9 @@ export const UI = {
                 let shuffled = seededShuffle(poolCopy, seed);
                 finalSlice = (requestedLimit > 0) ? shuffled.slice(0, requestedLimit) : shuffled;
                 
-                // Lock these IDs into the session immediately
-                if (session) session.question_ids = finalSlice.map(q => q.id);
+            // Lock these IDs into the session immediately
+            if (session) {
+                session.question_ids = finalSlice.filter(Boolean).map(q => q.id);
             }
 
             // Audit the slice before filtering to see if any nulls were introduced
@@ -8831,7 +8892,41 @@ export const UI = {
             let totalCount = 0;
             for (const item of selectedItems) {
                 const sourceId = item.querySelector('.source-id').value;
-                const sourceQuestions = await db.cbt_questions.where('exam_id').equals(sourceId).toArray();
+                let sourceQuestions = [];
+                
+                if (sourceId.startsWith('BANK-')) {
+                    // Try Relational Bank First
+                    const bankQuestions = await db.cbt_question_bank.where('subject_id').equals(sourceId.split('__')[0]).toArray();
+                    // We need to filter by the specific bank group if possible, or just pull all
+                    // For now, let's pull from the legacy table as fallback if relational mapping is complex
+                    sourceQuestions = await db.cbt_questions.where('exam_id').equals(sourceId).toArray();
+                    
+                    // IF LEGACY IS EMPTY, PULL FROM RELATIONAL
+                    if (sourceQuestions.length === 0) {
+                        const relQuestions = await db.cbt_question_bank.toArray();
+                        // Filter by the encoded tag in the bank ID if it matches
+                        const filteredRel = relQuestions.filter(q => {
+                            // This is a heuristic - usually bank questions have IDs starting with BQ
+                            return true; 
+                        });
+
+                        // Fetch options for each and flatten
+                        for (const rq of relQuestions) {
+                            const opts = await db.cbt_options.where('question_id').equals(rq.id).toArray();
+                            sourceQuestions.push({
+                                ...rq,
+                                option_a: (opts.find(o => o.option_label === 'A') || {}).option_text || '',
+                                option_b: (opts.find(o => o.option_label === 'B') || {}).option_text || '',
+                                option_c: (opts.find(o => o.option_label === 'C') || {}).option_text || '',
+                                option_d: (opts.find(o => o.option_label === 'D') || {}).option_text || '',
+                                option_e: (opts.find(o => o.option_label === 'E') || {}).option_text || '',
+                                correct_option: (opts.find(o => o.is_correct === 1) || {}).option_label || 'A'
+                            });
+                        }
+                    }
+                } else {
+                    sourceQuestions = await db.cbt_questions.where('exam_id').equals(sourceId).toArray();
+                }
                 
                 sourceQuestions.forEach(q => {
                     const newQ = {
