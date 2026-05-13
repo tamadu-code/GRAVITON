@@ -7465,6 +7465,7 @@ export const UI = {
     },
 
     async finalizeStartCBTExam(examId, isResume = false) {
+        let session;
         try {
             if (!navigator.onLine) {
                 return Notifications.show('Cloud-Direct mode requires an active internet connection to start.', 'error');
@@ -7493,7 +7494,7 @@ export const UI = {
                 .in('student_id', [studentId, this.currentUser.id].filter(Boolean));
             
             // Latest Wins among cloud results
-            let session = cloudResults?.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
+            session = cloudResults?.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
 
             // Mirror to local DB to keep it in sync
             await db.cbt_exams.put(exam);
