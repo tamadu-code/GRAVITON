@@ -6619,12 +6619,18 @@ export const UI = {
                 return isMyClass && isActive && hasStarted && hasNotEnded;
             });
 
-            // Explicit sync for students when opening hub
-            if (activeExams.length > 0) {
+            // Explicit sync for students when opening hub - with 5-minute cooldown
+            const nowTime = Date.now();
+            const fiveMinutes = 5 * 60 * 1000;
+            if (activeExams.length > 0 && (!this.lastHubSync || (nowTime - this.lastHubSync > fiveMinutes))) {
+                this.lastHubSync = nowTime;
                 syncFromCloud(['cbt_exams', 'cbt_results', 'cbt_questions']).then(() => {
                     // Silent refresh after sync
                     this.renderCBT();
-                }).catch(e => console.warn('[CBT Hub Sync] Failed:', e));
+                }).catch(e => {
+                    console.warn('[CBT Hub Sync] Failed:', e);
+                    this.lastHubSync = 0; // Allow retry on failure
+                });
             }
         }
 
