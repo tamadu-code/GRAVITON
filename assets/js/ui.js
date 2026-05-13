@@ -7668,14 +7668,23 @@ export const UI = {
             };
 
             // Shuffle the VALID questions, then apply limit
-            let shuffledQuestions = seededShuffle([...validQuestions], seed);
+            let poolCopy = [...validQuestions];
+            let shuffledQuestions = seededShuffle(poolCopy, seed);
             const limit = requestedLimit;
-            if (limit > 0) {
-                shuffledQuestions = shuffledQuestions.slice(0, limit);
+            let finalSlice = (limit > 0) ? shuffledQuestions.slice(0, limit) : shuffledQuestions;
+
+            // Audit the slice before filtering to see if any nulls were introduced
+            const holes = finalSlice.filter(q => !q).length;
+            if (holes > 0) {
+                console.warn(`[CBT AUDIT] Detected ${holes} null/undefined questions in the initial slice!`);
             }
 
             // Final filter to ensure NO holes or undefined elements exist before mapping
-            shuffledQuestions = shuffledQuestions.filter(Boolean);
+            shuffledQuestions = finalSlice.filter(q => q && q.id);
+
+            if (shuffledQuestions.length < limit && holes === 0) {
+                 console.warn(`[CBT AUDIT] Count mismatch! Requested ${limit}, but only got ${shuffledQuestions.length}. This suggests duplicate questions were filtered out.`);
+            }
 
             console.log(`[CBT AUDIT] Final Rendering: ${shuffledQuestions.length} questions.`);
 
@@ -7885,8 +7894,10 @@ export const UI = {
                                 updated_at: timestamp 
                             })
                             .match({ student_id: studentId, exam_id: examId })
-                            .then(() => console.log('[CBT CLOUD] Violation logged.'))
-                            .catch(e => console.warn('[CBT CLOUD] Violation push failed:', e));
+                            .then(res => {
+                                if (res && res.error) console.warn('[CBT CLOUD] Violation log error:', res.error);
+                                else console.log('[CBT CLOUD] Violation logged.');
+                            });
                     }
                 }
             }
