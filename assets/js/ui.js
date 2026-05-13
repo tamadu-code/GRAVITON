@@ -7950,7 +7950,14 @@ export const UI = {
             }
 
             this.contentArea.innerHTML = `
-                <div class="cbt-exam-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100dvh; display: flex; flex-direction: column; background: #f8fafc; z-index: 10000; user-select: none; -webkit-user-select: none;">
+                    <style>
+                        @media (max-width: 1024px) {
+                            .desktop-only { display: none !important; }
+                        }
+                        @media (min-width: 1025px) {
+                            .mobile-nav-btn { display: none !important; }
+                        }
+                    </style>
                     <!-- Security Watermark -->
                     <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999; display: flex; flex-wrap: wrap; opacity: 0.04; overflow: hidden; align-content: flex-start; gap: 100px; padding: 50px;">
                         ${Array(15).fill(`<div style="transform: rotate(-30deg); font-weight: 900; font-size: 2rem; color: #000; white-space: nowrap;">${studentId} - ${studentName} - SECURE</div>`).join('')}
@@ -7958,7 +7965,7 @@ export const UI = {
                     <!-- Header -->
                     <header class="cbt-exam-header" style="flex-shrink: 0; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; background: white; z-index: 20;">
                         <div style="display: flex; align-items: center; gap: 0.75rem;">
-                            <button class="icon-btn" onclick="UI.toggleCBTMap()" style="background: #f5f7ff; border: 1px solid #e0e7ff; width: 36px; height: 36px; border-radius: 10px; color: #4338ca; display: flex; align-items: center; justify-content: center;">
+                            <button class="icon-btn mobile-nav-btn" onclick="UI.toggleCBTMap()" style="background: #f5f7ff; border: 1px solid #e0e7ff; width: 36px; height: 36px; border-radius: 10px; color: #4338ca; display: flex; align-items: center; justify-content: center;">
                                 <i data-lucide="layout-grid" style="width: 18px;"></i>
                             </button>
                             <div>
@@ -7975,34 +7982,80 @@ export const UI = {
                     </div>
     
                     <!-- Question Area -->
-                    <main style="flex: 1; overflow-y: auto; padding: 1rem; padding-bottom: 120px; -webkit-overflow-scrolling: touch;">
-                        <div class="cbt-question-card animate-fade-in" style="background: white; border-radius: 24px; padding: clamp(1rem, 5vw, 2.5rem); border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); min-height: 400px; height: auto !important; margin-bottom: 2rem; max-width: 800px; margin: 0 auto;">
-                            <div style="font-size: 0.75rem; font-weight: 800; color: #4338ca; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 1rem; display: flex; justify-content: space-between;">
-                                <span>Question ${this.currentQuestionIndex + 1} of ${this.currentQuestions.length}</span>
-                                <span style="color: #64748b;">${q.marks || 1} Mark(s)</span>
-                            </div>
-                            <div id="cbt-question-text" style="font-size: 1.1rem; font-weight: 700; color: #1e293b; line-height: 1.6; margin-bottom: 2rem; overflow: visible !important; height: auto !important;">
-                                ${this.parseCBTContent(q.question_text)}
-                            </div>
-
-                            <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-                                ${(q.shuffledOptions || []).map((opt, idx) => {
-                                    if (!opt) return '';
-                                    const isSelected = this.userAnswers[q.id] === opt.text;
-                                    return `
-                                        <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border: 2px solid ${isSelected ? '#4338ca' : '#f1f5f9'}; border-radius: 10px; cursor: pointer; transition: all 0.2s; background: ${isSelected ? '#f5f7ff' : 'white'};" class="cbt-option-label">
-                                            <input type="radio" name="exam-option" value="${this.escapeHTML(opt.text || '')}" ${isSelected ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
-                                            <div style="display: flex; align-items: center; gap: 0.5rem; width: 100%;">
-                                                <span style="font-weight: 800; color: ${isSelected ? '#4338ca' : '#94a3b8'}; background: ${isSelected ? '#eef2ff' : '#f8fafc'}; width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; flex-shrink: 0;">
-                                                    ${String.fromCharCode(64 + (idx + 1))}
-                                                </span>
-                                                <span style="font-weight: 600; color: #334155; font-size: 0.8rem; line-height: 1.3;">${this.parseCBTContent(opt.text || '')}</span>
+                    <main style="flex: 1; overflow-y: auto; display: flex; background: #f8fafc; padding-bottom: 120px;">
+                        <!-- Left Desktop Sidebar: Question Nav -->
+                        <aside class="desktop-only" style="width: 240px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;">
+                            <div style="padding: 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; font-size: 0.75rem; letter-spacing: 0.05em;">QUESTION NAVIGATOR</div>
+                            <div style="flex: 1; overflow-y: auto; padding: 1rem;">
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem;">
+                                    ${this.currentQuestions.map((cq, i) => {
+                                        const isAnswered = this.userAnswers[cq.id];
+                                        const isActive = i === this.currentQuestionIndex;
+                                        return `
+                                            <div class="q-map-item" 
+                                                 style="aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; font-weight: 800; font-size: 0.7rem; border: 2px solid ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#f1f5f9')}; background: ${isActive ? '#eef2ff' : (isAnswered ? '#ecfdf5' : 'white')}; color: ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#64748b')};"
+                                                 onclick="UI.goToQuestion(${i})">
+                                                ${i + 1}
                                             </div>
-                                        </label>
-                                    `;
-                                }).join('')}
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        </aside>
+
+                        <!-- Center Content -->
+                        <div style="flex: 1; overflow-y: auto; padding: 1rem; -webkit-overflow-scrolling: touch;">
+                            <div class="cbt-question-card animate-fade-in" style="background: white; border-radius: 24px; padding: clamp(1rem, 5vw, 2rem); border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); min-height: 400px; height: auto !important; margin-bottom: 2rem; max-width: 800px; margin: 0 auto;">
+                                <div style="font-size: 0.7rem; font-weight: 800; color: #4338ca; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1rem; display: flex; justify-content: space-between;">
+                                    <span>Question ${this.currentQuestionIndex + 1} of ${this.currentQuestions.length}</span>
+                                    <span style="color: #64748b;">${q.marks || 1} Mark(s)</span>
+                                </div>
+                                <div id="cbt-question-text" style="font-size: 1.05rem; font-weight: 700; color: #1e293b; line-height: 1.6; margin-bottom: 2rem;">
+                                    ${this.parseCBTContent(q.question_text)}
+                                </div>
+
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    ${(q.shuffledOptions || []).map((opt, idx) => {
+                                        if (!opt) return '';
+                                        const isSelected = this.userAnswers[q.id] === opt.text;
+                                        return `
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border: 2px solid ${isSelected ? '#4338ca' : '#f1f5f9'}; border-radius: 10px; cursor: pointer; transition: all 0.2s; background: ${isSelected ? '#f5f7ff' : 'white'};" class="cbt-option-label">
+                                                <input type="radio" name="exam-option" value="${this.escapeHTML(opt.text || '')}" ${isSelected ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
+                                                <div style="display: flex; align-items: center; gap: 0.5rem; width: 100%;">
+                                                    <span style="font-weight: 800; color: ${isSelected ? '#4338ca' : '#94a3b8'}; background: ${isSelected ? '#eef2ff' : '#f8fafc'}; width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; flex-shrink: 0;">
+                                                        ${String.fromCharCode(64 + (idx + 1))}
+                                                    </span>
+                                                    <span style="font-weight: 600; color: #334155; font-size: 0.8rem;">${this.parseCBTContent(opt.text || '')}</span>
+                                                </div>
+                                            </label>
+                                        `;
+                                    }).join('')}
+                                </div>
                             </div>
                         </div>
+
+                        <!-- Right Desktop Sidebar: Student Info -->
+                        <aside class="desktop-only" style="width: 220px; background: white; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; align-items: center; padding: 1.5rem; flex-shrink: 0;">
+                            <div style="width: 100px; height: 100px; border-radius: 20px; overflow: hidden; background: #f1f5f9; border: 3px solid #eef2ff; margin-bottom: 1rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                                <img src="${this.currentUser.passport_photo || 'assets/img/default-avatar.png'}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='assets/img/default-avatar.png'">
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-weight: 900; color: #1e293b; font-size: 0.85rem; line-height: 1.2; margin-bottom: 0.25rem;">${studentName}</div>
+                                <div style="font-weight: 700; color: #64748b; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em;">${studentId}</div>
+                            </div>
+                            
+                            <div style="margin-top: auto; width: 100%; background: #f8fafc; border-radius: 12px; padding: 0.75rem; border: 1px solid #f1f5f9;">
+                                <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem; text-transform: uppercase;">EXAM SECURITY</div>
+                                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                                    <div style="display: flex; align-items: center; gap: 0.4rem; color: #059669; font-size: 0.65rem; font-weight: 700;">
+                                        <i data-lucide="shield-check" style="width: 12px;"></i> Fullscreen Active
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 0.4rem; color: #059669; font-size: 0.65rem; font-weight: 700;">
+                                        <i data-lucide="monitor" style="width: 12px;"></i> Browser Locked
+                                    </div>
+                                </div>
+                            </div>
+                        </aside>
                     </main>
 
                     <!-- Footer -->
@@ -8013,21 +8066,21 @@ export const UI = {
                         
                         <div style="display: flex; gap: 0.5rem;">
                             ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
-                                <button class="btn btn-success" style="border-radius: 10px; height: 44px; padding: 0 1.5rem; background: #10b981; color: white; border: none; font-weight: 800; font-size: 0.8rem; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);" onclick="UI.confirmSubmitExam()">SUBMIT</button>
+                                <button class="btn btn-success" style="border-radius: 10px; height: 44px; padding: 0 1.5rem; background: #10b981; color: white; border: none; font-weight: 800; font-size: 0.8rem; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);" onclick="UI.showSubmitReview()">SUBMIT</button>
                             ` : `
                                 <button class="btn btn-primary" style="border-radius: 10px; height: 44px; padding: 0 1.5rem; background: #4338ca; color: white; border: none; font-weight: 800; font-size: 0.8rem; display: flex; align-items: center; gap: 0.4rem; box-shadow: 0 4px 10px rgba(67, 56, 202, 0.2);" onclick="UI.nextQuestion()">NEXT <i data-lucide="arrow-right" style="width:16px;"></i></button>
                             `}
                         </div>
                     </footer>
 
-                    <!-- Sidebar Drawer -->
+                    <!-- Sidebar Drawer (Mobile Only) -->
                     <div id="cbt-map-sidebar" style="position: fixed; top: 0; left: -320px; width: 280px; height: 100%; background: white; z-index: 10005; box-shadow: 20px 0 50px rgba(0,0,0,0.1); transition: left 0.4s; display: flex; flex-direction: column;">
                         <div style="padding: 1rem; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #f8fafc;">
                             <h3 style="margin:0; font-weight: 800; color: #1e293b; font-size: 0.9rem;">Exam Map</h3>
                             <button onclick="UI.toggleCBTMap(false)" style="background: none; border: none; color: #94a3b8;"><i data-lucide="x" style="width: 20px;"></i></button>
                         </div>
                         <div style="flex: 1; overflow-y: auto; padding: 1rem;">
-                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem;">
                                 ${this.currentQuestions.map((cq, i) => {
                                     const isAnswered = this.userAnswers[cq.id];
                                     const isActive = i === this.currentQuestionIndex;
@@ -8043,6 +8096,35 @@ export const UI = {
                         </div>
                     </div>
                     <div id="cbt-sidebar-backdrop" onclick="UI.toggleCBTMap(false)" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); z-index: 10004; display: none;"></div>
+
+                    <!-- Submission Review Overlay -->
+                    <div id="cbt-submit-review" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); z-index: 20000; display: none; align-items: center; justify-content: center; padding: 1rem;">
+                        <div class="card" style="width: 100%; max-width: 500px; border-radius: 24px; padding: 2rem; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+                            <div style="text-align: center; margin-bottom: 1.5rem;">
+                                <div style="background: #eef2ff; color: #4338ca; width: 60px; height: 60px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
+                                    <i data-lucide="clipboard-check" style="width: 32px;"></i>
+                                </div>
+                                <h2 style="font-weight: 900; color: #1e293b; margin-bottom: 0.5rem;">Ready to Submit?</h2>
+                                <p style="color: #64748b; font-size: 0.9rem;">Review your progress before finalizing.</p>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
+                                <div style="background: #ecfdf5; padding: 1rem; border-radius: 15px; text-align: center; border: 1px solid #bbf7d0;">
+                                    <div style="font-size: 0.65rem; font-weight: 800; color: #059669; text-transform: uppercase;">Answered</div>
+                                    <div style="font-size: 1.5rem; font-weight: 900; color: #065f46;" id="review-answered-count">0</div>
+                                </div>
+                                <div style="background: #fff1f2; padding: 1rem; border-radius: 15px; text-align: center; border: 1px solid #fecdd3;">
+                                    <div style="font-size: 0.65rem; font-weight: 800; color: #e11d48; text-transform: uppercase;">Unanswered</div>
+                                    <div style="font-size: 1.5rem; font-weight: 900; color: #9f1239;" id="review-unanswered-count">0</div>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                                <button class="btn btn-primary" onclick="UI.confirmSubmitExam()" style="height: 50px; border-radius: 12px; font-weight: 800; background: #4338ca; font-size: 1rem;">Yes, Submit Now</button>
+                                <button class="btn btn-secondary" onclick="document.getElementById('cbt-submit-review').style.display='none'" style="height: 44px; border-radius: 12px; font-weight: 700; background: #f1f5f9; color: #475569; border: none;">Go Back to Review</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             `;
 
@@ -8118,9 +8200,21 @@ export const UI = {
 
     async saveExamProgress(questionId, value) {
         this.userAnswers[questionId] = value;
-        
         const studentId = this.resolveCBTStudentId();
         const examId = this.currentExam.id;
+
+        // Instant Targeted Update (Avoid Full Re-render Flicker)
+        const qIdx = this.currentQuestions.findIndex(q => q.id === questionId);
+        if (qIdx !== -1) {
+            const mapItems = document.querySelectorAll('.q-map-item');
+            mapItems.forEach(item => {
+                if (item.innerText.trim() == (qIdx + 1)) {
+                    item.style.borderColor = '#10b981';
+                    item.style.background = '#ecfdf5';
+                    item.style.color = '#10b981';
+                }
+            });
+        }
         
         try {
             const timestamp = new Date().toISOString();
@@ -8146,8 +8240,24 @@ export const UI = {
         } catch (err) {
             console.error('Failed to auto-save progress:', err);
         }
+    },
+
+    showSubmitReview() {
+        const total = this.currentQuestions.length;
+        const answered = Object.keys(this.userAnswers).length;
+        const unanswered = total - answered;
+
+        const overlay = document.getElementById('cbt-submit-review');
+        const ansEl = document.getElementById('review-answered-count');
+        const unansEl = document.getElementById('review-unanswered-count');
+
+        if (overlay && ansEl && unansEl) {
+            ansEl.innerText = answered;
+            unansEl.innerText = unanswered;
+            overlay.style.display = 'flex';
+        }
         
-        this.renderCBTExamInterface();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     goToQuestion(index) {
