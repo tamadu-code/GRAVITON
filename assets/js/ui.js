@@ -7841,6 +7841,9 @@ export const UI = {
             const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
             session = results.find(r => possibleIds.includes(r.student_id));
 
+            const now = new Date();
+            const durationSeconds = (parseInt(exam.duration) || 60) * 60;
+
             if (session) {
                 if (session.status === 'In Progress') {
                     const startTime = new Date(session.started_at).getTime();
