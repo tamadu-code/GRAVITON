@@ -7619,7 +7619,7 @@ export const UI = {
             const possibleIds = [studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
             
             const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
-            let session = results.find(r => possibleIds.includes(r.student_id));
+            session = results.find(r => possibleIds.includes(r.student_id));
 
             if (session) {
                 if (session.status === 'In Progress') {
