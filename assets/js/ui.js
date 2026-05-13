@@ -11,6 +11,7 @@ import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPas
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
     get viewTitle() { return document.getElementById('view-title'); },
+    lastOpenedBankCategory: null,
     
     escapeHTML(str) {
         if (!str) return '';
@@ -11239,8 +11240,8 @@ export const UI = {
                             const sessionLabel = parts[3] ? parts[3].replace('-', '/') : '';
 
                             return `
-                                <div class="card cbt-bank-card" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); margin-bottom: 1rem;">
-                                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '2000px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem; background: white;">
+                                <div class="card cbt-bank-card" id="bank-cat-${tag}" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); margin-bottom: 1rem;">
+                                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '2000px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)'; UI.lastOpenedBankCategory = isExp ? null : '${tag}';" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem; background: white;">
                                         <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0;">
                                             <div style="background: #e0e7ff; color: #4338ca; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                                                 <i data-lucide="book-open" style="width: 20px;"></i>
@@ -11265,7 +11266,7 @@ export const UI = {
                                             <i data-lucide="chevron-down" class="chevron-icon" style="width: 18px; color: #94a3b8; transition: transform 0.3s ease; margin-left: 0.25rem;"></i>
                                         </div>
                                     </div>
-                                    <div class="bank-details-area" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
+                                    <div class="bank-details-area" style="max-height: ${this.lastOpenedBankCategory === tag ? '2000px' : '0'}; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
                                         <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; max-height: 550px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #cbd5e1 #f8fafc;">
                                             ${questions.map((q, i) => `
                                                 <div style="background: #f8fafc; border-radius: 12px; padding: 1.25rem; border: 1px solid #f1f5f9; position: relative;">
@@ -11320,32 +11321,32 @@ export const UI = {
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem;">
-                    <div class="form-group" style="margin: 0;">
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                    <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Subject</label>
-                        <select id="bank-subject" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem;">
+                        <select id="bank-subject" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem; width: 100%;">
                             <option value="">Subject...</option>
-                            ${subjects.map(s => `<option value="${s.id}" style="color: #1e293b; background: #ffffff;">${s.name}</option>`).join('')}
+                            ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
                         </select>
                     </div>
-                    <div class="form-group" style="margin: 0;">
+                    <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Class</label>
-                        <select id="bank-class" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem;">
+                        <select id="bank-class" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem; width: 100%;">
                             <option value="">Class...</option>
-                            ${classes.map(c => `<option value="${c.name}" style="color: #1e293b; background: #ffffff;">${c.name}</option>`).join('')}
+                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                         </select>
                     </div>
-                    <div class="form-group" style="margin: 0;">
+                    <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Term</label>
-                        <select id="bank-term" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem;">
+                        <select id="bank-term" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem; width: 100%;">
                             <option value="1st Term">1st Term</option>
                             <option value="2nd Term">2nd Term</option>
                             <option value="3rd Term">3rd Term</option>
                         </select>
                     </div>
-                    <div class="form-group" style="margin: 0;">
+                    <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
                         <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Session</label>
-                        <select id="bank-session" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem;">
+                        <select id="bank-session" class="cbt-input" style="height: 40px; border-radius: 10px; color: #1e293b !important; background: #ffffff !important; font-size: 0.85rem; width: 100%;">
                             <option value="2024/2025">2024/2025</option>
                             <option value="2025/2026">2025/2026</option>
                         </select>
@@ -11372,8 +11373,8 @@ export const UI = {
             const bankExamId = `BANK-${subjectId}__${className}__${term.replace(/\s+/g, '')}__${session.replace(/\//g, '-')}`;
 
             // MCQ Regex: Captures Question, A, B, C, D, E (optional), Answer, and Marks (optional)
-            // Improved: More robust whitespace handling and boundary detection
-            const mcqRegex = /([\s\S]*?)\s*(?:[\(\[]?A[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?B[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*)([\s\S]*?)\s*(?:(?:[\(\[]?E[\)\]\.]\s*)([\s\S]*?))?\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // Strict Mode: Uses lookaheads to ensure capture groups do not cross into other markers
+            const mcqRegex = /((?:(?![\(\[]?A[\)\]\.]).)*?)\s*(?:[\(\[]?A[\)\]\.]\s*)((?:(?![\(\[]?B[\)\]\.]).)*?)\s*(?:[\(\[]?B[\)\]\.]\s*)((?:(?![\(\[]?C[\)\]\.]).)*?)\s*(?:[\(\[]?C[\)\]\.]\s*)((?:(?![\(\[]?D[\)\]\.]).)*?)\s*(?:[\(\[]?D[\)\]\.]\s*)((?:(?![\(\[]?E[\)\]\.]|\[Ans:).)*?)\s*(?:(?:[\(\[]?E[\)\]\.]\s*)((?:(?!\[Ans:).)*?))?\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
             // Simpler MCQ Regex for just A and B
             const simpleMcqRegex = /([\s\S]*?)\s*(?:[\(\[]?A[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?B[\)\]\.]\s*)([\s\S]*?)\s*\[Ans:\s*([A-B])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
