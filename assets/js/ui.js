@@ -11639,68 +11639,80 @@ export const UI = {
 
             const fillRegex = /([\s\S]*?)\s*[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]?/gi;
 
-            let match;
+            // --- NEW: Block-Based Parsing ---
+            // Instead of one giant regex on a huge string, we split by common markers first
+            // to prevent catastrophic backtracking and improve performance for large sets.
+            const blocks = text.split(/(?=\[Ans:|\(Ans:|\[Answer:|Ans:)/i);
             const newQuestions = [];
-            const seenBlocks = new Set();
+            let failedBlocks = 0;
 
-            // 1. Process MCQs (A-D or A-E)
-            while ((match = mcqRegex.exec(text)) !== null) {
-                seenBlocks.add(match[0]);
-                const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
-                newQuestions.push(prepareForSync({
-                    id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                    exam_id: bankExamId,
-                    type: 'mcq',
-                    question_text: qText,
-                    option_a: (match[2] || '').trim(),
-                    option_b: (match[3] || '').trim(),
-                    option_c: (match[4] || '').trim(),
-                    option_d: (match[5] || '').trim(),
-                    option_e: (match[6] || '').trim(),
-                    correct_option: match[7].toUpperCase(),
-                    marks: match[8] ? parseFloat(match[8]) : 1
-                }));
-            }
+            Notifications.show(`Scanning ${blocks.length} potential questions...`, 'info');
 
-            // 2. Process Simple MCQs (A-B)
-            while ((match = simpleMcqRegex.exec(text)) !== null) {
-                if (seenBlocks.has(match[0])) continue;
-                seenBlocks.add(match[0]);
-                const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
-                newQuestions.push(prepareForSync({
-                    id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                    exam_id: bankExamId,
-                    type: 'mcq',
-                    question_text: qText,
-                    option_a: match[2].trim(),
-                    option_b: match[3].trim(),
-                    option_c: '', option_d: '', option_e: '',
-                    correct_option: match[4].toUpperCase(),
-                    marks: match[5] ? parseFloat(match[5]) : 1
-                }));
-            }
+            blocks.forEach((block, idx) => {
+                const cleanBlock = block.trim();
+                if (!cleanBlock) return;
 
-            // 3. Process Fill-in-the-blank
-            while ((match = fillRegex.exec(text)) !== null) {
-                if (seenBlocks.has(match[0])) continue;
-                const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
-                newQuestions.push(prepareForSync({
-                    id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                    exam_id: bankExamId,
-                    type: 'fill',
-                    question_text: qText,
-                    option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
-                    correct_option: match[2].trim(),
-                    marks: match[3] ? parseFloat(match[3]) : 1
-                }));
-            }
+                // Try MCQ first
+                mcqRegex.lastIndex = 0;
+                let m = mcqRegex.exec(cleanBlock);
+                if (m) {
+                    newQuestions.push(prepareForSync({
+                        id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        exam_id: bankExamId,
+                        type: 'mcq',
+                        question_text: m[1].replace(/^\d+[\.\)]\s*/, '').trim(),
+                        option_a: (m[2] || '').trim(),
+                        option_b: (m[3] || '').trim(),
+                        option_c: (m[4] || '').trim(),
+                        option_d: (m[5] || '').trim(),
+                        option_e: (m[6] || '').trim(),
+                        correct_option: m[7].toUpperCase(),
+                        marks: m[8] ? parseFloat(m[8]) : 1
+                    }));
+                    return;
+                }
+
+                // Try Simple MCQ (A-B)
+                simpleMcqRegex.lastIndex = 0;
+                m = simpleMcqRegex.exec(cleanBlock);
+                if (m) {
+                    newQuestions.push(prepareForSync({
+                        id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        exam_id: bankExamId,
+                        type: 'mcq',
+                        question_text: m[1].replace(/^\d+[\.\)]\s*/, '').trim(),
+                        option_a: m[2].trim(),
+                        option_b: m[3].trim(),
+                        option_c: '', option_d: '', option_e: '',
+                        correct_option: m[4].toUpperCase(),
+                        marks: m[5] ? parseFloat(m[5]) : 1
+                    }));
+                    return;
+                }
+
+                // Try Fill
+                fillRegex.lastIndex = 0;
+                m = fillRegex.exec(cleanBlock);
+                if (m) {
+                    newQuestions.push(prepareForSync({
+                        id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        exam_id: bankExamId,
+                        type: 'fill',
+                        question_text: m[1].replace(/^\d+[\.\)]\s*/, '').trim(),
+                        option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
+                        correct_option: m[2].trim(),
+                        marks: m[3] ? parseFloat(m[3]) : 1
+                    }));
+                    return;
+                }
+
+                failedBlocks++;
+            });
 
             if (newQuestions.length === 0) return Notifications.show('Could not parse any questions. Please check the format.', 'error');
 
             // 4. Batch Save to Cloud and Local
             try {
-                Notifications.show(`Saving ${newQuestions.length} questions...`, 'info');
-                
                 // Local Save
                 await db.cbt_questions.bulkPut(newQuestions);
 
@@ -11709,22 +11721,31 @@ export const UI = {
                     const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                     if (client) {
                         const BATCH_SIZE = 50;
+                        const totalBatches = Math.ceil(newQuestions.length / BATCH_SIZE);
+                        
                         for (let i = 0; i < newQuestions.length; i += BATCH_SIZE) {
+                            const currentBatchNum = Math.floor(i / BATCH_SIZE) + 1;
+                            Notifications.show(`Uploading to cloud: Batch ${currentBatchNum} of ${totalBatches}...`, 'info');
+                            
                             const batch = newQuestions.slice(i, i + BATCH_SIZE);
-                            // Strip is_synced and type before cloud push
                             const cloudBatch = batch.map(({ is_synced, type, ...rest }) => rest);
                             const { error } = await client.from('cbt_questions').upsert(cloudBatch);
-                            if (error) console.warn('[CBT BANK] Batch push failed:', error);
+                            if (error) throw error;
                         }
                     }
                 }
 
                 document.getElementById('ui-modal')?.remove();
-                Notifications.show(`Successfully imported ${newQuestions.length} questions!`, 'success');
+                
+                let msg = `Successfully imported ${newQuestions.length} questions!`;
+                if (failedBlocks > 0) msg += ` (${failedBlocks} sections failed to parse)`;
+                Notifications.show(msg, failedBlocks > 0 ? 'warning' : 'success');
+                
                 this.renderQuestionBank();
             } catch (err) {
                 console.error('Import Error:', err);
-                Notifications.show('Failed to save questions.', 'error');
+                Notifications.show('Cloud sync failed, but questions saved locally.', 'warning');
+                this.renderQuestionBank();
             }
         }, 'Import to Bank', 'database');
     },
