@@ -7740,8 +7740,25 @@ export const UI = {
             }
 
             const requestedLimit = parseInt(exam.question_limit) || 0;
+            const limit = (requestedLimit > 0) ? Math.min(requestedLimit, validQuestions.length) : validQuestions.length;
             
             // --- NEW: Question Locking Mechanism (Fixes Resume Question Injection) ---
+            const seedStr = studentId + examId;
+            let seed = 0;
+            for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+
+            const seededShuffle = (array, seed) => {
+                let m = array.length, t, i;
+                while (m) {
+                    seed = (seed * 9301 + 49297) % 233280;
+                    i = Math.floor((seed / 233280) * m--);
+                    t = array[m];
+                    array[m] = array[i];
+                    array[i] = t;
+                }
+                return array;
+            };
+
             let finalSlice = [];
             const existingQuestionIds = session?.question_ids || [];
 
@@ -7758,22 +7775,6 @@ export const UI = {
                 }
             } else {
                 // FIRST START: Shuffle and Lock IDs
-                const seedStr = studentId + examId;
-                let seed = 0;
-                for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
-                
-                const seededShuffle = (array, seed) => {
-                    let m = array.length, t, i;
-                    while (m) {
-                        seed = (seed * 9301 + 49297) % 233280;
-                        i = Math.floor((seed / 233280) * m--);
-                        t = array[m];
-                        array[m] = array[i];
-                        array[i] = t;
-                    }
-                    return array;
-                };
-
                 let poolCopy = [...validQuestions];
                 let shuffled = seededShuffle(poolCopy, seed);
                 finalSlice = (requestedLimit > 0) ? shuffled.slice(0, requestedLimit) : shuffled;
@@ -7789,7 +7790,7 @@ export const UI = {
             }
 
             // Final filter to ensure NO holes or undefined elements exist before mapping
-            shuffledQuestions = finalSlice.filter(q => q && q.id);
+            const shuffledQuestions = finalSlice.filter(q => q && q.id);
 
             if (shuffledQuestions.length < limit && holes === 0) {
                  console.warn(`[CBT AUDIT] Count mismatch! Requested ${limit}, but only got ${shuffledQuestions.length}. This suggests duplicate questions were filtered out.`);
@@ -8153,7 +8154,17 @@ export const UI = {
                                     <img src="assets/img/logo.png" style="height: 30px;" onerror="this.style.display='none'">
                                     <div style="font-weight: 800; font-size: 1rem;">${this.escapeHTML(this.currentExam.title)}</div>
                                 </div>
-                                <div id="exam-timer" style="background: #e11d48; padding: 0.4rem 1.2rem; border-radius: 6px; font-weight: 900; font-size: 1.1rem; min-width: 100px; text-align: center;">${timeStr}</div>
+                                <div style="display: flex; align-items: center; gap: 1rem;">
+                                    <div id="exam-timer" style="background: #e11d48; padding: 0.4rem 1.2rem; border-radius: 6px; font-weight: 900; font-size: 1.1rem; min-width: 100px; text-align: center;">${timeStr}</div>
+                                    <div style="display: flex; gap: 0.5rem;" class="desktop-only">
+                                        <button onclick="UI.toggleCBTCalculator()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'" title="Calculator (C)">
+                                            <i data-lucide="calculator" style="width: 18px;"></i>
+                                        </button>
+                                        <button onclick="UI.showCBTKeyboardHelp()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'" title="Keyboard Help (H)">
+                                            <i data-lucide="help-circle" style="width: 18px;"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </header>
 
                             <!-- Question Content -->
@@ -8250,6 +8261,10 @@ export const UI = {
                                 UI.nextQuestion();
                             } else if (key === 's') {
                                 UI.showSubmitReview();
+                            } else if (key === 'c') {
+                                UI.toggleCBTCalculator();
+                            } else if (key === 'h') {
+                                UI.showCBTKeyboardHelp();
                             }
                         };
                         document.addEventListener('keydown', window._cbtKeyHandler);
@@ -11632,6 +11647,17 @@ export const UI = {
                     </div>
                 </div>
 
+                <div style="margin-bottom: 2rem; display: flex; gap: 1rem; align-items: center; background: white; padding: 1rem; border-radius: 16px; border: 1px solid #f1f5f9; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
+                    <div style="flex: 1; position: relative;">
+                        <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 18px;"></i>
+                        <input type="text" id="bank-search" onkeyup="UI.filterBankQuestions(this.value)" placeholder="Search question text or keywords..." style="width: 100%; height: 48px; padding: 0 1rem 0 3rem; border-radius: 12px; border: 1px solid #e2e8f0; font-size: 0.9rem; outline: none; transition: all 0.2s;" onfocus="this.style.borderColor='#4338ca'; this.style.boxShadow='0 0 0 4px rgba(67, 56, 202, 0.1)'" onblur="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'">
+                    </div>
+                    <select id="bank-filter-subject" onchange="UI.filterBankQuestions()" style="height: 48px; border-radius: 12px; border: 1px solid #e2e8f0; padding: 0 1rem; color: #475569; font-weight: 600; outline: none; cursor: pointer;">
+                        <option value="">All Subjects</option>
+                        ${subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                    </select>
+                </div>
+
                 ${groupKeys.length === 0 ? `
                     <div class="card" style="text-align: center; padding: 4rem 2rem; border-radius: 24px; border: none;">
                         <div style="background: #e0e7ff; color: #4338ca; width: 80px; height: 80px; border-radius: 24px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
@@ -12910,6 +12936,150 @@ export const UI = {
             btn.innerHTML = originalHtml;
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
+    },
+
+    toggleCBTCalculator() {
+        let calc = document.getElementById('cbt-calculator');
+        if (calc) {
+            calc.style.display = calc.style.display === 'none' ? 'block' : 'none';
+            return;
+        }
+
+        const calcHtml = `
+            <div id="cbt-calculator" style="position: fixed; top: 100px; right: 320px; width: 260px; background: #1e293b; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); z-index: 10006; overflow: hidden; font-family: 'Inter', sans-serif; border: 1px solid rgba(255,255,255,0.1);">
+                <div style="padding: 1rem; background: rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; cursor: move;" id="cbt-calc-header">
+                    <span style="color: white; font-weight: 800; font-size: 0.75rem; letter-spacing: 0.05em;">CALCULATOR</span>
+                    <button onclick="document.getElementById('cbt-calculator').style.display='none'" style="background: none; border: none; color: #94a3b8; cursor: pointer;"><i data-lucide="x" style="width: 16px;"></i></button>
+                </div>
+                <div style="padding: 1rem;">
+                    <input type="text" id="calc-display" readonly style="width: 100%; height: 50px; background: #0f172a; border: none; border-radius: 8px; color: #10b981; text-align: right; padding: 0 1rem; font-size: 1.5rem; font-family: 'monospace'; margin-bottom: 1rem; font-weight: 700;" value="0">
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                        ${['7','8','9','/','4','5','6','*','1','2','3','-','0','.','=','+'].map(key => {
+                            const isOp = ['/','*','-','+','='].includes(key);
+                            return `<button onclick="UI.handleCalc('${key}')" style="height: 44px; border-radius: 8px; border: none; background: ${isOp ? '#334155' : 'rgba(255,255,255,0.1)'}; color: white; font-weight: 700; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='${isOp ? '#334155' : 'rgba(255,255,255,0.1)'}'">${key}</button>`;
+                        }).join('')}
+                        <button onclick="UI.handleCalc('C')" style="grid-column: span 4; height: 44px; border-radius: 8px; border: none; background: #e11d48; color: white; font-weight: 800; margin-top: 4px; cursor: pointer;">CLEAR</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', calcHtml);
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        
+        // Simple Draggable logic
+        const header = document.getElementById('cbt-calc-header');
+        const element = document.getElementById('cbt-calculator');
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        header.onmousedown = (e) => {
+            e.preventDefault();
+            pos3 = e.clientX; pos4 = e.clientY;
+            document.onmouseup = () => { document.onmouseup = null; document.onmousemove = null; };
+            document.onmousemove = (e) => {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY;
+                pos3 = e.clientX; pos4 = e.clientY;
+                element.style.top = (element.offsetTop - pos2) + "px";
+                element.style.left = (element.offsetLeft - pos1) + "px";
+            };
+        };
+    },
+
+    handleCalc(key) {
+        const display = document.getElementById('calc-display');
+        if (!display) return;
+        
+        if (key === 'C') {
+            display.value = '0';
+        } else if (key === '=') {
+            try {
+                // Safety: only allow math chars
+                const expression = display.value.replace(/[^0-9\+\-\*\/\.]/g, '');
+                display.value = eval(expression);
+            } catch (e) { display.value = 'Error'; }
+        } else {
+            if (display.value === '0' || display.value === 'Error') display.value = key;
+            else display.value += key;
+        }
+    },
+
+    showCBTKeyboardHelp() {
+        const helpHtml = `
+            <div id="cbt-help-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); z-index: 20001; display: flex; align-items: center; justify-content: center; padding: 1rem;">
+                <div class="card" style="width: 100%; max-width: 450px; border-radius: 24px; padding: 2rem; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+                    <div style="text-align: center; margin-bottom: 2rem;">
+                        <div style="background: #eef2ff; color: #4338ca; width: 60px; height: 60px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
+                            <i data-lucide="keyboard" style="width: 32px;"></i>
+                        </div>
+                        <h2 style="font-weight: 900; color: #1e293b; margin-bottom: 0.5rem;">Keyboard Shortcuts</h2>
+                        <p style="color: #64748b; font-size: 0.9rem;">Master the interface with these keys.</p>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 2rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: #f8fafc; border-radius: 12px; border: 1px solid #f1f5f9;">
+                            <span style="font-weight: 600; color: #475569;">Select Options</span>
+                            <div style="display: flex; gap: 4px;">
+                                ${['A','B','C','D','E'].map(k => `<kbd style="background: white; border: 1px solid #cbd5e1; padding: 2px 8px; border-radius: 4px; font-weight: 800; color: #1e293b; font-size: 0.8rem; box-shadow: 0 2px 0 #cbd5e1;">${k}</kbd>`).join('')}
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: #f8fafc; border-radius: 12px; border: 1px solid #f1f5f9;">
+                            <span style="font-weight: 600; color: #475569;">Previous Question</span>
+                            <kbd style="background: white; border: 1px solid #cbd5e1; padding: 2px 8px; border-radius: 4px; font-weight: 800; color: #1e293b; font-size: 0.8rem; box-shadow: 0 2px 0 #cbd5e1;">P</kbd>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: #f8fafc; border-radius: 12px; border: 1px solid #f1f5f9;">
+                            <span style="font-weight: 600; color: #475569;">Next Question</span>
+                            <kbd style="background: white; border: 1px solid #cbd5e1; padding: 2px 8px; border-radius: 4px; font-weight: 800; color: #1e293b; font-size: 0.8rem; box-shadow: 0 2px 0 #cbd5e1;">N</kbd>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: #f8fafc; border-radius: 12px; border: 1px solid #f1f5f9;">
+                            <span style="font-weight: 600; color: #475569;">Submit Exam</span>
+                            <kbd style="background: white; border: 1px solid #cbd5e1; padding: 2px 8px; border-radius: 4px; font-weight: 800; color: #1e293b; font-size: 0.8rem; box-shadow: 0 2px 0 #cbd5e1;">S</kbd>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: #f8fafc; border-radius: 12px; border: 1px solid #f1f5f9;">
+                            <span style="font-weight: 600; color: #475569;">Open Calculator</span>
+                            <kbd style="background: white; border: 1px solid #cbd5e1; padding: 2px 8px; border-radius: 4px; font-weight: 800; color: #1e293b; font-size: 0.8rem; box-shadow: 0 2px 0 #cbd5e1;">C</kbd>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="document.getElementById('cbt-help-modal').remove()" style="width: 100%; height: 50px; border-radius: 12px; font-weight: 800; background: #4338ca; font-size: 1rem;">Got it!</button>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', helpHtml);
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    filterBankQuestions(query = '') {
+        const searchQuery = (query || document.getElementById('bank-search')?.value || '').toLowerCase().trim();
+        const subjectFilter = document.getElementById('bank-filter-subject')?.value || '';
+        const cards = document.querySelectorAll('.cbt-bank-card');
+        
+        cards.forEach(card => {
+            const cardId = card.id.replace('bank-cat-', ''); // tag format: subjectId__className__term__session
+            const cardSubject = cardId.split('__')[0];
+            const questions = card.querySelectorAll('.bank-details-area > div > div');
+            
+            let cardMatch = true;
+            if (subjectFilter && cardSubject !== subjectFilter) cardMatch = false;
+
+            let visibleInCard = 0;
+            questions.forEach(q => {
+                const text = q.innerText.toLowerCase();
+                const matchesSearch = text.includes(searchQuery);
+                q.style.display = matchesSearch ? 'block' : 'none';
+                if (matchesSearch) visibleInCard++;
+            });
+
+            if (cardMatch && (searchQuery === '' || visibleInCard > 0)) {
+                card.style.display = 'block';
+                // If searching, auto-expand cards with matches
+                const details = card.querySelector('.bank-details-area');
+                if (searchQuery !== '' && visibleInCard > 0) {
+                    details.style.maxHeight = '2000px';
+                    card.querySelector('.chevron-icon').style.transform = 'rotate(180deg)';
+                }
+            } else {
+                card.style.display = 'none';
+            }
+        });
     }
 };
 
