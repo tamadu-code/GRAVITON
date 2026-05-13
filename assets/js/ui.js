@@ -7753,8 +7753,10 @@ export const UI = {
                 if (navigator.onLine) {
                     const { is_synced, ...cloudSession } = newSession;
                     supabase.from('cbt_results').upsert(cloudSession, { onConflict: 'student_id,exam_id' })
-                        .then(() => console.log('[CBT CLOUD] New session initialized.'))
-                        .catch(e => console.warn('[CBT CLOUD] Init push failed:', e));
+                        .then(res => {
+                            if (res.error) console.warn('[CBT CLOUD] Init push error:', res.error);
+                            else console.log('[CBT CLOUD] New session initialized.');
+                        });
                 }
 
                 session = newSession;
@@ -8254,7 +8256,9 @@ export const UI = {
                         const { is_synced, ...cloudPayload } = session;
                         supabase.from('cbt_results')
                             .upsert(cloudPayload, { onConflict: 'student_id,exam_id' })
-                            .catch(e => console.warn('[CBT CLOUD] Save failed:', e));
+                            .then(res => {
+                                if (res.error) console.warn('[CBT CLOUD] Save error:', res.error);
+                            });
                     }
                 }
             }
