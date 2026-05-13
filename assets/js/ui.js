@@ -11238,35 +11238,40 @@ export const UI = {
                                                 <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-decoration: none !important;">${classLabel} ${termLabel ? `• ${termLabel}` : ''} ${sessionLabel ? `• ${sessionLabel}` : ''}</div>
                                             </div>
                                         </div>
-                                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
                                             <span style="background: #e0e7ff; color: #4338ca; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 0.8rem;">${questions.length} Q</span>
-                                            <i data-lucide="chevron-down" class="chevron-icon" style="width: 18px; color: #94a3b8; transition: transform 0.3s ease;"></i>
+                                            
+                                            <div style="display: flex; gap: 0.25rem;">
+                                                <button type="button" title="Edit Category" onclick="event.stopPropagation(); UI.editBankCategory('${tag}')" style="width: 32px; height: 32px; border-radius: 8px; border: none; background: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                                                    <i data-lucide="edit-3" style="width: 14px;"></i>
+                                                </button>
+                                                <button type="button" title="Delete Category" onclick="event.stopPropagation(); if(confirm('Delete all ${questions.length} questions in this category?')){UI.deleteBankCategory('BANK-${tag}')}" style="width: 32px; height: 32px; border-radius: 8px; border: none; background: #fee2e2; color: #ef4444; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                                                    <i data-lucide="trash-2" style="width: 14px;"></i>
+                                                </button>
+                                            </div>
+
+                                            <i data-lucide="chevron-down" class="chevron-icon" style="width: 18px; color: #94a3b8; transition: transform 0.3s ease; margin-left: 0.25rem;"></i>
                                         </div>
                                     </div>
                                     <div class="bank-details-area" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
                                         <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; overflow-y: auto;">
                                             ${questions.map((q, i) => `
-                                                <div style="background: #f8fafc; border-radius: 12px; padding: 1rem; border: 1px solid #f1f5f9;">
-                                                    <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; margin-bottom: 0.5rem;">
-                                                        ${i + 1}. ${this.escapeHTML(q.question_text)}
+                                                <div style="background: #f8fafc; border-radius: 12px; padding: 1.25rem; border: 1px solid #f1f5f9; position: relative;">
+                                                    <button onclick="if(confirm('Delete this question?')) UI.deleteBankQuestion('${q.id}')" style="position: absolute; top: 1rem; right: 1rem; width: 28px; height: 28px; border-radius: 6px; border: none; background: #fff; color: #ef4444; border: 1px solid #fee2e2; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="Delete Question">
+                                                        <i data-lucide="trash-2" style="width: 14px;"></i>
+                                                    </button>
+                                                    <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; margin-bottom: 0.75rem; padding-right: 2rem;">
+                                                        ${i + 1}. ${this.parseCBTContent(q.question_text)}
                                                     </div>
-                                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.5rem; font-size: 0.8rem; color: #64748b;">
-                                                        <div style="${q.correct_option === 'A' ? 'color: #059669; font-weight: 800;' : ''}">A) ${this.escapeHTML(q.option_a)}</div>
-                                                        <div style="${q.correct_option === 'B' ? 'color: #059669; font-weight: 800;' : ''}">B) ${this.escapeHTML(q.option_b)}</div>
-                                                        <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${this.escapeHTML(q.option_c)}</div>
-                                                        <div style="${q.correct_option === 'D' ? 'color: #059669; font-weight: 800;' : ''}">D) ${this.escapeHTML(q.option_d)}</div>
-                                                        ${q.option_e ? `<div style="${q.correct_option === 'E' ? 'color: #059669; font-weight: 800;' : ''}">E) ${this.escapeHTML(q.option_e)}</div>` : ''}
+                                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; font-size: 0.85rem; color: #64748b;">
+                                                        <div style="${q.correct_option === 'A' ? 'color: #059669; font-weight: 800;' : ''}">A) ${this.parseCBTContent(q.option_a)}</div>
+                                                        <div style="${q.correct_option === 'B' ? 'color: #059669; font-weight: 800;' : ''}">B) ${this.parseCBTContent(q.option_b)}</div>
+                                                        <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${this.parseCBTContent(q.option_c)}</div>
+                                                        <div style="${q.correct_option === 'D' ? 'color: #059669; font-weight: 800;' : ''}">D) ${this.parseCBTContent(q.option_d)}</div>
+                                                        ${q.option_e ? `<div style="${q.correct_option === 'E' ? 'color: #059669; font-weight: 800;' : ''}">E) ${this.parseCBTContent(q.option_e)}</div>` : ''}
                                                     </div>
                                                 </div>
                                             `).join('')}
-                                        </div>
-                                        <div style="display: flex; gap: 0.75rem; padding: 1.25rem; background: #f1f5f9; border-top: 1px solid #e2e8f0;">
-                                            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); UI.editBankCategory('${tag}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fff; color: #475569; border: 1px solid #cbd5e1; height: 44px; text-decoration: none !important;">
-                                                <i data-lucide="edit-3" style="width: 16px;"></i> Edit Category
-                                            </button>
-                                            <button type="button" class="btn btn-danger" onclick="event.stopPropagation(); if(confirm('Delete all ${questions.length} questions in this category?')){UI.deleteBankCategory('BANK-${tag}')}" style="flex: 1; border-radius: 10px; font-weight: 700; background: #fee2e2; color: #ef4444; border: 1px solid #fecdd3; height: 44px; text-decoration: none !important;">
-                                                <i data-lucide="trash-2" style="width: 16px;"></i> Delete Category
-                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -11427,6 +11432,22 @@ export const UI = {
         }, 'Import to Bank', 'database');
     },
 
+    async deleteBankQuestion(questionId) {
+        try {
+            await db.cbt_questions.delete(questionId);
+            
+            if (navigator.onLine) {
+                await client.from('cbt_questions').delete().eq('id', questionId);
+            }
+
+            Notifications.show('Question deleted from bank.', 'success');
+            this.renderQuestionBank();
+        } catch (err) {
+            console.error('Delete bank question error:', err);
+            Notifications.show('Failed to delete question', 'error');
+        }
+    },
+
     async deleteBankCategory(bankExamId) {
         if (!confirm('Are you sure you want to permanently delete all questions in this category? This cannot be undone.')) return;
         
@@ -11435,13 +11456,9 @@ export const UI = {
             
             // Cloud Clean-up
             if (navigator.onLine) {
-                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
-                if (client) {
-                    await client.from('cbt_questions').delete().eq('exam_id', bankExamId);
-                }
+                await client.from('cbt_questions').delete().eq('exam_id', bankExamId);
             }
 
-            this.debouncedSync();
             Notifications.show('Category deleted from bank.', 'success');
             this.renderQuestionBank();
         } catch (err) {
