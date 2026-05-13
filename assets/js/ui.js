@@ -7358,7 +7358,8 @@ export const UI = {
                 console.log('Exam metadata updated.');
                 // Re-save questions
                 await db.cbt_questions.where('exam_id').equals(existingId).delete();
-                console.log('Old questions cleared.');
+                await db.cbt_exam_questions.where('exam_id').equals(existingId).delete();
+                console.log('Old questions and mappings cleared.');
             } else {
                 await db.cbt_exams.add(examData);
                 console.log('New exam created.');
@@ -7366,14 +7367,55 @@ export const UI = {
 
             // Save all current questions
             let qCount = 0;
+            const relationalData = [];
+            
             for (const q of this.cbtQuestions) {
+                const qId = q.id || `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
+                
+                // 1. Legacy Save
                 await db.cbt_questions.add(prepareForSync({
                     ...q,
+                    id: qId,
                     exam_id: examId
                 }));
+
+                // 2. JAMB Solution: Question Bank & Options
+                const bankQuestion = prepareForSync({
+                    id: qId,
+                    subject_id: subId,
+                    question_text: q.question_text,
+                    type: q.type || 'mcq',
+                    marks: q.marks || 1
+                });
+                await db.cbt_question_bank.put(bankQuestion);
+
+                const opts = [
+                    { label: 'A', text: q.option_a, correct: q.correct_option === 'A' },
+                    { label: 'B', text: q.option_b, correct: q.correct_option === 'B' },
+                    { label: 'C', text: q.option_c, correct: q.correct_option === 'C' },
+                    { label: 'D', text: q.option_d, correct: q.correct_option === 'D' },
+                    { label: 'E', text: q.option_e, correct: q.correct_option === 'E' }
+                ].filter(o => o.text).map(o => prepareForSync({
+                    id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    question_id: qId,
+                    option_label: o.label,
+                    option_text: o.text,
+                    is_correct: o.correct ? 1 : 0
+                }));
+                await db.cbt_options.where('question_id').equals(qId).delete();
+                await db.cbt_options.bulkPut(opts);
+
+                // 3. JAMB Solution: Join Table
+                await db.cbt_exam_questions.add(prepareForSync({
+                    id: `EQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    exam_id: examId,
+                    question_id: qId,
+                    question_number: qCount + 1
+                }));
+
                 qCount++;
             }
-            console.log(`Saved ${qCount} questions to database.`);
+            console.log(`Saved ${qCount} questions to legacy and relational databases.`);
 
             Notifications.show(`Exam saved successfully with ${qCount} questions`, 'success');
             this.renderCBT();
@@ -7525,18 +7567,71 @@ export const UI = {
             if (!studentId) throw new Error('Unable to identify student record.');
 
             try {
-                const [examRes, questionsRes] = await Promise.all([
-                    supabase.from('cbt_exams').select('*').eq('id', examId).single(),
-                    supabase.from('cbt_questions').select('*').eq('exam_id', examId)
-                ]);
+                // Try New Relational Schema First (JAMB Solution)
+                const examRes = await supabase.from('cbt_exams').select('*').eq('id', examId).single();
                 if (examRes.error) throw examRes.error;
                 exam = examRes.data;
-                rawQuestions = questionsRes.data || [];
+
+                const { data: eqData } = await supabase.from('cbt_exam_questions')
+                    .select('question_id, question_number')
+                    .eq('exam_id', examId)
+                    .order('question_number');
+
+                if (eqData && eqData.length > 0) {
+                    const qIds = eqData.map(d => d.question_id);
+                    const { data: qData } = await supabase.from('cbt_question_bank')
+                        .select('*, cbt_options(*)')
+                        .in('id', qIds);
+
+                    if (qData) {
+                        // Map options back to flat structure for the existing renderer
+                        rawQuestions = qData.map(q => {
+                            const opts = q.cbt_options || [];
+                            return {
+                                ...q,
+                                option_a: (opts.find(o => o.option_label === 'A') || {}).option_text || '',
+                                option_b: (opts.find(o => o.option_label === 'B') || {}).option_text || '',
+                                option_c: (opts.find(o => o.option_label === 'C') || {}).option_text || '',
+                                option_d: (opts.find(o => o.option_label === 'D') || {}).option_text || '',
+                                option_e: (opts.find(o => o.option_label === 'E') || {}).option_text || '',
+                                correct_option: (opts.find(o => o.is_correct) || {}).option_label || 'A'
+                            };
+                        });
+                        // Re-order by question_number
+                        const qNumMap = {};
+                        eqData.forEach(d => qNumMap[d.question_id] = d.question_number);
+                        rawQuestions.sort((a, b) => qNumMap[a.id] - qNumMap[b.id]);
+                    }
+                } else {
+                    // Fallback to Legacy Flat Schema
+                    const { data: legacyQ } = await supabase.from('cbt_questions').select('*').eq('exam_id', examId);
+                    rawQuestions = legacyQ || [];
+                }
             } catch (cloudErr) {
                 console.warn('[CBT] Cloud fetch failed, using local data:', cloudErr.message);
-                // Fallback: load from local IndexedDB (already synced)
                 exam = await db.cbt_exams.get(examId);
-                rawQuestions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+                // Check if we have exam_questions locally
+                const eqLocal = await db.cbt_exam_questions.where('exam_id').equals(examId).toArray();
+                if (eqLocal.length > 0) {
+                    const qIds = eqLocal.map(d => d.question_id);
+                    const qData = await db.cbt_question_bank.where('id').anyOf(qIds).toArray();
+                    const opts = await db.cbt_options.where('question_id').anyOf(qIds).toArray();
+                    
+                    rawQuestions = qData.map(q => {
+                        const qOpts = opts.filter(o => o.question_id === q.id);
+                        return {
+                            ...q,
+                            option_a: (qOpts.find(o => o.option_label === 'A') || {}).option_text || '',
+                            option_b: (qOpts.find(o => o.option_label === 'B') || {}).option_text || '',
+                            option_c: (qOpts.find(o => o.option_label === 'C') || {}).option_text || '',
+                            option_d: (qOpts.find(o => o.option_label === 'D') || {}).option_text || '',
+                            option_e: (qOpts.find(o => o.option_label === 'E') || {}).option_text || '',
+                            correct_option: (qOpts.find(o => o.is_correct) || {}).option_label || 'A'
+                        };
+                    });
+                } else {
+                    rawQuestions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+                }
             }
 
             if (!exam) throw new Error('Exam not found. Please sync and try again.');
@@ -7983,6 +8078,24 @@ export const UI = {
             }
 
             const q = this.currentQuestions[this.currentQuestionIndex];
+            
+            // --- NEW: Dynamic Option Preparation for JAMB Solution ---
+            if (!q.shuffledOptions) {
+                const rawOptions = [
+                    { key: 'A', text: q.option_a },
+                    { key: 'B', text: q.option_b },
+                    { key: 'C', text: q.option_c },
+                    { key: 'D', text: q.option_d },
+                    { key: 'E', text: q.option_e }
+                ].filter(opt => opt.text && opt.text.trim().length > 0);
+
+                // Option shuffling (if enabled for this exam)
+                if (this.currentExam.shuffle_options !== false) {
+                    this.shuffleArray(rawOptions);
+                }
+                q.shuffledOptions = rawOptions;
+            }
+
             const progress = ((this.currentQuestionIndex + 1) / this.currentQuestions.length) * 100;
             const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
             const studentName = this.currentUser.name || 'Student';
@@ -8007,116 +8120,137 @@ export const UI = {
                     <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999; display: flex; flex-wrap: wrap; opacity: 0.04; overflow: hidden; align-content: flex-start; gap: 100px; padding: 50px;">
                         ${Array(15).fill(`<div style="transform: rotate(-30deg); font-weight: 900; font-size: 2rem; color: #000; white-space: nowrap;">${studentId} - ${studentName} - SECURE</div>`).join('')}
                     </div>
-                    <!-- Header -->
-                    <header class="cbt-exam-header" style="flex-shrink: 0; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; background: white; z-index: 20;">
-                        <div style="display: flex; align-items: center; gap: 0.75rem;">
-                            <button class="icon-btn mobile-nav-btn" onclick="UI.toggleCBTMap()" style="background: #f5f7ff; border: 1px solid #e0e7ff; width: 36px; height: 36px; border-radius: 10px; color: #4338ca; display: flex; align-items: center; justify-content: center;">
-                                <i data-lucide="layout-grid" style="width: 18px;"></i>
-                            </button>
-                            <div>
-                                <h2 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 0.85rem; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${this.escapeHTML(this.currentExam.title)}</h2>
-                                <div style="font-size: 0.6rem; color: #64748b; font-weight: 700; letter-spacing: 0.05em;">Q${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}</div>
+                    <style>
+                        .jamb-sidebar { width: 300px; background: #f8fafc; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; }
+                        .jamb-main { flex: 1; display: flex; flex-direction: column; background: white; overflow: hidden; }
+                        .jamb-question-box { flex: 1; overflow-y: auto; padding: 2rem; }
+                        .jamb-option { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 0.75rem; cursor: pointer; transition: all 0.2s; background: white; }
+                        .jamb-option:hover { background: #f1f5f9; }
+                        .jamb-option.selected { background: #eef2ff; border-color: #4338ca; box-shadow: 0 0 0 1px #4338ca; }
+                        .jamb-option-label { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; color: #64748b; flex-shrink: 0; }
+                        .selected .jamb-option-label { border-color: #4338ca; background: #4338ca; color: white; }
+                        .jamb-nav-btn { height: 48px; padding: 0 1.5rem; border-radius: 8px; font-weight: 800; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s; border: none; cursor: pointer; }
+                        .jamb-nav-prev { background: #64748b; color: white; }
+                        .jamb-nav-next { background: #059669; color: white; }
+                        .jamb-nav-submit { background: #e11d48; color: white; }
+                        .q-map-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 1rem; }
+                        .q-map-item { aspect-ratio: 1; border: 1px solid #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; cursor: pointer; background: white; color: #64748b; }
+                        .q-map-item.active { background: #4338ca; color: white; border-color: #4338ca; }
+                        .q-map-item.answered { background: #dcfce7; color: #059669; border-color: #059669; }
+                        @media (max-width: 1024px) {
+                            .jamb-sidebar { display: none; }
+                        }
+                    </style>
+                    <div style="display: flex; height: 100vh; width: 100vw; overflow: hidden; font-family: 'Outfit', sans-serif;">
+                        <!-- Main Exam Area -->
+                        <div class="jamb-main">
+                            <!-- Top Bar -->
+                            <header style="background: #1e293b; color: white; padding: 0.75rem 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 1rem;">
+                                    <img src="assets/img/logo.png" style="height: 30px;" onerror="this.style.display='none'">
+                                    <div style="font-weight: 800; font-size: 1rem;">${this.escapeHTML(this.currentExam.title)}</div>
+                                </div>
+                                <div id="exam-timer" style="background: #e11d48; padding: 0.4rem 1.2rem; border-radius: 6px; font-weight: 900; font-size: 1.1rem; min-width: 100px; text-align: center;">${timeStr}</div>
+                            </header>
+
+                            <!-- Question Content -->
+                            <div class="jamb-question-box">
+                                <div style="max-width: 800px; margin: 0 auto;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; border-bottom: 2px solid #f1f5f9; padding-bottom: 0.5rem;">
+                                        <div style="font-weight: 900; color: #64748b; font-size: 0.9rem;">QUESTION ${this.currentQuestionIndex + 1}</div>
+                                        <div style="background: #f1f5f9; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 700; color: #475569; font-size: 0.7rem;">${q.marks || 1} POINT(S)</div>
+                                    </div>
+
+                                    <div id="cbt-question-text" style="font-size: 1.2rem; font-weight: 600; color: #1e293b; line-height: 1.6; margin-bottom: 2.5rem;">
+                                        ${this.parseCBTContent(q.question_text)}
+                                    </div>
+
+                                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                        ${(q.shuffledOptions || []).map((opt, idx) => {
+                                            if (!opt) return '';
+                                            const label = String.fromCharCode(65 + idx);
+                                            const isSelected = this.userAnswers[q.id] === opt.text;
+                                            return `
+                                                <div class="jamb-option ${isSelected ? 'selected' : ''}" onclick="UI.saveExamProgress('${q.id}', '${this.escapeHTML(opt.text).replace(/'/g, "\\'")}')">
+                                                    <div class="jamb-option-label">${label}</div>
+                                                    <div style="font-weight: 500; color: #334155; font-size: 1rem;">${this.parseCBTContent(opt.text || '')}</div>
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
                             </div>
+
+                            <!-- Navigation Bar -->
+                            <footer style="padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; gap: 0.75rem;">
+                                    <button class="jamb-nav-btn jamb-nav-prev" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                                        <i data-lucide="chevron-left"></i> PREVIOUS (P)
+                                    </button>
+                                </div>
+                                <div style="display: flex; gap: 0.75rem;">
+                                    ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
+                                        <button class="jamb-nav-btn jamb-nav-submit" onclick="UI.showSubmitReview()">
+                                            SUBMIT EXAM (S) <i data-lucide="check-circle"></i>
+                                        </button>
+                                    ` : `
+                                        <button class="jamb-nav-btn jamb-nav-next" onclick="UI.nextQuestion()">
+                                            NEXT (N) <i data-lucide="chevron-right"></i>
+                                        </button>
+                                    `}
+                                </div>
+                            </footer>
                         </div>
-                        <div id="exam-timer" class="cbt-exam-timer-box" style="font-size: 1rem; min-width: 80px; text-align: center; padding: 0.35rem 0.75rem; border-radius: 10px; background: #fff1f2; color: #e11d48; font-weight: 800; border: 1px solid #fecdd3;">${timeStr}</div>
-                    </header>
-    
-                    <!-- Progress -->
-                    <div style="width: 100%; height: 4px; background: #f1f5f9; flex-shrink: 0; z-index: 20;">
-                        <div style="width: ${progress}%; height: 100%; background: #4338ca; transition: width 0.4s ease;"></div>
-                    </div>
-    
-                    <!-- Question Area -->
-                    <main style="flex: 1; overflow-y: auto; display: flex; background: #f8fafc; padding-bottom: 120px;">
-                        <!-- Left Desktop Sidebar: Question Nav -->
-                        <aside class="desktop-only" style="width: 240px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;">
-                            <div style="padding: 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; font-size: 0.75rem; letter-spacing: 0.05em;">QUESTION NAVIGATOR</div>
-                            <div style="flex: 1; overflow-y: auto; padding: 1rem;">
+
+                        <!-- Sidebar (Question Palette) -->
+                        <aside class="jamb-sidebar">
+                            <div style="padding: 1.5rem; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; text-align: center;">
+                                <div style="width: 80px; height: 80px; border-radius: 50%; overflow: hidden; border: 3px solid white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 0 auto 0.75rem;">
+                                    <img src="${this.currentUser.passport_photo || 'assets/img/default-avatar.png'}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='assets/img/default-avatar.png'">
+                                </div>
+                                <div style="font-weight: 800; color: #1e293b; font-size: 0.8rem; text-transform: uppercase;">${studentName}</div>
+                                <div style="font-weight: 600; color: #64748b; font-size: 0.7rem;">${studentId}</div>
+                            </div>
+                            <div style="flex: 1; overflow-y: auto;">
+                                <div style="padding: 0.75rem 1rem; font-weight: 800; color: #475569; font-size: 0.7rem; letter-spacing: 0.05em; background: #f8fafc; position: sticky; top: 0; z-index: 1;">QUESTION PALETTE</div>
                                 <div class="q-map-grid">
                                     ${this.currentQuestions.map((cq, i) => {
                                         const isAnswered = this.userAnswers[cq.id];
                                         const isActive = i === this.currentQuestionIndex;
-                                        return `
-                                            <div class="q-map-item" 
-                                                 style="aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; font-weight: 800; font-size: 0.7rem; border: 2px solid ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#f1f5f9')}; background: ${isActive ? '#eef2ff' : (isAnswered ? '#ecfdf5' : 'white')}; color: ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#64748b')};"
-                                                 onclick="UI.goToQuestion(${i})">
-                                                ${i + 1}
-                                            </div>
-                                        `;
+                                        return `<div class="q-map-item ${isActive ? 'active' : ''} ${isAnswered ? 'answered' : ''}" onclick="UI.goToQuestion(${i})">${i + 1}</div>`;
                                     }).join('')}
                                 </div>
                             </div>
-                        </aside>
-
-                        <!-- Center Content -->
-                        <div style="flex: 1; overflow-y: auto; padding: 1rem; -webkit-overflow-scrolling: touch;">
-                            <div class="cbt-question-card animate-fade-in" style="background: white; border-radius: 24px; padding: clamp(1rem, 5vw, 2rem); border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); min-height: 400px; height: auto !important; margin-bottom: 2rem; max-width: 800px; margin: 0 auto;">
-                                <div style="font-size: 0.7rem; font-weight: 800; color: #4338ca; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1rem; display: flex; justify-content: space-between;">
-                                    <span>Question ${this.currentQuestionIndex + 1} of ${this.currentQuestions.length}</span>
-                                    <span style="color: #64748b;">${q.marks || 1} Mark(s)</span>
-                                </div>
-                                <div id="cbt-question-text" style="font-size: 1.05rem; font-weight: 700; color: #1e293b; line-height: 1.6; margin-bottom: 2rem;">
-                                    ${this.parseCBTContent(q.question_text)}
-                                </div>
-
-                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                    ${(q.shuffledOptions || []).map((opt, idx) => {
-                                        if (!opt) return '';
-                                        const isSelected = this.userAnswers[q.id] === opt.text;
-                                        return `
-                                            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border: 2px solid ${isSelected ? '#4338ca' : '#f1f5f9'}; border-radius: 10px; cursor: pointer; transition: all 0.2s; background: ${isSelected ? '#f5f7ff' : 'white'};" class="cbt-option-label">
-                                                <input type="radio" name="exam-option" value="${this.escapeHTML(opt.text || '')}" ${isSelected ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #4338ca;" onchange="UI.saveExamProgress('${q.id}', this.value)">
-                                                <div style="display: flex; align-items: center; gap: 0.5rem; width: 100%;">
-                                                    <span style="font-weight: 800; color: ${isSelected ? '#4338ca' : '#94a3b8'}; background: ${isSelected ? '#eef2ff' : '#f8fafc'}; width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; flex-shrink: 0;">
-                                                        ${String.fromCharCode(64 + (idx + 1))}
-                                                    </span>
-                                                    <span style="font-weight: 600; color: #334155; font-size: 0.8rem;">${this.parseCBTContent(opt.text || '')}</span>
-                                                </div>
-                                            </label>
-                                        `;
-                                    }).join('')}
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Right Desktop Sidebar: Student Info -->
-                        <aside class="desktop-only" style="width: 220px; background: white; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; align-items: center; padding: 1.5rem; flex-shrink: 0;">
-                            <div style="width: 100px; height: 100px; border-radius: 20px; overflow: hidden; background: #f1f5f9; border: 3px solid #eef2ff; margin-bottom: 1rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-                                <img src="${this.currentUser.passport_photo || 'assets/img/default-avatar.png'}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='assets/img/default-avatar.png'">
-                            </div>
-                            <div style="text-align: center;">
-                                <div style="font-weight: 900; color: #1e293b; font-size: 0.85rem; line-height: 1.2; margin-bottom: 0.25rem;">${studentName}</div>
-                                <div style="font-weight: 700; color: #64748b; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em;">${studentId}</div>
-                            </div>
-                            
-                            <div style="margin-top: auto; width: 100%; background: #f8fafc; border-radius: 12px; padding: 0.75rem; border: 1px solid #f1f5f9;">
-                                <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem; text-transform: uppercase;">EXAM SECURITY</div>
-                                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-                                    <div style="display: flex; align-items: center; gap: 0.4rem; color: #059669; font-size: 0.65rem; font-weight: 700;">
-                                        <i data-lucide="shield-check" style="width: 12px;"></i> Fullscreen Active
-                                    </div>
-                                    <div style="display: flex; align-items: center; gap: 0.4rem; color: #059669; font-size: 0.65rem; font-weight: 700;">
-                                        <i data-lucide="monitor" style="width: 12px;"></i> Browser Locked
-                                    </div>
+                            <div style="padding: 1rem; background: white; border-top: 1px solid #e2e8f0;">
+                                <div style="display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.65rem; font-weight: 700; color: #64748b;">
+                                    <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 12px; height: 12px; border-radius: 2px; background: #4338ca;"></div> Current</div>
+                                    <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 12px; height: 12px; border-radius: 2px; background: #dcfce7; border: 1px solid #059669;"></div> Answered</div>
+                                    <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 12px; height: 12px; border-radius: 2px; background: white; border: 1px solid #e2e8f0;"></div> Unanswered</div>
                                 </div>
                             </div>
                         </aside>
-                    </main>
+                    </div>
 
-                    <!-- Footer -->
-                    <footer class="cbt-exam-footer" style="position: fixed; bottom: 0; left: 0; width: 100%; background: white; padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; z-index: 10001; box-shadow: 0 -4px 15px rgba(0,0,0,0.05);">
-                        <button class="btn btn-secondary" style="border-radius: 10px; height: 44px; padding: 0 1rem; font-weight: 700; background: #f1f5f9; color: #475569; border: none; display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem;" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled' : ''}>
-                            <i data-lucide="arrow-left" style="width:16px;"></i> Prev
-                        </button>
-                        
-                        <div style="display: flex; gap: 0.5rem;">
-                            ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
-                                <button class="btn btn-success" style="border-radius: 10px; height: 44px; padding: 0 1.5rem; background: #10b981; color: white; border: none; font-weight: 800; font-size: 0.8rem; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);" onclick="UI.showSubmitReview()">SUBMIT</button>
-                            ` : `
-                                <button class="btn btn-primary" style="border-radius: 10px; height: 44px; padding: 0 1.5rem; background: #4338ca; color: white; border: none; font-weight: 800; font-size: 0.8rem; display: flex; align-items: center; gap: 0.4rem; box-shadow: 0 4px 10px rgba(67, 56, 202, 0.2);" onclick="UI.nextQuestion()">NEXT <i data-lucide="arrow-right" style="width:16px;"></i></button>
-                            `}
-                        </div>
-                    </footer>
+                    <!-- Keyboard Support Init -->
+                    <script>
+                        if (window._cbtKeyHandler) document.removeEventListener('keydown', window._cbtKeyHandler);
+                        window._cbtKeyHandler = function(e) {
+                            if (!document.body.classList.contains('exam-mode')) return;
+                            const key = e.key.toLowerCase();
+                            if (key === 'a' || key === 'b' || key === 'c' || key === 'd' || key === 'e') {
+                                const idx = key.charCodeAt(0) - 97;
+                                const options = document.querySelectorAll('.jamb-option');
+                                if (options[idx]) options[idx].click();
+                            } else if (key === 'p') {
+                                UI.prevQuestion();
+                            } else if (key === 'n') {
+                                UI.nextQuestion();
+                            } else if (key === 's') {
+                                UI.showSubmitReview();
+                            }
+                        };
+                        document.addEventListener('keydown', window._cbtKeyHandler);
+                    </script>
 
                     <!-- Sidebar Drawer (Mobile Only) -->
                     <div id="cbt-map-sidebar" style="position: fixed; top: 0; left: -320px; width: 300px; height: 100%; background: white; z-index: 10005; box-shadow: 20px 0 50px rgba(0,0,0,0.1); transition: left 0.4s; display: flex; flex-direction: column;">
@@ -11657,6 +11791,7 @@ export const UI = {
             // We split by Answer tags first, then extract options from each block.
             const ansRegex = /[\(\[]?(?:Ans|Answer)[\:\s]+([A-E])[\)\]]?/gi;
             const newQuestions = [];
+            const relationalData = []; // JAMB Solution Accumulator
             let failedBlocks = 0;
 
             let matches = [];
@@ -11702,8 +11837,32 @@ export const UI = {
                         eText = block.substring(optE.index + optE[0].length, matchObj.index).trim();
                     }
 
+                    // Prepare relational data (JAMB Solution)
+                    const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
+                    const bankQuestion = prepareForSync({
+                        id: qId,
+                        subject_id: subjectId,
+                        question_text: qText,
+                        type: 'mcq',
+                        marks: 1
+                    });
+                    const bankOptions = [
+                        { label: 'A', text: aText, correct: matchObj.ans.toUpperCase() === 'A' },
+                        { label: 'B', text: bText, correct: matchObj.ans.toUpperCase() === 'B' },
+                        { label: 'C', text: cText, correct: matchObj.ans.toUpperCase() === 'C' },
+                        { label: 'D', text: dText, correct: matchObj.ans.toUpperCase() === 'D' },
+                        { label: 'E', text: eText, correct: matchObj.ans.toUpperCase() === 'E' }
+                    ].filter(o => o.text).map(o => prepareForSync({
+                        id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        question_id: qId,
+                        option_label: o.label,
+                        option_text: o.text,
+                        is_correct: o.correct ? 1 : 0
+                    }));
+
+                    // Prepare legacy flat data
                     newQuestions.push(prepareForSync({
-                        id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        id: qId,
                         exam_id: bankExamId,
                         type: 'mcq',
                         question_text: qText,
@@ -11715,12 +11874,16 @@ export const UI = {
                         correct_option: matchObj.ans.toUpperCase(),
                         marks: 1
                     }));
+
+                    // Store relational data for batch processing
+                    relationalData.push({ question: bankQuestion, options: bankOptions });
                 } else {
                     // Try Fill-in-the-blank fallback
                     const qText = block.substring(0, matchObj.index).replace(/^\d+[\.\)]\s*/, '').trim();
                     if (qText) {
+                        const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
                         newQuestions.push(prepareForSync({
-                            id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                            id: qId,
                             exam_id: bankExamId,
                             type: 'fill',
                             question_text: qText,
@@ -11728,6 +11891,10 @@ export const UI = {
                             correct_option: matchObj.ans,
                             marks: 1
                         }));
+                        relationalData.push({
+                            question: prepareForSync({ id: qId, subject_id: subjectId, question_text: qText, type: 'fill', marks: 1 }),
+                            options: [prepareForSync({ id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`, question_id: qId, option_label: 'A', option_text: matchObj.ans, is_correct: 1 })]
+                        });
                     } else {
                         failedBlocks++;
                     }
@@ -11740,6 +11907,9 @@ export const UI = {
             try {
                 // Local Save
                 await db.cbt_questions.bulkPut(newQuestions);
+                await db.cbt_question_bank.bulkPut(relationalData.map(r => r.question));
+                const allOpts = [].concat(...relationalData.map(r => r.options));
+                await db.cbt_options.bulkPut(allOpts);
 
                 // Cloud Save (Batches of 50 to prevent timeouts)
                 if (navigator.onLine) {
@@ -11749,13 +11919,18 @@ export const UI = {
                         const totalBatches = Math.ceil(newQuestions.length / BATCH_SIZE);
                         
                         for (let i = 0; i < newQuestions.length; i += BATCH_SIZE) {
-                            const currentBatchNum = Math.floor(i / BATCH_SIZE) + 1;
-                            Notifications.show(`Uploading to cloud: Batch ${currentBatchNum} of ${totalBatches}...`, 'info');
-                            
                             const batch = newQuestions.slice(i, i + BATCH_SIZE);
                             const cloudBatch = batch.map(({ is_synced, type, ...rest }) => rest);
                             const { error } = await client.from('cbt_questions').upsert(cloudBatch);
                             if (error) throw error;
+
+                            // Also save to relational tables
+                            const relBatch = relationalData.slice(i, i + BATCH_SIZE);
+                            const cloudQ = relBatch.map(({ question }) => { const { is_synced, ...rest } = question; return rest; });
+                            const cloudO = [].concat(...relBatch.map(({ options }) => options.map(({ is_synced, ...rest }) => rest)));
+                            
+                            await client.from('cbt_question_bank').upsert(cloudQ);
+                            await client.from('cbt_options').upsert(cloudO);
                         }
                     }
                 }

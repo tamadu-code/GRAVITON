@@ -133,6 +133,19 @@ db.version(28).stores({
     exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
 });
 
+db.version(30).stores({
+    // JAMB-Style CBT Solution
+    cbt_question_bank: 'id, subject_id, question_text, topic_area, difficulty_level, updated_at, is_synced',
+    cbt_options: 'id, question_id, option_label, option_text, is_correct, updated_at, is_synced',
+    cbt_exam_questions: 'id, exam_id, question_id, question_number, [exam_id+question_id], updated_at, is_synced',
+    
+    // Maintain legacy tables for migration
+    cbt_exams: 'id, title, subject_id, class_name, teacher_id, mode, term, session, score_field, date, start_time, end_time, duration, status, updated_at, is_synced',
+    cbt_questions: 'id, exam_id, question_text, option_a, option_b, option_c, option_d, option_e, correct_option, marks, updated_at, is_synced',
+    cbt_results: 'id, exam_id, student_id, [student_id+exam_id], score, total_questions, total_marks, answers, warnings, violations, started_at, status, updated_at, is_synced',
+    exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
+});
+
 // Global Upgrade Handler to prevent "Blocked" errors
 db.on('versionchange', (event) => {
     console.warn('Database upgrade pending. Closing connections...');
