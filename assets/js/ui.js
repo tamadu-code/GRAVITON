@@ -7475,9 +7475,9 @@ export const UI = {
 
     async finalizeStartCBTExam(examId, isResume = false) {
         try {
-            const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+            const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
             let session;
-            if (!navigator.onLine || !client) {
+            if (!navigator.onLine || !supabase) {
                 return Notifications.show('Cloud-Direct mode requires an active internet connection to start.', 'error');
             }
 
@@ -7485,8 +7485,8 @@ export const UI = {
             
             // 1. Fetch EVERYTHING directly from the cloud to ensure 100% data integrity
             const [examRes, questionsRes, studentId] = await Promise.all([
-                client.from('cbt_exams').select('*').eq('id', examId).single(),
-                client.from('cbt_questions').select('*').eq('exam_id', examId),
+                supabase.from('cbt_exams').select('*').eq('id', examId).single(),
+                supabase.from('cbt_questions').select('*').eq('exam_id', examId),
                 this.resolveCBTStudentId()
             ]);
 
@@ -7498,7 +7498,7 @@ export const UI = {
             let rawQuestions = questionsRes.data || [];
 
             // 2. Fetch existing result directly from cloud
-            const { data: cloudResults } = await client.from('cbt_results')
+            const { data: cloudResults } = await supabase.from('cbt_results')
                 .select('*')
                 .eq('exam_id', examId)
                 .in('student_id', [studentId, this.currentUser.id].filter(Boolean));
@@ -7662,7 +7662,7 @@ export const UI = {
                 // Real-time Cloud Push
                 if (navigator.onLine) {
                     const { is_synced, ...cloudSession } = newSession;
-                    client.from('cbt_results').upsert(cloudSession, { onConflict: 'student_id,exam_id' })
+                    supabase.from('cbt_results').upsert(cloudSession, { onConflict: 'student_id,exam_id' })
                         .then(() => console.log('[CBT CLOUD] New session initialized.'))
                         .catch(e => console.warn('[CBT CLOUD] Init push failed:', e));
                 }
@@ -7782,9 +7782,9 @@ export const UI = {
                 
                 // Real-time Cloud Push
                 if (navigator.onLine) {
-                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
-                    if (client) {
-                        client.from('cbt_results')
+                    const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                    if (supabase) {
+                        supabase.from('cbt_results')
                             .update({ 
                                 violations: violations, 
                                 warnings: (session.warnings || 0) + 1,
@@ -8041,12 +8041,12 @@ export const UI = {
 
             // Direct Cloud Push for Real-Time Monitoring
             if (navigator.onLine) {
-                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
-                if (client) {
+                const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (supabase) {
                     const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
                     if (session) {
                         const { is_synced, ...cloudPayload } = session;
-                        client.from('cbt_results')
+                        supabase.from('cbt_results')
                             .upsert(cloudPayload, { onConflict: 'student_id,exam_id' })
                             .catch(e => console.warn('[CBT CLOUD] Save failed:', e));
                     }
@@ -8137,10 +8137,10 @@ export const UI = {
 
             // Real-time Cloud Finalization
             if (navigator.onLine) {
-                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
-                if (client) {
+                const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (supabase) {
                     const { is_synced, ...cloudFinalResult } = finalResult;
-                    client.from('cbt_results').upsert(cloudFinalResult, { onConflict: 'student_id,exam_id' })
+                    supabase.from('cbt_results').upsert(cloudFinalResult, { onConflict: 'student_id,exam_id' })
                         .then(() => console.log('[CBT CLOUD] Exam submitted.'))
                         .catch(e => console.warn('[CBT CLOUD] Submission push failed:', e));
                 }
