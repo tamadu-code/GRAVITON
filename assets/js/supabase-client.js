@@ -326,6 +326,24 @@ export async function syncFromCloud(forceAll = false) {
                                 }));
                             }
 
+                            // --- 1B: Answer Protection for cbt_results ---
+                            if (table === 'cbt_results') {
+                                const finalResults = [];
+                                for (const cloudItem of validData) {
+                                    const localItem = await db.cbt_results.get(cloudItem.id);
+                                    if (localItem && localItem.answers && Object.keys(localItem.answers).length > 0) {
+                                        const cloudAnswers = cloudItem.answers || {};
+                                        // Only overwrite if cloud has MORE answers or is newer and not empty
+                                        if (Object.keys(cloudAnswers).length < Object.keys(localItem.answers).length) {
+                                            console.log(`[Sync Shield] Preserving local answers for ${cloudItem.id}`);
+                                            cloudItem.answers = localItem.answers;
+                                        }
+                                    }
+                                    finalResults.push(cloudItem);
+                                }
+                                processedData = finalResults;
+                            }
+
                             await db[table].bulkPut(processedData);
                         }
                         

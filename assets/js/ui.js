@@ -107,6 +107,12 @@ export const UI = {
     },
 
     async renderView(viewName) {
+        // [SHIELD] Prevent automatic view switching while in active exam mode
+        if (document.body.classList.contains('exam-mode')) {
+            console.warn(`[CBT SHIELD] Blocked navigation attempt to '${viewName}' while exam is in progress.`);
+            return;
+        }
+
         try {
             if (!this.contentArea) {
                 console.error('Content area not found');
@@ -7504,7 +7510,24 @@ export const UI = {
                 .in('student_id', [studentId, this.currentUser.id].filter(Boolean));
             
             // Latest Wins among cloud results
-            session = cloudResults?.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
+            const cloudSession = cloudResults?.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
+            
+            // [SYNC SHIELD] Only take cloud answers if local answers are empty or if cloud is significantly more advanced
+            const localSession = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            
+            if (cloudSession && localSession) {
+                const cloudAnswerCount = Object.keys(cloudSession.answers || {}).length;
+                const localAnswerCount = Object.keys(localSession.answers || {}).length;
+                
+                // If cloud has fewer answers, keep local answers but update other fields
+                if (cloudAnswerCount < localAnswerCount) {
+                    session = { ...cloudSession, answers: localSession.answers };
+                } else {
+                    session = cloudSession;
+                }
+            } else {
+                session = cloudSession || localSession;
+            }
 
             // Mirror to local DB to keep it in sync
             await db.cbt_exams.put(exam);
@@ -7675,7 +7698,9 @@ export const UI = {
             this.currentExam = exam;
             this.currentQuestions = questions;
             this.currentQuestionIndex = 0;
-            this.userAnswers = session ? (session.answers || {}) : {};
+            
+            // Ensure answers is always an object, never null/undefined
+            this.userAnswers = (session && session.answers && typeof session.answers === 'object') ? session.answers : {};
 
             if (isResume && this.userAnswers) {
                 const answeredCount = Object.keys(this.userAnswers).length;
@@ -8033,9 +8058,10 @@ export const UI = {
         const examId = this.currentExam.id;
         
         try {
+            const timestamp = new Date().toISOString();
             await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
                 answers: this.userAnswers,
-                updated_at: new Date().toISOString(),
+                updated_at: timestamp,
                 is_synced: 0
             });
 
@@ -11401,11 +11427,12 @@ export const UI = {
             const bankExamId = `BANK-${subjectId}__${className}__${term.replace(/\s+/g, '')}__${session.replace(/\//g, '-')}`;
 
             // MCQ Regex: Captures Question, A, B, C, D, E (optional), Answer, and Marks (optional)
-            // Strict Mode: Uses lookaheads to ensure capture groups do not cross into other markers
-            const mcqRegex = /((?:(?![\(\[]?A[\)\]\.]).)*?)\s*(?:[\(\[]?A[\)\]\.]\s*)((?:(?![\(\[]?B[\)\]\.]).)*?)\s*(?:[\(\[]?B[\)\]\.]\s*)((?:(?![\(\[]?C[\)\]\.]).)*?)\s*(?:[\(\[]?C[\)\]\.]\s*)((?:(?![\(\[]?D[\)\]\.]).)*?)\s*(?:[\(\[]?D[\)\]\.]\s*)((?:(?![\(\[]?E[\)\]\.]|\[Ans:).)*?)\s*(?:(?:[\(\[]?E[\)\]\.]\s*)((?:(?!\[Ans:).)*?))?\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // Robust MCQ Regex: Handles A-D or A-E with flexible formatting
+            // Captures: Question (A) OptA (B) OptB (C) OptC (D) OptD [Ans: X]
+            const mcqRegex = /((?:(?![\(\[]?[A-E][\)\]\.]).)*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?)?)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
-            // Simpler MCQ Regex for just A and B
-            const simpleMcqRegex = /([\s\S]*?)\s*(?:[\(\[]?A[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?B[\)\]\.]\s*)([\s\S]*?)\s*\[Ans:\s*([A-B])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // Simpler MCQ Regex for just A and B (True/False or Yes/No)
+            const simpleMcqRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*\[Ans:\s*([A-B])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
 
             const fillRegex = /([\s\S]*?)\s*\[Ans:\s*([\s\S]*?)\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
 
@@ -11422,11 +11449,11 @@ export const UI = {
                     exam_id: bankExamId,
                     type: 'mcq',
                     question_text: qText,
-                    option_a: match[2].trim(),
-                    option_b: match[3].trim(),
-                    option_c: match[4].trim(),
-                    option_d: match[5].trim(),
-                    option_e: match[6]?.trim() || '',
+                    option_a: (match[2] || '').trim(),
+                    option_b: (match[3] || '').trim(),
+                    option_c: (match[4] || '').trim(),
+                    option_d: (match[5] || '').trim(),
+                    option_e: (match[6] || '').trim(),
                     correct_option: match[7].toUpperCase(),
                     marks: match[8] ? parseFloat(match[8]) : 1
                 }));
