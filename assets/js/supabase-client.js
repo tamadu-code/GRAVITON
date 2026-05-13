@@ -231,6 +231,12 @@ export async function syncFromCloud(forceAll = false) {
 
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results'];
     
+    // ── Block sync during active exam to prevent flickering and state resets ──
+    if (document.body.classList.contains('exam-mode')) {
+        console.log('[Sync] Background pull blocked during active exam session.');
+        return;
+    }
+
     // ── Clear stale lock (may persist across page reloads) ──
     if (window._isSyncingFromCloud && !forceAll) return;
     window._isSyncingFromCloud = true;
