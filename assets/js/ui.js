@@ -8373,10 +8373,16 @@ export const UI = {
                             const sessionLabel = parts[3] ? parts[3].replace('-', '/') : '';
                             const count = bankGroups[key];
                             return `
-                                <div class="bank-item" style="padding: 1rem; border: 1px solid #e0e7ff; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; background: #f5f3ff;" onclick="this.closest('.form-group').querySelectorAll('.bank-item').forEach(b => {b.style.borderColor = '#e2e8f0'; b.style.background = b.dataset.bg || '#fff'}); this.style.borderColor = '#4338ca'; this.style.background = '#e0e7ff'; this.dataset.selected = '${key}';" data-bg="#f5f3ff">
-                                    <div>
-                                        <div style="font-weight: 800; color: #1e293b !important; text-decoration: none !important;"><i data-lucide="database" style="width: 14px; display: inline; vertical-align: -2px; margin-right: 4px; color: #4338ca;"></i>${subLabel}</div>
-                                        <div style="font-size: 0.75rem; color: #64748b;">${clsLabel} ${termLabel ? `• ${termLabel}` : ''} ${sessionLabel ? `• ${sessionLabel}` : ''} • ${count} questions</div>
+                                <div class="bank-item" style="padding: 1rem; border: 1px solid #e0e7ff; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; background: #f5f3ff;" onclick="const isSelected = this.classList.toggle('selected'); this.style.borderColor = isSelected ? '#4338ca' : '#e2e8f0'; this.style.background = isSelected ? '#eef2ff' : '#f5f3ff'; this.querySelector('.checkbox-box i').style.display = isSelected ? 'block' : 'none';">
+                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                        <div class="checkbox-box" style="width: 18px; height: 18px; border: 2px solid #4338ca; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: white;">
+                                            <i data-lucide="check" style="width: 14px; color: #4338ca; display: none;"></i>
+                                        </div>
+                                        <input type="hidden" class="source-id" value="${key}">
+                                        <div>
+                                            <div style="font-weight: 800; color: #1e293b !important; text-decoration: none !important;"><i data-lucide="database" style="width: 14px; display: inline; vertical-align: -2px; margin-right: 4px; color: #4338ca;"></i>${subLabel}</div>
+                                            <div style="font-size: 0.75rem; color: #64748b;">${clsLabel} ${termLabel ? `• ${termLabel}` : ''} ${sessionLabel ? `• ${sessionLabel}` : ''} • ${count} questions</div>
+                                        </div>
                                     </div>
                                     <div style="background: #e0e7ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">Bank</div>
                                 </div>
@@ -8387,10 +8393,16 @@ export const UI = {
                     ${exams.length > 0 ? `
                         <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem; margin-top: 0.75rem;">FROM EXISTING EXAMS</div>
                         ${exams.map(e => `
-                            <div class="bank-item" style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;" onclick="this.closest('.form-group').querySelectorAll('.bank-item').forEach(b => {b.style.borderColor = '#e2e8f0'; b.style.background = b.dataset.bg || '#fff'}); this.style.borderColor = '#4338ca'; this.style.background = '#eef2ff'; this.dataset.selected = '${e.id}';" data-bg="#fff">
-                                <div>
-                                    <div style="font-weight: 700;">${e.title}</div>
-                                    <div style="font-size: 0.75rem; color: #64748b;">${subMap[e.subject_id] || 'Subject'} | ${e.class_name}</div>
+                            <div class="bank-item" style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;" onclick="const isSelected = this.classList.toggle('selected'); this.style.borderColor = isSelected ? '#4338ca' : '#e2e8f0'; this.style.background = isSelected ? '#eef2ff' : '#fff'; this.querySelector('.checkbox-box i').style.display = isSelected ? 'block' : 'none';">
+                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                    <div class="checkbox-box" style="width: 18px; height: 18px; border: 2px solid #4338ca; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: white;">
+                                        <i data-lucide="check" style="width: 14px; color: #4338ca; display: none;"></i>
+                                    </div>
+                                    <input type="hidden" class="source-id" value="${e.id}">
+                                    <div>
+                                        <div style="font-weight: 700;">${e.title}</div>
+                                        <div style="font-size: 0.75rem; color: #64748b;">${subMap[e.subject_id] || 'Subject'} | ${e.class_name}</div>
+                                    </div>
                                 </div>
                                 <div style="background: #f1f5f9; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">Exam</div>
                             </div>
@@ -8403,35 +8415,35 @@ export const UI = {
         `;
 
         this.showModal('Import from Question Bank', modalHtml, async () => {
-            const selectedItem = document.querySelector('.bank-item[data-selected]');
-            if (!selectedItem) return Notifications.show('Please select a source first', 'warning');
+            const selectedItems = document.querySelectorAll('.bank-item.selected');
+            if (selectedItems.length === 0) return Notifications.show('Please select at least one source.', 'warning');
             
-            const sourceExamId = selectedItem.dataset.selected;
-            const sourceQuestions = await db.cbt_questions.where('exam_id').equals(sourceExamId).toArray();
-            
-            if (sourceQuestions.length === 0) return Notifications.show('That source has no questions.', 'error');
-
-            // Copy and generate new IDs, normalising all option fields to prevent missing-option bugs
-            sourceQuestions.forEach(q => {
-                const newQ = {
-                    ...q,
-                    id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
-                    // Explicitly normalise every option field — undefined/null becomes empty string
-                    option_a: (q.option_a || '').toString().trim(),
-                    option_b: (q.option_b || '').toString().trim(),
-                    option_c: (q.option_c || '').toString().trim(),
-                    option_d: (q.option_d || '').toString().trim(),
-                    option_e: (q.option_e || '').toString().trim(),
-                    correct_option: (q.correct_option || 'A').toUpperCase(),
-                    marks: parseFloat(q.marks) || 1
-                };
-                delete newQ.exam_id; // Will be set correctly on save
-                this.cbtQuestions.push(newQ);
-            });
+            let totalCount = 0;
+            for (const item of selectedItems) {
+                const sourceId = item.querySelector('.source-id').value;
+                const sourceQuestions = await db.cbt_questions.where('exam_id').equals(sourceId).toArray();
+                
+                sourceQuestions.forEach(q => {
+                    const newQ = {
+                        ...q,
+                        id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
+                        option_a: (q.option_a || '').toString().trim(),
+                        option_b: (q.option_b || '').toString().trim(),
+                        option_c: (q.option_c || '').toString().trim(),
+                        option_d: (q.option_d || '').toString().trim(),
+                        option_e: (q.option_e || '').toString().trim(),
+                        correct_option: (q.correct_option || 'A').toUpperCase(),
+                        marks: parseFloat(q.marks) || 1
+                    };
+                    delete newQ.exam_id;
+                    this.cbtQuestions.push(newQ);
+                    totalCount++;
+                });
+            }
 
             this.refreshQuestionPreview();
-            Notifications.show(`Successfully imported ${sourceQuestions.length} questions`, 'success');
-        }, 'Import Questions');
+            Notifications.show(`Imported ${totalCount} questions from ${selectedItems.length} sources.`, 'success');
+        }, 'Import Selected', 'download');
     },
 
 
