@@ -4588,9 +4588,17 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
     -webkit-overflow-scrolling: touch;
 }
 
+.q-map-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+}
+
 .q-map-item {
-    min-width: 35px;
-    height: 35px;
+    aspect-ratio: 1/1 !important;
+    min-width: 0 !important;
+    height: auto !important;
     display: flex;
     align-items: center;
     justify-content: center;

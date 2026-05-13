@@ -8023,7 +8023,7 @@ export const UI = {
                         <aside class="desktop-only" style="width: 240px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;">
                             <div style="padding: 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; font-size: 0.75rem; letter-spacing: 0.05em;">QUESTION NAVIGATOR</div>
                             <div style="flex: 1; overflow-y: auto; padding: 1rem;">
-                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem;">
+                                <div class="q-map-grid">
                                     ${this.currentQuestions.map((cq, i) => {
                                         const isAnswered = this.userAnswers[cq.id];
                                         const isActive = i === this.currentQuestionIndex;
@@ -8110,13 +8110,13 @@ export const UI = {
                     </footer>
 
                     <!-- Sidebar Drawer (Mobile Only) -->
-                    <div id="cbt-map-sidebar" style="position: fixed; top: 0; left: -320px; width: 280px; height: 100%; background: white; z-index: 10005; box-shadow: 20px 0 50px rgba(0,0,0,0.1); transition: left 0.4s; display: flex; flex-direction: column;">
+                    <div id="cbt-map-sidebar" style="position: fixed; top: 0; left: -320px; width: 300px; height: 100%; background: white; z-index: 10005; box-shadow: 20px 0 50px rgba(0,0,0,0.1); transition: left 0.4s; display: flex; flex-direction: column;">
                         <div style="padding: 1rem; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #f8fafc;">
                             <h3 style="margin:0; font-weight: 800; color: #1e293b; font-size: 0.9rem;">Exam Map</h3>
                             <button onclick="UI.toggleCBTMap(false)" style="background: none; border: none; color: #94a3b8;"><i data-lucide="x" style="width: 20px;"></i></button>
                         </div>
                         <div style="flex: 1; overflow-y: auto; padding: 1rem;">
-                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem;">
+                            <div class="q-map-grid">
                                 ${this.currentQuestions.map((cq, i) => {
                                     const isAnswered = this.userAnswers[cq.id];
                                     const isActive = i === this.currentQuestionIndex;
