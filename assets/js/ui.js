@@ -12,6 +12,7 @@ export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
     get viewTitle() { return document.getElementById('view-title'); },
     lastOpenedBankCategory: null,
+    lastBankScrollPos: 0,
     
     escapeHTML(str) {
         if (!str) return '';
@@ -202,6 +203,13 @@ export const UI = {
         }
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
+        }
+        // Restore scroll position
+        if (this.lastOpenedBankCategory) {
+            const scrollContainer = document.getElementById(`bank-scroll-${this.lastOpenedBankCategory}`);
+            if (scrollContainer) {
+                scrollContainer.scrollTop = this.lastBankScrollPos;
+            }
         }
     },
 
@@ -11267,7 +11275,7 @@ export const UI = {
                                         </div>
                                     </div>
                                     <div class="bank-details-area" style="max-height: ${this.lastOpenedBankCategory === tag ? '2000px' : '0'}; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
-                                        <div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; max-height: 550px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #cbd5e1 #f8fafc;">
+                                        <div id="bank-scroll-${tag}" onscroll="UI.lastBankScrollPos = this.scrollTop" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; max-height: 550px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #cbd5e1 #f8fafc;">
                                             ${questions.map((q, i) => `
                                                 <div style="background: #f8fafc; border-radius: 12px; padding: 1.25rem; border: 1px solid #f1f5f9; position: relative;">
                                                     <button onclick="if(confirm('Delete this question?')) UI.deleteBankQuestion('${q.id}')" style="position: absolute; top: 1rem; right: 1rem; width: 28px; height: 28px; border-radius: 6px; border: none; background: #fff; color: #ef4444; border: 1px solid #fee2e2; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="Delete Question">
@@ -11295,6 +11303,14 @@ export const UI = {
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        
+        // Restore scroll position
+        if (this.lastOpenedBankCategory) {
+            const scrollContainer = document.getElementById(`bank-scroll-${this.lastOpenedBankCategory}`);
+            if (scrollContainer) {
+                scrollContainer.scrollTop = this.lastBankScrollPos || 0;
+            }
+        }
     },
 
     async bulkImportToBank() {
