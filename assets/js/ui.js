@@ -11356,79 +11356,101 @@ export const UI = {
             const term = document.getElementById('bank-term').value;
             const session = document.getElementById('bank-session').value;
 
-            if (!subjectId || !className) return Notifications.show('Please select both a Subject and a Class.', 'error');
+            if (!subjectId || !className) return Notifications.show('Please select Subject and Class.', 'error');
             if (!text) return Notifications.show('Please paste your questions.', 'error');
 
             const bankExamId = `BANK-${subjectId}__${className}__${term.replace(/\s+/g, '')}__${session.replace(/\//g, '-')}`;
 
-            // Check for existing questions
-            const existingCount = await db.cbt_questions.where('exam_id').equals(bankExamId).count();
-            if (existingCount > 0) {
-                if (!confirm(`This category already has ${existingCount} questions. Append the new questions to it?`)) return;
-            }
-
-            // 1. First attempt to parse MCQs (A, B, C...)
-            const mcqRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // MCQ Regex: Captures Question, A, B, C, D, E (optional), Answer, and Marks (optional)
+            const mcqRegex = /([\s\S]*?)\s*(?:[\(\[]?A[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?B[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?E[\)\]\.]\s*)?([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
-            // 2. Second attempt to parse Fill-in-the-Blank (No options, just [Ans: ...])
+            // Simpler MCQ Regex for just A and B
+            const simpleMcqRegex = /([\s\S]*?)\s*(?:[\(\[]?A[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?B[\)\]\.]\s*)([\s\S]*?)\s*\[Ans:\s*([A-B])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+
             const fillRegex = /([\s\S]*?)\s*\[Ans:\s*([\s\S]*?)\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
 
             let match;
-            let count = 0;
             const newQuestions = [];
-            const seenQuestions = new Set();
+            const seenBlocks = new Set();
 
-            // Try MCQ first
+            // 1. Process MCQs (A-D or A-E)
             while ((match = mcqRegex.exec(text)) !== null) {
+                seenBlocks.add(match[0]);
                 const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
-                seenQuestions.add(match[0]);
                 newQuestions.push(prepareForSync({
                     id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                     exam_id: bankExamId,
                     type: 'mcq',
                     question_text: qText,
-                    option_a: (match[2] || '').trim(),
-                    option_b: (match[3] || '').trim(),
-                    option_c: (match[4] || '').trim(),
-                    option_d: (match[5] || '').trim(),
-                    option_e: (match[6] || '').trim(),
+                    option_a: match[2].trim(),
+                    option_b: match[3].trim(),
+                    option_c: match[4].trim(),
+                    option_d: match[5].trim(),
+                    option_e: match[6]?.trim() || '',
                     correct_option: match[7].toUpperCase(),
                     marks: match[8] ? parseFloat(match[8]) : 1
                 }));
-                count++;
             }
 
-            // Try Fill-in-the-blank
-            while ((match = fillRegex.exec(text)) !== null) {
-                if (seenQuestions.has(match[0])) continue;
-                
+            // 2. Process Simple MCQs (A-B)
+            while ((match = simpleMcqRegex.exec(text)) !== null) {
+                if (seenBlocks.has(match[0])) continue;
+                seenBlocks.add(match[0]);
                 const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
-                const ans = match[2].trim();
-                
-                if (qText.includes('(A)') || qText.includes('(B)') || qText.includes('A.') || qText.includes('B.')) {
-                    continue; 
-                }
+                newQuestions.push(prepareForSync({
+                    id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    exam_id: bankExamId,
+                    type: 'mcq',
+                    question_text: qText,
+                    option_a: match[2].trim(),
+                    option_b: match[3].trim(),
+                    option_c: '', option_d: '', option_e: '',
+                    correct_option: match[4].toUpperCase(),
+                    marks: match[5] ? parseFloat(match[5]) : 1
+                }));
+            }
 
+            // 3. Process Fill-in-the-blank
+            while ((match = fillRegex.exec(text)) !== null) {
+                if (seenBlocks.has(match[0])) continue;
+                const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
                 newQuestions.push(prepareForSync({
                     id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                     exam_id: bankExamId,
                     type: 'fill',
                     question_text: qText,
                     option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
-                    correct_option: ans,
+                    correct_option: match[2].trim(),
                     marks: match[3] ? parseFloat(match[3]) : 1
                 }));
-                count++;
             }
 
-            if (count === 0) return Notifications.show('Could not parse any questions. Check your format.', 'error');
+            if (newQuestions.length === 0) return Notifications.show('Could not parse any questions. Please check the format.', 'error');
 
-            await db.cbt_questions.bulkAdd(newQuestions);
-            this.debouncedSync();
+            // 4. Batch Save to Cloud and Local
+            try {
+                Notifications.show(`Saving ${newQuestions.length} questions...`, 'info');
+                
+                // Local Save
+                await db.cbt_questions.bulkPut(newQuestions);
 
-            document.getElementById('ui-modal')?.remove();
-            Notifications.show(`Successfully imported ${count} questions to the bank!`, 'success');
-            this.renderQuestionBank();
+                // Cloud Save (Batches of 50 to prevent timeouts)
+                if (navigator.onLine) {
+                    const BATCH_SIZE = 50;
+                    for (let i = 0; i < newQuestions.length; i += BATCH_SIZE) {
+                        const batch = newQuestions.slice(i, i + BATCH_SIZE);
+                        const { error } = await client.from('cbt_questions').upsert(batch);
+                        if (error) console.warn('[CBT BANK] Batch push failed:', error);
+                    }
+                }
+
+                document.getElementById('ui-modal')?.remove();
+                Notifications.show(`Successfully imported ${newQuestions.length} questions!`, 'success');
+                this.renderQuestionBank();
+            } catch (err) {
+                console.error('Import Error:', err);
+                Notifications.show('Failed to save questions.', 'error');
+            }
         }, 'Import to Bank', 'database');
     },
 
