@@ -6622,19 +6622,8 @@ export const UI = {
                 return isMyClass && isActive && hasStarted && hasNotEnded;
             });
 
-            // Explicit sync for students when opening hub - with 5-minute cooldown
-            const nowTime = Date.now();
-            const fiveMinutes = 5 * 60 * 1000;
-            if (activeExams.length > 0 && (!this.lastHubSync || (nowTime - this.lastHubSync > fiveMinutes))) {
-                this.lastHubSync = nowTime;
-                syncFromCloud(['cbt_exams', 'cbt_results', 'cbt_questions']).then(() => {
-                    // Silent refresh after sync
-                    this.renderCBT();
-                }).catch(e => {
-                    console.warn('[CBT Hub Sync] Failed:', e);
-                    this.lastHubSync = 0; // Allow retry on failure
-                });
-            }
+            // [SYNC SHIELD] We no longer auto-sync inside renderCBT to prevent flickering.
+            // Sync is now handled by the Global Sync Loop or manual "Sync" button.
         }
 
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
@@ -6702,16 +6691,19 @@ export const UI = {
                         <h1 class="banner-title"><i data-lucide="monitor"></i> CBT Exam Hub</h1>
                         <p class="banner-subtitle">${isStudent ? 'Take your computer-based tests here.' : 'Create, manage, and monitor computer-based tests.'}</p>
                     </div>
-                    ${!isStudent ? `
                     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <button class="btn" onclick="UI.hardSyncCBT()" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 12px; height: 44px; padding: 0 15px; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(10px);">
+                            <i data-lucide="refresh-cw" style="width: 18px;"></i> Deep Sync
+                        </button>
+                        ${!isStudent ? `
                         <button id="btn-question-bank" class="btn" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); font-weight: 800; backdrop-filter: blur(10px);">
                             <i data-lucide="database"></i> Question Bank
                         </button>
                         <button id="btn-create-exam" class="btn btn-primary" style="background: white; color: #4338ca; border: none; font-weight: 800; box-shadow: var(--shadow-md);">
                             <i data-lucide="plus-square"></i> New Exam
                         </button>
+                        ` : ''}
                     </div>
-                    ` : ''}
                 </div>
 
                 <div class="cbt-list-container" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem;">
@@ -10272,7 +10264,6 @@ export const UI = {
                                 <label style="font-weight: 700; font-size: 0.75rem; color: #475569;">CONFIRM PASSWORD</label>
                                 <input type="password" id="confirm-password" class="input w-100" placeholder="Re-enter new password" style="border-radius: 12px; height: 48px;">
                             </div>
-                            
                             <button id="btn-update-password" class="btn btn-primary" style="margin-top: 1rem; border-radius: 12px; height: 52px; font-weight: 800; background: #1e293b;">
                                 <i data-lucide="save"></i> Update Security Credentials
                             </button>
@@ -12621,5 +12612,35 @@ export const UI = {
         Notifications.show(`Harvester: Successfully processed ${successTotal} records.`, 'success');
         this.renderAttendance();
         if (typeof this.debouncedSync === 'function') this.debouncedSync(1000); 
+    },
+
+    async hardSyncCBT() {
+        const btn = event.currentTarget;
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="animate-spin" data-lucide="refresh-cw" style="width:16px;"></i> Syncing...`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        try {
+            // Force a full pull of exams and questions
+            if (typeof syncFromCloud === 'function') {
+                await syncFromCloud(true); 
+                await syncToCloud();
+                Notifications.show('Deep sync complete. All deletions propagated.', 'success');
+                this.renderCBT();
+            } else {
+                throw new Error("Sync engine not available.");
+            }
+        } catch (e) {
+            console.error('Hard Sync Failed:', e);
+            Notifications.show('Sync failed. Please try again.', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
     }
 };
+
+window.UI = UI;
+export default UI;

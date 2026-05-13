@@ -360,6 +360,25 @@ export async function syncFromCloud(forceAll = false) {
                 if (totalPulled > 0) {
                     console.log(`[Sync] Pulled ${totalPulled} total records into '${table}' table.`);
                 }
+
+                // --- NEW: Deletion Reconciliation for CBT ---
+                // Ensures admin deletions are propagated to students
+                if (table === 'cbt_exams' || table === 'cbt_questions') {
+                    const localItems = await db[table].toArray();
+                    if (localItems.length > 0) {
+                        const localIds = localItems.map(item => item.id);
+                        const { data: cloudIds } = await client.from(table).select('id').in('id', localIds);
+                        
+                        if (cloudIds) {
+                            const cloudIdSet = new Set(cloudIds.map(c => c.id));
+                            const staleIds = localIds.filter(id => !cloudIdSet.has(id));
+                            if (staleIds.length > 0) {
+                                console.log(`[Sync Cleanup] Removing ${staleIds.length} stale records from ${table} that no longer exist in cloud.`);
+                                await db[table].bulkDelete(staleIds);
+                            }
+                        }
+                    }
+                }
             } catch (e) { console.warn(`Pull error for ${table}:`, e); }
         }
     } catch (err) {
