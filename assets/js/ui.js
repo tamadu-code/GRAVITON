@@ -8182,10 +8182,10 @@ export const UI = {
         this.contentArea.innerHTML = `
             <div class="view-container text-center animate-fade-in" style="padding-top: 5rem;">
                 <div style="width: 100px; height: 100px; background: #ecfdf5; color: #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 2rem;">
-                    <i data-lucide="check-circle" style="width: 60px; height: 60px;"></i>
+                    <i data-lucide="award" style="width: 60px; height: 60px;"></i>
                 </div>
-                <h1 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem;">Exam Submitted!</h1>
-                <p style="color: #64748b; font-size: 1.1rem; margin-bottom: 3rem;">Your responses have been securely recorded. Your final score is being processed.</p>
+                <h1 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem;">Exam Completed!</h1>
+                <p style="color: #64748b; font-size: 1.1rem; margin-bottom: 3rem;">Your responses have been securely recorded and synced to the cloud.</p>
                 
                 <div class="card" style="max-width: 400px; margin: 0 auto 3rem; padding: 2rem; border-radius: 20px;">
                     <div style="font-size: 0.85rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">FINAL SCORE</div>
