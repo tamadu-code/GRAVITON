@@ -8195,13 +8195,14 @@ export const UI = {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
 
-        // 2. Restore/Process [IMG:url] or [IMG:base64]
-        // We look for &lt;IMG:(.*?)&gt; because of the escaping above
+        // 2. Process [IMG:url] or [IMG:base64]
         let parsed = safe.replace(/\[IMG:(.*?)\]/gi, (match, url) => {
-            // Unescape the URL part back for the src attribute
             const cleanUrl = url.trim().replace(/&amp;/g, '&');
             return `<div style="margin: 1rem 0; text-align: center;"><img src="${cleanUrl}" style="max-width: 100%; max-height: 500px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\'color:#f43f5e; font-size:0.75rem; font-weight:700;\'>[⚠️ Image failed to load]</div>'"></div>`;
         });
+
+        // 3. Convert Newlines to <br> for proper multi-line display
+        parsed = parsed.replace(/\n/g, '<br>');
         
         return parsed;
     },
