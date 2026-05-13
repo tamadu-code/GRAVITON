@@ -7262,16 +7262,36 @@ export const UI = {
             return;
         }
 
-        area.innerHTML = this.cbtQuestions.map((q, idx) => `
-            <div class="card" style="margin-bottom:0.75rem; padding:1rem; border-radius:12px; background:#f8fafc; border:1px solid #e2e8f0; position:relative;">
-                <div style="font-weight:800; color:#4338ca; font-size:0.75rem; margin-bottom:0.5rem; text-transform:uppercase;">Question ${idx + 1} <span style="margin-left:0.5rem; color:#64748b;">[${(q.marks || 1).toFixed(1)} Marks]</span></div>
-                <div style="font-size:0.95rem; color:#1e293b; line-height:1.5; margin-bottom:0.5rem;">${q.question_text}</div>
-                <div style="font-size:0.8rem; color:#64748b; font-weight:600;">Correct: ${q.correct_option}</div>
-                <button onclick="UI.removeTempQuestion('${q.id}')" style="position:absolute; top:12px; right:12px; background:none; border:none; color:#ef4444; cursor:pointer; padding:4px;">
-                    <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
-                </button>
-            </div>
-        `).join('');
+        area.innerHTML = this.cbtQuestions.map((q, idx) => {
+            const options = [
+                { key: 'A', text: q.option_a },
+                { key: 'B', text: q.option_b },
+                { key: 'C', text: q.option_c },
+                { key: 'D', text: q.option_d },
+                { key: 'E', text: q.option_e }
+            ].filter(o => o.text && o.text.trim().length > 0);
+
+            return `
+                <div class="card" style="margin-bottom:0.75rem; padding:1rem; border-radius:12px; background:#f8fafc; border:1px solid #e2e8f0; position:relative;">
+                    <div style="font-weight:800; color:#4338ca; font-size:0.75rem; margin-bottom:0.5rem; text-transform:uppercase;">Question ${idx + 1} <span style="margin-left:0.5rem; color:#64748b;">[${(q.marks || 1).toFixed(1)} Marks]</span></div>
+                    <div style="font-size:0.95rem; color:#1e293b; line-height:1.5; margin-bottom:0.75rem; font-weight: 500;">${q.question_text}</div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+                        ${options.map(o => `
+                            <div style="font-size: 0.8rem; color: ${q.correct_option === o.key ? '#059669' : '#64748b'}; font-weight: ${q.correct_option === o.key ? '800' : '500'}; background: ${q.correct_option === o.key ? '#ecfdf5' : 'transparent'}; padding: 4px 8px; border-radius: 6px; border: ${q.correct_option === o.key ? '1px solid #bbf7d0' : 'none'};">
+                                <span style="font-weight: 900; margin-right: 4px;">${o.key}:</span> ${o.text}
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <div style="font-size:0.75rem; color:#475569; font-weight:700; background: #e2e8f0; display: inline-block; padding: 2px 8px; border-radius: 4px;">Correct: ${q.correct_option}</div>
+                    
+                    <button onclick="UI.removeTempQuestion('${q.id}')" style="position:absolute; top:12px; right:12px; background:none; border:none; color:#ef4444; cursor:pointer; padding:4px;">
+                        <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
+                    </button>
+                </div>
+            `;
+        }).join('');
 
         // Update total badge
         const total = this.cbtQuestions.reduce((acc, q) => acc + (parseFloat(q.marks) || 1), 0);
@@ -7544,27 +7564,38 @@ export const UI = {
                 session = cloudSession || localSession;
             }
 
+            // [RESILIENCE] If cloud questions are missing, fallback to local database
+            let questionsToUse = rawQuestions;
+            if (questionsToUse.length === 0) {
+                console.warn('[CBT] Cloud questions empty, falling back to local DB...');
+                questionsToUse = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+            }
+
             // Mirror to local DB to keep it in sync
             await db.cbt_exams.put(exam);
-            if (rawQuestions.length > 0) {
+            if (questionsToUse.length > 0) {
                 // Coerce nulls during local mirroring
-                const processedQuestions = rawQuestions.map(q => ({
+                const processedQuestions = questionsToUse.map(q => ({
                     ...q,
-                    option_a: q.option_a ?? '',
-                    option_b: q.option_b ?? '',
-                    option_c: q.option_c ?? '',
-                    option_d: q.option_d ?? '',
-                    option_e: q.option_e ?? '',
-                    correct_option: q.correct_option ?? 'A',
-                    marks: q.marks ?? 1
+                    option_a: (q.option_a ?? '').toString().trim(),
+                    option_b: (q.option_b ?? '').toString().trim(),
+                    option_c: (q.option_c ?? '').toString().trim(),
+                    option_d: (q.option_d ?? '').toString().trim(),
+                    option_e: (q.option_e ?? '').toString().trim(),
+                    correct_option: (q.correct_option ?? 'A').toString().trim().toUpperCase(),
+                    marks: parseFloat(q.marks) || 1
                 }));
-                await db.cbt_questions.where('exam_id').equals(examId).delete();
-                await db.cbt_questions.bulkPut(processedQuestions);
+                
+                // Only wipe and bulkPut if we actually have questions to put
+                if (rawQuestions.length > 0) {
+                    await db.cbt_questions.where('exam_id').equals(examId).delete();
+                    await db.cbt_questions.bulkPut(processedQuestions);
+                }
                 rawQuestions = processedQuestions;
             }
             if (session) await db.cbt_results.put(session);
 
-            console.log(`[CBT CLOUD] Fetched ${rawQuestions.length} questions for exam ${examId}`);
+            console.log(`[CBT HUB] Loading ${rawQuestions.length} questions for exam ${examId}`);
 
             // Safety: Remove any null/undefined entries
             let questions = rawQuestions.filter(q => q && typeof q === 'object');
@@ -7865,12 +7896,31 @@ export const UI = {
             if (this.examTimeLeft > 0 && this.examTimeLeft % 15 === 0) {
                 const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
                 const examId = this.currentExam.id;
-                const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
-                if (session && session.status === 'Completed') {
-                    console.log('[CBT] External completion detected, ending session.');
+                
+                // 1. Check Local DB first
+                const localSession = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+                if (localSession && localSession.status === 'Completed') {
+                    console.log('[CBT] External completion detected (Local), ending session.');
                     clearInterval(this.examTimerInterval);
                     this.submitExam(true);
                     return;
+                }
+
+                // 2. Poll Cloud for status if online (Immediate protection)
+                const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (navigator.onLine && supabase) {
+                    const { data } = await supabase.from('cbt_results')
+                        .select('status')
+                        .eq('exam_id', examId)
+                        .eq('student_id', studentId)
+                        .single();
+                    
+                    if (data && data.status === 'Completed') {
+                        console.log('[CBT] Force Stop detected from cloud, ending session.');
+                        clearInterval(this.examTimerInterval);
+                        this.submitExam(true);
+                        return;
+                    }
                 }
             }
 
@@ -12076,6 +12126,20 @@ export const UI = {
             await this.postCBTToScoresheet({ student_id: studentId, exam_id: examId, ...finalResultUpdate });
 
             Notifications.show('Exam force-submitted and scored successfully.', 'success');
+            
+            // Immediate Cloud Push (bypass debounce)
+            if (navigator.onLine && typeof getSupabase === 'function') {
+                const supabase = getSupabase();
+                const { is_synced, ...cloudPayload } = {
+                    id: result ? result.id : `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    student_id: studentId,
+                    exam_id: examId,
+                    ...finalResultUpdate
+                };
+                await supabase.from('cbt_results').upsert(cloudPayload, { onConflict: 'student_id,exam_id' });
+            }
+
+            this.renderCBTParticipants(examId); // Refresh admin view instantly
             this.debouncedSync();
             
             // Instant UI update
