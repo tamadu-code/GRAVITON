@@ -7838,6 +7838,7 @@ export const UI = {
                 let poolCopy = [...validQuestions];
                 let shuffled = seededShuffle(poolCopy, seed);
                 finalSlice = (requestedLimit > 0) ? shuffled.slice(0, requestedLimit) : shuffled;
+            }
                 
             // Lock these IDs into the session immediately
             if (session) {
