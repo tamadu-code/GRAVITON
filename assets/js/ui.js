@@ -7466,8 +7466,9 @@ export const UI = {
 
     async finalizeStartCBTExam(examId, isResume = false) {
         let session;
+        const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
         try {
-            if (!navigator.onLine) {
+            if (!navigator.onLine || !client) {
                 return Notifications.show('Cloud-Direct mode requires an active internet connection to start.', 'error');
             }
 
@@ -7651,7 +7652,8 @@ export const UI = {
                 
                 // Real-time Cloud Push
                 if (navigator.onLine) {
-                    client.from('cbt_results').upsert(newSession, { onConflict: 'student_id,exam_id' })
+                    const { is_synced, ...cloudSession } = newSession;
+                    client.from('cbt_results').upsert(cloudSession, { onConflict: 'student_id,exam_id' })
                         .then(() => console.log('[CBT CLOUD] New session initialized.'))
                         .catch(e => console.warn('[CBT CLOUD] Init push failed:', e));
                 }
@@ -7771,15 +7773,18 @@ export const UI = {
                 
                 // Real-time Cloud Push
                 if (navigator.onLine) {
-                    client.from('cbt_results')
-                        .update({ 
-                            violations: violations, 
-                            warnings: (session.warnings || 0) + 1,
-                            updated_at: timestamp 
-                        })
-                        .match({ student_id: studentId, exam_id: examId })
-                        .then(() => console.log('[CBT CLOUD] Violation logged.'))
-                        .catch(e => console.warn('[CBT CLOUD] Violation push failed:', e));
+                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                    if (client) {
+                        client.from('cbt_results')
+                            .update({ 
+                                violations: violations, 
+                                warnings: (session.warnings || 0) + 1,
+                                updated_at: timestamp 
+                            })
+                            .match({ student_id: studentId, exam_id: examId })
+                            .then(() => console.log('[CBT CLOUD] Violation logged.'))
+                            .catch(e => console.warn('[CBT CLOUD] Violation push failed:', e));
+                    }
                 }
             }
         } catch (e) {
@@ -8027,14 +8032,16 @@ export const UI = {
 
             // Direct Cloud Push for Real-Time Monitoring
             if (navigator.onLine) {
-                client.from('cbt_results')
-                    .upsert({
-                        student_id: studentId,
-                        exam_id: examId,
-                        answers: this.userAnswers,
-                        updated_at: new Date().toISOString()
-                    }, { onConflict: 'student_id,exam_id' })
-                    .catch(e => console.warn('[CBT CLOUD] Save failed:', e));
+                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (client) {
+                    const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+                    if (session) {
+                        const { is_synced, ...cloudPayload } = session;
+                        client.from('cbt_results')
+                            .upsert(cloudPayload, { onConflict: 'student_id,exam_id' })
+                            .catch(e => console.warn('[CBT CLOUD] Save failed:', e));
+                    }
+                }
             }
         } catch (err) {
             console.error('Failed to auto-save progress:', err);
@@ -8121,9 +8128,13 @@ export const UI = {
 
             // Real-time Cloud Finalization
             if (navigator.onLine) {
-                client.from('cbt_results').upsert(finalResult, { onConflict: 'student_id,exam_id' })
-                    .then(() => console.log('[CBT CLOUD] Exam submitted.'))
-                    .catch(e => console.warn('[CBT CLOUD] Submission push failed:', e));
+                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (client) {
+                    const { is_synced, ...cloudFinalResult } = finalResult;
+                    client.from('cbt_results').upsert(cloudFinalResult, { onConflict: 'student_id,exam_id' })
+                        .then(() => console.log('[CBT CLOUD] Exam submitted.'))
+                        .catch(e => console.warn('[CBT CLOUD] Submission push failed:', e));
+                }
             }
             
             if (this.currentExam.score_field) {
@@ -11363,7 +11374,8 @@ export const UI = {
             const bankExamId = `BANK-${subjectId}__${className}__${term.replace(/\s+/g, '')}__${session.replace(/\//g, '-')}`;
 
             // MCQ Regex: Captures Question, A, B, C, D, E (optional), Answer, and Marks (optional)
-            const mcqRegex = /([\s\S]*?)\s*(?:[\(\[]?A[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?B[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?E[\)\]\.]\s*)?([\s\S]*?)\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // Fix: Ensured Option D doesn't leak into E when E is missing
+            const mcqRegex = /([\s\S]*?)\s*(?:[\(\[]?A[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?B[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*)([\s\S]*?)\s*(?:(?:[\(\[]?E[\)\]\.]\s*)([\s\S]*?))?\s*\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
             
             // Simpler MCQ Regex for just A and B
             const simpleMcqRegex = /([\s\S]*?)\s*(?:[\(\[]?A[\)\]\.]\s*)([\s\S]*?)\s*(?:[\(\[]?B[\)\]\.]\s*)([\s\S]*?)\s*\[Ans:\s*([A-B])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
@@ -11442,7 +11454,9 @@ export const UI = {
                         const BATCH_SIZE = 50;
                         for (let i = 0; i < newQuestions.length; i += BATCH_SIZE) {
                             const batch = newQuestions.slice(i, i + BATCH_SIZE);
-                            const { error } = await client.from('cbt_questions').upsert(batch);
+                            // Strip is_synced before cloud push
+                            const cloudBatch = batch.map(({ is_synced, ...rest }) => rest);
+                            const { error } = await client.from('cbt_questions').upsert(cloudBatch);
                             if (error) console.warn('[CBT BANK] Batch push failed:', error);
                         }
                     }
