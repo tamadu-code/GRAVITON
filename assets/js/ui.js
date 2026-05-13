@@ -4471,7 +4471,10 @@ export const UI = {
                         <h1 class="text-3xl font-extrabold tracking-tight" style="font-family: 'Outfit', sans-serif;">Attendance Intelligence</h1>
                         <p class="text-secondary">Monitor school-wide turnout and track subject-specific participation.</p>
                     </div>
-                    <div style="display: flex; gap: 0.75rem;">
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" onclick="UI.triggerBiometricHarvest()" style="border-radius: 12px; height: 48px; background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0;">
+                            <i data-lucide="cpu"></i> Sync Biometric Data
+                        </button>
                         <button id="btn-sync-attendance" class="btn btn-secondary" style="border-radius: 12px; height: 48px;">
                             <i data-lucide="refresh-cw"></i> Sync Data
                         </button>
