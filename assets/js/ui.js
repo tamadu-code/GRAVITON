@@ -6597,6 +6597,14 @@ export const UI = {
                 const hasNotEnded = !e.end_time || new Date(e.end_time) >= now;
                 return isMyClass && isActive && hasStarted && hasNotEnded;
             });
+
+            // Explicit sync for students when opening hub
+            if (activeExams.length > 0) {
+                syncFromCloud(['cbt_exams', 'cbt_results', 'cbt_questions']).then(() => {
+                    // Silent refresh after sync
+                    this.renderCBT();
+                }).catch(e => console.warn('[CBT Hub Sync] Failed:', e));
+            }
         }
 
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
@@ -6763,15 +6771,25 @@ export const UI = {
                                                                 return `<span class="badge badge-danger" style="background:#fee2e2; color:#ef4444; border:1px solid #fecdd3; padding:8px 15px; border-radius:10px; font-weight:800;">TIME EXPIRED</span>`;
                                                             }
                                                             return `
-                                                                <button class="btn btn-warning btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #f59e0b; color: white; border: none; font-weight: 800;">
-                                                                    <i data-lucide="rotate-ccw" style="width: 16px;"></i> Resume Exam
-                                                                </button>
+                                                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                                                    <button class="btn btn-secondary btn-sm" onclick="UI.refreshCBTQuestions('${e.id}')" title="Refresh Questions" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center;">
+                                                                        <i data-lucide="refresh-cw" style="width: 18px;"></i>
+                                                                    </button>
+                                                                    <button class="btn btn-warning btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #f59e0b; color: white; border: none; font-weight: 800;">
+                                                                        <i data-lucide="rotate-ccw" style="width: 16px; margin-right: 4px;"></i> Resume Exam
+                                                                    </button>
+                                                                </div>
                                                             `;
                                                         }
                                                         return `
-                                                            <button class="btn btn-primary btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #4338ca;">
-                                                                <i data-lucide="play" style="width: 16px;"></i> Start Exam
-                                                            </button>
+                                                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                                                <button class="btn btn-secondary btn-sm" onclick="UI.refreshCBTQuestions('${e.id}')" title="Refresh Questions" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center;">
+                                                                    <i data-lucide="refresh-cw" style="width: 18px;"></i>
+                                                                </button>
+                                                                <button class="btn btn-primary btn-sm" onclick="UI.startCBTExam('${e.id}')" style="height: 40px; padding: 0 1.5rem; border-radius: 10px; background: #4338ca; border: none; font-weight: 800; color: white;">
+                                                                    <i data-lucide="play" style="width: 16px; margin-right: 4px;"></i> Start Exam
+                                                                </button>
+                                                            </div>
                                                         `;
                                                     } else {
                                                         // Admin Actions
@@ -7905,9 +7923,21 @@ export const UI = {
     parseCBTContent(text) {
         if (!text) return '';
         
-        // 1. Detect [IMG:url] or [IMG:base64]
-        let parsed = text.replace(/\[IMG:(.*?)\]/gi, (match, url) => {
-            return `<div style="margin: 1rem 0; text-align: center;"><img src="${url.trim()}" style="max-width: 100%; max-height: 500px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\'color:#f43f5e; font-size:0.75rem; font-weight:700;\'>[⚠️ Image failed to load]</div>'"></div>`;
+        // 1. Basic HTML Escaping to prevent injection or layout breakage
+        // We only allow our own [IMG] tags to render as HTML
+        let safe = text.toString()
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+
+        // 2. Restore/Process [IMG:url] or [IMG:base64]
+        // We look for &lt;IMG:(.*?)&gt; because of the escaping above
+        let parsed = safe.replace(/\[IMG:(.*?)\]/gi, (match, url) => {
+            // Unescape the URL part back for the src attribute
+            const cleanUrl = url.trim().replace(/&amp;/g, '&');
+            return `<div style="margin: 1rem 0; text-align: center;"><img src="${cleanUrl}" style="max-width: 100%; max-height: 500px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\'color:#f43f5e; font-size:0.75rem; font-weight:700;\'>[⚠️ Image failed to load]</div>'"></div>`;
         });
         
         return parsed;
@@ -12088,6 +12118,19 @@ export const UI = {
         } catch (err) {
             console.error('Re-open all error:', err);
             Notifications.show('Failed to re-open attempts.', 'error');
+        }
+    },
+
+    async refreshCBTQuestions(examId) {
+        try {
+            Notifications.show('Refreshing exam content...', 'info');
+            // We pull both exams (for duration/limit changes) and questions
+            await syncFromCloud(['cbt_exams', 'cbt_questions', 'cbt_results']);
+            Notifications.show('Exam content updated.', 'success');
+            this.renderCBT();
+        } catch (e) {
+            console.error('[CBT Refresh] Error:', e);
+            Notifications.show('Failed to refresh exam data.', 'error');
         }
     }
 };
