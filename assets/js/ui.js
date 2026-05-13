@@ -12324,5 +12324,128 @@ export const UI = {
             console.error('[CBT Refresh] Error:', e);
             Notifications.show('Failed to refresh exam data.', 'error');
         }
+    },
+
+    /**
+     * Attendance Harvester: Universal Mobile/Desktop Background Sync
+     * Replaces the local Python script with a browser-native engine.
+     */
+    async triggerBiometricHarvest() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.csv';
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            Notifications.show('Parsing biometric report...', 'info');
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                try {
+                    const text = event.target.result;
+                    await this.processAttendanceHarvest(text);
+                } catch (err) {
+                    console.error('Harvest Error:', err);
+                    Notifications.show('Failed to process biometric file.', 'error');
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    },
+
+    async processAttendanceHarvest(csvText) {
+        const lines = csvText.split(/\r?\n/).filter(line => line.trim());
+        if (lines.length < 2) throw new Error('CSV is empty');
+
+        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        const codeIdx = headers.indexOf('Code');
+        const dateIdx = headers.indexOf('Date');
+        const inIdx = headers.indexOf('In');
+        const outIdx = headers.indexOf('Out');
+        const statusIdx = headers.indexOf('Status');
+
+        if (codeIdx === -1 || dateIdx === -1) {
+            throw new Error('CSV missing required columns (Code, Date)');
+        }
+
+        const students = await db.students.toArray();
+        const studentMap = students.reduce((acc, s) => {
+            if (s.attendance_code) acc[s.attendance_code] = s.student_id;
+            return acc;
+        }, {});
+
+        const records = [];
+        const uniqueDates = new Set();
+
+        for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
+            if (cols.length < headers.length) continue;
+
+            const code = cols[codeIdx];
+            const date = cols[dateIdx];
+            const studentId = studentMap[code];
+
+            if (!studentId || !date) continue;
+
+            records.push({
+                student_id: studentId,
+                date: date,
+                sign_in: cols[inIdx] || null,
+                sign_out: cols[outIdx] || null,
+                is_late: (cols[statusIdx] || '').toLowerCase().includes('late'),
+                status: 'Present'
+            });
+            uniqueDates.add(date);
+        }
+
+        if (records.length === 0) {
+            return Notifications.show('No matching students found in report.', 'warning');
+        }
+
+        Notifications.show(`Processing ${records.length} records...`, 'info');
+
+        const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+        let successTotal = 0;
+
+        for (const date of uniqueDates) {
+            // Fetch existing records for this date to merge
+            let cloudMap = {};
+            if (supabase && navigator.onLine) {
+                const { data } = await supabase.from('attendance').select('student_id,sign_in,sign_out,is_late').eq('date', date);
+                if (data) cloudMap = data.reduce((acc, r) => ({...acc, [r.student_id]: r}), {});
+            }
+
+            const dateRecords = records.filter(r => r.date === date).map(r => {
+                const cloud = cloudMap[r.student_id];
+                if (cloud) {
+                    return {
+                        ...r,
+                        sign_in: r.sign_in || cloud.sign_in,
+                        sign_out: r.sign_out || cloud.sign_out,
+                        is_late: r.is_late || cloud.is_late
+                    };
+                }
+                return r;
+            });
+
+            // Local Save
+            for (const rec of dateRecords) {
+                const local = await db.attendance.where({ student_id: rec.student_id, date: rec.date }).first();
+                if (local) {
+                    await db.attendance.update(local.id, prepareForSync(rec));
+                } else {
+                    await db.attendance.add(prepareForSync({
+                        id: `ATT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        ...rec
+                    }));
+                }
+            }
+            successTotal += dateRecords.length;
+        }
+
+        Notifications.show(`Harvester: Successfully processed ${successTotal} records.`, 'success');
+        this.renderAttendance();
+        if (typeof this.debouncedSync === 'function') this.debouncedSync(1000); 
     }
 };
