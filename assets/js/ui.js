@@ -3263,37 +3263,39 @@ export const UI = {
         
         this.contentArea.innerHTML = `
             <div class="view-container" style="padding: 1.5rem; background: #f8fafc;">
-                <!-- Modern Banner (Title Moved to Top Bar) -->
-                <div class="page-banner" style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); border-radius: 16px; padding: 1.5rem; color: white; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-lg);">
+                <!-- Modern Header: Title + Stats Unified -->
+                <div class="page-banner" style="background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%); border-radius: 16px; padding: 0.85rem 1.25rem; color: white; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow-lg); margin-bottom: 0.75rem;">
                     <div class="banner-content">
                         <div style="display:flex; align-items:center; gap:0.75rem;">
-                            <div style="background:rgba(255,255,255,0.2); padding:0.5rem; border-radius:10px;"><i data-lucide="bar-chart-3" style="width:20px; height:20px;"></i></div>
-                            <h1 class="banner-title" style="font-size: 1.25rem; margin:0;">Grading Intelligence</h1>
+                            <div style="background:rgba(255,255,255,0.15); padding:0.4rem; border-radius:8px;"><i data-lucide="bar-chart-3" style="width:18px; height:18px;"></i></div>
+                            <div>
+                                <h1 class="banner-title" style="font-size: 1.15rem; margin:0; font-weight: 900;">Grading Intelligence</h1>
+                                <p class="banner-subtitle" style="opacity:0.8; font-size:0.75rem; font-weight: 600;">Tracking: <span id="active-subject-name">Select Course</span></p>
+                            </div>
                         </div>
-                        <p class="banner-subtitle" style="opacity:0.8; margin-top:0.25rem; font-size:0.85rem;">Active Tracking: <span id="active-subject-name" style="font-weight:700;">Select Course</span></p>
+                    </div>
+
+                    <!-- Statistics Strip (Unified in Header) -->
+                    <div class="stats-strip" style="display: flex; gap: 0.75rem; align-items: center;">
+                        <div class="stat-mini-card" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; padding: 0.35rem 0.75rem; text-align: center; min-width: 80px;">
+                            <span id="stat-class-avg" style="display: block; font-size: 1rem; font-weight: 900; color: #4ade80;">0%</span>
+                            <span style="font-size: 0.55rem; text-transform: uppercase; font-weight: 700; color: rgba(255,255,255,0.6);">Avg</span>
+                        </div>
+                        <div class="stat-mini-card" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; padding: 0.35rem 0.75rem; text-align: center; min-width: 80px;">
+                            <span id="stat-peak-perf" style="display: block; font-size: 1rem; font-weight: 900; color: #60a5fa;">0</span>
+                            <span style="font-size: 0.55rem; text-transform: uppercase; font-weight: 700; color: rgba(255,255,255,0.6);">Peak</span>
+                        </div>
+                        <div class="stat-mini-card" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; padding: 0.35rem 0.75rem; text-align: center; min-width: 80px;">
+                            <span id="stat-fail-count" style="display: block; font-size: 1rem; font-weight: 900; color: #fb7185;">0</span>
+                            <span style="font-size: 0.55rem; text-transform: uppercase; font-weight: 700; color: rgba(255,255,255,0.6);">Fails</span>
+                        </div>
                     </div>
                 </div>
                 
-                <!-- Statistics in Top Bar -->
-                <div id="top-bar-stats-inject" style="display:none;">
-                    <div class="stats-strip" style="display: flex; gap: 1rem; align-items: center;">
-                        <div class="stat-mini-card" style="background: #f0fdf4; border: 1px solid #dcfce7; border-radius: 8px; padding: 0.4rem 0.8rem; text-align: center; min-width: 100px;">
-                            <span id="stat-class-avg" style="display: block; font-size: 1.1rem; font-weight: 800; color: #15803d;">0%</span>
-                            <span style="font-size: 0.55rem; text-transform: uppercase; font-weight: 700; color: #166534;">Avg</span>
-                        </div>
-                        <div class="stat-mini-card" style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 8px; padding: 0.4rem 0.8rem; text-align: center; min-width: 100px;">
-                            <span id="stat-peak-perf" style="display: block; font-size: 1.1rem; font-weight: 800; color: #1d4ed8;">0</span>
-                            <span style="font-size: 0.55rem; text-transform: uppercase; font-weight: 700; color: #1e40af;">Peak</span>
-                        </div>
-                        <div class="stat-mini-card" style="background: #fff1f2; border: 1px solid #ffe4e6; border-radius: 8px; padding: 0.4rem 0.8rem; text-align: center; min-width: 100px;">
-                            <span id="stat-fail-count" style="display: block; font-size: 1.1rem; font-weight: 800; color: #be123c;">0</span>
-                            <span style="font-size: 0.55rem; text-transform: uppercase; font-weight: 700; color: #9f1239;">Fails</span>
-                        </div>
-                    </div>
-                </div>
+                <div id="top-bar-stats-inject" style="display:none;"></div>
 
                 <!-- Modern Filter Cards -->
-                <div class="filter-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                <div class="filter-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-top: 0;">
 
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="graduation-cap" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Stream</span></div>
@@ -3330,7 +3332,7 @@ export const UI = {
                 <div id="gradebook-mismatch-warning" style="display:none;"></div>
 
                 <!-- Dedicated Action Bar -->
-                <div class="action-bar-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding: 0.75rem 1rem; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm);">
+                <div class="action-bar-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding: 0.6rem 1rem; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm);">
                     <div style="display: flex; align-items: center; gap: 0.75rem; color: #64748b; font-size: 0.85rem; font-weight: 600;">
                         <i data-lucide="info" style="width:16px;"></i> <span>Draft scores are saved locally until committed.</span>
                     </div>
@@ -3348,8 +3350,8 @@ export const UI = {
                 </div>
 
                 <!-- Score Entry Table (Desktop) -->
-                <div class="card mt-2 desktop-only" style="border-radius: 16px; padding: 0.5rem; overflow: hidden; box-shadow: var(--shadow-md);">
-                    <div class="table-container" style="max-height: calc(100vh - 450px); overflow-y: auto;">
+                <div class="card desktop-only" style="border-radius: 16px; padding: 0.5rem; overflow: hidden; box-shadow: var(--shadow-md); margin-top: 0.75rem;">
+                    <div class="table-container" style="max-height: calc(100vh - 380px); overflow-y: auto;">
                         <table class="data-table" style="width:100%; font-size:0.85rem;">
                             <thead>
                                 <tr style="background: #f1f5f9;">
