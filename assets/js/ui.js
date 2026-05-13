@@ -6572,6 +6572,12 @@ export const UI = {
     cbtQuestions: [],
 
     async renderCBT() {
+        // [SHIELD] Prevent hub re-render if student is currently in an exam
+        if (document.body.classList.contains('exam-mode')) {
+            console.log('[CBT SHIELD] Aborting hub refresh: Student is in active exam mode.');
+            return;
+        }
+
         const role = (this.currentUser.role || '').toLowerCase();
         const isTeacher = role === 'teacher';
         const isStudent = role === 'student';
