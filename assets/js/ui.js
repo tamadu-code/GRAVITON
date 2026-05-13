@@ -8268,11 +8268,13 @@ export const UI = {
                     const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
                     if (session) {
                         const { is_synced, ...cloudPayload } = session;
-                        supabase.from('cbt_results')
-                            .upsert(cloudPayload, { onConflict: 'student_id,exam_id' })
-                            .then(res => {
-                                if (res.error) console.warn('[CBT CLOUD] Save error:', res.error);
-                            });
+                        try {
+                            const { error } = await supabase.from('cbt_results')
+                                .upsert(cloudPayload, { onConflict: 'student_id,exam_id' });
+                            if (error) console.warn('[CBT CLOUD] Save error:', error);
+                        } catch (e) {
+                            console.warn('[CBT CLOUD] Network/Sync failure:', e);
+                        }
                     }
                 }
             }
@@ -11642,74 +11644,85 @@ export const UI = {
 
             const fillRegex = /([\s\S]*?)\s*[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]?/gi;
 
-            // --- NEW: Block-Based Parsing ---
-            // Instead of one giant regex on a huge string, we split by common markers first
-            // to prevent catastrophic backtracking and improve performance for large sets.
-            const blocks = text.split(/(?=\[Ans:|\(Ans:|\[Answer:|Ans:)/i);
+            // --- NEW: Hyper-Robust Multi-Stage Parser ---
+            // We split by Answer tags first, then extract options from each block.
+            const ansRegex = /[\(\[]?(?:Ans|Answer)[\:\s]+([A-E])[\)\]]?/gi;
             const newQuestions = [];
             let failedBlocks = 0;
 
-            Notifications.show(`Scanning ${blocks.length} potential questions...`, 'info');
+            let matches = [];
+            let m;
+            while ((m = ansRegex.exec(text)) !== null) {
+                matches.push({ index: m.index, length: m[0].length, ans: m[1] });
+            }
 
-            blocks.forEach((block, idx) => {
-                const cleanBlock = block.trim();
-                if (!cleanBlock) return;
+            Notifications.show(`Scanning ${matches.length} answer markers...`, 'info');
 
-                // Try MCQ first
-                mcqRegex.lastIndex = 0;
-                let m = mcqRegex.exec(cleanBlock);
-                if (m) {
+            let lastPos = 0;
+            matches.forEach((matchObj, idx) => {
+                // The block is everything from the end of the last answer to the end of this one
+                const block = text.substring(lastPos, matchObj.index + matchObj.length).trim();
+                lastPos = matchObj.index + matchObj.length;
+
+                if (!block) return;
+
+                // Extract Options using reverse markers to avoid greedy mismatch
+                const optA = /[\(\[]?A[\)\]\.]/i.exec(block);
+                const optB = /[\(\[]?B[\)\]\.]/i.exec(block);
+                const optC = /[\(\[]?C[\)\]\.]/i.exec(block);
+                const optD = /[\(\[]?D[\)\]\.]/i.exec(block);
+                const optE = /[\(\[]?E[\)\]\.]/i.exec(block);
+
+                if (optA && optB) {
+                    const qText = block.substring(0, optA.index).replace(/^\d+[\.\)]\s*/, '').trim();
+                    const aText = block.substring(optA.index + optA[0].length, optB.index).trim();
+                    
+                    let bEnd = optC ? optC.index : matchObj.index;
+                    const bText = block.substring(optB.index + optB[0].length, bEnd).trim();
+                    
+                    let cText = '', dText = '', eText = '';
+                    if (optC) {
+                        let cEnd = optD ? optD.index : matchObj.index;
+                        cText = block.substring(optC.index + optC[0].length, cEnd).trim();
+                    }
+                    if (optD) {
+                        let dEnd = optE ? optE.index : matchObj.index;
+                        dText = block.substring(optD.index + optD[0].length, dEnd).trim();
+                    }
+                    if (optE) {
+                        eText = block.substring(optE.index + optE[0].length, matchObj.index).trim();
+                    }
+
                     newQuestions.push(prepareForSync({
                         id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                         exam_id: bankExamId,
                         type: 'mcq',
-                        question_text: m[1].replace(/^\d+[\.\)]\s*/, '').trim(),
-                        option_a: (m[2] || '').trim(),
-                        option_b: (m[3] || '').trim(),
-                        option_c: (m[4] || '').trim(),
-                        option_d: (m[5] || '').trim(),
-                        option_e: (m[6] || '').trim(),
-                        correct_option: m[7].toUpperCase(),
-                        marks: m[8] ? parseFloat(m[8]) : 1
+                        question_text: qText,
+                        option_a: aText,
+                        option_b: bText,
+                        option_c: cText,
+                        option_d: dText,
+                        option_e: eText,
+                        correct_option: matchObj.ans.toUpperCase(),
+                        marks: 1
                     }));
-                    return;
+                } else {
+                    // Try Fill-in-the-blank fallback
+                    const qText = block.substring(0, matchObj.index).replace(/^\d+[\.\)]\s*/, '').trim();
+                    if (qText) {
+                        newQuestions.push(prepareForSync({
+                            id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                            exam_id: bankExamId,
+                            type: 'fill',
+                            question_text: qText,
+                            option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
+                            correct_option: matchObj.ans,
+                            marks: 1
+                        }));
+                    } else {
+                        failedBlocks++;
+                    }
                 }
-
-                // Try Simple MCQ (A-B)
-                simpleMcqRegex.lastIndex = 0;
-                m = simpleMcqRegex.exec(cleanBlock);
-                if (m) {
-                    newQuestions.push(prepareForSync({
-                        id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                        exam_id: bankExamId,
-                        type: 'mcq',
-                        question_text: m[1].replace(/^\d+[\.\)]\s*/, '').trim(),
-                        option_a: m[2].trim(),
-                        option_b: m[3].trim(),
-                        option_c: '', option_d: '', option_e: '',
-                        correct_option: m[4].toUpperCase(),
-                        marks: m[5] ? parseFloat(m[5]) : 1
-                    }));
-                    return;
-                }
-
-                // Try Fill
-                fillRegex.lastIndex = 0;
-                m = fillRegex.exec(cleanBlock);
-                if (m) {
-                    newQuestions.push(prepareForSync({
-                        id: `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                        exam_id: bankExamId,
-                        type: 'fill',
-                        question_text: m[1].replace(/^\d+[\.\)]\s*/, '').trim(),
-                        option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
-                        correct_option: m[2].trim(),
-                        marks: m[3] ? parseFloat(m[3]) : 1
-                    }));
-                    return;
-                }
-
-                failedBlocks++;
             });
 
             if (newQuestions.length === 0) return Notifications.show('Could not parse any questions. Please check the format.', 'error');
