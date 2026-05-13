@@ -8058,8 +8058,21 @@ export const UI = {
     async postCBTToScoresheet(result) {
         try {
             const exam = await db.cbt_exams.get(result.exam_id);
-            const student = await db.students.get(result.student_id);
-            if (!exam || !student) return;
+            
+            // Smart ID matching for student: find the profile/student record even if ID variant changed
+            let student = await db.students.get(result.student_id);
+            if (!student) {
+                const profiles = await db.profiles.toArray();
+                const profile = profiles.find(p => p.assigned_id === result.student_id || p.id === result.student_id);
+                if (profile) {
+                    student = await db.students.get(profile.assigned_id || profile.id);
+                }
+            }
+            
+            if (!exam || !student) {
+                console.warn(`[SCORE POST] Missing exam (${result.exam_id}) or student (${result.student_id}). Skipping.`);
+                return;
+            }
 
             // Robust Lookup: Try composite index first, fallback to filter
             let existingScore;
@@ -8089,7 +8102,7 @@ export const UI = {
             else if (field.includes('test') || field.includes('project') || field.includes('assignment')) multiplier = 10;
 
             const divisor = result.total_marks || result.total_questions;
-            const scoreValue = Math.round((result.score / divisor) * multiplier);
+            const scoreValue = divisor > 0 ? Math.round((result.score / divisor) * multiplier) : 0;
             console.log(`[SCORE POST] Posting ${scoreValue} to field "${field}" for student ${result.student_id}`);
 
             if (existingScore) {
@@ -11793,7 +11806,7 @@ export const UI = {
             const finalResultUpdate = {
                 status: 'Completed',
                 score: score,
-                total_questions: questions.length,
+                total_questions: studentQuestions.length,
                 total_marks: totalMarks,
                 answers: answers,
                 updated_at: new Date().toISOString(),
