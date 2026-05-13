@@ -7635,20 +7635,21 @@ export const UI = {
                 if (examRes.error) throw examRes.error;
                 exam = examRes.data;
 
-                const { data: eqData } = await supabase.from('cbt_exam_questions')
-                    .select('question_id, question_number')
-                    .eq('exam_id', examId)
-                    .order('question_number');
+                // Fetch both relational and legacy data in parallel for comparison
+                const [relRes, legacyRes] = await Promise.all([
+                    supabase.from('cbt_exam_questions').select('question_id, question_number').eq('exam_id', examId).order('question_number'),
+                    supabase.from('cbt_questions').select('*').eq('exam_id', examId)
+                ]);
 
-                if (eqData && eqData.length > 0) {
-                    const qIds = eqData.map(d => d.question_id);
+                let relationalQuestions = [];
+                if (relRes.data && relRes.data.length > 0) {
+                    const qIds = relRes.data.map(d => d.question_id);
                     const { data: qData } = await supabase.from('cbt_question_bank')
                         .select('*, cbt_options(*)')
                         .in('id', qIds);
 
                     if (qData) {
-                        // Map options back to flat structure for the existing renderer
-                        rawQuestions = qData.map(q => {
+                        relationalQuestions = qData.map(q => {
                             const opts = q.cbt_options || [];
                             return {
                                 ...q,
@@ -7660,15 +7661,24 @@ export const UI = {
                                 correct_option: (opts.find(o => o.is_correct) || {}).option_label || 'A'
                             };
                         });
-                        // Re-order by question_number
+                        // Sort by relational order
                         const qNumMap = {};
-                        eqData.forEach(d => qNumMap[d.question_id] = d.question_number);
-                        rawQuestions.sort((a, b) => qNumMap[a.id] - qNumMap[b.id]);
+                        relRes.data.forEach(d => qNumMap[d.question_id] = d.question_number);
+                        relationalQuestions.sort((a, b) => qNumMap[a.id] - qNumMap[b.id]);
                     }
+                }
+
+                const legacyQuestions = legacyRes.data || [];
+
+                // Logic: Prefer Relational ONLY if it has more valid-looking questions or is the primary source
+                // If legacy has significantly more data, it's likely the intended source for this exam
+                if (relationalQuestions.length > 0 && relationalQuestions.length >= legacyQuestions.length) {
+                    rawQuestions = relationalQuestions;
+                } else if (legacyQuestions.length > 0) {
+                    rawQuestions = legacyQuestions;
+                    console.log(`[CBT] Preferring Legacy Pool (${legacyQuestions.length} questions) over Relational Pool (${relationalQuestions.length})`);
                 } else {
-                    // Fallback to Legacy Flat Schema
-                    const { data: legacyQ } = await supabase.from('cbt_questions').select('*').eq('exam_id', examId);
-                    rawQuestions = legacyQ || [];
+                    rawQuestions = relationalQuestions;
                 }
             } catch (cloudErr) {
                 console.warn('[CBT] Cloud fetch failed, using local data:', cloudErr.message);
@@ -7970,9 +7980,9 @@ export const UI = {
             
             try {
                 if (document.documentElement.requestFullscreen) {
-                    document.documentElement.requestFullscreen();
+                    await document.documentElement.requestFullscreen();
                 }
-            } catch (e) { console.warn('Fullscreen request failed:', e); }
+            } catch (e) { console.warn('Fullscreen request deferred (Permissions or Gesture required):', e.message); }
 
             this.renderCBTExamInterface();
             this.startExamTimer();
