@@ -7234,7 +7234,7 @@ export const UI = {
                 opt.selected = exam && exam.subject_id === s.id;
                 subjectSelect.appendChild(opt);
             });
-        };
+        });
 
         this.refreshQuestionPreview();
     },
