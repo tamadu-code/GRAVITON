@@ -11437,11 +11437,14 @@ export const UI = {
 
                 // Cloud Save (Batches of 50 to prevent timeouts)
                 if (navigator.onLine) {
-                    const BATCH_SIZE = 50;
-                    for (let i = 0; i < newQuestions.length; i += BATCH_SIZE) {
-                        const batch = newQuestions.slice(i, i + BATCH_SIZE);
-                        const { error } = await client.from('cbt_questions').upsert(batch);
-                        if (error) console.warn('[CBT BANK] Batch push failed:', error);
+                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                    if (client) {
+                        const BATCH_SIZE = 50;
+                        for (let i = 0; i < newQuestions.length; i += BATCH_SIZE) {
+                            const batch = newQuestions.slice(i, i + BATCH_SIZE);
+                            const { error } = await client.from('cbt_questions').upsert(batch);
+                            if (error) console.warn('[CBT BANK] Batch push failed:', error);
+                        }
                     }
                 }
 
@@ -11460,7 +11463,10 @@ export const UI = {
             await db.cbt_questions.delete(questionId);
             
             if (navigator.onLine) {
-                await client.from('cbt_questions').delete().eq('id', questionId);
+                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (client) {
+                    await client.from('cbt_questions').delete().eq('id', questionId);
+                }
             }
 
             Notifications.show('Question deleted from bank.', 'success');
@@ -11479,7 +11485,10 @@ export const UI = {
             
             // Cloud Clean-up
             if (navigator.onLine) {
-                await client.from('cbt_questions').delete().eq('exam_id', bankExamId);
+                const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (client) {
+                    await client.from('cbt_questions').delete().eq('exam_id', bankExamId);
+                }
             }
 
             Notifications.show('Category deleted from bank.', 'success');
