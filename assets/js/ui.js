@@ -7174,20 +7174,23 @@ export const UI = {
         const titleSelect = document.getElementById('exam-title');
         const scoreFieldSelect = document.getElementById('exam-score-field');
         if (titleSelect && scoreFieldSelect) {
-            titleSelect.onchange = () => {
+            titleSelect.addEventListener('change', () => {
                 const val = titleSelect.value.toLowerCase();
+                console.log('[CBT Sync] Exam Type changed to:', val);
                 if (val.includes('test 1')) scoreFieldSelect.value = 'test1';
                 else if (val.includes('test 2')) scoreFieldSelect.value = 'test2';
                 else if (val.includes('exam')) scoreFieldSelect.value = 'exam';
-            };
+                console.log('[CBT Sync] Automatically set Score Field to:', scoreFieldSelect.value);
+            });
         }
 
         // Dynamic Filtering Logic
         const classSelect = document.getElementById('exam-class');
         const subjectSelect = document.getElementById('exam-subject');
 
-        classSelect.onchange = async () => {
+        classSelect.addEventListener('change', async () => {
             const selectedClass = classSelect.value;
+            console.log('[CBT Filter] Class selected:', selectedClass);
             subjectSelect.innerHTML = '<option value="">Select Subject</option>';
             
             if (!selectedClass) return;
