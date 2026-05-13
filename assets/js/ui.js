@@ -8518,12 +8518,11 @@ export const UI = {
             if (!text) return;
 
             // Ultra-Flexible Scanner: Handles case variations, extra spaces, dots, and varied delimiters
-            // Robust Scanner: Handles variations and ensures markers (A), (B) etc are not part of the text
-            // 1. First attempt to parse MCQs (A, B, C...)
-            const mcqRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*)?(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // Enhanced MCQ Regex: Much more robust with flexible answer tags [Ans: A], [Answer: A], (Ans: A), etc.
+            const mcqRegex = /((?:(?![\(\[]?[A-E][\)\]\.]).)*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?)?)?[\(\[]?(?:Ans|Answer)[\:\s]+([A-E])[\)\]]?/gi;
             
-            // 2. Second attempt to parse Fill-in-the-Blank (No options, just [Ans: ...])
-            const fillRegex = /([\s\S]*?)\s*\[Ans:\s*([\s\S]*?)\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // Second attempt to parse Fill-in-the-Blank (No options, just [Ans: ...])
+            const fillRegex = /([\s\S]*?)\s*[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]?/gi;
             
             let match;
             let count = 0;
@@ -11632,14 +11631,13 @@ export const UI = {
             const bankExamId = `BANK-${subjectId}__${className}__${term.replace(/\s+/g, '')}__${session.replace(/\//g, '-')}`;
 
             // MCQ Regex: Captures Question, A, B, C, D, E (optional), Answer, and Marks (optional)
-            // Robust MCQ Regex: Handles A-D or A-E with flexible formatting
-            // Captures: Question (A) OptA (B) OptB (C) OptC (D) OptD [Ans: X]
-            const mcqRegex = /((?:(?![\(\[]?[A-E][\)\]\.]).)*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?)?)?\[Ans:\s*([A-E])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            // Enhanced MCQ Regex: Much more robust with flexible answer tags [Ans: A], [Answer: A], (Ans: A), etc.
+            const mcqRegex = /((?:(?![\(\[]?[A-E][\)\]\.]).)*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?)?)?[\(\[]?(?:Ans|Answer)[\:\s]+([A-E])[\)\]]?/gi;
             
             // Simpler MCQ Regex for just A and B (True/False or Yes/No)
-            const simpleMcqRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*\[Ans:\s*([A-B])\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            const simpleMcqRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?(?:Ans|Answer)[\:\s]+([A-B])[\)\]]?/gi;
 
-            const fillRegex = /([\s\S]*?)\s*\[Ans:\s*([\s\S]*?)\](?:\s*\[Marks:\s*(\d*\.?\d+)\])?/gi;
+            const fillRegex = /([\s\S]*?)\s*[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]?/gi;
 
             let match;
             const newQuestions = [];
