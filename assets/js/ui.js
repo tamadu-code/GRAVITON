@@ -7741,43 +7741,46 @@ export const UI = {
 
             const requestedLimit = parseInt(exam.question_limit) || 0;
             
-            console.log(`[CBT AUDIT] Pool Analysis:
-                - Total Raw: ${questions.length}
-                - Passed Integrity: ${validQuestions.length}
-                - Requested Limit: ${requestedLimit || 'No Limit'}
-            `);
+            // --- NEW: Question Locking Mechanism (Fixes Resume Question Injection) ---
+            let finalSlice = [];
+            const existingQuestionIds = session?.question_ids || [];
 
-            if (requestedLimit > 0 && validQuestions.length < requestedLimit) {
-                Notifications.show(`Note: Only ${validQuestions.length} valid questions available (limit was ${requestedLimit}).`, 'warning');
-            }
-
-            console.log(`[CBT] Starting exam for Student: ${studentId}`);
-
-            const now = new Date();
-            const durationSeconds = (exam.duration || 30) * 60;
-
-            // Seeded Shuffle and Limit Questions (Deterministic based on student + exam)
-            const seedStr = studentId + examId;
-            let seed = 0;
-            for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
-            
-            const seededShuffle = (array, seed) => {
-                let m = array.length, t, i;
-                while (m) {
-                    seed = (seed * 9301 + 49297) % 233280;
-                    i = Math.floor((seed / 233280) * m--);
-                    t = array[m];
-                    array[m] = array[i];
-                    array[i] = t;
+            if (existingQuestionIds && existingQuestionIds.length > 0) {
+                // RESUME: Load exactly the same questions as before, in the same order
+                console.log('[CBT] Resuming with locked question set:', existingQuestionIds.length);
+                const qMap = {};
+                validQuestions.forEach(q => qMap[q.id] = q);
+                finalSlice = existingQuestionIds.map(id => qMap[id]).filter(Boolean);
+                
+                // Fallback: If some questions went missing from the pool, fill the gap deterministically
+                if (finalSlice.length < existingQuestionIds.length) {
+                    console.warn(`[CBT] ${existingQuestionIds.length - finalSlice.length} questions missing from pool on resume.`);
                 }
-                return array;
-            };
+            } else {
+                // FIRST START: Shuffle and Lock IDs
+                const seedStr = studentId + examId;
+                let seed = 0;
+                for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+                
+                const seededShuffle = (array, seed) => {
+                    let m = array.length, t, i;
+                    while (m) {
+                        seed = (seed * 9301 + 49297) % 233280;
+                        i = Math.floor((seed / 233280) * m--);
+                        t = array[m];
+                        array[m] = array[i];
+                        array[i] = t;
+                    }
+                    return array;
+                };
 
-            // Shuffle the VALID questions, then apply limit
-            let poolCopy = [...validQuestions];
-            let shuffledQuestions = seededShuffle(poolCopy, seed);
-            const limit = requestedLimit;
-            let finalSlice = (limit > 0) ? shuffledQuestions.slice(0, limit) : shuffledQuestions;
+                let poolCopy = [...validQuestions];
+                let shuffled = seededShuffle(poolCopy, seed);
+                finalSlice = (requestedLimit > 0) ? shuffled.slice(0, requestedLimit) : shuffled;
+                
+                // Lock these IDs into the session immediately
+                if (session) session.question_ids = finalSlice.map(q => q.id);
+            }
 
             // Audit the slice before filtering to see if any nulls were introduced
             const holes = finalSlice.filter(q => !q).length;
@@ -8398,27 +8401,37 @@ export const UI = {
         
         try {
             const timestamp = new Date().toISOString();
+            
+            // 1. LOCAL-FIRST: Save to IndexedDB immediately (Instant)
             await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
                 answers: this.userAnswers,
                 updated_at: timestamp,
                 is_synced: 0
             });
 
-            // Direct Cloud Push for Real-Time Monitoring
+            // 2. BACKGROUND CLOUD SYNC: Fire and forget (Non-blocking)
             if (navigator.onLine) {
                 const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (supabase) {
-                    const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
-                    if (session) {
-                        const { is_synced, ...cloudPayload } = session;
+                    // Start async sync without 'await' to keep UI fluid
+                    (async () => {
                         try {
-                            const { error } = await supabase.from('cbt_results')
-                                .upsert(cloudPayload, { onConflict: 'student_id,exam_id' });
-                            if (error) console.warn('[CBT CLOUD] Save error:', error);
+                            const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+                            if (session) {
+                                const { is_synced, ...cloudPayload } = session;
+                                const { error } = await supabase.from('cbt_results')
+                                    .upsert(cloudPayload, { onConflict: 'student_id,exam_id' });
+                                
+                                if (!error) {
+                                    // Mark as synced if successful
+                                    await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({ is_synced: 1 });
+                                    console.log('[CBT CLOUD] Progress synced.');
+                                }
+                            }
                         } catch (e) {
-                            console.warn('[CBT CLOUD] Network/Sync failure:', e);
+                            console.warn('[CBT CLOUD] Background sync pending (Network offline/slow).');
                         }
-                    }
+                    })();
                 }
             }
         } catch (err) {
