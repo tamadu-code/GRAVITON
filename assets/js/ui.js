@@ -1483,7 +1483,7 @@ export const UI = {
                 const id = btn.dataset.id;
                 
                 const modalHtml = `
-                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                         <div>
                             <label>Stream Name</label>
                             <input type="text" id="edit-stream-name" class="input" value="${oldName}" style="width: 100%;">
@@ -1921,49 +1921,50 @@ export const UI = {
         const currentAssignments = assignments.filter(a => currentIds.split(',').includes(a.subject_id));
 
         const modalHtml = `
-            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-                <div class="form-group">
-                    <label style="font-size: 0.75rem; font-weight: 700; color: #64748b;">COURSE TITLE</label>
-                    <input type="text" id="edit-sub-name" class="input" value="${subjectName}" style="width:100%; height: 45px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0;">
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <div>
+                    <label style="font-weight:700; color:var(--text-primary);">Course Title</label>
+                    <input type="text" id="edit-sub-name" class="input" value="${subjectName}" style="width:100%; height: 44px; border-radius: 10px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0;">
                 </div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                    <div class="form-group">
-                        <label style="font-size: 0.75rem; font-weight: 700; color: #64748b;">CREDITS/UNITS</label>
-                        <input type="number" id="edit-sub-credits" class="input" value="${subject.credits || 1}" style="width:100%; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0;">
-                    </div>
-                    <div class="form-group">
-                        <label style="font-size: 0.75rem; font-weight: 700; color: #64748b;">SUBJECT TYPE</label>
-                        <select id="edit-sub-type" class="input" style="width:100%; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0;">
-                            <option value="Core" ${subject.type === 'Core' ? 'selected' : ''}>Core Subject</option>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div>
+                        <label style="font-weight:700; color:var(--text-primary);">Module Type</label>
+                        <select id="edit-sub-type" class="input" style="width:100%; height: 44px; border-radius: 10px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0;">
+                            <option value="Core" ${subject.type === 'Core' ? 'selected' : ''}>Core</option>
                             <option value="Elective" ${subject.type === 'Elective' ? 'selected' : ''}>Elective</option>
                         </select>
                     </div>
+                    <div>
+                        <label style="font-weight:700; color:var(--text-primary);">Credit Load</label>
+                        <input type="number" id="edit-sub-credits" class="input" value="${subject.credits || 1}" style="width:100%; height: 44px; border-radius: 10px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0;">
+                    </div>
                 </div>
 
-                <div style="background: #f8fafc; padding: 1.25rem; border-radius: 12px; border: 1px solid #e2e8f0;">
-                    <h4 style="font-size: 0.85rem; font-weight: 800; color: #1e293b; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="users" style="width:16px;"></i> Teacher Assignments</h4>
-                    <div id="assignment-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
-                        ${currentAssignments.map(a => `
-                            <div class="assignment-row" style="display: flex; gap: 0.5rem; align-items: center; background: white; padding: 0.5rem; border-radius: 8px; border: 1px solid #e2e8f0;">
-                                <select class="input assign-teacher" style="flex: 1.5; font-size: 0.85rem; border: none; background: transparent; color: #1e293b;">
-                                    ${teachers.map(t => `<option value="${t.id}" ${a.teacher_id === t.id ? 'selected' : ''} style="background: white; color: #1e293b;">${t.full_name || t.username}</option>`).join('')}
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <label style="font-weight:700; color:var(--text-primary);">Stream Assignments</label>
+                        <button type="button" id="btn-add-assign" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.3rem 0.6rem; font-size: 0.7rem; font-weight: 700; cursor: pointer;">+ Add Assignment</button>
+                    </div>
+                    <div id="assignment-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 200px; overflow-y: auto; background: #f8fafc; padding: 0.5rem; border-radius: 8px;">
+                        ${currentAssignments.length === 0 ? '<p style="font-size:0.7rem; color:#94a3b8; text-align:center; padding:1rem;">No assignments. Click + Add Assignment.</p>' : currentAssignments.map(a => `
+                            <div class="assignment-row" style="display: flex; gap: 0.4rem; align-items: center; background: white; padding: 0.4rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                                <select class="input assign-teacher" style="flex: 1.5; height: 36px; font-size: 0.8rem; border:none; background:transparent;">
+                                    <option value="">No Teacher</option>
+                                    ${teachers.map(t => `<option value="${t.id}" ${a.teacher_id === t.id ? 'selected' : ''}>${t.full_name || t.username}</option>`).join('')}
                                 </select>
-                                <select class="input assign-class" style="flex: 1; font-size: 0.85rem; border: none; background: transparent; color: #1e293b;">
-                                    ${classes.map(c => `<option value="${c.name}" ${a.class_name === c.name ? 'selected' : ''} style="background: white; color: #1e293b;">${c.name}</option>`).join('')}
+                                <select class="input assign-class" style="flex: 1.2; height: 36px; font-size: 0.8rem; border:none; background:transparent;">
+                                    ${classes.map(c => `<option value="${c.name}" ${a.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
                                 </select>
-                                <select class="input assign-spec" style="flex: 1; font-size: 0.85rem; border: none; background: transparent; color: #1e293b;">
+                                <select class="input assign-spec" style="flex: 1; height: 36px; font-size: 0.8rem; border:none; background:transparent;">
                                     <option value="" ${!a.specialization ? 'selected' : ''}>General</option>
                                     <option value="Science" ${a.specialization === 'Science' ? 'selected' : ''}>Science</option>
                                     <option value="Arts" ${a.specialization === 'Arts' ? 'selected' : ''}>Arts</option>
                                     <option value="Commercial" ${a.specialization === 'Commercial' ? 'selected' : ''}>Commercial</option>
                                 </select>
-                                <button class="btn btn-sm" onclick="this.parentElement.remove()" style="color: #ef4444; background: none; border: none;"><i data-lucide="trash"></i></button>
+                                <button type="button" onclick="this.parentElement.remove()" style="color:#ef4444; background:none; border:none; cursor:pointer;"><i data-lucide="trash-2" style="width:14px;"></i></button>
                             </div>
                         `).join('')}
                     </div>
-                    <button class="btn btn-secondary btn-sm mt-1 w-100" id="btn-add-assign" style="border: 2px dashed #cbd5e1; background: transparent; color: #64748b; font-weight: 700;">
-                        <i data-lucide="plus"></i> Add Assignment
-                    </button>
                 </div>
             </div>
         `;
@@ -2003,25 +2004,30 @@ export const UI = {
 
         // Add row logic
         document.getElementById('btn-add-assign').onclick = () => {
+            const list = document.getElementById('assignment-list');
+            const placeholder = list.querySelector('p');
+            if (placeholder) placeholder.remove();
+
             const row = document.createElement('div');
             row.className = 'assignment-row';
-            row.style = "display: flex; gap: 0.5rem; align-items: center; background: white; padding: 0.5rem; border-radius: 8px; border: 1px solid #e2e8f0;";
+            row.style = "display: flex; gap: 0.4rem; align-items: center; background: white; padding: 0.4rem; border-radius: 6px; border: 1px solid #e2e8f0;";
             row.innerHTML = `
-                <select class="input assign-teacher" style="flex: 1.5; font-size: 0.85rem; border: none; background: transparent; color: #1e293b;">
-                    ${teachers.map(t => `<option value="${t.id}" style="background: white; color: #1e293b;">${t.full_name || t.username}</option>`).join('')}
+                <select class="input assign-teacher" style="flex: 1.5; height: 36px; font-size: 0.8rem; border:none; background:transparent;">
+                    <option value="">No Teacher</option>
+                    ${teachers.map(t => `<option value="${t.id}">${t.full_name || t.username}</option>`).join('')}
                 </select>
-                <select class="input assign-class" style="flex: 1; font-size: 0.85rem; border: none; background: transparent; color: #1e293b;">
-                    ${classes.map(c => `<option value="${c.name}" style="background: white; color: #1e293b;">${c.name}</option>`).join('')}
+                <select class="input assign-class" style="flex: 1.2; height: 36px; font-size: 0.8rem; border:none; background:transparent;">
+                    ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                 </select>
-                <select class="input assign-spec" style="flex: 1; font-size: 0.85rem; border: none; background: transparent; color: #1e293b;">
+                <select class="input assign-spec" style="flex: 1; height: 36px; font-size: 0.8rem; border:none; background:transparent;">
                     <option value="">General</option>
                     <option value="Science">Science</option>
                     <option value="Arts">Arts</option>
                     <option value="Commercial">Commercial</option>
                 </select>
-                <button class="btn btn-sm" onclick="this.parentElement.remove()" style="color: #ef4444; background: none; border: none;"><i data-lucide="trash"></i></button>
+                <button type="button" onclick="this.parentElement.remove()" style="color:#ef4444; background:none; border:none; cursor:pointer;"><i data-lucide="trash-2" style="width:14px;"></i></button>
             `;
-            document.getElementById('assignment-list').appendChild(row);
+            list.appendChild(row);
             if (typeof lucide !== 'undefined') lucide.createIcons();
         };
         
