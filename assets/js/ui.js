@@ -8990,6 +8990,9 @@ export const UI = {
     /**
      * Smart Content Parser: Detects images and prepares Math
      */
+    parseCBTContent(text) {
+        if (!text) return '';
+        
         // 1. Detect if it's LaTeX without delimiters and wrap it
         // Heuristic: If it contains backslashes but no delimiters, it's likely raw LaTeX
         let processed = text.toString();
@@ -9029,8 +9032,8 @@ export const UI = {
         }
         
         return parsed;
-
     },
+
 
     /**
      * Toggles the Navigation Sidebar
