@@ -8574,7 +8574,11 @@ export const UI = {
                 const mins = Math.floor(this.examTimeLeft / 60);
                 const secs = this.examTimeLeft % 60;
                 timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                if (this.examTimeLeft <= 300) timerEl.style.color = '#ef4444';
+                if (this.examTimeLeft <= 300) {
+                    timerEl.classList.add('timer-critical');
+                } else {
+                    timerEl.classList.remove('timer-critical');
+                }
             }
 
             // Background status check & Time Sync every 15 seconds
@@ -8702,16 +8706,16 @@ export const UI = {
                             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                         }
                         
-                        .jamb-question-box { flex: 1; overflow-y: auto; padding: 2rem; }
+                        .jamb-question-box { flex: 1; overflow-y: auto; padding: 1rem 1.5rem; }
                         
                         .jamb-option { 
                             display: flex; 
-                            align-items: flex-start; 
-                            gap: 1rem; 
-                            padding: 1.25rem; 
-                            border: 2px solid #e2e8f0; 
-                            border-radius: 16px; 
-                            margin-bottom: 0.75rem; 
+                            align-items: center; 
+                            gap: 0.75rem; 
+                            padding: 0.7rem 1rem; 
+                            border: 1.5px solid #e2e8f0; 
+                            border-radius: 12px; 
+                            margin-bottom: 0.5rem; 
                             cursor: pointer; 
                             transition: all 0.2s; 
                             background: white; 
@@ -8720,43 +8724,43 @@ export const UI = {
                         .jamb-option.selected { background: #eff6ff; border-color: #2563eb; }
                         
                         .jamb-option-label { 
-                            width: 36px; 
-                            height: 36px; 
+                            width: 28px; 
+                            height: 28px; 
                             border-radius: 50%; 
                             border: 2px solid #cbd5e1; 
                             display: flex; 
                             align-items: center; 
                             justify-content: center; 
                             font-weight: 800; 
-                            font-size: 1rem; 
+                            font-size: 0.85rem; 
                             color: #64748b; 
                             flex-shrink: 0; 
                         }
                         .selected .jamb-option-label { border-color: #2563eb; background: #2563eb; color: white; }
                         
-                        .q-map-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 1rem; }
+                        .q-map-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; padding: 0.75rem; }
                         .q-map-item { 
                             aspect-ratio: 1; 
                             border: 1px solid #e2e8f0; 
-                            border-radius: 8px; 
+                            border-radius: 6px; 
                             display: flex; 
                             align-items: center; 
                             justify-content: center; 
-                            font-size: 0.85rem; 
+                            font-size: 0.75rem; 
                             font-weight: 800; 
                             cursor: pointer; 
                             background: white; 
                             color: #64748b; 
                         }
-                        .q-map-item.active { background: #4338ca; color: white; border-color: #4338ca; transform: scale(1.05); box-shadow: 0 4px 10px rgba(67, 56, 202, 0.2); }
+                        .q-map-item.active { background: #4338ca; color: white; border-color: #4338ca; transform: scale(1.05); }
                         .q-map-item.answered { background: #ecfdf5; color: #059669; border-color: #10b981; }
 
-                        /* BUTTON COLORS RESTORED */
-                        .jamb-nav-btn { height: 50px; padding: 0 1.25rem; border-radius: 10px; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s; border: none; cursor: pointer; white-space: nowrap; }
+                        /* COMPACT BUTTONS */
+                        .jamb-nav-btn { height: 42px; padding: 0 1rem; border-radius: 8px; font-weight: 800; font-size: 0.75rem; display: flex; align-items: center; gap: 0.4rem; transition: all 0.2s; border: none; cursor: pointer; white-space: nowrap; }
                         .jamb-nav-prev { background: #475569; color: white; }
                         .jamb-nav-next { background: #2563eb; color: white; }
                         .jamb-nav-submit { background: #e11d48; color: white; box-shadow: 0 4px 10px rgba(225, 29, 72, 0.3); }
-                        .jamb-nav-btn:hover { opacity: 0.9; transform: translateY(-2px); }
+                        .jamb-nav-btn:hover { opacity: 0.9; transform: translateY(-1px); }
 
                         .mobile-palette-trigger { 
                             display: none; 
@@ -8789,10 +8793,16 @@ export const UI = {
                             .jamb-sidebar.open { transform: translateX(0); }
                             .mobile-palette-trigger { display: flex; }
                         }
+
+                        @keyframes timer-blink {
+                            0%, 100% { background: #fee2e2; color: #ef4444; border-color: #fecdd3; }
+                            50% { background: #ef4444; color: white; border-color: #ef4444; }
+                        }
+                        .timer-critical { animation: timer-blink 1s infinite cubic-bezier(0.4, 0, 0.6, 1); }
                     </style>
 
-                    <div class="exam-wrapper" id="cbt-exam-interface-wrapper">
 
+                    <div class="exam-wrapper" id="cbt-exam-interface-wrapper">
                         <button class="mobile-palette-trigger" onclick="const s = document.querySelector('.jamb-sidebar'); s.classList.toggle('open'); document.getElementById('cbt-sidebar-backdrop').style.display = s.classList.contains('open') ? 'block' : 'none';">
                             <i data-lucide="grid-3x3"></i>
                         </button>
@@ -8800,22 +8810,23 @@ export const UI = {
                         <!-- Main Exam Area -->
                         <div class="jamb-main">
                             <!-- Top Bar -->
-                            <header style="background: #1e293b; color: white; padding: 0.75rem 1.5rem; display: flex; justify-content: space-between; align-items: center;">
-                                <div style="display: flex; align-items: center; gap: 1rem;">
-                                    <img src="assets/img/logo.png" style="height: 30px;" onerror="this.style.display='none'">
-                                    <div style="font-weight: 800; font-size: 1rem;">${this.escapeHTML(this.currentExam.title)}</div>
+                            <header style="background: #1e293b; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                    <img src="assets/img/logo.png" style="height: 24px;" onerror="this.style.display='none'">
+                                    <div style="font-weight: 800; font-size: 0.85rem; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHTML(this.currentExam.title)}</div>
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 1rem;">
-                                    <div id="exam-timer" style="background: #e11d48; padding: 0.4rem 1.2rem; border-radius: 6px; font-weight: 900; font-size: 1.1rem; min-width: 100px; text-align: center;">${timeStr}</div>
-                                    <div style="display: flex; gap: 0.5rem;">
-                                        <button onclick="UI.toggleCBTCalculator()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'" title="Calculator (C)">
-                                            <i data-lucide="calculator" style="width: 18px;"></i>
+                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                    <div id="exam-timer" style="background: white; color: #0f172a; padding: 0.3rem 0.8rem; border-radius: 6px; font-weight: 900; font-size: 0.95rem; min-width: 80px; text-align: center; border: 1px solid #e2e8f0; transition: all 0.3s;">${timeStr}</div>
+                                    <div style="display: flex; gap: 0.4rem;">
+                                        <button onclick="UI.toggleCBTCalculator()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                                            <i data-lucide="calculator" style="width: 16px;"></i>
                                         </button>
-                                        <button onclick="UI.showCBTKeyboardHelp()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'" title="Keyboard Help (H)" class="desktop-only">
-                                            <i data-lucide="help-circle" style="width: 18px;"></i>
+                                        <button onclick="UI.showCBTKeyboardHelp()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;" class="desktop-only">
+                                            <i data-lucide="help-circle" style="width: 16px;"></i>
                                         </button>
                                     </div>
                                 </div>
+                            </header>
 
                             </header>
 
@@ -8825,14 +8836,15 @@ export const UI = {
                         </div>
 
                         <!-- Sidebar (Question Palette) -->
-                        <aside class="jamb-sidebar">
-                            <div style="padding: 1.5rem; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; text-align: center;">
-                                <div style="width: 80px; height: 80px; border-radius: 50%; overflow: hidden; border: 3px solid white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 0 auto 0.75rem;">
+                        <aside class="jamb-sidebar" style="width: 260px;">
+                            <div style="padding: 1rem; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; text-align: center;">
+                                <div style="width: 60px; height: 60px; border-radius: 50%; overflow: hidden; border: 2px solid white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 0 auto 0.5rem;">
                                     <img src="${this.currentUser.passport_photo || 'assets/img/default-avatar.png'}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='assets/img/default-avatar.png'">
                                 </div>
-                                <div style="font-weight: 800; color: #1e293b; font-size: 0.8rem; text-transform: uppercase;">${studentName}</div>
-                                <div style="font-weight: 600; color: #64748b; font-size: 0.7rem;">${studentId}</div>
+                                <div style="font-weight: 800; color: #1e293b; font-size: 0.7rem; text-transform: uppercase;">${studentName}</div>
+                                <div style="font-weight: 600; color: #64748b; font-size: 0.65rem;">${studentId}</div>
                             </div>
+
                             <div style="flex: 1; overflow-y: auto;">
                                 <div style="padding: 0.75rem 1rem; font-weight: 800; color: #475569; font-size: 0.7rem; letter-spacing: 0.05em; background: #f8fafc; position: sticky; top: 0; z-index: 1;">QUESTION PALETTE</div>
                                 <div id="cbt-question-palette" class="q-map-grid">
@@ -8935,16 +8947,16 @@ export const UI = {
         displayArea.innerHTML = `
             <div class="jamb-question-box">
                 <div style="max-width: 800px; margin: 0 auto;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; border-bottom: 2px solid #f1f5f9; padding-bottom: 0.5rem;">
-                        <div style="font-weight: 900; color: #64748b; font-size: 0.9rem;">QUESTION ${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}</div>
-                        <div style="background: #f1f5f9; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 700; color: #475569; font-size: 0.7rem;">${q.marks || 1} POINT(S)</div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.4rem;">
+                        <div style="font-weight: 800; color: #64748b; font-size: 0.75rem;">QUESTION ${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}</div>
+                        <div style="background: #f1f5f9; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 700; color: #475569; font-size: 0.65rem;">${q.marks || 1} PT(S)</div>
                     </div>
 
-                    <div id="cbt-question-text" style="font-size: 1.2rem; font-weight: 600; color: #1e293b; line-height: 1.6; margin-bottom: 2.5rem;">
+                    <div id="cbt-question-text" style="font-size: 1.05rem; font-weight: 600; color: #1e293b; line-height: 1.5; margin-bottom: 1.5rem;">
                         ${this.parseCBTContent(q.question_text)}
                     </div>
 
-                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div style="display: flex; flex-direction: column; gap: 0.4rem;">
                         ${(q.shuffledOptions || []).map((opt, idx) => {
                             if (!opt) return '';
                             const label = String.fromCharCode(65 + idx);
@@ -8952,7 +8964,7 @@ export const UI = {
                             return `
                                 <div class="jamb-option ${isSelected ? 'selected' : ''}" onclick="UI.saveExamProgress('${q.id}', '${this.escapeHTML(opt.text).replace(/'/g, "\\'")}')">
                                     <div class="jamb-option-label">${label}</div>
-                                    <div style="font-weight: 500; color: #334155; font-size: 1rem;">${this.parseCBTContent(opt.text || '')}</div>
+                                    <div style="font-weight: 500; color: #334155; font-size: 0.9rem;">${this.parseCBTContent(opt.text || '')}</div>
                                 </div>
                             `;
                         }).join('')}
@@ -8960,25 +8972,27 @@ export const UI = {
                 </div>
             </div>
 
+
             <!-- Footer Buttons -->
-            <footer style="padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; gap: 0.75rem;">
+            <footer style="padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; gap: 0.5rem;">
                     <button class="jamb-nav-btn jamb-nav-prev" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
-                        <i data-lucide="chevron-left"></i> PREVIOUS (P)
+                        <i data-lucide="chevron-left" style="width: 14px;"></i> PREV (P)
                     </button>
                 </div>
-                <div style="display: flex; gap: 0.75rem;">
+                <div style="display: flex; gap: 0.5rem;">
                     ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
                         <button class="jamb-nav-btn jamb-nav-submit" onclick="UI.showSubmitReview()">
-                            SUBMIT EXAM (S) <i data-lucide="check-circle"></i>
+                            SUBMIT (S) <i data-lucide="check-circle" style="width: 14px;"></i>
                         </button>
                     ` : `
                         <button class="jamb-nav-btn jamb-nav-next" onclick="UI.nextQuestion()">
-                            NEXT (N) <i data-lucide="chevron-right"></i>
+                            NEXT (N) <i data-lucide="chevron-right" style="width: 14px;"></i>
                         </button>
                     `}
                 </div>
             </footer>
+
         `;
 
         // 2. Update Palette Items
