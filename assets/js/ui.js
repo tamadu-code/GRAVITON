@@ -8651,7 +8651,10 @@ export const UI = {
                             min-width: 0; 
                             position: relative; 
                             height: 100%;
+                            max-width: 100vw;
+                            overflow-x: hidden;
                         }
+
                         
                         .jamb-sidebar { 
                             width: 300px; 
@@ -8664,7 +8667,9 @@ export const UI = {
                             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                         }
                         
-                        .jamb-question-box { flex: 1; overflow-y: auto; padding: 1rem 1.5rem; }
+                        .jamb-question-box { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 1rem 1.5rem; width: 100%; box-sizing: border-box; }
+                        #cbt-question-text { overflow-x: auto; padding-bottom: 0.5rem; scrollbar-width: thin; }
+
                         
                         .jamb-option { 
                             display: flex; 
@@ -8915,25 +8920,26 @@ export const UI = {
         // 1. Render Question Content
         displayArea.innerHTML = `
             <div class="jamb-question-box">
-                <div style="max-width: 800px; margin: 0 auto;">
+                <div style="max-width: 100%; margin: 0 auto; box-sizing: border-box;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.4rem;">
                         <div style="font-weight: 800; color: #64748b; font-size: 0.75rem;">QUESTION ${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}</div>
                         <div style="background: #f1f5f9; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 700; color: #475569; font-size: 0.65rem;">${q.marks || 1} PT(S)</div>
                     </div>
 
-                    <div id="cbt-question-text" style="font-size: 1.05rem; font-weight: 600; color: #1e293b; line-height: 1.5; margin-bottom: 1.5rem;">
+                    <div id="cbt-question-text" style="font-size: 1.05rem; font-weight: 600; color: #1e293b; line-height: 1.5; margin-bottom: 1.5rem; width: 100%; box-sizing: border-box;">
                         ${this.parseCBTContent(q.question_text)}
                     </div>
 
-                    <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                    <div style="display: flex; flex-direction: column; gap: 0.4rem; width: 100%;">
                         ${(q.shuffledOptions || []).map((opt, idx) => {
                             if (!opt) return '';
                             const label = String.fromCharCode(65 + idx);
                             const isSelected = this.userAnswers[q.id] === opt.text;
+                            // Using Index for safe selection of complex math strings
                             return `
-                                <div class="jamb-option ${isSelected ? 'selected' : ''}" onclick="UI.saveExamProgress('${q.id}', '${this.escapeHTML(opt.text).replace(/'/g, "\\'")}')">
+                                <div class="jamb-option ${isSelected ? 'selected' : ''}" onclick="UI.selectCBTOption('${q.id}', ${idx})">
                                     <div class="jamb-option-label">${label}</div>
-                                    <div style="font-weight: 500; color: #334155; font-size: 0.9rem;">${this.parseCBTContent(opt.text || '')}</div>
+                                    <div style="font-weight: 500; color: #334155; font-size: 0.9rem; overflow-x: auto;">${this.parseCBTContent(opt.text || '')}</div>
                                 </div>
                             `;
                         }).join('')}
@@ -8942,8 +8948,10 @@ export const UI = {
             </div>
 
 
+
             <!-- Footer Buttons -->
-            <footer style="padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+            <footer style="padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box;">
+
                 <div style="display: flex; gap: 0.5rem;">
                     <button class="jamb-nav-btn jamb-nav-prev" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                         <i data-lucide="chevron-left" style="width: 14px;"></i> PREV (P)
@@ -9127,6 +9135,14 @@ export const UI = {
             console.error('Failed to auto-save progress:', err);
         }
     },
+    
+    selectCBTOption(questionId, optionIndex) {
+        const q = this.currentQuestions.find(it => it.id === questionId);
+        if (q && q.shuffledOptions && q.shuffledOptions[optionIndex]) {
+            this.saveExamProgress(questionId, q.shuffledOptions[optionIndex].text);
+        }
+    },
+
 
     showSubmitReview() {
         const total = this.currentQuestions.length;
