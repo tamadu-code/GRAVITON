@@ -8428,18 +8428,14 @@ export const UI = {
             this.examDurationSeconds = durationSeconds;
             document.body.classList.add('exam-mode');
             
-            try {
-            this.renderCBTExamInterface();
-
-            this.startExamTimer();
-            this.attachSecurityListeners();
-            
+            }
         } catch (error) {
             console.error('[CBT START FATAL]', error);
             const errorMsg = error.message || 'Unknown Error';
             Notifications.show(`Initialization failed: ${errorMsg}. Please contact support with this message.`, 'error');
         }
     },
+
 
     attachSecurityListeners() {
         const log = (msg) => this.logViolation(msg);
