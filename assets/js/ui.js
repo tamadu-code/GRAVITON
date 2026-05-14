@@ -8154,7 +8154,8 @@ export const UI = {
                 option_c: stripAnswerTags(q.option_c),
                 option_d: stripAnswerTags(q.option_d),
                 option_e: stripAnswerTags(q.option_e),
-                question_text: stripAnswerTags(q.question_text),
+                // Fallback for Legacy questions where field is 'question'
+                question_text: stripAnswerTags(q.question_text || q.question || ''),
                 correct_option: (q.correct_option || 'A').toUpperCase(),
                 marks: parseFloat(q.marks) || 1
             }));
@@ -8169,7 +8170,7 @@ export const UI = {
                     'D': (q.option_d || '').trim(),
                     'E': (q.option_e || '').trim()
                 };
-                const validOpts = Object.entries(optMap).filter(([k, v]) => v.length > 0);
+                const validOpts = Object.keys(optMap).filter(k => optMap[k].length > 0);
                 const correctVal = optMap[q.correct_option];
 
                 // 1. Must have at least 2 options
