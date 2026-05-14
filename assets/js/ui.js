@@ -13679,24 +13679,29 @@ export const UI = {
     toggleCBTCalculator() {
         let calc = document.getElementById('cbt-calculator');
         if (calc) {
-            calc.style.display = calc.style.display === 'none' ? 'block' : 'none';
+            calc.style.display = (calc.style.display === 'none') ? 'block' : 'none';
             return;
         }
 
+        const isMobile = window.innerWidth <= 768;
         const calcHtml = `
-            <div id="cbt-calculator" style="position: fixed; top: 100px; right: 320px; width: 260px; background: #1e293b; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); z-index: 10006; overflow: hidden; font-family: 'Inter', sans-serif; border: 1px solid rgba(255,255,255,0.1);">
+            <div id="cbt-calculator" style="position: fixed; ${isMobile ? 'top: 50%; left: 50%; transform: translate(-50%, -50%);' : 'top: 80px; right: 20px;'} width: 280px; background: #1e293b; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); z-index: 2000000; overflow: hidden; font-family: 'Outfit', sans-serif; border: 1px solid rgba(255,255,255,0.1); touch-action: none;">
                 <div style="padding: 1rem; background: rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; cursor: move;" id="cbt-calc-header">
-                    <span style="color: white; font-weight: 800; font-size: 0.75rem; letter-spacing: 0.05em;">CALCULATOR</span>
-                    <button onclick="document.getElementById('cbt-calculator').style.display='none'" style="background: none; border: none; color: #94a3b8; cursor: pointer;"><i data-lucide="x" style="width: 16px;"></i></button>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="calculator" style="width: 16px; color: #60a5fa;"></i>
+                        <span style="color: white; font-weight: 800; font-size: 0.75rem; letter-spacing: 0.05em;">EXAM CALCULATOR</span>
+                    </div>
+                    <button onclick="document.getElementById('cbt-calculator').style.display='none'" style="background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="x" style="width: 16px;"></i></button>
                 </div>
-                <div style="padding: 1rem;">
-                    <input type="text" id="calc-display" readonly style="width: 100%; height: 50px; background: #0f172a; border: none; border-radius: 8px; color: #10b981; text-align: right; padding: 0 1rem; font-size: 1.5rem; font-family: 'monospace'; margin-bottom: 1rem; font-weight: 700;" value="0">
-                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                <div style="padding: 1.25rem;">
+                    <input type="text" id="calc-display" readonly style="width: 100%; height: 60px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #10b981; text-align: right; padding: 0 1rem; font-size: 1.75rem; font-family: 'monospace'; margin-bottom: 1rem; font-weight: 700; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);" value="0">
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
                         ${['7','8','9','/','4','5','6','*','1','2','3','-','0','.','=','+'].map(key => {
                             const isOp = ['/','*','-','+','='].includes(key);
-                            return `<button onclick="UI.handleCalc('${key}')" style="height: 44px; border-radius: 8px; border: none; background: ${isOp ? '#334155' : 'rgba(255,255,255,0.1)'}; color: white; font-weight: 700; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='${isOp ? '#334155' : 'rgba(255,255,255,0.1)'}'">${key}</button>`;
+                            const isEq = key === '=';
+                            return `<button onclick="UI.handleCalc('${key}')" style="height: 50px; border-radius: 12px; border: none; background: ${isEq ? '#2563eb' : (isOp ? '#334155' : 'rgba(255,255,255,0.1)')}; color: white; font-weight: 800; font-size: 1.1rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 0 rgba(0,0,0,0.2);" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">${key}</button>`;
                         }).join('')}
-                        <button onclick="UI.handleCalc('C')" style="grid-column: span 4; height: 44px; border-radius: 8px; border: none; background: #e11d48; color: white; font-weight: 800; margin-top: 4px; cursor: pointer;">CLEAR</button>
+                        <button onclick="UI.handleCalc('C')" style="grid-column: span 4; height: 50px; border-radius: 12px; border: none; background: #e11d48; color: white; font-weight: 800; margin-top: 5px; cursor: pointer; box-shadow: 0 4px 0 #9f1239;">CLEAR ALL</button>
                     </div>
                 </div>
             </div>
@@ -13704,23 +13709,40 @@ export const UI = {
         document.body.insertAdjacentHTML('beforeend', calcHtml);
         if (typeof lucide !== 'undefined') lucide.createIcons();
         
-        // Simple Draggable logic
+        // Draggable Logic (Mouse + Touch)
         const header = document.getElementById('cbt-calc-header');
         const element = document.getElementById('cbt-calculator');
         let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-        header.onmousedown = (e) => {
-            e.preventDefault();
-            pos3 = e.clientX; pos4 = e.clientY;
-            document.onmouseup = () => { document.onmouseup = null; document.onmousemove = null; };
-            document.onmousemove = (e) => {
-                e.preventDefault();
-                pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY;
-                pos3 = e.clientX; pos4 = e.clientY;
-                element.style.top = (element.offsetTop - pos2) + "px";
-                element.style.left = (element.offsetLeft - pos1) + "px";
-            };
+
+        const dragStart = (e) => {
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            pos3 = clientX; pos4 = clientY;
+            document.onmouseup = dragEnd;
+            document.ontouchend = dragEnd;
+            document.onmousemove = dragMove;
+            document.ontouchmove = dragMove;
         };
+
+        const dragMove = (e) => {
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            pos1 = pos3 - clientX; pos2 = pos4 - clientY;
+            pos3 = clientX; pos4 = clientY;
+            element.style.top = (element.offsetTop - pos2) + "px";
+            element.style.left = (element.offsetLeft - pos1) + "px";
+            element.style.transform = 'none'; // Remove centering transform once moved
+        };
+
+        const dragEnd = () => {
+            document.onmouseup = null; document.ontouchend = null;
+            document.onmousemove = null; document.ontouchmove = null;
+        };
+
+        header.onmousedown = dragStart;
+        header.ontouchstart = dragStart;
     },
+
 
     handleCalc(key) {
         const display = document.getElementById('calc-display');
