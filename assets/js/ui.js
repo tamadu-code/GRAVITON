@@ -7325,16 +7325,23 @@ export const UI = {
 
         this.cbtQuestions = isEdit ? await db.cbt_questions.where('exam_id').equals(examId).toArray() : [];
 
-        let subjects = (await db.subjects.toArray());
+        let subjects = await db.subjects.toArray();
         
-        // Deduplicate subjects by name (case-insensitive)
-        const seenSubs = new Set();
-        subjects = subjects.filter(s => {
-            const name = (s.name || '').trim().toUpperCase();
-            if (!name || seenSubs.has(name)) return false;
-            seenSubs.add(name);
-            return true;
-        }).sort((a, b) => a.name.localeCompare(b.name));
+        // Smarter Subject Resolution: Handle duplicates by showing type/ID context
+        const subjectNameCounts = {};
+        subjects.forEach(s => {
+            const name = (s.name || '').trim();
+            subjectNameCounts[name] = (subjectNameCounts[name] || 0) + 1;
+        });
+
+        // Format subjects for display
+        const formattedSubjects = subjects.map(s => ({
+            ...s,
+            displayName: subjectNameCounts[s.name] > 1 ? `${s.name} (${s.type || 'General'})` : s.name
+        })).sort((a, b) => a.displayName.localeCompare(b.displayName));
+        
+        subjects = formattedSubjects;
+
 
         let classes = (await db.classes.toArray());
 
@@ -7474,8 +7481,9 @@ export const UI = {
                                 <label>Subject</label>
                                 <select id="exam-subject" class="cbt-input">
                                     <option value="">Select Subject</option>
-                                    ${subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
+                                    ${subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.displayName || s.name}</option>`).join('')}
                                 </select>
+
                             </div>
 
                             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
@@ -9623,11 +9631,20 @@ export const UI = {
             return a.name.localeCompare(b.name);
         });
 
-        subjects.sort((a,b) => a.name.localeCompare(b.name));
+        const subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
         
-        // Performance Optimization: Pre-map data for O(1) lookups
+        // Deduplicate subjects by name for cleaner bulk selection
+        const seenBulkSubs = new Set();
+        const deduplicatedSubjects = subjects.filter(s => {
+            const name = (s.name || '').trim().toUpperCase();
+            if (!name || seenBulkSubs.has(name)) return false;
+            seenBulkSubs.add(name);
+            return true;
+        });
+
         const subjectMap = {};
         subjects.forEach(s => subjectMap[s.id] = s.name);
+
         
         const teacherMap = {};
         teachers.forEach(t => teacherMap[t.id] = t);
@@ -13721,7 +13738,7 @@ export const UI = {
 
         const isMobile = window.innerWidth <= 768;
         const calcHtml = `
-            <div id="cbt-calculator" style="position: fixed; ${isMobile ? 'top: 50%; left: 50%; transform: translate(-50%, -50%);' : 'top: 80px; right: 20px;'} width: 280px; background: #1e293b; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); z-index: 2000000; overflow: hidden; font-family: 'Outfit', sans-serif; border: 1px solid rgba(255,255,255,0.1); touch-action: none;">
+            <div id="cbt-calculator" style="position: fixed; ${isMobile ? 'top: 50%; left: 50%; transform: translate(-50%, -50%);' : 'top: 80px; right: 20px;'} width: 280px; background: #1e293b; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); z-index: 2000000; overflow: hidden; font-family: 'Outfit', sans-serif; border: 1px solid rgba(255,255,255,0.1); touch-action: none; box-sizing: border-box;">
                 <div style="padding: 1rem; background: rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; cursor: move;" id="cbt-calc-header">
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <i data-lucide="calculator" style="width: 16px; color: #60a5fa;"></i>
@@ -13729,18 +13746,19 @@ export const UI = {
                     </div>
                     <button onclick="document.getElementById('cbt-calculator').style.display='none'" style="background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="x" style="width: 16px;"></i></button>
                 </div>
-                <div style="padding: 1.25rem;">
-                    <input type="text" id="calc-display" readonly style="width: 100%; height: 60px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #10b981; text-align: right; padding: 0 1rem; font-size: 1.75rem; font-family: 'monospace'; margin-bottom: 1rem; font-weight: 700; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);" value="0">
-                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                <div style="padding: 1.25rem; box-sizing: border-box;">
+                    <input type="text" id="calc-display" readonly style="width: 100%; height: 60px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #10b981; text-align: right; padding: 0 1rem; font-size: 1.75rem; font-family: 'monospace'; margin-bottom: 1rem; font-weight: 700; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); box-sizing: border-box;" value="0">
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; box-sizing: border-box;">
                         ${['7','8','9','/','4','5','6','*','1','2','3','-','0','.','=','+'].map(key => {
                             const isOp = ['/','*','-','+','='].includes(key);
                             const isEq = key === '=';
-                            return `<button onclick="UI.handleCalc('${key}')" style="height: 50px; border-radius: 12px; border: none; background: ${isEq ? '#2563eb' : (isOp ? '#334155' : 'rgba(255,255,255,0.1)')}; color: white; font-weight: 800; font-size: 1.1rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 0 rgba(0,0,0,0.2);" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">${key}</button>`;
+                            return `<button onclick="UI.handleCalc('${key}')" style="height: 50px; width: 100%; min-width: 0; border-radius: 12px; border: none; background: ${isEq ? '#2563eb' : (isOp ? '#334155' : 'rgba(255,255,255,0.1)')}; color: white; font-weight: 800; font-size: 1.1rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 0 rgba(0,0,0,0.2); box-sizing: border-box;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">${key}</button>`;
                         }).join('')}
-                        <button onclick="UI.handleCalc('C')" style="grid-column: span 4; height: 50px; border-radius: 12px; border: none; background: #e11d48; color: white; font-weight: 800; margin-top: 5px; cursor: pointer; box-shadow: 0 4px 0 #9f1239;">CLEAR ALL</button>
+                        <button onclick="UI.handleCalc('C')" style="grid-column: span 4; height: 50px; width: 100%; border-radius: 12px; border: none; background: #e11d48; color: white; font-weight: 800; margin-top: 5px; cursor: pointer; box-shadow: 0 4px 0 #9f1239; box-sizing: border-box;">CLEAR ALL</button>
                     </div>
                 </div>
             </div>
+
         `;
         document.body.insertAdjacentHTML('beforeend', calcHtml);
         if (typeof lucide !== 'undefined') lucide.createIcons();
