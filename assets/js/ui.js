@@ -8035,15 +8035,14 @@ export const UI = {
 
                 const legacyQuestions = legacyRes.data || [];
 
-                // Logic: Prefer Relational ONLY if it has more valid-looking questions or is the primary source
-                // If legacy has significantly more data, it's likely the intended source for this exam
-                if (relationalQuestions.length > 0 && relationalQuestions.length >= legacyQuestions.length) {
+                // Logic: Prefer Relational if it has ANY questions, as it's the modern source.
+                // Fallback to Legacy only if Relational is empty.
+                if (relationalQuestions.length > 0) {
                     rawQuestions = relationalQuestions;
+                    console.log(`[CBT] Using Relational Pool (${relationalQuestions.length} questions).`);
                 } else if (legacyQuestions.length > 0) {
                     rawQuestions = legacyQuestions;
-                    console.log(`[CBT] Preferring Legacy Pool (${legacyQuestions.length} questions) over Relational Pool (${relationalQuestions.length})`);
-                } else {
-                    rawQuestions = relationalQuestions;
+                    console.log(`[CBT] Using Legacy Pool (${legacyQuestions.length} questions).`);
                 }
             } catch (cloudErr) {
                 console.warn('[CBT] Cloud fetch failed, using local data:', cloudErr.message);
@@ -8818,8 +8817,14 @@ export const UI = {
             return `<div style="margin: 1rem 0; text-align: center;"><img src="${cleanUrl}" style="max-width: 100%; max-height: 500px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\'color:#f43f5e; font-size:0.75rem; font-weight:700;\'>[⚠️ Image failed to load]</div>'"></div>`;
         });
 
-        // 3. Convert Newlines to <br> for proper multi-line display
-        parsed = parsed.replace(/\n/g, '<br>');
+        // 3. NEW: Security Shield - Strip Answer Indicators [Ans: A], (Ans: A), etc.
+        // We do this before converting newlines so we don't miss multiline tags
+        parsed = parsed.replace(/\[\s*(?:Ans|Answer)\s*[:\s]+.*?\]/gi, '')
+                      .replace(/\(\s*(?:Ans|Answer)\s*[:\s]+.*?\)/gi, '')
+                      .replace(/Ans\s*[:\s]+[A-E]/gi, ''); // Fallback for raw text tags
+
+        // 4. Convert Newlines to <br> for proper multi-line display
+        parsed = parsed.replace(/\n/g, '<br>').trim();
         
         return parsed;
     },
