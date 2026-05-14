@@ -145,11 +145,12 @@ export const UI = {
             }
 
             // [RESILIENCE] Clear any persistent CBT overlays before switching views
-            const cbtOverlays = ['cbt-exam-interface-wrapper', 'cbt-map-sidebar', 'cbt-sidebar-backdrop', 'cbt-submit-review'];
+            const cbtOverlays = ['cbt-exam-interface-wrapper', 'cbt-map-sidebar', 'cbt-sidebar-backdrop', 'cbt-submit-review', 'admin-q-nav'];
             cbtOverlays.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.remove();
             });
+
 
             document.body.classList.remove('exam-mode'); // Safety unlock
 
@@ -7754,7 +7755,8 @@ export const UI = {
         if (!nav) {
             nav = document.createElement('div');
             nav.id = 'admin-q-nav';
-            nav.style = "position: fixed; bottom: 30px; left: 30px; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 1.5rem; width: 200px; max-height: 400px; overflow-y: auto; z-index: 1000; border: 1px solid #e2e8f0; display: none;";
+            nav.className = 'admin-q-nav-container';
+            nav.style = "position: fixed; bottom: 30px; left: 30px; background: white; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); padding: 1rem; width: 220px; z-index: 10001; border: 1px solid #e2e8f0; display: none; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);";
             document.body.appendChild(nav);
         }
 
@@ -7763,16 +7765,31 @@ export const UI = {
             return;
         }
 
+        // Mobile Responsive Adjustments
+        if (window.innerWidth < 768) {
+            nav.style.left = '10px';
+            nav.style.bottom = '10px';
+            nav.style.width = 'calc(100% - 20px)';
+            nav.style.maxWidth = '300px';
+        }
+
         nav.style.display = 'block';
+        const isCollapsed = nav.classList.contains('collapsed');
+        
         nav.innerHTML = `
-            <div style="font-weight: 900; color: #1e293b; font-size: 0.75rem; margin-bottom: 1rem; text-transform: uppercase;">Question Map</div>
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: ${isCollapsed ? '0' : '1rem'}; cursor: pointer;" onclick="const n=this.parentElement; n.classList.toggle('collapsed'); UI.renderAdminQuestionNav();">
+                <div style="font-weight: 900; color: #1e293b; font-size: 0.75rem; text-transform: uppercase;">Question Map (${this.cbtQuestions.length})</div>
+                <button style="background: none; border: none; color: #94a3b8;"><i data-lucide="${isCollapsed ? 'chevron-up' : 'chevron-down'}" style="width: 16px;"></i></button>
+            </div>
+            <div style="display: ${isCollapsed ? 'none' : 'grid'}; grid-template-columns: repeat(4, 1fr); gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 4px;">
                 ${this.cbtQuestions.map((_, i) => `
-                    <button onclick="document.getElementById('admin-q-${i}').scrollIntoView({behavior:'smooth', block:'center'})" style="width: 34px; height: 34px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.2s;">${i+1}</button>
+                    <button onclick="document.getElementById('admin-q-${i}').scrollIntoView({behavior:'smooth', block:'center'})" style="width: 100%; aspect-ratio: 1; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#4338ca'; this.style.color='#4338ca'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.color='#475569'">${i+1}</button>
                 `).join('')}
             </div>
         `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
+
 
     async saveExam(existingId) {
         try {
