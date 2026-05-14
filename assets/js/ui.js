@@ -8218,18 +8218,33 @@ export const UI = {
             };
 
             let finalSlice = [];
-            const existingQuestionIds = session?.question_ids || [];
+            const existingQuestionIds = (session?.question_ids || []).map(id => String(id));
 
             if (existingQuestionIds && existingQuestionIds.length > 0) {
                 // RESUME: Load exactly the same questions as before, in the same order
                 console.log('[CBT] Resuming with locked question set:', existingQuestionIds.length);
                 const qMap = {};
-                validQuestions.forEach(q => qMap[q.id] = q);
-                finalSlice = existingQuestionIds.map(id => qMap[id]).filter(Boolean);
+                validQuestions.forEach(q => qMap[String(q.id)] = q);
                 
-                // Fallback: If some questions went missing from the pool, fill the gap deterministically
-                if (finalSlice.length < existingQuestionIds.length) {
-                    console.warn(`[CBT] ${existingQuestionIds.length - finalSlice.length} questions missing from pool on resume.`);
+                // Map existing IDs to questions
+                const mappedQuestions = existingQuestionIds.map(id => qMap[id]).filter(Boolean);
+                
+                // [RESILIENCE] Hole-Filling Logic: If some questions are missing from the local pool,
+                // refill them from the available validQuestions to maintain the expected count.
+                if (mappedQuestions.length < existingQuestionIds.length) {
+                    const missingCount = existingQuestionIds.length - mappedQuestions.length;
+                    console.warn(`[CBT RESILIENCE] ${missingCount} questions missing from pool on resume. Attempting to refill...`);
+                    
+                    const usedIds = new Set(mappedQuestions.map(q => String(q.id)));
+                    const availablePool = validQuestions.filter(q => !usedIds.has(String(q.id)));
+                    
+                    // Add enough questions from the available pool to fill the holes
+                    const refill = availablePool.slice(0, missingCount);
+                    finalSlice = [...mappedQuestions, ...refill];
+                    
+                    console.log(`[CBT RESILIENCE] Refilled ${refill.length} questions. Final count: ${finalSlice.length}`);
+                } else {
+                    finalSlice = mappedQuestions;
                 }
             } else {
                 // FIRST START: Shuffle and Lock IDs
@@ -8238,9 +8253,9 @@ export const UI = {
                 finalSlice = (requestedLimit > 0) ? shuffled.slice(0, requestedLimit) : shuffled;
             }
                 
-            // Lock these IDs into the session immediately
+            // Lock these IDs into the session immediately (ensures next resume has them)
             if (session) {
-                session.question_ids = finalSlice.filter(Boolean).map(q => q.id);
+                session.question_ids = finalSlice.filter(q => q && q.id).map(q => String(q.id));
             }
 
             // Audit the slice before filtering to see if any nulls were introduced
