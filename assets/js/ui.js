@@ -145,11 +145,12 @@ export const UI = {
             }
 
             // [RESILIENCE] Clear any persistent CBT overlays before switching views
-            const cbtOverlays = ['cbt-map-sidebar', 'cbt-sidebar-backdrop', 'cbt-submit-review'];
+            const cbtOverlays = ['cbt-exam-interface-wrapper', 'cbt-map-sidebar', 'cbt-sidebar-backdrop', 'cbt-submit-review'];
             cbtOverlays.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.remove();
             });
+
             document.body.classList.remove('exam-mode'); // Safety unlock
 
 
@@ -8428,13 +8429,17 @@ export const UI = {
             this.examDurationSeconds = durationSeconds;
             document.body.classList.add('exam-mode');
             
-            }
+            this.renderCBTExamInterface();
+            this.startExamTimer();
+            this.attachSecurityListeners();
+
         } catch (error) {
             console.error('[CBT START FATAL]', error);
             const errorMsg = error.message || 'Unknown Error';
             Notifications.show(`Initialization failed: ${errorMsg}. Please contact support with this message.`, 'error');
         }
     },
+
 
 
     attachSecurityListeners() {
@@ -8751,7 +8756,8 @@ export const UI = {
                         }
                     </style>
 
-                    <div class="exam-wrapper">
+                    <div class="exam-wrapper" id="cbt-exam-interface-wrapper">
+
                         <button class="mobile-palette-trigger" onclick="const s = document.querySelector('.jamb-sidebar'); s.classList.toggle('open'); document.getElementById('cbt-sidebar-backdrop').style.display = s.classList.contains('open') ? 'block' : 'none';">
                             <i data-lucide="grid-3x3"></i>
                         </button>
