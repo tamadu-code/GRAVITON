@@ -8750,7 +8750,18 @@ export const UI = {
                             }
                             .jamb-sidebar.open { transform: translateX(0); }
                             .mobile-palette-trigger { display: flex; }
+
+                            /* COMPACT MOBILE VIEW */
+                            .jamb-question-box { padding: 0.75rem 1rem; }
+                            .jamb-option { padding: 0.5rem 0.75rem; gap: 0.6rem; margin-bottom: 0.4rem; }
+                            .jamb-option-label { width: 24px; height: 24px; font-size: 0.75rem; }
+                            .jamb-option div:last-child { font-size: 0.85rem !important; }
+                            #cbt-question-text { font-size: 0.95rem !important; line-height: 1.4 !important; margin-bottom: 1rem !important; }
+                            header { padding: 0.4rem 0.75rem !important; }
+                            footer { padding: 0.5rem 0.75rem !important; }
+                            .jamb-nav-btn { height: 38px; font-size: 0.7rem; padding: 0 0.75rem; }
                         }
+
 
                         @keyframes timer-blink {
                             0%, 100% { background: #fee2e2; color: #ef4444; border-color: #fecdd3; }
@@ -8979,34 +8990,46 @@ export const UI = {
     /**
      * Smart Content Parser: Detects images and prepares Math
      */
-    parseCBTContent(text) {
-        if (!text) return '';
-        
-        // 1. Basic HTML Escaping to prevent injection or layout breakage
-        // We only allow our own [IMG] tags to render as HTML
-        let safe = text.toString()
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+        // 1. Detect if it's LaTeX without delimiters and wrap it
+        // Heuristic: If it contains backslashes but no delimiters, it's likely raw LaTeX
+        let processed = text.toString();
+        if (processed.includes('\\') && !processed.includes('\\(') && !processed.includes('$') && !processed.includes('\[')) {
+            processed = `\\(${processed}\\)`;
+        }
 
-        // 2. Process [IMG:url] or [IMG:base64]
+        // 2. Basic HTML Escaping (Skip if it looks like LaTeX to avoid breaking commands)
+        let safe = processed;
+        if (!processed.includes('\\')) {
+            safe = processed
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // 3. Process [IMG:url] or [IMG:base64]
         let parsed = safe.replace(/\[IMG:(.*?)\]/gi, (match, url) => {
             const cleanUrl = url.trim().replace(/&amp;/g, '&');
-            return `<div style="margin: 1rem 0; text-align: center;"><img src="${cleanUrl}" style="max-width: 100%; max-height: 500px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\'color:#f43f5e; font-size:0.75rem; font-weight:700;\'>[⚠️ Image failed to load]</div>'"></div>`;
+            return `<div style="margin: 0.75rem 0; text-align: center;"><img src="${cleanUrl}" style="max-width: 100%; max-height: 400px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\'color:#f43f5e; font-size:0.75rem; font-weight:700;\'>[⚠️ Image failed to load]</div>'"></div>`;
         });
 
-        // 3. NEW: Security Shield - Strip Answer Indicators [Ans: A], (Ans: A), etc.
-        // We do this before converting newlines so we don't miss multiline tags
+        // 4. NEW: Security Shield - Strip Answer Indicators [Ans: A], (Ans: A), etc.
         parsed = parsed.replace(/\[\s*(?:Ans|Answer)\s*[:\s]+.*?\]/gi, '')
                       .replace(/\(\s*(?:Ans|Answer)\s*[:\s]+.*?\)/gi, '')
-                      .replace(/Ans\s*[:\s]+[A-E]/gi, ''); // Fallback for raw text tags
+                      .replace(/Ans\s*[:\s]+[A-E]/gi, '');
 
-        // 4. Convert Newlines to <br> for proper multi-line display
-        parsed = parsed.replace(/\n/g, '<br>').trim();
+        // 5. Convert Newlines to <br> for proper multi-line display (Collapse multiple newlines)
+        // If it's math, we skip <br> to let MathJax handle formatting
+        if (!processed.includes('\\')) {
+            parsed = parsed.replace(/\n+/g, '<br>').trim();
+        } else {
+            // Keep newlines as spaces in LaTeX to avoid layout breaks
+            parsed = parsed.replace(/\n+/g, ' ').trim();
+        }
         
         return parsed;
+
     },
 
     /**
@@ -13720,13 +13743,15 @@ export const UI = {
                     </div>
                     <button onclick="document.getElementById('cbt-calculator').style.display='none'" style="background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="x" style="width: 16px;"></i></button>
                 </div>
-                <div style="padding: 1.25rem; box-sizing: border-box;">
+                <div style="padding: 1.25rem; box-sizing: border-box; width: 100%;">
                     <input type="text" id="calc-display" readonly style="width: 100%; height: 60px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #10b981; text-align: right; padding: 0 1rem; font-size: 1.75rem; font-family: 'monospace'; margin-bottom: 1rem; font-weight: 700; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); box-sizing: border-box;" value="0">
-                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; box-sizing: border-box;">
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr) !important; gap: 8px; width: 100%; box-sizing: border-box;">
+
                         ${['7','8','9','/','4','5','6','*','1','2','3','-','0','.','=','+'].map(key => {
                             const isOp = ['/','*','-','+','='].includes(key);
                             const isEq = key === '=';
-                            return `<button onclick="UI.handleCalc('${key}')" style="height: 50px; width: 100%; min-width: 0; border-radius: 12px; border: none; background: ${isEq ? '#2563eb' : (isOp ? '#334155' : 'rgba(255,255,255,0.1)')}; color: white; font-weight: 800; font-size: 1.1rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 0 rgba(0,0,0,0.2); box-sizing: border-box;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">${key}</button>`;
+                            return `<button onclick="UI.handleCalc('${key}')" style="height: 48px; width: 100%; min-width: 0; border-radius: 10px; border: none; background: ${isEq ? '#2563eb' : (isOp ? '#334155' : 'rgba(255,255,255,0.1)')}; color: white; font-weight: 800; font-size: 1rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 3px 0 rgba(0,0,0,0.2); box-sizing: border-box; display: block;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">${key}</button>`;
+
                         }).join('')}
                         <button onclick="UI.handleCalc('C')" style="grid-column: span 4; height: 50px; width: 100%; border-radius: 12px; border: none; background: #e11d48; color: white; font-weight: 800; margin-top: 5px; cursor: pointer; box-shadow: 0 4px 0 #9f1239; box-sizing: border-box;">CLEAR ALL</button>
                     </div>
