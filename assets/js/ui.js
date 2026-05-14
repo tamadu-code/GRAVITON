@@ -8429,12 +8429,8 @@ export const UI = {
             document.body.classList.add('exam-mode');
             
             try {
-                if (document.documentElement.requestFullscreen) {
-                    await document.documentElement.requestFullscreen();
-                }
-            } catch (e) { console.warn('Fullscreen request deferred (Permissions or Gesture required):', e.message); }
-
             this.renderCBTExamInterface();
+
             this.startExamTimer();
             this.attachSecurityListeners();
             
@@ -8641,50 +8637,129 @@ export const UI = {
 
             this.contentArea.innerHTML = `
                     <style>
-                        @media (max-width: 1024px) {
-                            .desktop-only { display: none !important; }
+                        /* --- Unified CBT Interface Styles --- */
+                        .exam-wrapper { 
+                            position: fixed; 
+                            top: 0; 
+                            left: 0; 
+                            width: 100vw; 
+                            height: 100vh; 
+                            height: 100dvh; 
+                            display: flex; 
+                            z-index: 999999; 
+                            background: #f1f5f9; 
+                            font-family: 'Outfit', sans-serif;
+                            overflow: hidden;
                         }
-                        @media (min-width: 1025px) {
-                            .mobile-nav-btn { display: none !important; }
+                        
+                        .jamb-main { 
+                            flex: 1; 
+                            display: flex; 
+                            flex-direction: column; 
+                            background: white; 
+                            min-width: 0; 
+                            position: relative; 
+                            height: 100%;
                         }
-                    </style>
-                    <!-- Security Watermark -->
-                    <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999; display: flex; flex-wrap: wrap; opacity: 0.04; overflow: hidden; align-content: flex-start; gap: 100px; padding: 50px;">
-                        ${Array(15).fill(`<div style="transform: rotate(-30deg); font-weight: 900; font-size: 2rem; color: #000; white-space: nowrap;">${studentId} - ${studentName} - SECURE</div>`).join('')}
-                    </div>
-                    <style>
-                        .exam-wrapper { display: flex; height: 100vh; height: 100dvh; width: 100vw; overflow: hidden; font-family: 'Outfit', sans-serif; background: #f1f5f9; }
-                        .jamb-sidebar { width: 280px; background: #f8fafc; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
-                        .jamb-main { flex: 1; display: flex; flex-direction: column; background: white; min-width: 0; position: relative; }
-                        .jamb-question-box { flex: 1; overflow-y: auto; padding: 1.5rem; position: relative; }
-                        .jamb-option { display: flex; align-items: flex-start; gap: 1rem; padding: 1rem; border: 2px solid #e2e8f0; border-radius: 12px; margin-bottom: 0.75rem; cursor: pointer; transition: all 0.2s; background: white; }
+                        
+                        .jamb-sidebar { 
+                            width: 300px; 
+                            background: #f8fafc; 
+                            border-left: 1px solid #e2e8f0; 
+                            display: flex; 
+                            flex-direction: column; 
+                            flex-shrink: 0; 
+                            height: 100%;
+                            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                        }
+                        
+                        .jamb-question-box { flex: 1; overflow-y: auto; padding: 2rem; }
+                        
+                        .jamb-option { 
+                            display: flex; 
+                            align-items: flex-start; 
+                            gap: 1rem; 
+                            padding: 1.25rem; 
+                            border: 2px solid #e2e8f0; 
+                            border-radius: 16px; 
+                            margin-bottom: 0.75rem; 
+                            cursor: pointer; 
+                            transition: all 0.2s; 
+                            background: white; 
+                        }
                         .jamb-option:hover { border-color: #cbd5e1; background: #f8fafc; }
                         .jamb-option.selected { background: #eff6ff; border-color: #2563eb; }
-                        .jamb-option-label { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; color: #64748b; flex-shrink: 0; transition: all 0.2s; }
-                        .selected .jamb-option-label { border-color: #2563eb; background: #2563eb; color: white; }
-                        .jamb-nav-btn { height: 50px; padding: 0 1.25rem; border-radius: 10px; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s; border: none; cursor: pointer; white-space: nowrap; }
-                        .jamb-nav-prev { background: #475569; color: white; }
-                        .jamb-nav-next { background: #2563eb; color: white; }
-                        .jamb-nav-submit { background: #e11d48; color: white; box-shadow: 0 4px 6px -1px rgba(225, 29, 72, 0.3); }
-                        .q-map-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 1rem; }
-                        .q-map-item { aspect-ratio: 1; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800; cursor: pointer; background: white; color: #64748b; transition: all 0.2s; }
-                        .q-map-item.active { background: #2563eb; color: white; border-color: #2563eb; }
-                        .q-map-item.answered { background: #dcfce7; color: #059669; border-color: #bbf7d0; }
                         
-                        /* Mobile Palette Overlay */
-                        .mobile-palette-trigger { display: none; position: fixed; bottom: 80px; right: 20px; width: 50px; height: 50px; border-radius: 50%; background: #2563eb; color: white; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.4); z-index: 100; border: none; cursor: pointer; align-items: center; justify-content: center; }
+                        .jamb-option-label { 
+                            width: 36px; 
+                            height: 36px; 
+                            border-radius: 50%; 
+                            border: 2px solid #cbd5e1; 
+                            display: flex; 
+                            align-items: center; 
+                            justify-content: center; 
+                            font-weight: 800; 
+                            font-size: 1rem; 
+                            color: #64748b; 
+                            flex-shrink: 0; 
+                        }
+                        .selected .jamb-option-label { border-color: #2563eb; background: #2563eb; color: white; }
+                        
+                        .q-map-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 1rem; }
+                        .q-map-item { 
+                            aspect-ratio: 1; 
+                            border: 1px solid #e2e8f0; 
+                            border-radius: 8px; 
+                            display: flex; 
+                            align-items: center; 
+                            justify-content: center; 
+                            font-size: 0.85rem; 
+                            font-weight: 800; 
+                            cursor: pointer; 
+                            background: white; 
+                            color: #64748b; 
+                        }
+                        .q-map-item.active { background: #4338ca; color: white; border-color: #4338ca; transform: scale(1.05); box-shadow: 0 4px 10px rgba(67, 56, 202, 0.2); }
+                        .q-map-item.answered { background: #ecfdf5; color: #059669; border-color: #10b981; }
 
+                        .mobile-palette-trigger { 
+                            display: none; 
+                            position: fixed; 
+                            bottom: 100px; 
+                            right: 20px; 
+                            width: 60px; 
+                            height: 60px; 
+                            border-radius: 50%; 
+                            background: #4338ca; 
+                            color: white; 
+                            box-shadow: 0 10px 25px rgba(67, 56, 202, 0.4); 
+                            z-index: 1000000; 
+                            border: none; 
+                            cursor: pointer; 
+                            align-items: center; 
+                            justify-content: center; 
+                        }
+
+                        /* Breakpoint: Switch to Mobile Drawer below 1024px */
                         @media (max-width: 1024px) {
-                            .jamb-sidebar { position: fixed; right: -300px; top: 0; height: 100%; transition: all 0.3s; box-shadow: -10px 0 30px rgba(0,0,0,0.1); }
-                            .jamb-sidebar.open { right: 0; }
+                            .jamb-sidebar { 
+                                position: fixed; 
+                                right: 0; 
+                                top: 0; 
+                                z-index: 1000001; 
+                                transform: translateX(100%); 
+                                box-shadow: -10px 0 30px rgba(0,0,0,0.1); 
+                            }
+                            .jamb-sidebar.open { transform: translateX(0); }
                             .mobile-palette-trigger { display: flex; }
-                            .jamb-question-box { padding: 1rem; }
                         }
                     </style>
+
                     <div class="exam-wrapper">
-                        <button class="mobile-palette-trigger" onclick="document.querySelector('.jamb-sidebar').classList.toggle('open')">
+                        <button class="mobile-palette-trigger" onclick="const s = document.querySelector('.jamb-sidebar'); s.classList.toggle('open'); document.getElementById('cbt-sidebar-backdrop').style.display = s.classList.contains('open') ? 'block' : 'none';">
                             <i data-lucide="grid-3x3"></i>
                         </button>
+
                         <!-- Main Exam Area -->
                         <div class="jamb-main">
                             <!-- Top Bar -->
@@ -8782,7 +8857,12 @@ export const UI = {
                                 </div>
                             </div>
                         </aside>
+                        </aside>
+
+                        <!-- Sidebar Backdrop (Mobile Only) -->
+                        <div id="cbt-sidebar-backdrop" onclick="document.querySelector('.jamb-sidebar').classList.remove('open'); this.style.display='none'" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); z-index: 1000000; display: none;"></div>
                     </div>
+
 
                     <!-- Keyboard Support Init -->
                     <script>
@@ -8809,29 +8889,7 @@ export const UI = {
                         document.addEventListener('keydown', window._cbtKeyHandler);
                     </script>
 
-                    <!-- Sidebar Drawer (Mobile Only) -->
-                    <div id="cbt-map-sidebar" style="position: fixed; top: 0; left: -320px; width: 300px; height: 100%; background: white; z-index: 10005; box-shadow: 20px 0 50px rgba(0,0,0,0.1); transition: left 0.4s; display: flex; flex-direction: column;">
-                        <div style="padding: 1rem; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #f8fafc;">
-                            <h3 style="margin:0; font-weight: 800; color: #1e293b; font-size: 0.9rem;">Exam Map</h3>
-                            <button onclick="UI.toggleCBTMap(false)" style="background: none; border: none; color: #94a3b8;"><i data-lucide="x" style="width: 20px;"></i></button>
-                        </div>
-                        <div style="flex: 1; overflow-y: auto; padding: 1rem;">
-                            <div class="q-map-grid">
-                                ${this.currentQuestions.map((cq, i) => {
-                                    const isAnswered = this.userAnswers[cq.id];
-                                    const isActive = i === this.currentQuestionIndex;
-                                    return `
-                                        <div class="q-map-item" 
-                                             style="aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; border-radius: 10px; cursor: pointer; font-weight: 800; font-size: 0.75rem; border: 2px solid ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#f1f5f9')}; background: ${isActive ? '#eef2ff' : (isAnswered ? '#ecfdf5' : 'white')}; color: ${isActive ? '#4338ca' : (isAnswered ? '#10b981' : '#64748b')};"
-                                             onclick="UI.goToQuestion(${i}); UI.toggleCBTMap(false);">
-                                            ${i + 1}
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </div>
-                        </div>
-                    </div>
-                    <div id="cbt-sidebar-backdrop" onclick="UI.toggleCBTMap(false)" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); z-index: 10004; display: none;"></div>
+
 
                     <!-- Submission Review Overlay -->
                     <div id="cbt-submit-review" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); z-index: 20000; display: none; align-items: center; justify-content: center; padding: 1rem;">
