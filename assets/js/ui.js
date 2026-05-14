@@ -144,6 +144,15 @@ export const UI = {
                 return;
             }
 
+            // [RESILIENCE] Clear any persistent CBT overlays before switching views
+            const cbtOverlays = ['cbt-map-sidebar', 'cbt-sidebar-backdrop', 'cbt-submit-review'];
+            cbtOverlays.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.remove();
+            });
+            document.body.classList.remove('exam-mode'); // Safety unlock
+
+
             this.showLoader();
             await this.updateInstitutionalBranding();
             
@@ -8203,7 +8212,12 @@ export const UI = {
             // --- NEW: Question Locking Mechanism (Fixes Resume Question Injection) ---
             const seedStr = studentId + examId;
             let seed = 0;
-            for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+            for (let i = 0; i < seedStr.length; i++) {
+                seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+                seed |= 0; // Force to 32-bit integer
+            }
+            seed = Math.abs(seed); // Ensure positive
+
 
             const seededShuffle = (array, seed) => {
                 let m = array.length, t, i;
@@ -8218,40 +8232,53 @@ export const UI = {
             };
 
             let finalSlice = [];
-            const existingQuestionIds = (session?.question_ids || []).map(id => String(id));
+            const existingQuestionIds = (session?.question_ids || []).map(id => String(id).trim()).filter(id => id && id !== 'undefined' && id !== 'null');
 
-            if (existingQuestionIds && existingQuestionIds.length > 0) {
+            if (existingQuestionIds.length > 0) {
                 // RESUME: Load exactly the same questions as before, in the same order
-                console.log('[CBT] Resuming with locked question set:', existingQuestionIds.length);
+                console.log(`[CBT RESUME] Reconstituting locked session with ${existingQuestionIds.length} IDs.`);
                 const qMap = {};
-                validQuestions.forEach(q => qMap[String(q.id)] = q);
+                validQuestions.forEach(q => {
+                    if (q && q.id) qMap[String(q.id).trim()] = q;
+                });
                 
-                // Map existing IDs to questions
+                // Map existing IDs to questions, explicitly filtering out any nulls that failed the map
                 const mappedQuestions = existingQuestionIds.map(id => qMap[id]).filter(Boolean);
                 
                 // [RESILIENCE] Hole-Filling Logic: If some questions are missing from the local pool,
                 // refill them from the available validQuestions to maintain the expected count.
                 if (mappedQuestions.length < existingQuestionIds.length) {
                     const missingCount = existingQuestionIds.length - mappedQuestions.length;
-                    console.warn(`[CBT RESILIENCE] ${missingCount} questions missing from pool on resume. Attempting to refill...`);
+                    console.warn(`[CBT RESILIENCE] ${missingCount} questions missing from pool on resume. IDs in session: ${existingQuestionIds.length}, found in DB: ${mappedQuestions.length}. Refilling...`);
                     
-                    const usedIds = new Set(mappedQuestions.map(q => String(q.id)));
-                    const availablePool = validQuestions.filter(q => !usedIds.has(String(q.id)));
+                    const usedIds = new Set(mappedQuestions.map(q => String(q.id).trim()));
+                    const availablePool = validQuestions.filter(q => !usedIds.has(String(q.id).trim()));
                     
                     // Add enough questions from the available pool to fill the holes
                     const refill = availablePool.slice(0, missingCount);
                     finalSlice = [...mappedQuestions, ...refill];
                     
-                    console.log(`[CBT RESILIENCE] Refilled ${refill.length} questions. Final count: ${finalSlice.length}`);
+                    console.log(`[CBT RESILIENCE] Refilled ${refill.length} questions. Final set count: ${finalSlice.length}`);
                 } else {
                     finalSlice = mappedQuestions;
                 }
             } else {
                 // FIRST START: Shuffle and Lock IDs
+                console.log(`[CBT START] New session initialization. Pool: ${validQuestions.length}, Limit: ${limit}`);
                 let poolCopy = [...validQuestions];
                 let shuffled = seededShuffle(poolCopy, seed);
-                finalSlice = (requestedLimit > 0) ? shuffled.slice(0, requestedLimit) : shuffled;
+                finalSlice = (limit > 0) ? shuffled.slice(0, limit) : shuffled;
             }
+
+            // [INTEGRITY SHIELD] Final sanity check: If we are still below the intended limit 
+            // (e.g. because validQuestions was too small), but we have more questions in the raw pool, pad it.
+            if (finalSlice.length < limit && validQuestions.length > finalSlice.length) {
+                console.warn(`[CBT INTEGRITY] finalSlice (${finalSlice.length}) is below limit (${limit}). Panning to refill from pool...`);
+                const currentIds = new Set(finalSlice.map(q => String(q.id).trim()));
+                const extra = validQuestions.filter(q => !currentIds.has(String(q.id).trim())).slice(0, limit - finalSlice.length);
+                finalSlice = [...finalSlice, ...extra];
+            }
+
                 
             // Lock these IDs into the session immediately (ensures next resume has them)
             if (session) {
@@ -12990,7 +13017,12 @@ export const UI = {
             // Replicate student-side shuffled question set for accurate scoring
             const seedStr = studentId + examId;
             let seed = 0;
-            for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+            for (let i = 0; i < seedStr.length; i++) {
+                seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+                seed |= 0; // Force to 32-bit integer
+            }
+            seed = Math.abs(seed); // Ensure positive
+
             
             const seededShuffle = (array, seed) => {
                 let m = array.length, t, i;
@@ -13133,7 +13165,12 @@ export const UI = {
                 const limit = parseInt(exam.question_limit) || 0;
                 const seedStr = r.student_id + examId;
                 let seed = 0;
-                for (let i = 0; i < seedStr.length; i++) seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+                for (let i = 0; i < seedStr.length; i++) {
+                    seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+                    seed |= 0; // Force to 32-bit integer
+                }
+                seed = Math.abs(seed); // Ensure positive
+
                 
                 const seededShuffle = (array, seed) => {
                     let m = array.length, t, i;

@@ -307,7 +307,7 @@ h1, h2, h3, .logo {
     display: block;
     font-weight: 700;
     font-size: 0.85rem;
-    color: white;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
