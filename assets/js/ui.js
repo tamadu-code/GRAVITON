@@ -9243,9 +9243,10 @@ export const UI = {
                 }
             }
             
-            if (this.currentExam.score_field) {
+            if (this.currentExam.score_field && this.currentExam.mode !== 'Practice') {
                 await this.postCBTToScoresheet(finalResult);
             }
+
         } else {
             Notifications.show('Your exam has been submitted and scored by an administrator.', 'info');
         }
