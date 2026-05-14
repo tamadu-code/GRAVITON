@@ -8668,7 +8668,23 @@ export const UI = {
                         }
                         
                         .jamb-question-box { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 1rem 1.5rem; width: 100%; box-sizing: border-box; }
-                        #cbt-question-text { overflow-x: auto; padding-bottom: 0.5rem; scrollbar-width: thin; }
+                        #cbt-question-text { 
+                            word-wrap: break-word; 
+                            overflow-wrap: break-word; 
+                            word-break: break-word; 
+                            white-space: normal;
+                            max-width: 100%;
+                            line-height: 1.6;
+                        }
+                        /* Force MathJax to wrap */
+                        mjx-container { 
+                            max-width: 100% !important; 
+                            white-space: normal !important;
+                            display: inline !important;
+                            overflow-wrap: break-word !important;
+                        }
+                        .jamb-option div:last-child { overflow-x: visible !important; white-space: normal !important; }
+
 
                         
                         .jamb-option { 
@@ -9001,12 +9017,16 @@ export const UI = {
     parseCBTContent(text) {
         if (!text) return '';
         
-        // 1. Detect if it's LaTeX without delimiters and wrap it
-        // Heuristic: If it contains backslashes but no delimiters, it's likely raw LaTeX
+        // 1. Segmented LaTeX auto-wrapping
+        // Instead of wrapping the whole string, we wrap segments to allow browser-level wrapping at spaces
         let processed = text.toString();
         if (processed.includes('\\') && !processed.includes('\\(') && !processed.includes('$') && !processed.includes('\[')) {
-            processed = `\\(${processed}\\)`;
+            processed = processed.split(' ').map(part => {
+                if (part.includes('\\')) return `\\(${part}\\)`;
+                return part;
+            }).join(' ');
         }
+
 
         // 2. Basic HTML Escaping (Skip if it looks like LaTeX to avoid breaking commands)
         let safe = processed;
