@@ -367,17 +367,22 @@ export async function syncFromCloud(forceAll = false) {
                     console.log(`[Sync] Pulled ${totalPulled} total records into '${table}' table.`);
                 }
 
-                // --- NEW: Deletion Reconciliation for CBT ---
-                // Ensures admin deletions are propagated to students
-                if (table === 'cbt_exams' || table === 'cbt_questions') {
+                // --- NEW: Deletion Reconciliation for Core Tables ---
+                // Ensures deletions (e.g. classes, subjects) are propagated to devices
+                const syncCleanTables = ['classes', 'subjects', 'students', 'cbt_exams', 'cbt_questions', 'subject_assignments'];
+                if (syncCleanTables.includes(table)) {
                     const localItems = await db[table].toArray();
                     if (localItems.length > 0) {
-                        const localIds = localItems.map(item => item.id);
-                        const { data: cloudIds } = await client.from(table).select('id').in('id', localIds);
+                        const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
+                        const localIds = localItems.map(item => item[pk]);
+                        
+                        // Check which of these IDs still exist in the cloud
+                        const { data: cloudIds } = await client.from(table).select(pk).in(pk, localIds);
                         
                         if (cloudIds) {
-                            const cloudIdSet = new Set(cloudIds.map(c => c.id));
-                            const staleIds = localIds.filter(id => !cloudIdSet.has(id));
+                            const cloudIdSet = new Set(cloudIds.map(c => String(c[pk])));
+                            const staleIds = localIds.filter(id => !cloudIdSet.has(String(id)));
+                            
                             if (staleIds.length > 0) {
                                 console.log(`[Sync Cleanup] Removing ${staleIds.length} stale records from ${table} that no longer exist in cloud.`);
                                 await db[table].bulkDelete(staleIds);

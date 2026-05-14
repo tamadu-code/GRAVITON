@@ -40,12 +40,36 @@ export const UI = {
             // 2. Perform local deletion
             await db[table].delete(id);
             
-            // 3. Optional: Immediate Cloud attempt if online
+            // 3. Cascade deletion for students
+            if (table === 'students') {
+                const sid = String(id);
+                console.log(`[SafeDelete] Cascading deletion for student: ${sid}`);
+                await Promise.all([
+                    db.attendance.where('student_id').equals(sid).delete(),
+                    db.attendance_records.where('student_id').equals(sid).delete(),
+                    db.scores.where('student_id').equals(sid).delete(),
+                    db.payments.where('student_id').equals(sid).delete(),
+                    db.cbt_results.where('student_id').equals(sid).delete(),
+                    db.profiles.where('assigned_id').equals(sid).delete(),
+                    db.parent_links.where('student_id').equals(sid).delete(),
+                    db.student_analytics.where('student_id').equals(sid).delete()
+                ]);
+            }
+
+            // 4. Optional: Immediate Cloud attempt if online
             if (navigator.onLine) {
                 const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (client) {
                     const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
                     await client.from(table).delete().eq(pk, id);
+                    
+                    if (table === 'students') {
+                        // Cascading cloud deletions (Optional: Rely on DB foreign keys if set, but we do it manually for safety)
+                        await client.from('attendance').delete().eq('student_id', id);
+                        await client.from('attendance_records').delete().eq('student_id', id);
+                        await client.from('scores').delete().eq('student_id', id);
+                        await client.from('payments').delete().eq('student_id', id);
+                    }
                 }
             }
 
@@ -2047,6 +2071,9 @@ export const UI = {
                         <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); font-size: 0.75rem;">
                             <i data-lucide="printer" style="width: 14px;"></i> Credentials
                         </button>
+                        <button id="btn-purge-inactive-quick" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: #fee2e2; color: #ef4444; border: 1px solid #fecaca; font-size: 0.75rem; font-weight: 700;">
+                            <i data-lucide="trash-2" style="width: 14px;"></i> Purge Inactive
+                        </button>
                         <button id="btn-bulk-repair-students" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; font-size: 0.75rem; font-weight: 700;">
                             <i data-lucide="shield-alert" style="width: 14px;"></i> Bulk Repair Auth
                         </button>
@@ -2113,7 +2140,40 @@ export const UI = {
             );
             listContainer.innerHTML = this.generateStudentListItems(filtered);
             if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            // Toggle visibility of the Purge button based on whether inactive students are shown
+            const quickPurgeBtn = document.getElementById('btn-purge-inactive-quick');
+            if (quickPurgeBtn) {
+                quickPurgeBtn.style.display = includeInactive ? 'flex' : 'none';
+            }
         };
+
+        // Purge Button Logic (Shared with Settings)
+        const quickPurgeBtn = document.getElementById('btn-purge-inactive-quick');
+        if (quickPurgeBtn) {
+            quickPurgeBtn.onclick = async () => {
+                const inactiveStudents = await db.students.where('is_active').equals(0).toArray();
+                if (inactiveStudents.length === 0) {
+                    return Notifications.show("No inactive students to purge.", "info");
+                }
+                
+                if (confirm(`CRITICAL: Permanently delete ${inactiveStudents.length} inactive students and ALL their data?`)) {
+                    const pass = prompt("Type 'PURGE' to confirm:");
+                    if (pass === 'PURGE') {
+                        quickPurgeBtn.disabled = true;
+                        let count = 0;
+                        for (const s of inactiveStudents) {
+                            count++;
+                            quickPurgeBtn.innerHTML = `<i data-lucide="loader" class="spin"></i> ${count}/${inactiveStudents.length}`;
+                            await this.safeDelete('students', s.student_id, null);
+                        }
+                        Notifications.show(`Purged ${count} records.`, 'success');
+                        this.renderStudents();
+                        this.debouncedSync();
+                    }
+                }
+            };
+        }
 
         searchInput.addEventListener('input', () => {
             if (this.searchTimeout) clearTimeout(this.searchTimeout);
@@ -9861,6 +9921,7 @@ export const UI = {
                         await this.safeDelete('students', s.student_id, null);
                         await db.scores.where('student_id').equals(s.student_id).delete();
                         await db.attendance.where('student_id').equals(s.student_id).delete();
+                        await db.attendance_records.where('student_id').equals(s.student_id).delete();
                     }
                     Notifications.show(`Successfully purged ${deleted} records.`, 'success');
                     await this.debouncedSync();
