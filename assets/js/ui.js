@@ -8871,7 +8871,8 @@ export const UI = {
 
 
                     <!-- Submission Review Overlay -->
-                    <div id="cbt-submit-review" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); z-index: 20000; display: none; align-items: center; justify-content: center; padding: 1rem;">
+                    <div id="cbt-submit-review" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); z-index: 2000005; display: none; align-items: center; justify-content: center; padding: 1rem;">
+
                         <div class="card" style="width: 100%; max-width: 500px; border-radius: 24px; padding: 2rem; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
                             <div style="text-align: center; margin-bottom: 1.5rem;">
                                 <div style="background: #eef2ff; color: #4338ca; width: 60px; height: 60px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
@@ -13764,7 +13765,8 @@ export const UI = {
 
     showCBTKeyboardHelp() {
         const helpHtml = `
-            <div id="cbt-help-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); z-index: 20001; display: flex; align-items: center; justify-content: center; padding: 1rem;">
+            <div id="cbt-help-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); z-index: 2000006; display: flex; align-items: center; justify-content: center; padding: 1rem;">
+
                 <div class="card" style="width: 100%; max-width: 450px; border-radius: 24px; padding: 2rem; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
                     <div style="text-align: center; margin-bottom: 2rem;">
                         <div style="background: #eef2ff; color: #4338ca; width: 60px; height: 60px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
