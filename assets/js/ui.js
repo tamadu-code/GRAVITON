@@ -29,6 +29,7 @@ export const UI = {
         try {
             // 1. Log the deletion in audit_logs for sync engine
             await db.audit_logs.add({
+                id: (typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : `del_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
                 operation: 'DELETE',
                 table: table,
                 record_id: String(id),

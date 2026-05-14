@@ -146,9 +146,11 @@ db.version(30).stores({
     exam_progress: 'id, exam_id, student_id, current_answers, time_left, last_saved'
 });
 
-db.version(31).stores({
-    audit_logs: '++id, operation, table, record_id, timestamp, user_id, is_synced'
+db.version(32).stores({
+    audit_logs: 'id, operation, table, record_id, timestamp, user_id, is_synced'
 });
+
+// Global Upgrade Handler to prevent "Blocked" errors
 
 // Global Upgrade Handler to prevent "Blocked" errors
 db.on('versionchange', (event) => {
