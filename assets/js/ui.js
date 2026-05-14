@@ -3463,8 +3463,8 @@ export const UI = {
                             <option value="2026/2027" ${currentSession === '2026/2027' ? 'selected' : ''}>2026/2027</option>
                         </select>
                     </div>
-                    </div>
                 </div>
+
                 <!-- Status Indicator -->
                 <div id="gradebook-mismatch-warning" style="display:none;"></div>
 
