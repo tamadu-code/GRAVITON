@@ -7299,7 +7299,10 @@ export const UI = {
         if (confirm(msg)) {
             await db.cbt_exams.update(id, { status: newStatus, is_synced: 0 });
             Notifications.show(newStatus === 'Archived' ? 'Exam archived' : 'Exam restored', 'success');
+            // [CBT] Cleanup any administrative question map
+            document.getElementById('admin-q-nav')?.remove();
             this.renderCBT();
+
             this.debouncedSync();
         }
     },
@@ -7481,8 +7484,10 @@ export const UI = {
                                 <label>Subject</label>
                                 <select id="exam-subject" class="cbt-input">
                                     <option value="">Select Subject</option>
-                                    ${subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.displayName || s.name}</option>`).join('')}
+                                    ${exam.class_name ? '' : subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.displayName || s.name}</option>`).join('')}
                                 </select>
+
+
 
                             </div>
 
@@ -7599,34 +7604,36 @@ export const UI = {
                 const subIds = [...new Set(filteredAssignments.map(a => a.subject_id))];
                 classSubjects = (await Promise.all(subIds.map(id => db.subjects.get(id)))).filter(Boolean);
             } else {
-                // Admins see ALL subjects in the registry for this class
-                // First try to find any subjects ever assigned to this class
+                // Admins: STRICT filtering. Only show subjects assigned to this class.
                 const allAssignedSubIds = [...new Set(assignments.map(a => a.subject_id))];
-                const assignedSubjects = (await Promise.all(allAssignedSubIds.map(id => db.subjects.get(id)))).filter(Boolean);
+                classSubjects = (await Promise.all(allAssignedSubIds.map(id => db.subjects.get(id)))).filter(Boolean);
                 
-                // If there are assigned subjects, show them, otherwise show the entire registry
-                if (assignedSubjects.length > 0) {
-                    classSubjects = assignedSubjects;
-                    // Add a separator and then the rest of the registry if needed, 
-                    // but for now let's just show ALL subjects for admins to avoid blocking
-                    const allRegistry = await db.subjects.toArray();
-                    const remaining = allRegistry.filter(s => !allAssignedSubIds.includes(s.id));
-                    classSubjects = [...assignedSubjects, ...remaining];
-                } else {
+                // If NO subjects are assigned to this class yet, show the full list as fallback
+                if (classSubjects.length === 0) {
                     classSubjects = await db.subjects.toArray();
                 }
             }
 
             classSubjects.sort((a, b) => a.name.localeCompare(b.name));
             
+            // Deduplicate for display
+            const subCounts = {};
+            classSubjects.forEach(s => subCounts[s.name] = (subCounts[s.name] || 0) + 1);
+
             classSubjects.forEach(s => {
                 const opt = document.createElement('option');
                 opt.value = s.id;
-                opt.textContent = s.name;
+                opt.textContent = subCounts[s.name] > 1 ? `${s.name} (${s.type || 'General'})` : s.name;
                 opt.selected = exam && exam.subject_id === s.id;
                 subjectSelect.appendChild(opt);
             });
         });
+
+        // Trigger initial filter if class is pre-selected
+        if (classSelect.value) {
+            classSelect.dispatchEvent(new Event('change'));
+        }
+
 
         this.refreshQuestionPreview();
     },
@@ -7719,10 +7726,8 @@ export const UI = {
         const badge = document.getElementById('exam-total-badge');
         if (badge) badge.innerText = `TOTAL: ${total.toFixed(1)}`;
         
-        // ADDED: Navigation Palette for Admin View
-        this.renderAdminQuestionNav();
-        
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
         
         // [CBT] Render LaTeX in previews
         if (window.MathJax && window.MathJax.typesetPromise) {
@@ -7749,45 +7754,7 @@ export const UI = {
         this.refreshQuestionPreview();
     },
 
-    renderAdminQuestionNav() {
-        let nav = document.getElementById('admin-q-nav');
-        if (!nav) {
-            nav = document.createElement('div');
-            nav.id = 'admin-q-nav';
-            nav.className = 'admin-q-nav-container';
-            nav.style = "position: fixed; bottom: 30px; left: 30px; background: white; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); padding: 1rem; width: 220px; z-index: 10001; border: 1px solid #e2e8f0; display: none; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);";
-            document.body.appendChild(nav);
-        }
 
-        if (this.cbtQuestions.length === 0 || !document.getElementById('q-preview-area')) {
-            nav.style.display = 'none';
-            return;
-        }
-
-        // Mobile Responsive Adjustments
-        if (window.innerWidth < 768) {
-            nav.style.left = '10px';
-            nav.style.bottom = '10px';
-            nav.style.width = 'calc(100% - 20px)';
-            nav.style.maxWidth = '300px';
-        }
-
-        nav.style.display = 'block';
-        const isCollapsed = nav.classList.contains('collapsed');
-        
-        nav.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: ${isCollapsed ? '0' : '1rem'}; cursor: pointer;" onclick="const n=this.parentElement; n.classList.toggle('collapsed'); UI.renderAdminQuestionNav();">
-                <div style="font-weight: 900; color: #1e293b; font-size: 0.75rem; text-transform: uppercase;">Question Map (${this.cbtQuestions.length})</div>
-                <button style="background: none; border: none; color: #94a3b8;"><i data-lucide="${isCollapsed ? 'chevron-up' : 'chevron-down'}" style="width: 16px;"></i></button>
-            </div>
-            <div style="display: ${isCollapsed ? 'none' : 'grid'}; grid-template-columns: repeat(4, 1fr); gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 4px;">
-                ${this.cbtQuestions.map((_, i) => `
-                    <button onclick="document.getElementById('admin-q-${i}').scrollIntoView({behavior:'smooth', block:'center'})" style="width: 100%; aspect-ratio: 1; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#4338ca'; this.style.color='#4338ca'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.color='#475569'">${i+1}</button>
-                `).join('')}
-            </div>
-        `;
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    },
 
 
     async saveExam(existingId) {
