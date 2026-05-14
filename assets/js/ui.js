@@ -8577,23 +8577,22 @@ export const UI = {
                 if (this.examTimeLeft <= 300) timerEl.style.color = '#ef4444';
             }
 
-            // Background status check every 15 seconds to detect external force-stop
+            // Background status check & Time Sync every 15 seconds
             if (this.examTimeLeft > 0 && this.examTimeLeft % 15 === 0) {
                 const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
                 const examId = this.currentExam.id;
                 
-                // 1. Check Local DB first
-                const localSession = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
-                if (localSession && localSession.status === 'Completed') {
-                    console.log('[CBT] External completion detected (Local), ending session.');
-                    clearInterval(this.examTimerInterval);
-                    this.submitExam(true);
-                    return;
-                }
+                // 1. Update Local DB with current time_left
+                await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
+                    time_left: this.examTimeLeft,
+                    updated_at: new Date().toISOString(),
+                    is_synced: 0
+                });
 
-                // 2. Poll Cloud for status if online (Immediate protection)
+                // 2. Poll Cloud for status & Push time_left
                 const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (navigator.onLine && supabase) {
+                    // Check for force-stop
                     const { data } = await supabase.from('cbt_results')
                         .select('status')
                         .eq('exam_id', examId)
@@ -8606,8 +8605,21 @@ export const UI = {
                         this.submitExam(true);
                         return;
                     }
+
+                    // Sync time_left to cloud in background
+                    (async () => {
+                        try {
+                            const session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+                            if (session) {
+                                const { is_synced, ...cloudPayload } = session;
+                                await supabase.from('cbt_results').upsert(cloudPayload, { onConflict: 'student_id,exam_id' });
+                                await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({ is_synced: 1 });
+                            }
+                        } catch (e) {}
+                    })();
                 }
             }
+
 
             if (this.examTimeLeft <= 0) {
                 clearInterval(this.examTimerInterval);
@@ -9082,9 +9094,11 @@ export const UI = {
             // 1. LOCAL-FIRST: Save to IndexedDB immediately (Instant)
             await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).modify({
                 answers: this.userAnswers,
+                time_left: this.examTimeLeft,
                 updated_at: timestamp,
                 is_synced: 0
             });
+
 
             // 2. BACKGROUND CLOUD SYNC: Fire and forget (Non-blocking)
             if (navigator.onLine) {
@@ -12988,10 +13002,17 @@ export const UI = {
                                 <div style="font-size: 0.8rem; color: #64748b; font-weight: 800; font-family: 'Outfit', sans-serif; background: #f1f5f9; padding: 4px 10px; border-radius: 8px;">${s.student_id}</div>
                             </div>
                             <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                ${isInProgress && r.time_left !== undefined ? `
+                                    <div style="background: #eff6ff; color: #2563eb; padding: 0.35rem 0.6rem; border-radius: 8px; font-weight: 900; font-size: 0.7rem; border: 1px solid #dbeafe; display: flex; align-items: center; gap: 4px;">
+                                        <i data-lucide="timer" style="width: 12px;"></i>
+                                        ${Math.floor(r.time_left / 60)}:${(r.time_left % 60).toString().padStart(2, '0')}
+                                    </div>
+                                ` : ''}
                                 <div style="background: ${statusBg}; color: ${statusColor}; padding: 0.35rem 0.8rem; border-radius: 10px; font-weight: 900; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">${status}</div>
                                 ${violationCount > 0 ? `<span style="background: #fee2e2; color: #ef4444; padding: 0.35rem 0.6rem; border-radius: 10px; font-weight: 900; font-size: 0.7rem; border: 1px solid #fecdd3;">⚠ ${violationCount}</span>` : ''}
                                 <i data-lucide="chevron-down" class="chevron-icon" style="width: 20px; color: #cbd5e1; transition: transform 0.3s ease; flex-shrink: 0;"></i>
                             </div>
+
                         </div>
                     </div>
 
