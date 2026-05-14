@@ -3637,8 +3637,7 @@ export const UI = {
             // 4. Sort by updated_at Descending (Most recent first)
             filteredScores.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 
-            console.log("[Debug] targetStudents count:", targetStudents.length, "Sample:", targetStudents[0]);
-            console.log("[Debug] filteredScores count:", filteredScores.length, "Sample:", filteredScores[0]);
+
 
             // Update Statistics
             updateStatsUI(filteredScores);
