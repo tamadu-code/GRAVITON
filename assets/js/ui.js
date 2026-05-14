@@ -1945,6 +1945,12 @@ export const UI = {
                                 <select class="input assign-class" style="flex: 1; font-size: 0.85rem; border: none; background: transparent; color: #1e293b;">
                                     ${classes.map(c => `<option value="${c.name}" ${a.class_name === c.name ? 'selected' : ''} style="background: white; color: #1e293b;">${c.name}</option>`).join('')}
                                 </select>
+                                <select class="input assign-spec" style="flex: 1; font-size: 0.85rem; border: none; background: transparent; color: #1e293b;">
+                                    <option value="" ${!a.specialization ? 'selected' : ''}>General</option>
+                                    <option value="Science" ${a.specialization === 'Science' ? 'selected' : ''}>Science</option>
+                                    <option value="Arts" ${a.specialization === 'Arts' ? 'selected' : ''}>Arts</option>
+                                    <option value="Commercial" ${a.specialization === 'Commercial' ? 'selected' : ''}>Commercial</option>
+                                </select>
                                 <button class="btn btn-sm" onclick="this.parentElement.remove()" style="color: #ef4444; background: none; border: none;"><i data-lucide="trash"></i></button>
                             </div>
                         `).join('')}
@@ -1973,12 +1979,14 @@ export const UI = {
             for (const row of rows) {
                 const teacherId = row.querySelector('.assign-teacher').value;
                 const className = row.querySelector('.assign-class').value;
+                const specialization = row.querySelector('.assign-spec').value;
                 
                 await db.subject_assignments.add(prepareForSync({
                     id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
                     teacher_id: teacherId,
                     subject_id: idsToUpdate[0], 
-                    class_name: className
+                    class_name: className,
+                    specialization: specialization
                 }));
             }
 
@@ -1998,6 +2006,12 @@ export const UI = {
                 </select>
                 <select class="input assign-class" style="flex: 1; font-size: 0.85rem; border: none; background: transparent; color: #1e293b;">
                     ${classes.map(c => `<option value="${c.name}" style="background: white; color: #1e293b;">${c.name}</option>`).join('')}
+                </select>
+                <select class="input assign-spec" style="flex: 1; font-size: 0.85rem; border: none; background: transparent; color: #1e293b;">
+                    <option value="">General</option>
+                    <option value="Science">Science</option>
+                    <option value="Arts">Arts</option>
+                    <option value="Commercial">Commercial</option>
                 </select>
                 <button class="btn btn-sm" onclick="this.parentElement.remove()" style="color: #ef4444; background: none; border: none;"><i data-lucide="trash"></i></button>
             `;
@@ -2903,8 +2917,9 @@ export const UI = {
                                     <option value="B" ${student.sub_class === 'B' ? 'selected' : ''}>B</option>
                                     <option value="C" ${student.sub_class === 'C' ? 'selected' : ''}>C</option>
                                     <option value="D" ${student.sub_class === 'D' ? 'selected' : ''}>D</option>
-                                    <option value="E" ${student.sub_class === 'E' ? 'selected' : ''}>E</option>
-                                    <option value="F" ${student.sub_class === 'F' ? 'selected' : ''}>F</option>
+                                    <option value="SCIENCE" ${student.sub_class === 'SCIENCE' ? 'selected' : ''}>SCIENCE</option>
+                                    <option value="ARTS" ${student.sub_class === 'ARTS' ? 'selected' : ''}>ARTS</option>
+                                    <option value="COMMERCIAL" ${student.sub_class === 'COMMERCIAL' ? 'selected' : ''}>COMMERCIAL</option>
                                 </select></div>
                             </div>
                             <div><label>Gender</label><select id="edit-std-gender" class="input" style="width:100%;"><option value="Male" ${student.gender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${student.gender === 'Female' ? 'selected' : ''}>Female</option></select></div>
@@ -4247,16 +4262,10 @@ export const UI = {
                 }, 'Add Stream');
             };
         }
-
         const addSubBtn = document.getElementById('add-subject-btn');
         if (addSubBtn) {
-            addSubBtn.onclick = () => {
+            addSubBtn.onclick = async () => {
                 const allClasses = await db.classes.toArray();
-                const classCheckboxes = allClasses.map(c => `
-                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #334155; cursor: pointer;">
-                        <input type="checkbox" class="course-stream-checkbox" value="${c.name}" style="accent-color: #2563eb;"> ${c.name}
-                    </label>
-                `).join('');
 
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1.25rem;">
@@ -4278,9 +4287,23 @@ export const UI = {
                             </div>
                         </div>
                         <div>
-                            <label style="font-weight:700; color:var(--text-primary); margin-bottom: 0.5rem; display: block;">Assign to Streams</label>
-                            <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; max-height: 150px; overflow-y: auto; background: #f8fafc;">
-                                ${classCheckboxes}
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <label style="font-weight:700; color:var(--text-primary);">Stream Specializations</label>
+                                <button type="button" id="btn-add-reg-row" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.3rem 0.6rem; font-size: 0.7rem; font-weight: 700; cursor: pointer;">+ Add Stream</button>
+                            </div>
+                            <div id="reg-asgn-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 150px; overflow-y: auto;">
+                                <div class="reg-asgn-row" style="display: flex; gap: 0.4rem; align-items: center;">
+                                    <select class="input reg-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
+                                        ${allClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                    </select>
+                                    <select class="input reg-spec" style="flex: 1; height: 38px; font-size: 0.8rem;">
+                                        <option value="">General</option>
+                                        <option value="Science">Science</option>
+                                        <option value="Arts">Arts</option>
+                                        <option value="Commercial">Commercial</option>
+                                    </select>
+                                    <button type="button" onclick="this.parentElement.remove()" style="color:#ef4444; background:none; border:none; cursor:pointer;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -4289,7 +4312,7 @@ export const UI = {
                     const name = document.getElementById('sub-name').value.trim();
                     const type = document.getElementById('sub-type').value;
                     const credits = parseInt(document.getElementById('sub-credits').value) || 1;
-                    const selectedStreams = [...document.querySelectorAll('.course-stream-checkbox:checked')].map(cb => cb.value);
+                    const rows = document.querySelectorAll('.reg-asgn-row');
 
                     if (!name) {
                         Notifications.show('Course title is required', 'error');
@@ -4300,19 +4323,49 @@ export const UI = {
                     await db.subjects.add(prepareForSync({ id: subjectId, name, type, credits }));
                     
                     // Create assignments
-                    for (const className of selectedStreams) {
+                    for (const row of rows) {
+                        const className = row.querySelector('.reg-cls').value;
+                        const specialization = row.querySelector('.reg-spec').value;
                         await db.subject_assignments.add(prepareForSync({
                             id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
                             subject_id: subjectId,
                             class_name: className,
-                            teacher_id: '' // Unassigned initially
+                            specialization: specialization,
+                            teacher_id: ''
                         }));
                     }
 
-                    Notifications.show(`Course "${name}" registered successfully with ${selectedStreams.length} assignments.`, 'success');
+                    Notifications.show(`Course "${name}" registered successfully.`, 'success');
                     this.debouncedSync();
                     this.renderAcademic();
                 }, 'Register Course', 'plus-circle');
+
+                // Add Row logic
+                setTimeout(() => {
+                    const btnAdd = document.getElementById('btn-add-reg-row');
+                    const list = document.getElementById('reg-asgn-list');
+                    if (btnAdd && list) {
+                        btnAdd.onclick = () => {
+                            const div = document.createElement('div');
+                            div.className = 'reg-asgn-row';
+                            div.style = "display: flex; gap: 0.4rem; align-items: center;";
+                            div.innerHTML = `
+                                <select class="input reg-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
+                                    ${allClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                </select>
+                                <select class="input reg-spec" style="flex: 1; height: 38px; font-size: 0.8rem;">
+                                    <option value="">General</option>
+                                    <option value="Science">Science</option>
+                                    <option value="Arts">Arts</option>
+                                    <option value="Commercial">Commercial</option>
+                                </select>
+                                <button type="button" onclick="this.parentElement.remove()" style="color:#ef4444; background:none; border:none; cursor:pointer;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                            `;
+                            list.appendChild(div);
+                            if (typeof lucide !== 'undefined') lucide.createIcons();
+                        };
+                    }
+                }, 50);
             };
         }
 
@@ -4330,13 +4383,6 @@ export const UI = {
 
                 const allClasses = await db.classes.toArray();
                 const currentAssignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
-                const assignedClassNames = currentAssignments.map(a => a.class_name);
-
-                const classCheckboxes = allClasses.map(c => `
-                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #334155; cursor: pointer;">
-                        <input type="checkbox" class="edit-course-stream-checkbox" value="${c.name}" ${assignedClassNames.includes(c.name) ? 'checked' : ''} style="accent-color: #2563eb;"> ${c.name}
-                    </label>
-                `).join('');
 
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1.25rem;">
@@ -4358,9 +4404,25 @@ export const UI = {
                             </div>
                         </div>
                         <div>
-                            <label style="font-weight:700; color:var(--text-primary); margin-bottom: 0.5rem; display: block;">Assigned Streams</label>
-                            <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; max-height: 150px; overflow-y: auto; background: #f8fafc;">
-                                ${classCheckboxes}
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                <label style="font-weight:700; color:var(--text-primary);">Stream Specializations</label>
+                                <button type="button" id="btn-add-asgn-row" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.3rem 0.6rem; font-size: 0.7rem; font-weight: 700; cursor: pointer;">+ Add Assignment</button>
+                            </div>
+                            <div id="edit-asgn-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 200px; overflow-y: auto;">
+                                ${currentAssignments.length === 0 ? '<p style="font-size:0.75rem; color:#94a3b8; text-align:center; padding:1rem;">No streams assigned. Click Add Assignment.</p>' : currentAssignments.map(a => `
+                                    <div class="edit-asgn-row" style="display: flex; gap: 0.4rem; align-items: center;">
+                                        <select class="input asgn-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
+                                            ${allClasses.map(c => `<option value="${c.name}" ${a.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
+                                        </select>
+                                        <select class="input asgn-spec" style="flex: 1; height: 38px; font-size: 0.8rem;">
+                                            <option value="" ${!a.specialization ? 'selected' : ''}>General</option>
+                                            <option value="Science" ${a.specialization === 'Science' ? 'selected' : ''}>Science</option>
+                                            <option value="Arts" ${a.specialization === 'Arts' ? 'selected' : ''}>Arts</option>
+                                            <option value="Commercial" ${a.specialization === 'Commercial' ? 'selected' : ''}>Commercial</option>
+                                        </select>
+                                        <button type="button" onclick="this.parentElement.remove()" style="color:#ef4444; background:none; border:none; cursor:pointer;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                                    </div>
+                                `).join('')}
                             </div>
                         </div>
                     </div>
@@ -4369,7 +4431,7 @@ export const UI = {
                     const name = document.getElementById('edit-sub-name').value.trim();
                     const type = document.getElementById('edit-sub-type').value;
                     const credits = parseInt(document.getElementById('edit-sub-credits').value) || 1;
-                    const selectedStreams = [...document.querySelectorAll('.edit-course-stream-checkbox:checked')].map(cb => cb.value);
+                    const rows = document.querySelectorAll('.edit-asgn-row');
 
                     if (!name) {
                         Notifications.show('Course title is required', 'error');
@@ -4378,27 +4440,53 @@ export const UI = {
 
                     await db.subjects.update(id, prepareForSync({ name, type, credits, updated_at: new Date().toISOString() }));
                     
-                    // Sync assignments
-                    // 1. Remove streams that were unchecked
-                    const toRemove = currentAssignments.filter(a => !selectedStreams.includes(a.class_name));
-                    for (const a of toRemove) await db.subject_assignments.delete(a.id);
-
-                    // 2. Add streams that were newly checked
-                    for (const className of selectedStreams) {
-                        if (!assignedClassNames.includes(className)) {
-                            await db.subject_assignments.add(prepareForSync({
-                                id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
-                                subject_id: id,
-                                class_name: className,
-                                teacher_id: ''
-                            }));
-                        }
+                    // Replace assignments
+                    await db.subject_assignments.where('subject_id').equals(id).delete();
+                    for (const row of rows) {
+                        const className = row.querySelector('.asgn-cls').value;
+                        const specialization = row.querySelector('.asgn-spec').value;
+                        await db.subject_assignments.add(prepareForSync({
+                            id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
+                            subject_id: id,
+                            class_name: className,
+                            specialization: specialization,
+                            teacher_id: ''
+                        }));
                     }
 
-                    Notifications.show('Course details and stream assignments updated', 'success');
+                    Notifications.show('Course and stream specializations updated', 'success');
                     this.debouncedSync();
                     this.renderAcademic();
                 }, 'Update Course', 'save');
+
+                // Add Row logic
+                setTimeout(() => {
+                    const btnAdd = document.getElementById('btn-add-asgn-row');
+                    const list = document.getElementById('edit-asgn-list');
+                    if (btnAdd && list) {
+                        btnAdd.onclick = () => {
+                            if (list.querySelector('p')) list.innerHTML = '';
+                            const div = document.createElement('div');
+                            div.className = 'edit-asgn-row';
+                            div.style = "display: flex; gap: 0.4rem; align-items: center;";
+                            div.innerHTML = `
+                                <select class="input asgn-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
+                                    ${allClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                </select>
+                                <select class="input asgn-spec" style="flex: 1; height: 38px; font-size: 0.8rem;">
+                                    <option value="">General</option>
+                                    <option value="Science">Science</option>
+                                    <option value="Arts">Arts</option>
+                                    <option value="Commercial">Commercial</option>
+                                </select>
+                                <button type="button" onclick="this.parentElement.remove()" style="color:#ef4444; background:none; border:none; cursor:pointer;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                            `;
+                            list.appendChild(div);
+                            if (typeof lucide !== 'undefined') lucide.createIcons();
+                        };
+                    }
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }, 50);
             };
         });
 
