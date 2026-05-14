@@ -1977,9 +1977,9 @@ export const UI = {
             await db.subject_assignments.where('subject_id').anyOf(idsToUpdate).delete();
             
             for (const row of rows) {
-                const teacherId = row.querySelector('.assign-teacher').value;
+                const teacherId = row.querySelector('.assign-teacher').value || null;
                 const className = row.querySelector('.assign-class').value;
-                const specialization = row.querySelector('.assign-spec').value;
+                const specialization = row.querySelector('.assign-spec').value || null;
                 
                 await db.subject_assignments.add(prepareForSync({
                     id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
@@ -4323,19 +4323,32 @@ export const UI = {
                         throw new Error('Validation failed');
                     }
 
+                    // Validate duplicates
+                    const seen = new Set();
+                    for (const row of rows) {
+                        const className = row.querySelector('.reg-cls').value;
+                        const spec = row.querySelector('.reg-spec').value || 'General';
+                        const key = `${className}-${spec}`;
+                        if (seen.has(key)) {
+                            Notifications.show(`Duplicate assignment for ${className} (${spec})`, 'error');
+                            throw new Error('Duplicate assignment');
+                        }
+                        seen.add(key);
+                    }
+
                     const subjectId = `SUB${Math.random().toString(36).substr(2,6).toUpperCase()}`;
                     await db.subjects.add(prepareForSync({ id: subjectId, name, type, credits }));
                     
                     // Create assignments
                     for (const row of rows) {
                         const className = row.querySelector('.reg-cls').value;
-                        const specialization = row.querySelector('.reg-spec').value;
+                        const specialization = row.querySelector('.reg-spec').value || null;
                         await db.subject_assignments.add(prepareForSync({
                             id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
                             subject_id: subjectId,
                             class_name: className,
                             specialization: specialization,
-                            teacher_id: ''
+                            teacher_id: null
                         }));
                     }
 
@@ -4443,19 +4456,32 @@ export const UI = {
                         throw new Error('Validation failed');
                     }
 
+                    // Validate duplicates
+                    const seen = new Set();
+                    for (const row of rows) {
+                        const className = row.querySelector('.asgn-cls').value;
+                        const spec = row.querySelector('.asgn-spec').value || 'General';
+                        const key = `${className}-${spec}`;
+                        if (seen.has(key)) {
+                            Notifications.show(`Duplicate assignment for ${className} (${spec})`, 'error');
+                            throw new Error('Duplicate assignment');
+                        }
+                        seen.add(key);
+                    }
+
                     await db.subjects.update(id, prepareForSync({ name, type, credits, updated_at: new Date().toISOString() }));
                     
                     // Replace assignments
                     await db.subject_assignments.where('subject_id').equals(id).delete();
                     for (const row of rows) {
                         const className = row.querySelector('.asgn-cls').value;
-                        const specialization = row.querySelector('.asgn-spec').value;
+                        const specialization = row.querySelector('.asgn-spec').value || null;
                         await db.subject_assignments.add(prepareForSync({
                             id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
                             subject_id: id,
                             class_name: className,
                             specialization: specialization,
-                            teacher_id: ''
+                            teacher_id: null
                         }));
                     }
 
