@@ -244,6 +244,12 @@ export const UI = {
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
         }
+
+        // [CBT] Trigger LaTeX rendering for any new content
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            window.MathJax.typesetPromise();
+        }
+
         // Restore scroll position
         if (this.lastOpenedBankCategory) {
             const scrollContainer = document.getElementById(`bank-scroll-${this.lastOpenedBankCategory}`);
@@ -7326,8 +7332,19 @@ export const UI = {
 
         this.cbtQuestions = isEdit ? await db.cbt_questions.where('exam_id').equals(examId).toArray() : [];
 
-        let subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+        let subjects = (await db.subjects.toArray());
+        
+        // Deduplicate subjects by name (case-insensitive)
+        const seenSubs = new Set();
+        subjects = subjects.filter(s => {
+            const name = (s.name || '').trim().toUpperCase();
+            if (!name || seenSubs.has(name)) return false;
+            seenSubs.add(name);
+            return true;
+        }).sort((a, b) => a.name.localeCompare(b.name));
+
         let classes = (await db.classes.toArray());
+
 
         // Custom serial sort for classes (JSS -> SSS)
         const classOrder = { 'JSS': 1, 'JS': 1, 'SSS': 2, 'SS': 2, 'PRY': 3, 'BASIC': 4 };
@@ -7705,7 +7722,13 @@ export const UI = {
         this.renderAdminQuestionNav();
         
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        
+        // [CBT] Render LaTeX in previews
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            window.MathJax.typesetPromise();
+        }
     },
+
 
     applyBulkMarks() {
         let rawVal = document.getElementById('bulk-marks-input').value;
@@ -12175,9 +12198,20 @@ export const UI = {
     },
 
     async renderQuestionBank() {
-        const subjects = (await db.subjects.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
+        let subjects = (await db.subjects.toArray());
+        
+        // Deduplicate subjects by name
+        const seenSubs = new Set();
+        subjects = subjects.filter(s => {
+            const name = (s.name || '').trim().toUpperCase();
+            if (!name || seenSubs.has(name)) return false;
+            seenSubs.add(name);
+            return true;
+        }).sort((a, b) => a.name.localeCompare(b.name));
+
         const classes = (await db.classes.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
+
 
         // Get all bank questions (exam_id starts with 'BANK-')
         const allQuestions = await db.cbt_questions.toArray();
@@ -12307,8 +12341,19 @@ export const UI = {
     },
 
     async bulkImportToBank() {
-        const subjects = (await db.subjects.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
+        let subjects = (await db.subjects.toArray());
+        
+        // Deduplicate subjects by name
+        const seenSubs = new Set();
+        subjects = subjects.filter(s => {
+            const name = (s.name || '').trim().toUpperCase();
+            if (!name || seenSubs.has(name)) return false;
+            seenSubs.add(name);
+            return true;
+        }).sort((a, b) => a.name.localeCompare(b.name));
+
         const classes = (await db.classes.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
+
 
         const modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
