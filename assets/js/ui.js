@@ -8740,6 +8740,13 @@ export const UI = {
                         .q-map-item.active { background: #4338ca; color: white; border-color: #4338ca; transform: scale(1.05); box-shadow: 0 4px 10px rgba(67, 56, 202, 0.2); }
                         .q-map-item.answered { background: #ecfdf5; color: #059669; border-color: #10b981; }
 
+                        /* BUTTON COLORS RESTORED */
+                        .jamb-nav-btn { height: 50px; padding: 0 1.25rem; border-radius: 10px; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s; border: none; cursor: pointer; white-space: nowrap; }
+                        .jamb-nav-prev { background: #475569; color: white; }
+                        .jamb-nav-next { background: #2563eb; color: white; }
+                        .jamb-nav-submit { background: #e11d48; color: white; box-shadow: 0 4px 10px rgba(225, 29, 72, 0.3); }
+                        .jamb-nav-btn:hover { opacity: 0.9; transform: translateY(-2px); }
+
                         .mobile-palette-trigger { 
                             display: none; 
                             position: fixed; 
@@ -8789,64 +8796,21 @@ export const UI = {
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 1rem;">
                                     <div id="exam-timer" style="background: #e11d48; padding: 0.4rem 1.2rem; border-radius: 6px; font-weight: 900; font-size: 1.1rem; min-width: 100px; text-align: center;">${timeStr}</div>
-                                    <div style="display: flex; gap: 0.5rem;" class="desktop-only">
+                                    <div style="display: flex; gap: 0.5rem;">
                                         <button onclick="UI.toggleCBTCalculator()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'" title="Calculator (C)">
                                             <i data-lucide="calculator" style="width: 18px;"></i>
                                         </button>
-                                        <button onclick="UI.showCBTKeyboardHelp()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'" title="Keyboard Help (H)">
+                                        <button onclick="UI.showCBTKeyboardHelp()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'" title="Keyboard Help (H)" class="desktop-only">
                                             <i data-lucide="help-circle" style="width: 18px;"></i>
                                         </button>
                                     </div>
                                 </div>
+
                             </header>
 
-                            <!-- Question Content -->
-                            <div class="jamb-question-box">
-                                <div style="max-width: 800px; margin: 0 auto;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; border-bottom: 2px solid #f1f5f9; padding-bottom: 0.5rem;">
-                                        <div style="font-weight: 900; color: #64748b; font-size: 0.9rem;">QUESTION ${this.currentQuestionIndex + 1}</div>
-                                        <div style="background: #f1f5f9; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 700; color: #475569; font-size: 0.7rem;">${q.marks || 1} POINT(S)</div>
-                                    </div>
-
-                                    <div id="cbt-question-text" style="font-size: 1.2rem; font-weight: 600; color: #1e293b; line-height: 1.6; margin-bottom: 2.5rem;">
-                                        ${this.parseCBTContent(q.question_text)}
-                                    </div>
-
-                                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                        ${(q.shuffledOptions || []).map((opt, idx) => {
-                                            if (!opt) return '';
-                                            const label = String.fromCharCode(65 + idx);
-                                            const isSelected = this.userAnswers[q.id] === opt.text;
-                                            return `
-                                                <div class="jamb-option ${isSelected ? 'selected' : ''}" onclick="UI.saveExamProgress('${q.id}', '${this.escapeHTML(opt.text).replace(/'/g, "\\'")}')">
-                                                    <div class="jamb-option-label">${label}</div>
-                                                    <div style="font-weight: 500; color: #334155; font-size: 1rem;">${this.parseCBTContent(opt.text || '')}</div>
-                                                </div>
-                                            `;
-                                        }).join('')}
-                                    </div>
-                                </div>
+                            <div id="cbt-question-display-area" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                                <!-- Question Content Loaded Here -->
                             </div>
-
-                            <!-- Navigation Bar -->
-                            <footer style="padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
-                                <div style="display: flex; gap: 0.75rem;">
-                                    <button class="jamb-nav-btn jamb-nav-prev" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
-                                        <i data-lucide="chevron-left"></i> PREVIOUS (P)
-                                    </button>
-                                </div>
-                                <div style="display: flex; gap: 0.75rem;">
-                                    ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
-                                        <button class="jamb-nav-btn jamb-nav-submit" onclick="UI.showSubmitReview()">
-                                            SUBMIT EXAM (S) <i data-lucide="check-circle"></i>
-                                        </button>
-                                    ` : `
-                                        <button class="jamb-nav-btn jamb-nav-next" onclick="UI.nextQuestion()">
-                                            NEXT (N) <i data-lucide="chevron-right"></i>
-                                        </button>
-                                    `}
-                                </div>
-                            </footer>
                         </div>
 
                         <!-- Sidebar (Question Palette) -->
@@ -8860,12 +8824,8 @@ export const UI = {
                             </div>
                             <div style="flex: 1; overflow-y: auto;">
                                 <div style="padding: 0.75rem 1rem; font-weight: 800; color: #475569; font-size: 0.7rem; letter-spacing: 0.05em; background: #f8fafc; position: sticky; top: 0; z-index: 1;">QUESTION PALETTE</div>
-                                <div class="q-map-grid">
-                                    ${this.currentQuestions.map((cq, i) => {
-                                        const isAnswered = this.userAnswers[cq.id];
-                                        const isActive = i === this.currentQuestionIndex;
-                                        return `<div class="q-map-item ${isActive ? 'active' : ''} ${isAnswered ? 'answered' : ''}" onclick="UI.goToQuestion(${i})">${i + 1}</div>`;
-                                    }).join('')}
+                                <div id="cbt-question-palette" class="q-map-grid">
+                                    <!-- Palette Items Loaded Here -->
                                 </div>
                             </div>
                             <div style="padding: 1rem; background: white; border-top: 1px solid #e2e8f0;">
@@ -8876,7 +8836,7 @@ export const UI = {
                                 </div>
                             </div>
                         </aside>
-                        </aside>
+
 
                         <!-- Sidebar Backdrop (Mobile Only) -->
                         <div id="cbt-sidebar-backdrop" onclick="document.querySelector('.jamb-sidebar').classList.remove('open'); this.style.display='none'" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); z-index: 1000000; display: none;"></div>
@@ -8941,14 +8901,87 @@ export const UI = {
                 </div>
             `;
 
+            // Initial Content Fill
+            this.updateCBTQuestionDisplay();
+            
             if (window.MathJax && window.MathJax.typesetPromise) window.MathJax.typesetPromise();
             if (typeof lucide !== 'undefined') lucide.createIcons();
             
         } catch (err) {
             console.error('[CBT RENDER FATAL]', err);
-            Notifications.show("Failed to render question. Please contact support.", "error");
+            Notifications.show("Failed to render interface. Please contact support.", "error");
         }
     },
+
+    updateCBTQuestionDisplay() {
+        const q = this.currentQuestions[this.currentQuestionIndex];
+        const displayArea = document.getElementById('cbt-question-display-area');
+        const palette = document.getElementById('cbt-question-palette');
+        if (!q || !displayArea) return;
+
+        // 1. Render Question Content
+        displayArea.innerHTML = `
+            <div class="jamb-question-box">
+                <div style="max-width: 800px; margin: 0 auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; border-bottom: 2px solid #f1f5f9; padding-bottom: 0.5rem;">
+                        <div style="font-weight: 900; color: #64748b; font-size: 0.9rem;">QUESTION ${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}</div>
+                        <div style="background: #f1f5f9; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 700; color: #475569; font-size: 0.7rem;">${q.marks || 1} POINT(S)</div>
+                    </div>
+
+                    <div id="cbt-question-text" style="font-size: 1.2rem; font-weight: 600; color: #1e293b; line-height: 1.6; margin-bottom: 2.5rem;">
+                        ${this.parseCBTContent(q.question_text)}
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        ${(q.shuffledOptions || []).map((opt, idx) => {
+                            if (!opt) return '';
+                            const label = String.fromCharCode(65 + idx);
+                            const isSelected = this.userAnswers[q.id] === opt.text;
+                            return `
+                                <div class="jamb-option ${isSelected ? 'selected' : ''}" onclick="UI.saveExamProgress('${q.id}', '${this.escapeHTML(opt.text).replace(/'/g, "\\'")}')">
+                                    <div class="jamb-option-label">${label}</div>
+                                    <div style="font-weight: 500; color: #334155; font-size: 1rem;">${this.parseCBTContent(opt.text || '')}</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Buttons -->
+            <footer style="padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; gap: 0.75rem;">
+                    <button class="jamb-nav-btn jamb-nav-prev" onclick="UI.prevQuestion()" ${this.currentQuestionIndex === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                        <i data-lucide="chevron-left"></i> PREVIOUS (P)
+                    </button>
+                </div>
+                <div style="display: flex; gap: 0.75rem;">
+                    ${this.currentQuestionIndex === this.currentQuestions.length - 1 ? `
+                        <button class="jamb-nav-btn jamb-nav-submit" onclick="UI.showSubmitReview()">
+                            SUBMIT EXAM (S) <i data-lucide="check-circle"></i>
+                        </button>
+                    ` : `
+                        <button class="jamb-nav-btn jamb-nav-next" onclick="UI.nextQuestion()">
+                            NEXT (N) <i data-lucide="chevron-right"></i>
+                        </button>
+                    `}
+                </div>
+            </footer>
+        `;
+
+        // 2. Update Palette Items
+        if (palette) {
+            palette.innerHTML = this.currentQuestions.map((cq, i) => {
+                const isAnswered = this.userAnswers[cq.id];
+                const isActive = i === this.currentQuestionIndex;
+                return `<div class="q-map-item ${isActive ? 'active' : ''} ${isAnswered ? 'answered' : ''}" onclick="UI.goToQuestion(${i})">${i + 1}</div>`;
+            }).join('');
+        }
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        if (window.MathJax && window.MathJax.typesetPromise) window.MathJax.typesetPromise();
+    },
+
 
     /**
      * Unified ID Resolver: Ensures student results are tied to a consistent ID
@@ -9101,26 +9134,35 @@ export const UI = {
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
-    goToQuestion(index) {
-        if (index >= 0 && index < this.currentQuestions.length) {
-            this.currentQuestionIndex = index;
-            this.renderCBTExamInterface();
-        }
-    },
-
     nextQuestion() {
         if (this.currentQuestionIndex < this.currentQuestions.length - 1) {
             this.currentQuestionIndex++;
-            this.renderCBTExamInterface();
+            this.updateCBTQuestionDisplay();
         }
     },
 
     prevQuestion() {
         if (this.currentQuestionIndex > 0) {
             this.currentQuestionIndex--;
-            this.renderCBTExamInterface();
+            this.updateCBTQuestionDisplay();
         }
     },
+
+    goToQuestion(index) {
+        if (index >= 0 && index < this.currentQuestions.length) {
+            this.currentQuestionIndex = index;
+            this.updateCBTQuestionDisplay();
+            
+            // Auto-close sidebar on mobile after selection
+            if (window.innerWidth < 1024) {
+                const sidebar = document.querySelector('.jamb-sidebar');
+                if (sidebar) sidebar.classList.remove('open');
+                const backdrop = document.getElementById('cbt-sidebar-backdrop');
+                if (backdrop) backdrop.style.display = 'none';
+            }
+        }
+    },
+
 
     confirmSubmitExam() {
         // ALWAYS use the custom Submission Review dashboard instead of native confirm()
