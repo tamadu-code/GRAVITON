@@ -7090,7 +7090,8 @@ export const UI = {
                             const result = resultDict[e.id];
                             return `
                             <div class="cbt-exam-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-                                <div class="cbt-exam-trigger" style="padding: 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: white;" onclick="event.preventDefault(); event.stopPropagation(); const content = this.nextElementSibling; const isExpanded = content.style.maxHeight !== '0px' && content.style.maxHeight !== ''; content.style.maxHeight = isExpanded ? '0px' : '500px'; this.querySelector('.chevron-icon').style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';">
+                                <div class="cbt-exam-trigger" style="padding: 1.25rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: white;" onclick="event.preventDefault(); event.stopPropagation(); const content = this.nextElementSibling; if(!content) return; const isExpanded = content.style.maxHeight !== '0px' && content.style.maxHeight !== ''; content.style.maxHeight = isExpanded ? '0px' : '500px'; const chevron = this.querySelector('.chevron-icon'); if(chevron) chevron.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';" >
+
                                     <div style="display: flex; align-items: center; gap: 1rem;">
                                         <div style="width: 45px; height: 45px; background: #eef2ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #4338ca;">
                                             <i data-lucide="file-text"></i>
@@ -12416,7 +12417,8 @@ export const UI = {
 
                             return `
                                 <div class="card cbt-bank-card" id="bank-cat-${tag}" style="border-radius: 20px; border: 1px solid #f1f5f9; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04); margin-bottom: 1rem;">
-                                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.closest('.cbt-bank-card').querySelector('.bank-details-area'); if(!details) return; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '2000px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)'; UI.lastOpenedBankCategory = isExp ? null : '${tag}';" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem; background: white;">
+                                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.closest('.cbt-bank-card').querySelector('.bank-details-area'); if(!details) return; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '2000px'; const chevron = this.querySelector('.chevron-icon'); if(chevron) chevron.style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)'; UI.lastOpenedBankCategory = isExp ? null : '${tag}';" style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; gap: 1rem; background: white;">
+
                                         <div style="display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0;">
                                             <div style="background: #e0e7ff; color: #4338ca; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                                                 <i data-lucide="book-open" style="width: 20px;"></i>
@@ -13000,7 +13002,8 @@ export const UI = {
 
             return `
                 <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #e2e8f0; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); background: white;">
-                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '800px'; this.querySelector('.chevron-icon').style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; flex-direction: column; padding: 1.25rem; cursor: pointer; gap: 0.75rem;">
+                    <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; if(!details) return; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '800px'; const chevron = this.querySelector('.chevron-icon'); if(chevron) chevron.style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; flex-direction: column; padding: 1.25rem; cursor: pointer; gap: 0.75rem;">
+
                         <div style="font-weight: 900; color: #1e293b; font-size: 1.1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem; width: 100%; word-break: break-word;">${studentName}</div>
                         <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
                             <div style="display: flex; align-items: center; gap: 0.75rem;">
