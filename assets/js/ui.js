@@ -1438,8 +1438,16 @@ export const UI = {
                 } else {
                     if (confirm(`Are you sure you want to delete the empty stream "${className}"?`)) {
                         await db.classes.delete(id);
+                        await db.audit_logs.add({
+                            id: crypto.randomUUID(),
+                            operation: 'DELETE',
+                            table: 'classes',
+                            record_id: id,
+                            timestamp: new Date().toISOString()
+                        });
                         Notifications.show(`Stream "${className}" deleted successfully.`, 'success');
                         this.renderClasses();
+                        this.debouncedSync();
                     }
                 }
             });
@@ -1893,9 +1901,32 @@ export const UI = {
                 const name = btn.dataset.name;
                 const ids = btn.dataset.ids.split(',');
                 if (confirm(`Are you sure you want to remove "${name}" from the curriculum? This will delete all ${ids.length} stream instances.`)) {
-                    await Promise.all(ids.map(id => db.subjects.delete(id)));
+                    for (const id of ids) {
+                        await db.subjects.delete(id);
+                        // Also delete assignments
+                        const assignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
+                        for (const asgn of assignments) {
+                            await db.subject_assignments.delete(asgn.id);
+                            await db.audit_logs.add({
+                                id: crypto.randomUUID(),
+                                operation: 'DELETE',
+                                table: 'subject_assignments',
+                                record_id: asgn.id,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                        // Log subject deletion
+                        await db.audit_logs.add({
+                            id: crypto.randomUUID(),
+                            operation: 'DELETE',
+                            table: 'subjects',
+                            record_id: id,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
                     Notifications.show(`Course "${name}" removed.`, 'success');
                     this.renderSubjects();
+                    this.debouncedSync();
                 }
             });
         });
@@ -1981,7 +2012,17 @@ export const UI = {
 
             // Update assignments
             const rows = document.querySelectorAll('.assignment-row');
-            await db.subject_assignments.where('subject_id').anyOf(idsToUpdate).delete();
+            const oldAssignments = await db.subject_assignments.where('subject_id').anyOf(idsToUpdate).toArray();
+            for (const asgn of oldAssignments) {
+                await db.subject_assignments.delete(asgn.id);
+                await db.audit_logs.add({
+                    id: crypto.randomUUID(),
+                    operation: 'DELETE',
+                    table: 'subject_assignments',
+                    record_id: asgn.id,
+                    timestamp: new Date().toISOString()
+                });
+            }
             
             for (const row of rows) {
                 const teacherId = row.querySelector('.assign-teacher').value || null;
@@ -4540,10 +4581,22 @@ export const UI = {
                 const id = target.dataset.id;
                 if (confirm('Delete this course? All associated scores will be lost!')) {
                     await db.subjects.delete(id);
+                    // Also delete and log assignments
+                    const assignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
+                    for (const asgn of assignments) {
+                        await db.subject_assignments.delete(asgn.id);
+                        await db.audit_logs.add({
+                            id: crypto.randomUUID(),
+                            operation: 'DELETE',
+                            table: 'subject_assignments',
+                            record_id: asgn.id,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                    
                     await db.scores.where('subject_id').equals(id).delete();
-                    await db.subject_assignments.where('subject_id').equals(id).delete();
 
-                    // Record deletions for sync
+                    // Record subject deletion for sync
                     await db.audit_logs.add({
                         id: crypto.randomUUID(),
                         operation: 'DELETE',
@@ -4597,8 +4650,38 @@ export const UI = {
                     const cls = await db.classes.get(id);
                     if (cls) {
                         await db.classes.delete(id);
-                        await db.form_teachers.where('class_name').equals(cls.name).delete();
-                        await db.subject_assignments.where('class_name').equals(cls.name).delete();
+                        await db.audit_logs.add({
+                            id: crypto.randomUUID(),
+                            operation: 'DELETE',
+                            table: 'classes',
+                            record_id: id,
+                            timestamp: new Date().toISOString()
+                        });
+
+                        const formTeachers = await db.form_teachers.where('class_name').equals(cls.name).toArray();
+                        for (const ft of formTeachers) {
+                            await db.form_teachers.delete(ft.id);
+                            await db.audit_logs.add({
+                                id: crypto.randomUUID(),
+                                operation: 'DELETE',
+                                table: 'form_teachers',
+                                record_id: ft.id,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+
+                        const assignments = await db.subject_assignments.where('class_name').equals(cls.name).toArray();
+                        for (const asgn of assignments) {
+                            await db.subject_assignments.delete(asgn.id);
+                            await db.audit_logs.add({
+                                id: crypto.randomUUID(),
+                                operation: 'DELETE',
+                                table: 'subject_assignments',
+                                record_id: asgn.id,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+
                         Notifications.show('Stream removed', 'success');
                         this.renderAcademic();
                         this.debouncedSync();
