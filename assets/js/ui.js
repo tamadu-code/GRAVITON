@@ -1766,45 +1766,45 @@ export const UI = {
         if (btnRegCourse) {
             btnRegCourse.addEventListener('click', async () => {
                 const allClasses = await db.classes.toArray();
-                const classCheckboxes = allClasses.map(c => {
-                    return `
-                        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #334155; cursor: pointer;">
-                            <input type="checkbox" class="stream-checkbox" value="${c.name}" style="accent-color: #2563eb;"> ${c.name}
-                        </label>
-                    `;
-                }).join('');
+                const sortedClasses = allClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1.25rem;">
                         <div>
-                            <label style="color: #334155;">Course Title</label>
-                            <div style="position: relative;">
-                                <i data-lucide="bookmark" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #94a3b8; width: 16px;"></i>
-                                <input type="text" id="course-title" class="input" placeholder="e.g. Mathematics" style="width: 100%; box-sizing: border-box; padding-left: 2.25rem; background: white; color: #1e293b; border: 1px solid #cbd5e1;">
+                            <label style="font-weight:700; color:var(--text-primary);">Course Title</label>
+                            <input type="text" id="course-title" class="input" placeholder="e.g. Mathematics" style="width: 100%; height: 44px; border-radius: 10px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0;">
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div>
+                                <label style="font-weight:700; color:var(--text-primary);">Module Type</label>
+                                <select id="course-type" class="input" style="width: 100%; height: 44px; border-radius: 10px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0;">
+                                    <option value="Core">Core</option>
+                                    <option value="Elective">Elective</option>
+                                </select>
                             </div>
-                        </div>
-                        <div>
-                            <label style="color: #334155;">Credit Load</label>
-                            <input type="number" id="course-credits" class="input" value="3" min="1" max="10" style="width: 100%; box-sizing: border-box; background: white; color: #1e293b; border: 1px solid #cbd5e1;">
-                        </div>
-                        <div>
-                            <label style="color: #334155;">Module Type</label>
-                            <select id="course-type" class="input" style="width: 100%; box-sizing: border-box; background: white; color: #1e293b; border: 1px solid #cbd5e1;">
-                                <option value="Core">Core</option>
-                                <option value="Elective">Elective</option>
-                            </select>
+                            <div>
+                                <label style="font-weight:700; color:var(--text-primary);">Credit Load</label>
+                                <input type="number" id="course-credits" class="input" value="1" min="1" max="10" style="width: 100%; height: 44px; border-radius: 10px; background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0;">
+                            </div>
                         </div>
                         <div>
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                <label style="color: #334155; margin-bottom: 0;">Apply to Stream Architecture</label>
-                                <span id="stream-count-label" style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">0 STREAMS SELECTED</span>
+                                <label style="font-weight:700; color:var(--text-primary);">Stream Specializations</label>
+                                <button type="button" id="btn-add-reg-row" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.3rem 0.6rem; font-size: 0.7rem; font-weight: 700; cursor: pointer;">+ Add Stream</button>
                             </div>
-                            <div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; max-height: 160px; overflow-y: auto; background: white;">
-                                ${classCheckboxes}
-                            </div>
-                            <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
-                                <button type="button" id="enroll-global" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.4rem 0.75rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;">Enroll Global (All Classes)</button>
-                                <button type="button" id="clear-selection" style="background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.4rem 0.75rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;">Clear Selection</button>
+                            <div id="reg-asgn-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 150px; overflow-y: auto;">
+                                <div class="reg-asgn-row" style="display: flex; gap: 0.4rem; align-items: center;">
+                                    <select class="input reg-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
+                                        ${sortedClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                    </select>
+                                    <select class="input reg-spec" style="flex: 1; height: 38px; font-size: 0.8rem;">
+                                        <option value="">General</option>
+                                        <option value="Science">Science</option>
+                                        <option value="Arts">Arts</option>
+                                        <option value="Commercial">Commercial</option>
+                                    </select>
+                                    <button type="button" onclick="this.parentElement.remove()" style="color:#ef4444; background:none; border:none; cursor:pointer;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1812,68 +1812,74 @@ export const UI = {
 
                 this.showModal('<i data-lucide="check-square" style="width:20px;"></i> Master Curriculum Entry', modalHtml, async () => {
                     const title = document.getElementById('course-title').value.trim();
-                    const credits = parseInt(document.getElementById('course-credits').value) || 3;
+                    const credits = parseInt(document.getElementById('course-credits').value) || 1;
                     const type = document.getElementById('course-type').value;
-                    const selectedStreams = [...document.querySelectorAll('.stream-checkbox:checked')].map(cb => cb.value);
+                    const rows = document.querySelectorAll('.reg-asgn-row');
 
                     if (!title) {
                         Notifications.show('Course title is required', 'error');
                         throw new Error('Validation failed');
                     }
 
-                    const subjectId = `SUB${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-
-                    // If streams selected, create one subject per stream. Else create a global subject.
-                    if (selectedStreams.length > 0) {
-                        for (const className of selectedStreams) {
-                            await db.subjects.put({
-                                id: `${subjectId}_${className.replace(/\s/g, '')}`,
-                                name: title,
-                                class_name: className,
-                                credits: credits,
-                                type: type,
-                                is_synced: 0,
-                                updated_at: new Date().toISOString()
-                            });
+                    // Validate duplicates
+                    const seen = new Set();
+                    for (const row of rows) {
+                        const className = row.querySelector('.reg-cls').value;
+                        const spec = row.querySelector('.reg-spec').value || 'General';
+                        const key = `${className}-${spec}`;
+                        if (seen.has(key)) {
+                            Notifications.show(`Duplicate assignment for ${className} (${spec})`, 'error');
+                            throw new Error('Duplicate assignment');
                         }
-                    } else {
-                        await db.subjects.put({
-                            id: subjectId,
-                            name: title,
-                            class_name: 'All',
-                            credits: credits,
-                            type: type,
-                            is_synced: 0,
-                            updated_at: new Date().toISOString()
-                        });
+                        seen.add(key);
                     }
 
-                    Notifications.show(`Course "${title}" committed to curriculum (${selectedStreams.length || 'All'} streams).`, 'success');
+                    const subjectId = `SUB${Math.random().toString(36).substr(2,6).toUpperCase()}`;
+                    await db.subjects.add(prepareForSync({ id: subjectId, name: title, type, credits }));
+                    
+                    // Create assignments
+                    for (const row of rows) {
+                        const className = row.querySelector('.reg-cls').value;
+                        const specialization = row.querySelector('.reg-spec').value || null;
+                        await db.subject_assignments.add(prepareForSync({
+                            id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
+                            subject_id: subjectId,
+                            class_name: className,
+                            specialization: specialization,
+                            teacher_id: null
+                        }));
+                    }
+
+                    Notifications.show(`Course "${title}" registered successfully.`, 'success');
+                    this.debouncedSync();
                     this.renderSubjects();
-                }, 'Commit to Curriculum', 'save');
+                }, 'Register Course', 'plus-circle');
 
-                // Wire up Enroll Global / Clear Selection after modal is rendered
+                // Add Row logic
                 setTimeout(() => {
-                    const enrollBtn = document.getElementById('enroll-global');
-                    const clearBtn = document.getElementById('clear-selection');
-                    const countLabel = document.getElementById('stream-count-label');
-
-                    const updateCount = () => {
-                        const checked = document.querySelectorAll('.stream-checkbox:checked').length;
-                        if (countLabel) countLabel.textContent = `${checked} STREAMS SELECTED`;
-                    };
-
-                    document.querySelectorAll('.stream-checkbox').forEach(cb => cb.addEventListener('change', updateCount));
-
-                    if (enrollBtn) enrollBtn.addEventListener('click', () => {
-                        document.querySelectorAll('.stream-checkbox').forEach(cb => cb.checked = true);
-                        updateCount();
-                    });
-                    if (clearBtn) clearBtn.addEventListener('click', () => {
-                        document.querySelectorAll('.stream-checkbox').forEach(cb => cb.checked = false);
-                        updateCount();
-                    });
-
+                    const btnAdd = document.getElementById('btn-add-reg-row');
+                    const list = document.getElementById('reg-asgn-list');
+                    if (btnAdd && list) {
+                        btnAdd.onclick = () => {
+                            const div = document.createElement('div');
+                            div.className = 'reg-asgn-row';
+                            div.style = "display: flex; gap: 0.4rem; align-items: center;";
+                            div.innerHTML = `
+                                <select class="input reg-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
+                                    ${sortedClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                </select>
+                                <select class="input reg-spec" style="flex: 1; height: 38px; font-size: 0.8rem;">
+                                    <option value="">General</option>
+                                    <option value="Science">Science</option>
+                                    <option value="Arts">Arts</option>
+                                    <option value="Commercial">Commercial</option>
+                                </select>
+                                <button type="button" onclick="this.parentElement.remove()" style="color:#ef4444; background:none; border:none; cursor:pointer;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                            `;
+                            list.appendChild(div);
+                            if (typeof lucide !== 'undefined') lucide.createIcons();
+                        };
+                    }
                     if (typeof lucide !== 'undefined') lucide.createIcons();
                 }, 50);
             });
@@ -2961,6 +2967,7 @@ export const UI = {
                     const updates = {
                         name: document.getElementById('edit-std-name').value,
                         class_name: document.getElementById('edit-std-class').value,
+                        sub_class: document.getElementById('edit-std-arm').value,
                         gender: document.getElementById('edit-std-gender').value,
                         dob: document.getElementById('edit-std-dob').value,
                         blood_group: document.getElementById('edit-std-blood').value,
@@ -4529,6 +4536,16 @@ export const UI = {
                     await db.subjects.delete(id);
                     await db.scores.where('subject_id').equals(id).delete();
                     await db.subject_assignments.where('subject_id').equals(id).delete();
+
+                    // Record deletions for sync
+                    await db.audit_logs.add({
+                        id: crypto.randomUUID(),
+                        operation: 'DELETE',
+                        table: 'subjects',
+                        record_id: id,
+                        timestamp: new Date().toISOString()
+                    });
+                    
                     Notifications.show('Course removed', 'success');
                     this.renderAcademic();
                     this.debouncedSync();
