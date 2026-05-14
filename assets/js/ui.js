@@ -9501,7 +9501,8 @@ export const UI = {
                                         <input type="hidden" class="source-id" value="${key}">
                                         <div>
                                             <div style="font-weight: 800; color: #1e293b !important; text-decoration: none !important;"><i data-lucide="database" style="width: 14px; display: inline; vertical-align: -2px; margin-right: 4px; color: #4338ca;"></i>${subLabel}</div>
-                                            <div style="font-size: 0.75rem; color: #64748b;">${clsLabel} ${termLabel ? `• ${termLabel}` : ''} ${sessionLabel ? `• ${sessionLabel}` : ''} • ${count} questions</div>
+                                            <div style="font-size: 0.75rem; color: #64748b;">${clsLabel} ${termLabel ? `| ${termLabel}` : ''} ${sessionLabel ? `| ${sessionLabel}` : ''} | ${count} questions</div>
+
                                         </div>
                                     </div>
                                     <div style="background: #e0e7ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 800;">Bank</div>
@@ -9631,7 +9632,8 @@ export const UI = {
             return a.name.localeCompare(b.name);
         });
 
-        const subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+        subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+
         
         // Deduplicate subjects by name for cleaner bulk selection
         const seenBulkSubs = new Set();
@@ -9786,8 +9788,9 @@ export const UI = {
                                         <label for="toggle-teacher-${tid}" class="glass-collapse-header" style="padding: 1.25rem;">
                                             <div style="display: flex; align-items: center; gap: 1rem;">
                                                 <div style="width: 44px; height: 44px; background: #eef2ff; color: #4338ca; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; border: 1px solid #dbeafe;">
-                                                    ${teacher ? teacher.full_name.charAt(0) : '?'}
+                                                    ${teacher ? teacher.full_name.charAt(0) : 'S'}
                                                 </div>
+
                                                 <div>
                                                     <div style="font-weight: 800; color: #1e293b; font-size: 1rem;">${teacher ? teacher.full_name : 'Unknown Staff'}</div>
                                                     <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">${subjectNames.length} Subjects • ${totalTasks} Classes</div>
@@ -12453,7 +12456,8 @@ export const UI = {
                                             </div>
                                             <div style="min-width: 0; user-select: none;">
                                                 <div style="font-weight: 800; color: #1e293b; text-decoration: none !important;">${subjectLabel}</div>
-                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-decoration: none !important;">${classLabel} ${termLabel ? `• ${termLabel}` : ''} ${sessionLabel ? `• ${sessionLabel}` : ''}</div>
+                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-decoration: none !important;">${classLabel} ${termLabel ? `| ${termLabel}` : ''} ${sessionLabel ? `| ${sessionLabel}` : ''}</div>
+
                                             </div>
                                         </div>
                                         <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
