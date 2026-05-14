@@ -2352,7 +2352,8 @@ export const UI = {
         const btnAddStudent = document.getElementById('btn-add-student');
         if (btnAddStudent) {
             btnAddStudent.addEventListener('click', () => {
-                const classOptions = classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+                const sortedClasses = [...classes].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                const classOptions = sortedClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1rem;">
                         <div>
@@ -2373,8 +2374,9 @@ export const UI = {
                                     <option value="B">B</option>
                                     <option value="C">C</option>
                                     <option value="D">D</option>
-                                    <option value="E">E</option>
-                                    <option value="F">F</option>
+                                    <option value="SCIENCE">SCIENCE</option>
+                                    <option value="ARTS">ARTS</option>
+                                    <option value="COMMERCIAL">COMMERCIAL</option>
                                 </select>
                             </div>
                         </div>
@@ -2904,7 +2906,8 @@ export const UI = {
         if (modifyBtn) {
             modifyBtn.onclick = async () => {
                 const classes = await db.classes.toArray();
-                const classOptions = classes.map(c => `<option value="${c.name}" ${c.name === student.class_name ? 'selected' : ''}>${c.name}</option>`).join('');
+                const sortedClasses = classes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                const classOptions = sortedClasses.map(c => `<option value="${c.name}" ${c.name === student.class_name ? 'selected' : ''}>${c.name}</option>`).join('');
                 
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1rem;">
@@ -4266,6 +4269,7 @@ export const UI = {
         if (addSubBtn) {
             addSubBtn.onclick = async () => {
                 const allClasses = await db.classes.toArray();
+                const sortedClasses = allClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1.25rem;">
@@ -4294,7 +4298,7 @@ export const UI = {
                             <div id="reg-asgn-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 150px; overflow-y: auto;">
                                 <div class="reg-asgn-row" style="display: flex; gap: 0.4rem; align-items: center;">
                                     <select class="input reg-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
-                                        ${allClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                        ${sortedClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                                     </select>
                                     <select class="input reg-spec" style="flex: 1; height: 38px; font-size: 0.8rem;">
                                         <option value="">General</option>
@@ -4351,7 +4355,7 @@ export const UI = {
                             div.style = "display: flex; gap: 0.4rem; align-items: center;";
                             div.innerHTML = `
                                 <select class="input reg-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
-                                    ${allClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                    ${sortedClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                                 </select>
                                 <select class="input reg-spec" style="flex: 1; height: 38px; font-size: 0.8rem;">
                                     <option value="">General</option>
@@ -4382,6 +4386,7 @@ export const UI = {
                 if (!sub) return;
 
                 const allClasses = await db.classes.toArray();
+                const sortedClasses = allClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
                 const currentAssignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
 
                 const modalHtml = `
@@ -4410,9 +4415,9 @@ export const UI = {
                             </div>
                             <div id="edit-asgn-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 200px; overflow-y: auto;">
                                 ${currentAssignments.length === 0 ? '<p style="font-size:0.75rem; color:#94a3b8; text-align:center; padding:1rem;">No streams assigned. Click Add Assignment.</p>' : currentAssignments.map(a => `
-                                    <div class="edit-asgn-row" style="display: flex; gap: 0.4rem; align-items: center;">
+                                    <div class="edit-asgn-row" style="display: flex; gap: 0.4rem; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem;">
                                         <select class="input asgn-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
-                                            ${allClasses.map(c => `<option value="${c.name}" ${a.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
+                                            ${sortedClasses.map(c => `<option value="${c.name}" ${a.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
                                         </select>
                                         <select class="input asgn-spec" style="flex: 1; height: 38px; font-size: 0.8rem;">
                                             <option value="" ${!a.specialization ? 'selected' : ''}>General</option>
@@ -4471,7 +4476,7 @@ export const UI = {
                             div.style = "display: flex; gap: 0.4rem; align-items: center;";
                             div.innerHTML = `
                                 <select class="input asgn-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
-                                    ${allClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                    ${sortedClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                                 </select>
                                 <select class="input asgn-spec" style="flex: 1; height: 38px; font-size: 0.8rem;">
                                     <option value="">General</option>
