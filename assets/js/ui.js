@@ -2071,9 +2071,6 @@ export const UI = {
                         <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); font-size: 0.75rem;">
                             <i data-lucide="printer" style="width: 14px;"></i> Credentials
                         </button>
-                        <button id="btn-purge-inactive-quick" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: #fee2e2; color: #ef4444; border: 1px solid #fecaca; font-size: 0.75rem; font-weight: 700;">
-                            <i data-lucide="trash-2" style="width: 14px;"></i> Purge Inactive
-                        </button>
                         <button id="btn-bulk-repair-students" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; font-size: 0.75rem; font-weight: 700;">
                             <i data-lucide="shield-alert" style="width: 14px;"></i> Bulk Repair Auth
                         </button>
@@ -2140,40 +2137,7 @@ export const UI = {
             );
             listContainer.innerHTML = this.generateStudentListItems(filtered);
             if (typeof lucide !== 'undefined') lucide.createIcons();
-
-            // Toggle visibility of the Purge button based on whether inactive students are shown
-            const quickPurgeBtn = document.getElementById('btn-purge-inactive-quick');
-            if (quickPurgeBtn) {
-                quickPurgeBtn.style.display = includeInactive ? 'flex' : 'none';
-            }
         };
-
-        // Purge Button Logic (Shared with Settings)
-        const quickPurgeBtn = document.getElementById('btn-purge-inactive-quick');
-        if (quickPurgeBtn) {
-            quickPurgeBtn.onclick = async () => {
-                const inactiveStudents = await db.students.where('is_active').equals(0).toArray();
-                if (inactiveStudents.length === 0) {
-                    return Notifications.show("No inactive students to purge.", "info");
-                }
-                
-                if (confirm(`CRITICAL: Permanently delete ${inactiveStudents.length} inactive students and ALL their data?`)) {
-                    const pass = prompt("Type 'PURGE' to confirm:");
-                    if (pass === 'PURGE') {
-                        quickPurgeBtn.disabled = true;
-                        let count = 0;
-                        for (const s of inactiveStudents) {
-                            count++;
-                            quickPurgeBtn.innerHTML = `<i data-lucide="loader" class="spin"></i> ${count}/${inactiveStudents.length}`;
-                            await this.safeDelete('students', s.student_id, null);
-                        }
-                        Notifications.show(`Purged ${count} records.`, 'success');
-                        this.renderStudents();
-                        this.debouncedSync();
-                    }
-                }
-            };
-        }
 
         searchInput.addEventListener('input', () => {
             if (this.searchTimeout) clearTimeout(this.searchTimeout);
@@ -2620,6 +2584,7 @@ export const UI = {
                                  <button id="btn-sync-biometric" class="btn btn-secondary" title="Update Biometric Record" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;"><i data-lucide="refresh-cw"></i> Sync Biometric</button>
                                  <button id="btn-repair-auth" class="btn btn-secondary" title="Fix Login Issues" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a;"><i data-lucide="shield-alert"></i> Repair Auth</button>
                                  <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
+                                 <button id="btn-delete-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fee2e2; border: 1px solid #fecaca;"><i data-lucide="trash-2"></i> Delete</button>
                                  ${student.is_active !== false ? 
                                     `<button id="btn-deactivate-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="user-x"></i> Deactivate</button>` :
                                     `<button id="btn-reactivate-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #10b981; background: #ecfdf5; border: none;"><i data-lucide="user-check"></i> Reactivate</button>`
@@ -2894,6 +2859,28 @@ export const UI = {
                 Notifications.show(`${student.name} has been reactivated.`, 'success');
                 this.renderStudents();
                 this.debouncedSync();
+            };
+        }
+
+        // CRUD: Delete Student (Permanent)
+        const deleteBtn = document.getElementById('btn-delete-student');
+        if (deleteBtn) {
+            deleteBtn.onclick = async () => {
+                if (confirm(`CRITICAL: Are you sure you want to PERMANENTLY delete ${student.name}? This will also delete their attendance, scores, and all academic records. This cannot be undone.`)) {
+                    const confirmPass = prompt("Please type 'DELETE' to confirm permanent removal:");
+                    if (confirmPass === 'DELETE') {
+                        deleteBtn.disabled = true;
+                        deleteBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Deleting...';
+                        const success = await this.safeDelete('students', studentId, `${student.name} has been permanently deleted.`);
+                        if (success) {
+                            this.renderStudents();
+                            this.debouncedSync();
+                        } else {
+                            deleteBtn.disabled = false;
+                            deleteBtn.innerHTML = '<i data-lucide="trash-2"></i> Delete';
+                        }
+                    }
+                }
             };
         }
 
