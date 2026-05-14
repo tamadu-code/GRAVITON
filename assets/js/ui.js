@@ -4541,8 +4541,12 @@ export const UI = {
 
                     await db.subjects.update(id, prepareForSync({ name, type, credits, updated_at: new Date().toISOString() }));
                     
-                    // Replace assignments
-                    await db.subject_assignments.where('subject_id').equals(id).delete();
+                    // Replace assignments: Use safeDelete to ensure cloud removal
+                    const oldAssignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
+                    for (const asgn of oldAssignments) {
+                        await this.safeDelete('subject_assignments', asgn.id, null);
+                    }
+
                     for (const row of rows) {
                         const className = row.querySelector('.asgn-cls').value;
                         const specialization = row.querySelector('.asgn-spec').value || null;
@@ -4558,6 +4562,7 @@ export const UI = {
                     Notifications.show('Course and stream specializations updated', 'success');
                     this.debouncedSync();
                     this.renderAcademic();
+
                 }, 'Update Course', 'save');
 
                 // Add Row logic
@@ -4595,38 +4600,25 @@ export const UI = {
             icon.onclick = async (e) => {
                 const target = e.target.closest('.delete-sub') || e.target.closest('i');
                 const id = target.dataset.id;
-                if (confirm('Delete this course? All associated scores will be lost!')) {
-                    await db.subjects.delete(id);
-                    // Also delete and log assignments
+                if (confirm('Delete this course? All associated scores and assignments will be lost!')) {
+                    // 1. Delete assignments (with logging)
                     const assignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
                     for (const asgn of assignments) {
-                        await db.subject_assignments.delete(asgn.id);
-                        await db.audit_logs.add({
-                            id: crypto.randomUUID(),
-                            operation: 'DELETE',
-                            table: 'subject_assignments',
-                            record_id: asgn.id,
-                            timestamp: new Date().toISOString()
-                        });
+                        await this.safeDelete('subject_assignments', asgn.id, null);
                     }
                     
+                    // 2. Delete scores (local only)
                     await db.scores.where('subject_id').equals(id).delete();
 
-                    // Record subject deletion for sync
-                    await db.audit_logs.add({
-                        id: crypto.randomUUID(),
-                        operation: 'DELETE',
-                        table: 'subjects',
-                        record_id: id,
-                        timestamp: new Date().toISOString()
-                    });
+                    // 3. Delete subject (with logging)
+                    await this.safeDelete('subjects', id, 'Course removed');
                     
-                    Notifications.show('Course removed', 'success');
                     this.renderAcademic();
                     this.debouncedSync();
                 }
             };
         });
+
 
         document.querySelectorAll('.edit-class').forEach(btn => {
             btn.onclick = async (e) => {
@@ -9302,19 +9294,28 @@ export const UI = {
             }
 
 
-            // Robust Lookup: Try composite index first, fallback to filter
-            let existingScore;
+            // Only post official exams to scoresheet
+            if (exam.mode === 'Practice') {
+                console.log('[SCORE POST] Skipping Practice Mode exam.');
+                return;
+            }
+
+            // Deterministic Standard ID: studentId_subjectId_term_session
+            const standardId = `${result.student_id}_${exam.subject_id}_${exam.term}_${exam.session}`;
+
+            // Robust Lookup: Find any record matching these criteria (even with different ID format)
+            let existingScores = [];
             try {
-                existingScore = await db.scores
+                existingScores = await db.scores
                     .where('[student_id+subject_id+term+session]')
                     .equals([result.student_id, exam.subject_id, exam.term, exam.session])
-                    .first();
+                    .toArray();
             } catch (e) {
                 // Fallback for older database versions without the composite index
-                existingScore = await db.scores
+                existingScores = await db.scores
                     .where('student_id').equals(result.student_id)
                     .and(s => s.subject_id === exam.subject_id && s.term === exam.term && s.session === exam.session)
-                    .first();
+                    .toArray();
             }
 
             // Determine multiplier based on field
@@ -9331,26 +9332,32 @@ export const UI = {
 
             const divisor = result.total_marks || result.total_questions;
             const scoreValue = divisor > 0 ? Math.round((result.score / divisor) * multiplier) : 0;
-            console.log(`[SCORE POST] Posting ${scoreValue} to field "${field}" for student ${result.student_id}`);
-
-            if (existingScore) {
-                const updateData = { [exam.score_field]: scoreValue };
-                await db.scores.update(existingScore.id, prepareForSync(updateData));
-                console.log(`[SCORE POST] Updated existing record: ${existingScore.id}`);
-            } else {
-                // Use the standard Scoresheet ID format: studentId_subjectId_term_session
-                const standardId = `${result.student_id}_${exam.subject_id}_${exam.term}_${exam.session}`;
-                const newScore = prepareForSync({
-                    id: standardId,
-                    student_id: result.student_id,
-                    subject_id: exam.subject_id,
-                    term: exam.term,
-                    session: exam.session,
-                    [exam.score_field]: scoreValue
-                });
-                await db.scores.add(newScore);
-                console.log(`[SCORE POST] Created NEW record with Standard ID: ${newScore.id}`);
+            
+            // Overwrite Logic: If we found matches with DIFFERENT IDs, delete them to prevent duplicates
+            let scoreData = existingScores.find(s => s.id === standardId) || existingScores[0] || {};
+            
+            // Cleanup duplicates: delete all matched records that aren't our target record
+            for (const s of existingScores) {
+                if (s.id !== scoreData.id) {
+                    await db.scores.delete(s.id);
+                    console.log(`[SCORE POST] Deleted duplicate/obsolete record: ${s.id}`);
+                }
             }
+
+            const finalScore = prepareForSync({
+                ...scoreData,
+                id: standardId, // Enforce standard ID format
+                student_id: result.student_id,
+                subject_id: exam.subject_id,
+                term: exam.term,
+                session: exam.session,
+                [exam.score_field]: scoreValue,
+                updated_at: new Date().toISOString()
+            });
+
+            await db.scores.put(finalScore);
+            console.log(`[SCORE POST] Successfully ${scoreData.id ? 'updated' : 'created'} record: ${standardId} with score ${scoreValue}`);
+
             
             // Fire cloud sync (debouncedSync is fire-and-forget, not a Promise)
             this.debouncedSync();
