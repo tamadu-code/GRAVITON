@@ -9276,22 +9276,30 @@ export const UI = {
 
     async postCBTToScoresheet(result) {
         try {
-            const exam = await db.cbt_exams.get(result.exam_id);
+            let exam = await db.cbt_exams.get(result.exam_id);
+            if (!exam && this.currentExam && this.currentExam.id === result.exam_id) {
+                exam = this.currentExam;
+            }
             
             // Smart ID matching for student: find the profile/student record even if ID variant changed
             let student = await db.students.get(result.student_id);
             if (!student) {
-                const profiles = await db.profiles.toArray();
-                const profile = profiles.find(p => p.assigned_id === result.student_id || p.id === result.student_id);
-                if (profile) {
-                    student = await db.students.get(profile.assigned_id || profile.id);
+                if (this.currentUser && (this.currentUser.assigned_id === result.student_id || this.currentUser.student_id === result.student_id || this.currentUser.id === result.student_id)) {
+                    student = this.currentUser;
+                } else {
+                    const profiles = await db.profiles.toArray();
+                    const profile = profiles.find(p => p.assigned_id === result.student_id || p.id === result.student_id);
+                    if (profile) {
+                        student = await db.students.get(profile.assigned_id || profile.id);
+                    }
                 }
             }
             
-            if (!exam || !student) {
-                console.warn(`[SCORE POST] Missing exam (${result.exam_id}) or student (${result.student_id}). Skipping.`);
+            if (!exam) {
+                console.warn(`[SCORE POST] Missing exam context for (${result.exam_id}). Cannot post to scoresheet.`);
                 return;
             }
+
 
             // Robust Lookup: Try composite index first, fallback to filter
             let existingScore;
