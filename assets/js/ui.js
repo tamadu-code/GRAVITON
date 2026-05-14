@@ -8136,18 +8136,31 @@ export const UI = {
             let questions = rawQuestions.filter(q => q && typeof q === 'object');
             
             // Normalise every question's option fields for rendering
+            // CRITICAL: Strip answer indicators BEFORE integrity check so that
+            // options containing ONLY "[Ans: B]" become empty and are properly filtered out
+            const stripAnswerTags = (text) => {
+                if (!text) return '';
+                return text.toString().trim()
+                    .replace(/\[\s*(?:Ans|Answer)\s*[:\s]+.*?\]/gi, '')
+                    .replace(/\(\s*(?:Ans|Answer)\s*[:\s]+.*?\)/gi, '')
+                    .replace(/Ans\s*[:\s]+[A-E]/gi, '')
+                    .trim();
+            };
+
             questions = questions.map(q => ({
                 ...q,
-                option_a: (q.option_a || '').toString().trim(),
-                option_b: (q.option_b || '').toString().trim(),
-                option_c: (q.option_c || '').toString().trim(),
-                option_d: (q.option_d || '').toString().trim(),
-                option_e: (q.option_e || '').toString().trim(),
+                option_a: stripAnswerTags(q.option_a),
+                option_b: stripAnswerTags(q.option_b),
+                option_c: stripAnswerTags(q.option_c),
+                option_d: stripAnswerTags(q.option_d),
+                option_e: stripAnswerTags(q.option_e),
+                question_text: stripAnswerTags(q.question_text),
                 correct_option: (q.correct_option || 'A').toUpperCase(),
                 marks: parseFloat(q.marks) || 1
             }));
 
             // *** Integrity Check: Filter broken questions ***
+            const skippedQuestions = [];
             const validQuestions = questions.filter((q, i) => {
                 const optMap = {
                     'A': (q.option_a || '').trim(),
@@ -8156,24 +8169,31 @@ export const UI = {
                     'D': (q.option_d || '').trim(),
                     'E': (q.option_e || '').trim()
                 };
-                const validOpts = Object.values(optMap).filter(v => v.length > 0);
+                const validOpts = Object.entries(optMap).filter(([k, v]) => v.length > 0);
                 const correctVal = optMap[q.correct_option];
 
                 // 1. Must have at least 2 options
                 if (validOpts.length < 2) {
-                    console.warn(`[CBT Audit] Question ${i+1} skipped: Too few options (${validOpts.length}).`);
+                    skippedQuestions.push({ index: i+1, id: q.id, reason: `Only ${validOpts.length} option(s)`, text: (q.question_text || '').substring(0, 60) });
                     return false;
                 }
                 // 2. Correct option MUST have content
                 if (!correctVal || correctVal.length === 0) {
-                    console.warn(`[CBT Audit] Question ${i+1} skipped: Correct key '${q.correct_option}' points to an empty option.`);
+                    skippedQuestions.push({ index: i+1, id: q.id, reason: `Correct key '${q.correct_option}' is empty`, text: (q.question_text || '').substring(0, 60) });
                     return false;
                 }
                 return true;
             });
 
+            // Diagnostic Summary
+            if (skippedQuestions.length > 0) {
+                console.warn(`[CBT INTEGRITY] ${skippedQuestions.length} of ${questions.length} questions FAILED validation:`);
+                skippedQuestions.forEach(sq => console.warn(`  Q${sq.index} (${sq.id}): ${sq.reason} — "${sq.text}..."`));
+            }
+            console.log(`[CBT INTEGRITY] ${validQuestions.length} valid questions out of ${questions.length} total.`);
+
             if (validQuestions.length === 0) {
-                return Notifications.show('This exam has no valid questions in the cloud. Please verify your question bank (options and correct keys).', 'error');
+                return Notifications.show('This exam has no valid questions. Please check that all questions have at least 2 options and a correct answer key.', 'error');
             }
 
             const requestedLimit = parseInt(exam.question_limit) || 0;
