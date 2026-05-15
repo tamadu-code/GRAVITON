@@ -11483,7 +11483,7 @@ export const UI = {
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
             try {
-                const { error } = await updateUserPassword(newPw);
+                const { error } = await updateUserPassword(null, newPw);
                 if (error) {
                     Notifications.show(error.message, 'error');
                 } else {
