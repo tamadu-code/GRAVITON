@@ -439,8 +439,16 @@
     <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-    <script type="module" src="assets/js/supabase-client.js?v=153"></script>
-    <script type="module" src="assets/js/ui.js?v=153"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "./supabase-client.js": "./assets/js/supabase-client.js?v=153",
+        "./ui.js": "./assets/js/ui.js?v=153",
+        "./db.js": "./assets/js/db.js?v=153",
+        "./utils.js": "./assets/js/utils.js?v=153"
+      }
+    }
+    </script>
     <script type="module" src="assets/js/main.js?v=153"></script>
 </body>
 </html>
