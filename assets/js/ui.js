@@ -7691,29 +7691,46 @@ export const UI = {
         }
 
         area.innerHTML = this.cbtQuestions.map((q, idx) => {
-            const options = [
-                { key: 'A', text: q.option_a },
-                { key: 'B', text: q.option_b },
-                { key: 'C', text: q.option_c },
-                { key: 'D', text: q.option_d },
-                { key: 'E', text: q.option_e }
-            ].filter(o => o.text && o.text.trim().length > 0);
+            const isFill = q.question_type === 'fill_in_blank' || q.type === 'fill';
+            
+            let answerDisplayHTML = '';
+            if (isFill) {
+                // Render Fill-in Answer
+                answerDisplayHTML = `
+                    <div style="font-size: 0.85rem; color: #4338ca; font-weight: 800; background: #eef2ff; padding: 12px 14px; border-radius: 10px; border: 1px dashed #c7d2fe; display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 900; color: #6366f1;">TEXT ANSWER:</span> ${q.fill_answer || q.correct_option || 'N/A'}
+                    </div>
+                `;
+            } else {
+                // Render MCQ Options
+                const options = [
+                    { key: 'A', text: q.option_a },
+                    { key: 'B', text: q.option_b },
+                    { key: 'C', text: q.option_c },
+                    { key: 'D', text: q.option_d },
+                    { key: 'E', text: q.option_e }
+                ].filter(o => o.text && o.text.toString().trim().length > 0);
 
-            return `
-                <div id="admin-q-${idx}" class="card" style="margin-bottom:0.75rem; padding:1.25rem; border-radius:16px; background:white; border:1px solid #e2e8f0; position:relative; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                    <div style="font-weight:900; color:#4338ca; font-size:0.7rem; margin-bottom:0.75rem; text-transform:uppercase; letter-spacing: 0.05em;">Question ${idx + 1}</div>
-                    <div style="font-size:1rem; color:#1e293b; line-height:1.6; margin-bottom:1rem; font-weight: 600;">${q.question_text}</div>
-                    
+                answerDisplayHTML = `
                     <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 1rem;">
                         ${options.map(o => `
                             <div style="font-size: 0.85rem; color: ${q.correct_option === o.key ? '#059669' : '#475569'}; font-weight: ${q.correct_option === o.key ? '800' : '500'}; background: ${q.correct_option === o.key ? '#ecfdf5' : '#f8fafc'}; padding: 10px 14px; border-radius: 10px; border: 1px solid ${q.correct_option === o.key ? '#bbf7d0' : '#f1f5f9'};">
-                                <span style="font-weight: 900; margin-right: 8px; color: ${q.correct_option === o.key ? '#059669' : '#94a3b8'};">${o.key}</span> ${o.text}
+                                <span style="font-weight: 900; margin-right: 8px; color: ${q.correct_option === o.key ? '#059669' : '#94a3b8'};">${o.key}</span> ${this.parseCBTContent(o.text || '', true)}
                             </div>
                         `).join('')}
                     </div>
+                `;
+            }
 
-                    <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #f1f5f9; padding-top: 0.75rem;">
-                        <div style="font-size:0.7rem; color:#4338ca; font-weight:800; background: #eef2ff; padding: 4px 10px; border-radius: 6px;">Correct Option: ${q.correct_option}</div>
+            return `
+                <div id="admin-q-${idx}" class="card" style="margin-bottom:0.75rem; padding:1.25rem; border-radius:16px; background:white; border:1px solid #e2e8f0; position:relative; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                    <div style="font-weight:900; color:#4338ca; font-size:0.7rem; margin-bottom:0.75rem; text-transform:uppercase; letter-spacing: 0.05em;">Question ${idx + 1} ${isFill ? '— FILL IN THE BLANK' : ''}</div>
+                    <div style="font-size:1rem; color:#1e293b; line-height:1.6; margin-bottom:1rem; font-weight: 600;">${this.parseCBTContent(q.question_text)}</div>
+                    
+                    ${answerDisplayHTML}
+
+                    <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #f1f5f9; padding-top: 0.75rem; margin-top: 1rem;">
+                        <div style="font-size:0.7rem; color:#4338ca; font-weight:800; background: #eef2ff; padding: 4px 10px; border-radius: 6px;">Correct: ${q.correct_option || (isFill ? 'TEXT' : 'NONE')}</div>
                         <button onclick="UI.removeTempQuestion('${q.id}')" style="background:#fee2e2; border:none; color:#ef4444; cursor:pointer; padding:6px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 4px;">
                             <i data-lucide="trash-2" style="width:14px; height:14px;"></i> Delete
                         </button>
@@ -7768,10 +7785,14 @@ export const UI = {
                 return Notifications.show('Please fill in required fields (Title, Subject, Class)', 'error');
             }
 
-            // Data Integrity Check
-            const invalidQuestions = this.cbtQuestions.filter(q => !q.option_a || !q.option_b);
+            // Data Integrity Check — Only MCQ requires Options A and B
+            const invalidQuestions = this.cbtQuestions.filter(q => {
+                const isMCQ = q.question_type !== 'fill_in_blank' && q.type !== 'fill';
+                return isMCQ && (!q.option_a || !q.option_b);
+            });
+
             if (invalidQuestions.length > 0) {
-                return Notifications.show(`Cannot save exam: ${invalidQuestions.length} question(s) are missing options A or B.`, 'error');
+                return Notifications.show(`Cannot save exam: ${invalidQuestions.length} MCQ question(s) are missing options A or B.`, 'error');
             }
 
             const examId = existingId || `EXM${Math.random().toString(36).substr(2,9).toUpperCase()}`;
@@ -9173,11 +9194,11 @@ export const UI = {
         }
         
         // No (A)(B)(C)(D) found — check for fill-in-the-blank
-        const ansMatch = text.match(/\[Ans[:\s]+(.*?)\]/i);
+        const ansMatch = text.match(/[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]/i) || text.match(/\[Ans[:\s]+(.*?)\]/i);
         if (ansMatch) {
             q.question_type = 'fill_in_blank';
             q.fill_answer = ansMatch[1].trim();
-            q.question_text = text.replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
+            q.question_text = text.replace(/[\(\[]?(?:Ans|Answer)[\:\s]+[\s\S]*?[\)\]]/gi, '').replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
             console.log(`[CBT NORMALIZE] Fill-in-blank detected: ${q.id}, answer: ${q.fill_answer}`);
         }
         
@@ -9308,7 +9329,7 @@ export const UI = {
 
         // Visual feedback on input
         const input = document.getElementById(`cbt-fill-input-${questionId}`);
-        if (input) {
+        if (input && input.style) {
             input.style.borderColor = trimmed ? '#22c55e' : '#e2e8f0';
         }
 
