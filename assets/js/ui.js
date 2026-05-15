@@ -8671,19 +8671,24 @@ export const UI = {
                         #cbt-question-text { 
                             word-wrap: break-word; 
                             overflow-wrap: break-word; 
-                            word-break: break-word; 
                             white-space: normal;
                             max-width: 100%;
                             line-height: 1.6;
+                            overflow-x: auto;
                         }
-                        /* Force MathJax to wrap */
+                        /* MathJax container styling */
                         mjx-container { 
                             max-width: 100% !important; 
-                            white-space: normal !important;
-                            display: inline !important;
-                            overflow-wrap: break-word !important;
+                            overflow-x: auto !important;
+                            display: inline-block !important;
                         }
-                        .jamb-option div:last-child { overflow-x: visible !important; white-space: normal !important; }
+                        mjx-container[jax="CHTML"][display="true"] {
+                            max-width: 100% !important;
+                            overflow-x: auto !important;
+                        }
+                        .jamb-option { word-wrap: break-word; overflow-wrap: break-word; }
+                        .jamb-option div:last-child { white-space: normal !important; word-wrap: break-word; overflow-wrap: break-word; }
+
 
 
                         
@@ -8955,7 +8960,7 @@ export const UI = {
                             return `
                                 <div class="jamb-option ${isSelected ? 'selected' : ''}" onclick="UI.selectCBTOption('${q.id}', ${idx})">
                                     <div class="jamb-option-label">${label}</div>
-                                    <div style="font-weight: 500; color: #334155; font-size: 0.9rem; overflow-x: auto;">${this.parseCBTContent(opt.text || '')}</div>
+                                    <div style="font-weight: 500; color: #334155; font-size: 0.9rem;">${this.parseCBTContent(opt.text || '', true)}</div>
                                 </div>
                             `;
                         }).join('')}
@@ -9014,23 +9019,24 @@ export const UI = {
     /**
      * Smart Content Parser: Detects images and prepares Math
      */
-    parseCBTContent(text) {
+    parseCBTContent(text, isOption = false) {
         if (!text) return '';
         
-        // 1. Segmented LaTeX auto-wrapping
-        // Instead of wrapping the whole string, we wrap segments to allow browser-level wrapping at spaces
         let processed = text.toString();
-        if (processed.includes('\\') && !processed.includes('\\(') && !processed.includes('$') && !processed.includes('\[')) {
-            processed = processed.split(' ').map(part => {
-                if (part.includes('\\')) return `\\(${part}\\)`;
-                return part;
-            }).join(' ');
+
+        // 1. Smart LaTeX Detection — only trigger for REAL LaTeX commands, not random backslashes/newlines
+        const latexCommands = /\\(frac|text|times|sqrt|div|cdot|pm|mp|leq|geq|neq|approx|infty|sum|prod|int|lim|log|ln|sin|cos|tan|alpha|beta|gamma|delta|theta|rho|sigma|omega|Omega|pi|mu|lambda|phi|epsilon|eta|kappa|tau|chi|psi|zeta|nabla|partial|left|right|over|begin|end|hline|mathrm|mathbf|textbf|displaystyle|binom|vec|hat|bar|dot|ddot|tilde|underline|overline|cancel|boxed|color)\b/;
+        const hasLatex = latexCommands.test(processed);
+        const alreadyDelimited = /\\\(|\\\)|\$|\\\[|\\\]/.test(processed);
+
+        if (hasLatex && !alreadyDelimited) {
+            // Wrap the ENTIRE string as inline math — let MathJax handle it as one expression
+            processed = `\\(${processed}\\)`;
         }
 
-
-        // 2. Basic HTML Escaping (Skip if it looks like LaTeX to avoid breaking commands)
+        // 2. Basic HTML Escaping (Skip if LaTeX to avoid breaking commands)
         let safe = processed;
-        if (!processed.includes('\\')) {
+        if (!hasLatex) {
             safe = processed
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
@@ -9045,18 +9051,21 @@ export const UI = {
             return `<div style="margin: 0.75rem 0; text-align: center;"><img src="${cleanUrl}" style="max-width: 100%; max-height: 400px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" onerror="this.outerHTML='<div style=\'color:#f43f5e; font-size:0.75rem; font-weight:700;\'>[⚠️ Image failed to load]</div>'"></div>`;
         });
 
-        // 4. NEW: Security Shield - Strip Answer Indicators [Ans: A], (Ans: A), etc.
+        // 4. Security Shield — Strip Answer Indicators [Ans: A], (Ans: A), etc.
         parsed = parsed.replace(/\[\s*(?:Ans|Answer)\s*[:\s]+.*?\]/gi, '')
                       .replace(/\(\s*(?:Ans|Answer)\s*[:\s]+.*?\)/gi, '')
                       .replace(/Ans\s*[:\s]+[A-E]/gi, '');
 
-        // 5. Convert Newlines to <br> for proper multi-line display (Collapse multiple newlines)
-        // If it's math, we skip <br> to let MathJax handle formatting
-        if (!processed.includes('\\')) {
-            parsed = parsed.replace(/\n+/g, '<br>').trim();
-        } else {
-            // Keep newlines as spaces in LaTeX to avoid layout breaks
+        // 5. Newline handling
+        if (isOption) {
+            // For options: collapse ALL newlines to single space (options should be one-liners)
             parsed = parsed.replace(/\n+/g, ' ').trim();
+        } else if (hasLatex) {
+            // For math questions: keep newlines as spaces so MathJax can format
+            parsed = parsed.replace(/\n+/g, ' ').trim();
+        } else {
+            // For regular text: convert newlines to <br>
+            parsed = parsed.replace(/\n+/g, '<br>').trim();
         }
         
         return parsed;
