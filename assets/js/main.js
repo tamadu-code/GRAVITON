@@ -114,10 +114,11 @@ async function initApp() {
     // This avoids waiting for a Supabase network round-trip just to be told no session exists.
     const hasPotentialSession = Object.keys(localStorage).some(key => key.startsWith('sb-') && key.endsWith('-auth-token'));
     
-    // Check if we are arriving from a password recovery link
-    const isRecovery = window.location.hash.includes('type=recovery');
+    // Check if we are arriving from an auth link (Magic Link, Recovery, etc.)
+    const hash = window.location.hash;
+    const isAuthLink = hash.includes('access_token=') || hash.includes('type=recovery') || hash.includes('type=magiclink') || hash.includes('type=invite');
     
-    if (!hasPotentialSession && !isRecovery) {
+    if (!hasPotentialSession && !isAuthLink) {
         console.log('No local session token found, skipping session check.');
         showLoginScreen();
         isInitializing = false;
@@ -125,9 +126,10 @@ async function initApp() {
         return;
     }
 
-    if (isRecovery) {
-        console.log('Recovery token detected in URL, waiting for auth listener...');
-        // We let the auth listener handle the UI switch to reset-password-screen
+    if (isAuthLink) {
+        console.log('Auth link detected in URL, waiting for session processing...');
+        // Wait a small moment for Supabase to parse the hash
+        await new Promise(r => setTimeout(r, 500));
     }
 
     // Show a small loader on login button if we are actually checking a real session
