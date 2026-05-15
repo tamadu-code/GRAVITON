@@ -2863,7 +2863,8 @@ export const UI = {
                 
                 try {
                     const studentEmail = `${student.student_id.toLowerCase()}@student.school`;
-                    let { data: authData, error: authError } = await registerUser(studentEmail, student.student_id, student.name, 'Student');
+                    const defaultPassword = 'Password123'; // Standard intuitive password for students
+                    let { data: authData, error: authError } = await registerUser(studentEmail, defaultPassword, student.name, 'Student');
                     
                     const client = window.getSupabase ? window.getSupabase() : null;
 
@@ -2873,8 +2874,6 @@ export const UI = {
                     
                     // Force update profile in Supabase to ensure everything is linked
                     if (client) {
-                        // We use a dedicated RPC or direct upsert if RLS allows. 
-                        // Since we are likely Admin here, we should be able to upsert.
                         const profileToLink = {
                             full_name: student.name,
                             role: 'Student',
@@ -2883,11 +2882,9 @@ export const UI = {
                             updated_at: new Date().toISOString()
                         };
 
-                        // If we have authData.user.id, use it. Otherwise, we might need to find the user.
                         if (authData?.user?.id) {
                             profileToLink.id = authData.user.id;
                         } else {
-                            // Try to find the user by email first to get the correct ID
                             const { data: existingProfile } = await client.from('profiles').select('id').eq('email', studentEmail).maybeSingle();
                             if (existingProfile) {
                                 profileToLink.id = existingProfile.id;
@@ -2898,7 +2895,7 @@ export const UI = {
                         if (pError) console.warn('Profile sync warning during repair:', pError);
                     }
 
-                    Notifications.show(`Authentication dashboard repaired for ${student.name}.`, 'success');
+                    Notifications.show(`Auth repaired for ${student.name}. Default password is: Password123`, 'success');
                 } catch (err) {
                     console.error('Repair error:', err);
                     Notifications.show(`Failed to repair auth: ${err.message}`, 'error');

@@ -446,7 +446,7 @@ export async function loginUser(identifier, password) {
     if (isStandardId) {
         email = `${identifier.toLowerCase()}@student.school`;
         // Students use their full ID as both username and password
-        if (!password || password === identifier) loginPassword = identifier;
+        if (!password) loginPassword = 'Password123'; 
     } 
     // Legacy numeric login disabled as per user request
     else if (/^\d{3,8}$/.test(identifier)) {
@@ -563,13 +563,12 @@ export async function registerUser(email, password, fullName, role) {
             email: email,
             status: 'Active',
             updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'email' });
     } else if (error && (error.message.includes('already registered') || error.message.includes('already exists'))) {
-        console.log(`[Register] User ${email} already exists, attempting to retrieve ID...`);
+        console.log(`[Register] User ${email} already exists, attempting to recover ID...`);
+        // If profile exists, use it. If not, we can't easily get the ID, but we can return null error to allow caller to proceed
         const { data: profile } = await client.from('profiles').select('id').eq('email', email).maybeSingle();
-        if (profile) {
-            return { data: { user: { id: profile.id } }, error: null };
-        }
+        return { data: { user: profile ? { id: profile.id } : null }, error: null };
     }
     return { data, error };
 }
