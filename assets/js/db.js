@@ -3,7 +3,14 @@
  * Manages local persistence with IndexedDB
  */
 
-const db = new Dexie('GravitonDB');
+if (typeof Dexie === 'undefined') {
+    const msg = 'Critical Error: Database library (Dexie) failed to load. Please check your internet connection and refresh the page.';
+    console.error(msg);
+    // Use a non-blocking way to show error if possible, but for DB we must stop
+    throw new Error(msg);
+}
+
+const db = new window.Dexie('GravitonDB');
 window.db = db; // Expose to console for administration
 
 // Define Schema

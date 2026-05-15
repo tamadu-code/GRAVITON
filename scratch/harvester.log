@@ -209,3 +209,6 @@
 2026-05-15 10:46:18 [INFO] Starting robust sync to Attendance System...
 2026-05-15 10:46:18 [INFO] Latest CSV: C:\Users\ELECTRO-TECH\Downloads\attendance_report_2026-05-13.csv
 2026-05-15 10:46:18 [ERROR] Failed to load students: HTTPSConnectionPool(host='wuzliodvddzmhehffqfx.supabase.co', port=443): Max retries exceeded with url: /rest/v1/students?select=id,code&is_active=eq.true (Caused by NameResolutionError("HTTPSConnection(host='wuzliodvddzmhehffqfx.supabase.co', port=443): Failed to resolve 'wuzliodvddzmhehffqfx.supabase.co' ([Errno 11001] getaddrinfo failed)"))
+2026-05-15 15:05:48 [INFO] Starting robust sync to Attendance System...
+2026-05-15 15:05:48 [INFO] Latest CSV: C:\Users\ELECTRO-TECH\Downloads\attendance_report_2026-05-13.csv
+2026-05-15 15:06:09 [ERROR] Failed to load students: HTTPSConnectionPool(host='wuzliodvddzmhehffqfx.supabase.co', port=443): Max retries exceeded with url: /rest/v1/students?select=id,code&is_active=eq.true (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1077)')))
