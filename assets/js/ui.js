@@ -5,7 +5,7 @@
 console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
-import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet } from './utils.js';
+import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
 
 export const UI = {
@@ -13,6 +13,40 @@ export const UI = {
     get viewTitle() { return document.getElementById('view-title'); },
     lastOpenedBankCategory: null,
     lastBankScrollPos: 0,
+    
+    showPDFPreview(doc, filename = 'document.pdf') {
+        const blobUrl = doc.output('bloburl');
+        const modalHtml = `
+            <div id="pdf-preview-container" style="height: 80vh; display: flex; flex-direction: column;">
+                <div style="flex: 1; position: relative; background: #525659; border-radius: 8px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);">
+                    <iframe src="${blobUrl}#toolbar=0" style="width: 100%; height: 100%; border: none;"></iframe>
+                </div>
+                <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 1rem;">
+                    <button class="btn btn-secondary" onclick="document.getElementById('ui-modal').remove()" style="border-radius: 12px; height: 48px; padding: 0 1.5rem; font-weight: 700;">
+                        Cancel Review
+                    </button>
+                    <button id="btn-final-print" class="btn btn-primary" style="border-radius: 12px; height: 48px; padding: 0 2rem; font-weight: 800; background: #10b981; display: flex; align-items: center; gap: 0.75rem;">
+                        <i data-lucide="printer"></i> Secure Print
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        this.showModal('Report Review & Audit', modalHtml, null, 'Print', 'printer');
+        
+        // Hide the default modal footer because we have our own
+        const modalFooter = document.querySelector('.modal-footer');
+        if (modalFooter) modalFooter.style.display = 'none';
+
+        const printBtn = document.getElementById('btn-final-print');
+        if (printBtn) {
+            printBtn.onclick = () => {
+                doc.save(filename);
+                document.getElementById('ui-modal').remove();
+                Notifications.show('Document saved for printing!', 'success');
+            };
+        }
+    },
     
     escapeHTML(str) {
         if (!str) return '';
@@ -4110,9 +4144,9 @@ export const UI = {
             const classStudents = students.filter(s => s.class_name === className);
             if (classStudents.length === 0) return Notifications.show('No students found in this stream', 'error');
 
-            const { generateBlankScoreSheet } = await import('./utils.js');
             Notifications.show('Generating printable score sheet...', 'info');
-            await generateBlankScoreSheet(className, classStudents, subjectName || 'Unspecified Subject', term, currentSession);
+            const doc = await generateBlankScoreSheet(className, classStudents, subjectName || 'Unspecified Subject', term, currentSession);
+            if (doc) UI.showPDFPreview(doc, `ScoreSheet_${className}.pdf`);
         });
     },
 
@@ -6188,14 +6222,16 @@ export const UI = {
                         };
 
                         Notifications.show(`Generating report for ${student.name}...`, 'info');
-                        await generateReportCard(student, sScores, schoolInfo, sAtt);
+                        const doc = await generateReportCard(student, sScores, schoolInfo, sAtt);
+                        if (doc) this.showPDFPreview(doc, `Report_${student.name.replace(/\s+/g, '_')}.pdf`);
                     });
                 });
 
                 document.getElementById('btn-matrix-view').addEventListener('click', async () => {
                     if (loadedStudents.length === 0) return Notifications.show('No students to generate mastersheet', 'error');
                     Notifications.show('Compiling matrix view...', 'info');
-                    await generateMastersheet(className, loadedStudents, loadedSubjects, loadedScores, term, session);
+                    const doc = await generateMastersheet(className, loadedStudents, loadedSubjects, loadedScores, term, session);
+                    if (doc) this.showPDFPreview(doc, `Mastersheet_${className}_${term}.pdf`);
                     Notifications.show('Mastersheet generated!', 'success');
                 });
 
@@ -6249,7 +6285,7 @@ export const UI = {
                         await generateReportCard(student, sScores, schoolInfo, sAtt, batchDoc);
                     }
 
-                    batchDoc.save(`Batch_Reports_${className}_${term}_${session.replace(/\//g, '-')}.pdf`);
+                    this.showPDFPreview(batchDoc, `Batch_Reports_${className}.pdf`);
                     Notifications.show('Batch generation complete!', 'success');
                 });
 

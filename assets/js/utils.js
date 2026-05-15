@@ -362,7 +362,9 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.setTextColor(theme.r, theme.g, theme.b);
     doc.text("VALID ONLY WITH ORIGINAL SCHOOL EMBOSSED STAMP", pageWidth - 15, footerY + 6, { align: 'right' });
     
-    doc.save(`${student.name.replace(/\s+/g, '_')}_Report_Card.pdf`);
+    if (!existingDoc) {
+        return doc;
+    }
 }
 
 /**
@@ -508,10 +510,10 @@ export async function generateMastersheet(className, students, subjects, scores,
         body: body,
         theme: 'grid',
         styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillStyle: [30, 41, 59], textColor: 255 }
+        headStyles: { fillColor: [30, 41, 59], textColor: 255 }
     });
     
-    doc.save(`Mastersheet_${className}_${term}_${session.replace(/\//g, '-')}.pdf`);
+    return doc; // Return for preview
 }
 
 /**
@@ -655,5 +657,5 @@ export async function generateBlankScoreSheet(className, students, subjectName, 
         doc.text(`Page ${p+1} of ${totalPages}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
     }
     
-    doc.save(`BlankScoreSheet_${className}_${subjectName.replace(/\s+/g, '_')}.pdf`);
+    return doc; // Return for preview
 }
