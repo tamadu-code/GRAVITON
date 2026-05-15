@@ -653,7 +653,6 @@ if (logoutBtn) {
             // Quick redirect to reset the app state cleanly
             window.location.href = window.location.origin + window.location.pathname;
         }
-        }
     });
 }
 
