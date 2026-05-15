@@ -446,7 +446,7 @@ export async function loginUser(identifier, password) {
     if (isStandardId) {
         email = `${identifier.toLowerCase()}@student.school`;
         // Students use their full ID as both username and password
-        if (!password) loginPassword = 'Password123'; 
+        if (!password || password === identifier) loginPassword = identifier; 
     } 
     // Legacy numeric login disabled as per user request
     else if (/^\d{3,8}$/.test(identifier)) {

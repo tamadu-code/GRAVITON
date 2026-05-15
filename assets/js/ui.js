@@ -2863,8 +2863,7 @@ export const UI = {
                 
                 try {
                     const studentEmail = `${student.student_id.toLowerCase()}@student.school`;
-                    const defaultPassword = 'Password123'; // Standard intuitive password for students
-                    let { data: authData, error: authError } = await registerUser(studentEmail, defaultPassword, student.name, 'Student');
+                    let { data: authData, error: authError } = await registerUser(studentEmail, student.student_id, student.name, 'Student');
                     
                     const client = window.getSupabase ? window.getSupabase() : null;
 
@@ -2895,7 +2894,7 @@ export const UI = {
                         if (pError) console.warn('Profile sync warning during repair:', pError);
                     }
 
-                    Notifications.show(`Auth repaired for ${student.name}. Default password is: Password123`, 'success');
+                    Notifications.show(`Auth repaired for ${student.name}. Password is: ${student.student_id}`, 'success');
                 } catch (err) {
                     console.error('Repair error:', err);
                     Notifications.show(`Failed to repair auth: ${err.message}`, 'error');
