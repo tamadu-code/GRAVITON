@@ -12792,6 +12792,11 @@ export const UI = {
                         </select>
                     </div>
                 </div>
+
+                <div style="background: #fff1f2; border: 1px solid #fecaca; border-radius: 12px; padding: 0.75rem; display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="clear-bank-confirm" style="width: 20px; height: 20px; cursor: pointer;">
+                    <label for="clear-bank-confirm" style="color: #991b1b; font-size: 0.8rem; font-weight: 700; cursor: pointer;">Clear existing Master Bank for this subject before importing (Fixes duplicates)</label>
+                </div>
                 <div class="form-group" style="margin: 0;">
                     <label style="font-weight: 700; margin-bottom: 0.25rem; display: block;">Paste questions below:</label>
                     <textarea id="bank-q-text" class="cbt-input" style="height:250px; font-family:monospace; font-size:0.85rem; border-radius: 12px; color: #1e293b !important; background: #ffffff !important;" placeholder="Paste questions here..."></textarea>
@@ -12806,20 +12811,33 @@ export const UI = {
 
             const term = document.getElementById('bank-term').value;
             const session = document.getElementById('bank-session').value;
+            const shouldClear = document.getElementById('clear-bank-confirm').checked;
 
             if (!subjectId || !className) return Notifications.show('Please select Subject and Class.', 'error');
             if (!text) return Notifications.show('Please paste your questions.', 'error');
 
             const bankExamId = `BANK-${subjectId}__${className}__${term.replace(/\s+/g, '')}__${session.replace(/\//g, '-')}`;
 
-            // MCQ Regex: Captures Question, A, B, C, D, E (optional), Answer, and Marks (optional)
-            // Enhanced MCQ Regex: Much more robust with flexible answer tags [Ans: A], [Answer: A], (Ans: A), etc.
-            const mcqRegex = /((?:(?![\(\[]?[A-E][\)\]\.]).)*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?)?)?[\(\[]?(?:Ans|Answer)[\:\s]+([A-E])[\)\]]?/gi;
-            
-            // Simpler MCQ Regex for just A and B (True/False or Yes/No)
-            const simpleMcqRegex = /([\s\S]*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?(?:Ans|Answer)[\:\s]+([A-B])[\)\]]?/gi;
+            // --- OPTIONAL CLEAN START ---
+            if (shouldClear) {
+                Notifications.show('Cleaning master library for this subject...', 'info');
+                const oldBank = await db.cbt_question_bank.where('subject_id').equals(subjectId).toArray();
+                const oldIds = oldBank.map(q => q.id);
+                
+                await db.cbt_question_bank.where('subject_id').equals(subjectId).delete();
+                if (oldIds.length > 0) {
+                    await db.cbt_options.where('question_id').anyOf(oldIds).delete();
+                }
 
-            const fillRegex = /([\s\S]*?)\s*[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]?/gi;
+                // Cloud Sync Clear
+                if (navigator.onLine) {
+                    const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                    if (client && oldIds.length > 0) {
+                        await client.from('cbt_question_bank').delete().in('id', oldIds);
+                        await client.from('cbt_options').delete().in('question_id', oldIds);
+                    }
+                }
+            }
 
             // --- NEW: Hyper-Robust Multi-Stage Parser ---
             // 1. Capture ALL answer markers (A-E or Text) to prevent merging questions
