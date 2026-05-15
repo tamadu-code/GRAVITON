@@ -1,11 +1,11 @@
-const CACHE_NAME = 'graviton-cache-v91';
+const CACHE_NAME = 'graviton-cache-v92';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
   './assets/css/style.css?v=33',
   './assets/js/main.js?v=90',
-  './assets/js/ui.js?v=146',
+  './assets/js/ui.js?v=148',
   './assets/js/db.js',
   './assets/js/utils.js',
   './assets/js/supabase-client.js',

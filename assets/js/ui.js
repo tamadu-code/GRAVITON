@@ -8210,16 +8210,21 @@ export const UI = {
                     'E': (q.option_e || '').trim()
                 };
                 const validOpts = Object.keys(optMap).filter(k => optMap[k].length > 0);
-                const correctVal = optMap[q.correct_option];
+                
+                // Identify Fill-in-the-blank
+                const isFill = q.type === 'fill' || q.type === 'text' || q.question_type === 'fill_in_blank' || validOpts.length === 0;
 
-                // 1. Must have at least 2 options
-                if (validOpts.length < 2) {
-                    skippedQuestions.push({ index: i+1, id: q.id, reason: `Only ${validOpts.length} option(s)`, text: (q.question_text || '').substring(0, 60) });
+                // 1. MCQ Integrity: Must have at least 2 options
+                if (!isFill && validOpts.length < 2) {
+                    skippedQuestions.push({ index: i+1, id: q.id, reason: `MCQ has only ${validOpts.length} option(s)`, text: (q.question_text || '').substring(0, 60) });
                     return false;
                 }
-                // 2. Correct option MUST have content
-                if (!correctVal || correctVal.length === 0) {
-                    skippedQuestions.push({ index: i+1, id: q.id, reason: `Correct key '${q.correct_option}' is empty`, text: (q.question_text || '').substring(0, 60) });
+
+                // 2. Correct answer MUST have content
+                // For MCQ, q.correct_option is a key (A, B, C...). For Fill, it's the actual text.
+                const answerText = isFill ? (q.correct_option || q.fill_answer) : optMap[q.correct_option];
+                if (!answerText || answerText.toString().trim().length === 0) {
+                    skippedQuestions.push({ index: i+1, id: q.id, reason: `Correct answer is empty`, text: (q.question_text || '').substring(0, 60) });
                     return false;
                 }
                 return true;
