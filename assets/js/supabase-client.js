@@ -454,7 +454,7 @@ export async function loginUser(identifier, password) {
     }
 
     // ─── DIAGNOSTIC LOG ───
-    console.log(`[Auth] Attempting login for: ${identifier} -> Translated Email: ${email}`);
+    console.log(`[Auth] Attempting login at ${SB_CONFIG.url} for: ${identifier} -> Translated Email: ${email}`);
 
     const { data, error } = await client.auth.signInWithPassword({ email: email, password: loginPassword });
     
