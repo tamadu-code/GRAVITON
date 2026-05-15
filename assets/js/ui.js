@@ -8308,11 +8308,23 @@ export const UI = {
 
             console.log(`[CBT AUDIT] Final Rendering: ${shuffledQuestions.length} questions.`);
 
-            // Prepare Questions — all options already normalised above
+            // Prepare Questions — normalize embedded data, then build options
             const finalQuestions = shuffledQuestions.map((q, idx) => {
                 if (!q) {
                     console.error(`[CBT FATAL] Undefined question encountered at index ${idx}`);
                     return null;
+                }
+
+                // NORMALIZE: Extract embedded options or detect fill-in-blank
+                this.normalizeQuestionData(q);
+
+                // Handle fill-in-the-blank questions (no MCQ options)
+                if (q.question_type === 'fill_in_blank') {
+                    return { 
+                        ...q, 
+                        shuffledOptions: [], 
+                        answerHash: q.fill_answer ? q.fill_answer.toLowerCase().trim() : ''
+                    };
                 }
 
                 const options = [
@@ -8326,8 +8338,8 @@ export const UI = {
                 // Only include options that have actual content
                 const validOptions = options.filter(o => o.text && o.text.length > 0);
 
-                if (validOptions.length < 4) {
-                    console.warn(`[CBT Integrity] Question ${idx + 1} (${q.id}) only has ${validOptions.length} options.`);
+                if (validOptions.length < 2) {
+                    console.warn(`[CBT Integrity] Question ${idx + 1} (${q.id}) only has ${validOptions.length} options after normalization.`);
                 }
 
                 let qSeed = seed + idx;
@@ -8598,8 +8610,11 @@ export const UI = {
 
             const q = this.currentQuestions[this.currentQuestionIndex];
             
-            // --- NEW: Dynamic Option Preparation for JAMB Solution ---
-            if (!q.shuffledOptions) {
+            // --- Normalize question data before rendering ---
+            this.normalizeQuestionData(q);
+            
+            // --- Dynamic Option Preparation (fallback) ---
+            if (!q.shuffledOptions && q.question_type !== 'fill_in_blank') {
                 const rawOptions = [
                     { key: 'A', text: q.option_a },
                     { key: 'B', text: q.option_b },
@@ -8938,6 +8953,45 @@ export const UI = {
         const palette = document.getElementById('cbt-question-palette');
         if (!q || !displayArea) return;
 
+        // Build answer section based on question type
+        let answerSectionHTML = '';
+        
+        if (q.question_type === 'fill_in_blank') {
+            // Fill-in-the-Blank Input
+            const savedAnswer = this.userAnswers[q.id] || '';
+            answerSectionHTML = `
+                <div style="margin-top: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                        <span style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; font-size: 0.65rem; font-weight: 800; padding: 0.2rem 0.6rem; border-radius: 20px; letter-spacing: 0.5px;">FILL IN THE BLANK</span>
+                    </div>
+                    <input type="text" 
+                        id="cbt-fill-input-${q.id}" 
+                        placeholder="Type your answer here..." 
+                        value="${savedAnswer}"
+                        oninput="UI.saveFillAnswer('${q.id}', this.value)"
+                        autocomplete="off"
+                        style="width: 100%; padding: 0.85rem 1rem; font-size: 1rem; font-weight: 600; border: 2px solid #e2e8f0; border-radius: 12px; outline: none; transition: border-color 0.2s; box-sizing: border-box; background: #f8fafc; color: #1e293b;"
+                        onfocus="this.style.borderColor='#6d28d9'; this.style.background='white';"
+                        onblur="this.style.borderColor='#e2e8f0'; this.style.background='#f8fafc';"
+                    >
+                </div>
+            `;
+        } else {
+            // MCQ Options
+            const optionsHTML = (q.shuffledOptions || []).map((opt, idx) => {
+                if (!opt) return '';
+                const label = String.fromCharCode(65 + idx);
+                const isSelected = this.userAnswers[q.id] === opt.text;
+                return `
+                    <div class="jamb-option ${isSelected ? 'selected' : ''}" onclick="UI.selectCBTOption('${q.id}', ${idx})">
+                        <div class="jamb-option-label">${label}</div>
+                        <div style="font-weight: 500; color: #334155; font-size: 0.9rem;">${this.parseCBTContent(opt.text || '', true)}</div>
+                    </div>
+                `;
+            }).join('');
+            answerSectionHTML = `<div style="display: flex; flex-direction: column; gap: 0.4rem; width: 100%;">${optionsHTML}</div>`;
+        }
+
         // 1. Render Question Content
         displayArea.innerHTML = `
             <div class="jamb-question-box">
@@ -8951,20 +9005,7 @@ export const UI = {
                         ${this.parseCBTContent(q.question_text)}
                     </div>
 
-                    <div style="display: flex; flex-direction: column; gap: 0.4rem; width: 100%;">
-                        ${(q.shuffledOptions || []).map((opt, idx) => {
-                            if (!opt) return '';
-                            const label = String.fromCharCode(65 + idx);
-                            const isSelected = this.userAnswers[q.id] === opt.text;
-                            // Using Index for safe selection of complex math strings
-                            return `
-                                <div class="jamb-option ${isSelected ? 'selected' : ''}" onclick="UI.selectCBTOption('${q.id}', ${idx})">
-                                    <div class="jamb-option-label">${label}</div>
-                                    <div style="font-weight: 500; color: #334155; font-size: 0.9rem;">${this.parseCBTContent(opt.text || '', true)}</div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
+                    ${answerSectionHTML}
                 </div>
             </div>
 
@@ -9071,6 +9112,77 @@ export const UI = {
         return parsed;
     },
 
+    /**
+     * Normalizes raw question data by extracting embedded options and detecting question types.
+     * MCQ: Has (A)...(B)...(C)...(D)... → extract into option_a, option_b, etc.
+     * Fill-in-blank: Has [Ans: text] but NO (A)(B)... → mark as fill_in_blank
+     */
+    normalizeQuestionData(q) {
+        if (!q || !q.question_text) return q;
+        
+        const text = q.question_text.toString().trim();
+        
+        // Check if options are already populated in separate fields
+        const hasOptions = q.option_a && q.option_a.toString().trim().length > 0;
+        if (hasOptions) {
+            // Options exist — just strip [Ans: X] from question_text if present
+            q.question_text = text.replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
+            return q;
+        }
+        
+        // Check for embedded MCQ options: (A) ... (B) ... (C) ... (D) ...
+        const hasMCQOptions = /\(A\)/i.test(text);
+        
+        if (hasMCQOptions) {
+            // Split text at option markers (A), (B), (C), (D), (E)
+            const parts = text.split(/\(([A-E])\)\s*/i);
+            // parts = [question_text, "A", opt_a_text, "B", opt_b_text, ...]
+            
+            if (parts.length >= 5) {
+                q.question_text = parts[0].replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
+                
+                const optMap = {};
+                for (let i = 1; i < parts.length; i += 2) {
+                    const key = (parts[i] || '').toUpperCase();
+                    let val = (parts[i + 1] || '').replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
+                    // Clean trailing/leading whitespace and newlines
+                    val = val.replace(/\n+/g, ' ').trim();
+                    if (key && val) optMap[key] = val;
+                }
+                
+                q.option_a = optMap['A'] || '';
+                q.option_b = optMap['B'] || '';
+                q.option_c = optMap['C'] || '';
+                q.option_d = optMap['D'] || '';
+                if (optMap['E']) q.option_e = optMap['E'];
+                
+                // Extract correct answer from [Ans: X]
+                const ansMatch = text.match(/\[Ans[:\s]+(.*?)\]/i);
+                if (ansMatch) {
+                    const ans = ansMatch[1].trim();
+                    if (/^[A-E]$/i.test(ans)) {
+                        q.correct_option = ans.toUpperCase();
+                    }
+                }
+                
+                q.question_type = 'mcq';
+                console.log(`[CBT NORMALIZE] Extracted MCQ options from question text: ${q.id}`);
+            }
+            
+            return q;
+        }
+        
+        // No (A)(B)(C)(D) found — check for fill-in-the-blank
+        const ansMatch = text.match(/\[Ans[:\s]+(.*?)\]/i);
+        if (ansMatch) {
+            q.question_type = 'fill_in_blank';
+            q.fill_answer = ansMatch[1].trim();
+            q.question_text = text.replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
+            console.log(`[CBT NORMALIZE] Fill-in-blank detected: ${q.id}, answer: ${q.fill_answer}`);
+        }
+        
+        return q;
+    },
 
     /**
      * Toggles the Navigation Sidebar
@@ -9172,6 +9284,37 @@ export const UI = {
         }
     },
 
+    /**
+     * Saves a fill-in-the-blank answer from text input
+     */
+    saveFillAnswer(questionId, value) {
+        const trimmed = value.trim();
+        if (trimmed) {
+            this.userAnswers[questionId] = trimmed;
+        } else {
+            delete this.userAnswers[questionId];
+        }
+        
+        // Update the question palette to reflect answered state
+        const qIdx = this.currentQuestions.findIndex(q => q.id === questionId);
+        if (qIdx >= 0) {
+            const paletteItems = document.querySelectorAll('.q-map-item');
+            paletteItems.forEach((item, i) => {
+                if (i === qIdx) {
+                    item.classList.toggle('answered', !!trimmed);
+                }
+            });
+        }
+
+        // Visual feedback on input
+        const input = document.getElementById(`cbt-fill-input-${questionId}`);
+        if (input) {
+            input.style.borderColor = trimmed ? '#22c55e' : '#e2e8f0';
+        }
+
+        // Persist progress to IndexedDB
+        this.saveExamProgress(questionId, trimmed || '');
+    },
 
     showSubmitReview() {
         const total = this.currentQuestions.length;
@@ -9241,9 +9384,17 @@ export const UI = {
             this.currentQuestions.forEach(q => {
                 const studentChoice = this.userAnswers[q.id];
                 if (studentChoice) {
-                    const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + this.currentExam.id))).split('').reverse().join('');
-                    if (choiceHash === q.answerHash) {
-                        score += (parseFloat(q.marks) || 1);
+                    if (q.question_type === 'fill_in_blank') {
+                        // Fill-in-blank: case-insensitive text comparison
+                        if (q.fill_answer && studentChoice.toLowerCase().trim() === q.fill_answer.toLowerCase().trim()) {
+                            score += (parseFloat(q.marks) || 1);
+                        }
+                    } else {
+                        // MCQ: hash-based comparison
+                        const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + this.currentExam.id))).split('').reverse().join('');
+                        if (choiceHash === q.answerHash) {
+                            score += (parseFloat(q.marks) || 1);
+                        }
                     }
                 }
             });
