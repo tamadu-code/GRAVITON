@@ -12840,6 +12840,7 @@ export const UI = {
 
             Notifications.show(`Scanning ${matches.length} questions...`, 'info');
 
+            let duplicateCount = 0;
             let lastPos = 0;
             matches.forEach((matchObj, idx) => {
                 const block = text.substring(lastPos, matchObj.index + matchObj.length).trim();
@@ -12851,7 +12852,6 @@ export const UI = {
                 let cleanBlock = block.replace(/^\d+[\.\)]\s*/, '').trim();
 
                 // Detect MCQ vs Fill-in
-                // Only treat as MCQ if (A) and (B) markers exist and the answer is a single letter A-E
                 const optARegex = /[\(\[]A[\)\]\.]/i;
                 const optBRegex = /[\(\[]B[\)\]\.]/i;
                 const optCRegex = /[\(\[]C[\)\]\.]/i;
@@ -12873,29 +12873,37 @@ export const UI = {
                     const qText = cleanBlock.substring(0, optA.index).trim();
                     
                     // Deduplicate
-                    if (existingTexts.has(qText)) return;
+                    if (existingTexts.has(qText)) {
+                        duplicateCount++;
+                        return;
+                    }
 
+                    // Extract text between markers
                     const aText = cleanBlock.substring(optA.index + optA[0].length, optB.index).trim();
-                    let bEnd = optC ? optC.index : cleanBlock.indexOf(matchObj.ans, optB.index); 
-                    // Fallback to matchObj index if ans not found in block
-                    if (bEnd === -1) bEnd = cleanBlock.length - matchObj.length - 2;
+                    
+                    let bEnd = optC ? optC.index : cleanBlock.toLowerCase().lastIndexOf('[ans');
+                    if (bEnd === -1) bEnd = cleanBlock.toLowerCase().lastIndexOf('(ans');
+                    if (bEnd <= optB.index) bEnd = cleanBlock.length;
 
                     const bText = cleanBlock.substring(optB.index + optB[0].length, bEnd).trim();
                     
                     let cText = '', dText = '', eText = '';
                     if (optC) {
-                        let cEnd = optD ? optD.index : cleanBlock.indexOf(matchObj.ans, optC.index);
-                        if (cEnd === -1) cEnd = cleanBlock.length - matchObj.length - 2;
+                        let cEnd = optD ? optD.index : cleanBlock.toLowerCase().lastIndexOf('[ans');
+                        if (cEnd === -1) cEnd = cleanBlock.toLowerCase().lastIndexOf('(ans');
+                        if (cEnd <= optC.index) cEnd = cleanBlock.length;
                         cText = cleanBlock.substring(optC.index + optC[0].length, cEnd).trim();
                     }
                     if (optD) {
-                        let dEnd = optE ? optE.index : cleanBlock.indexOf(matchObj.ans, optD.index);
-                        if (dEnd === -1) dEnd = cleanBlock.length - matchObj.length - 2;
+                        let dEnd = optE ? optE.index : cleanBlock.toLowerCase().lastIndexOf('[ans');
+                        if (dEnd === -1) dEnd = cleanBlock.toLowerCase().lastIndexOf('(ans');
+                        if (dEnd <= optD.index) dEnd = cleanBlock.length;
                         dText = cleanBlock.substring(optD.index + optD[0].length, dEnd).trim();
                     }
                     if (optE) {
-                        let eEnd = cleanBlock.indexOf(matchObj.ans, optE.index);
-                        if (eEnd === -1) eEnd = cleanBlock.length - matchObj.length - 2;
+                        let eEnd = cleanBlock.toLowerCase().lastIndexOf('[ans');
+                        if (eEnd === -1) eEnd = cleanBlock.toLowerCase().lastIndexOf('(ans');
+                        if (eEnd <= optE.index) eEnd = cleanBlock.length;
                         eText = cleanBlock.substring(optE.index + optE[0].length, eEnd).trim();
                     }
 
@@ -12923,8 +12931,11 @@ export const UI = {
                     existingTexts.add(qText);
                 } else {
                     // --- FILL-IN-THE-BLANK PARSING ---
-                    const qText = cleanBlock.substring(0, cleanBlock.toLowerCase().lastIndexOf('[ans')).trim() || 
-                                 cleanBlock.substring(0, cleanBlock.toLowerCase().lastIndexOf('(ans')).trim();
+                    const ansPos = cleanBlock.toLowerCase().lastIndexOf('[ans');
+                    const ansPosAlt = cleanBlock.toLowerCase().lastIndexOf('(ans');
+                    const splitPos = ansPos !== -1 ? ansPos : (ansPosAlt !== -1 ? ansPosAlt : -1);
+
+                    const qText = splitPos !== -1 ? cleanBlock.substring(0, splitPos).trim() : '';
                     
                     if (qText && !existingTexts.has(qText)) {
                         const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
@@ -12938,13 +12949,18 @@ export const UI = {
                             options: [prepareForSync({ id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`, question_id: qId, option_label: 'A', option_text: matchObj.ans, is_correct: 1 })]
                         });
                         existingTexts.add(qText);
-                    } else if (!qText) {
+                    } else if (qText && existingTexts.has(qText)) {
+                        duplicateCount++;
+                    } else {
                         failedBlocks++;
                     }
                 }
             });
 
-            if (newQuestions.length === 0) return Notifications.show('Could not parse any questions. Please check the format.', 'error');
+            if (newQuestions.length === 0) {
+                if (duplicateCount > 0) return Notifications.show(`${duplicateCount} questions skipped (already in bank).`, 'info');
+                return Notifications.show('Could not parse any questions. Please check the format.', 'error');
+            }
 
             // 4. Batch Save to Cloud and Local
             try {
