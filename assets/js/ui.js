@@ -8487,21 +8487,64 @@ export const UI = {
             return false;
         };
 
-        // Shortcuts & PrintScreen
-        window.onkeydown = (e) => {
+        // Shortcuts & Security Guard
+        window._cbtKeyHandler = (e) => {
+            if (!document.body.classList.contains('exam-mode')) return;
+
+            // 1. Ignore shortcuts if student is typing in an input field (FITB support)
+            const activeEl = document.activeElement;
+            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+                return; 
+            }
+
+            const key = (e.key || '').toLowerCase();
+            const isCtrl = e.ctrlKey || e.metaKey;
+
+            // 2. Security Blocking (Ctrl+C, Ctrl+V, etc.)
             const forbiddenKeys = ['c', 'v', 'x', 'u', 'a', 's', 'p'];
-            const isForbiddenShortcut = e.ctrlKey && forbiddenKeys.includes(e.key.toLowerCase());
-            
-            // Block PrintScreen, F12, and Snipping Tool triggers if possible
-            if (isForbiddenShortcut || e.key === 'F12' || e.key === 'PrintScreen' || e.key === 'Snapshot' || e.key === 'Meta') {
+            if (isCtrl && forbiddenKeys.includes(key)) {
                 e.preventDefault();
                 document.body.classList.add('window-blurred');
                 setTimeout(() => document.body.classList.remove('window-blurred'), 1500);
-                
-                log(`Attempted restricted action/shortcut: ${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`);
+                log(`Blocked forbidden shortcut: Ctrl+${key}`);
                 return false;
             }
+
+            // 3. Functional Shortcuts (JAMB Style: N, P, S, A-E)
+            if (!isCtrl) {
+                if (key === 'n') {
+                    e.preventDefault();
+                    console.log('[CBT] Shortcut: Next Question');
+                    this.nextQuestion();
+                } else if (key === 'p') {
+                    e.preventDefault();
+                    console.log('[CBT] Shortcut: Previous Question');
+                    this.prevQuestion();
+                } else if (key === 's') {
+                    e.preventDefault();
+                    console.log('[CBT] Shortcut: Submit Review');
+                    this.showSubmitReview();
+                } else if (key === 'c') {
+                    e.preventDefault();
+                    this.toggleCBTCalculator();
+                } else if (key === 'h') {
+                    e.preventDefault();
+                    this.showCBTKeyboardHelp();
+                } else if (['a', 'b', 'c', 'd', 'e'].includes(key)) {
+                    // Option Selection
+                    const idx = key.charCodeAt(0) - 97;
+                    const options = document.querySelectorAll('.jamb-option');
+                    if (options[idx]) {
+                        console.log(`[CBT] Shortcut: Selected Option ${key.toUpperCase()}`);
+                        options[idx].click();
+                    }
+                }
+            }
         };
+
+        // Attach once
+        document.removeEventListener('keydown', window._cbtKeyHandler);
+        document.addEventListener('keydown', window._cbtKeyHandler);
 
         // Fullscreen Exit Detection
         document.onfullscreenchange = () => {
@@ -8900,30 +8943,7 @@ export const UI = {
                     </div>
 
 
-                    <!-- Keyboard Support Init -->
-                    <script>
-                        if (window._cbtKeyHandler) document.removeEventListener('keydown', window._cbtKeyHandler);
-                        window._cbtKeyHandler = function(e) {
-                            if (!document.body.classList.contains('exam-mode')) return;
-                            const key = e.key.toLowerCase();
-                            if (key === 'a' || key === 'b' || key === 'c' || key === 'd' || key === 'e') {
-                                const idx = key.charCodeAt(0) - 97;
-                                const options = document.querySelectorAll('.jamb-option');
-                                if (options[idx]) options[idx].click();
-                            } else if (key === 'p') {
-                                UI.prevQuestion();
-                            } else if (key === 'n') {
-                                UI.nextQuestion();
-                            } else if (key === 's') {
-                                UI.showSubmitReview();
-                            } else if (key === 'c') {
-                                UI.toggleCBTCalculator();
-                            } else if (key === 'h') {
-                                UI.showCBTKeyboardHelp();
-                            }
-                        };
-                        document.addEventListener('keydown', window._cbtKeyHandler);
-                    </script>
+                    <!-- Keyboard Support Notice: Shortcuts (N, P, S) are now managed globally -->
 
 
 
