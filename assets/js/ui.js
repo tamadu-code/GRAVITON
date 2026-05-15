@@ -3440,6 +3440,24 @@ export const UI = {
                         </select>
                     </div>
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; color:#ef4444;"><i data-lucide="file-text" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Printable Tools</span></div>
+                        <button id="btn-blank-scoresheet" class="btn btn-secondary" style="height:32px; font-size:0.75rem; border-radius:8px; width:100%; margin-top:0.25rem;">
+                            <i data-lucide="printer" style="width:12px;"></i> Empty Sheet
+                        </button>
+                    </div>
+                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; color:#ef4444;"><i data-lucide="file-text" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Printable Tools</span></div>
+                        <button id="btn-blank-scoresheet" class="btn btn-secondary" style="height:32px; font-size:0.75rem; border-radius:8px; width:100%; margin-top:0.25rem;">
+                            <i data-lucide="printer" style="width:12px;"></i> Empty Sheet
+                        </button>
+                    </div>
+                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem; color:#ef4444;"><i data-lucide="file-text" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Printable Tools</span></div>
+                        <button id="btn-blank-scoresheet" class="btn btn-secondary" style="height:32px; font-size:0.75rem; border-radius:8px; width:100%; margin-top:0.25rem;">
+                            <i data-lucide="printer" style="width:12px;"></i> Empty Sheet
+                        </button>
+                    </div>
+                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="hash" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Term</span></div>
                         <select id="grade-term-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
                             <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
@@ -4079,6 +4097,22 @@ export const UI = {
             win.document.write(printHTML);
             win.document.close();
             win.onload = () => { setTimeout(() => { win.print(); }, 500); };
+        });
+
+        // Blank Score Sheet Listener
+        document.getElementById('btn-blank-scoresheet').addEventListener('click', async () => {
+            const className = document.getElementById('grade-class-filter').value;
+            const subjectName = document.getElementById('grade-subject-filter').value;
+            const term = document.getElementById('grade-term-filter').value;
+            
+            if (!className) return Notifications.show('Please select a stream first', 'warning');
+            
+            const classStudents = students.filter(s => s.class_name === className);
+            if (classStudents.length === 0) return Notifications.show('No students found in this stream', 'error');
+
+            const { generateBlankScoreSheet } = await import('./utils.js');
+            Notifications.show('Generating printable score sheet...', 'info');
+            await generateBlankScoreSheet(className, classStudents, subjectName || 'Unspecified Subject', term, currentSession);
         });
     },
 
@@ -6148,7 +6182,9 @@ export const UI = {
                             schoolManager: settings.schoolManager || 'TAMADU CODE',
                             termEnd: closureDate,
                             termStart: nextTermDate,
-                            teacherName: teacherName
+                            teacherName: teacherName,
+                            session: session,
+                            term: term
                         };
 
                         Notifications.show(`Generating report for ${student.name}...`, 'info');
@@ -6164,7 +6200,57 @@ export const UI = {
                 });
 
                 document.getElementById('btn-batch-print').addEventListener('click', async () => {
-                    Notifications.show('Batch PDF generation requires desktop client support.', 'warning');
+                    if (loadedStudents.length === 0) return Notifications.show('No students to generate batch', 'error');
+                    
+                    Notifications.show(`Generating batch reports for ${loadedStudents.length} students...`, 'info');
+                    
+                    const { jsPDF } = window.jspdf;
+                    const batchDoc = new jsPDF('p', 'mm', 'a4');
+                    
+                    // Resolve Form Teacher for this class
+                    const formTeacherEntry = await db.form_teachers.where('class_name').equals(className).first();
+                    let teacherName = 'Class Teacher';
+                    if (formTeacherEntry) {
+                        const teacherProfile = await db.profiles.get(formTeacherEntry.teacher_id);
+                        if (teacherProfile) teacherName = teacherProfile.full_name;
+                    }
+
+                    const schoolInfo = {
+                        name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
+                        address: settings.schoolAddress || '123 Education Street, Academic City',
+                        phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
+                        email: settings.schoolEmail || 'info@school.com',
+                        motto: settings.schoolMotto || 'Knowledge is Power',
+                        principalName: settings.principalName || 'Mr. Lartey Sampson',
+                        principalSignature: settings.principalSignature || null,
+                        logo: settings.schoolLogo || null,
+                        themeColor: settings.themeColor || '#060495',
+                        schoolManager: settings.schoolManager || 'TAMADU CODE',
+                        termEnd: closureDate,
+                        termStart: nextTermDate,
+                        teacherName: teacherName,
+                        session: session,
+                        term: term
+                    };
+
+                    for (let i = 0; i < loadedStudents.length; i++) {
+                        const student = loadedStudents[i];
+                        const sScores = loadedScores.filter(sc => sc.student_id === student.student_id);
+                        const sAtt = loadedAttendance.filter(a => a.student_id === student.student_id);
+                        
+                        for (const score of sScores) {
+                            const sub = loadedSubjects.find(sb => sb.id === score.subject_id);
+                            score.subject_name = sub ? sub.name : 'Unknown Subject';
+                        }
+
+                        if (i > 0) batchDoc.addPage();
+                        
+                        // Pass existing doc to avoid multiple downloads
+                        await generateReportCard(student, sScores, schoolInfo, sAtt, batchDoc);
+                    }
+
+                    batchDoc.save(`Batch_Reports_${className}_${term}_${session.replace(/\//g, '-')}.pdf`);
+                    Notifications.show('Batch generation complete!', 'success');
                 });
 
             } catch (err) {

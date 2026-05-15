@@ -99,9 +99,9 @@ export const ScoringEngine = {
 /**
  * PDF Reporting System (Report Cards)
  */
-export async function generateReportCard(student, scores, schoolInfo, attendance = []) {
+export async function generateReportCard(student, scores, schoolInfo, attendance = [], existingDoc = null) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('p', 'mm', 'a4');
+    const doc = existingDoc || new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
     
@@ -115,6 +115,20 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         } : { r: 37, g: 99, b: 235 };
     };
     const theme = hexToRgb(schoolInfo.themeColor || '#060495');
+
+    // --- QR Code Generation ---
+    let qrDataURL = null;
+    try {
+        const qrData = JSON.stringify({
+            id: student.student_id,
+            s: schoolInfo.session,
+            t: schoolInfo.term,
+            v: 'G-V24'
+        });
+        qrDataURL = await QRCode.toDataURL(qrData, { margin: 1, width: 100 });
+    } catch (e) {
+        console.warn('QR Generation failed:', e);
+    }
 
     // Helper: Draw Border
     doc.setDrawColor(theme.r, theme.g, theme.b);
@@ -298,11 +312,25 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     // --- Footer ---
     const footerY = pageHeight - 20;
     doc.setDrawColor(37, 99, 235);
-    doc.rect(12, footerY - 5, 15, 15); // QR Box
-    doc.setFontSize(6);
-    doc.text("OFFICIAL VERIFICATION", 30, footerY);
-    doc.text("Scan to confirm student", 30, footerY + 3);
-    doc.text("performance details.", 30, footerY + 6);
+    // --- QR Code Security Section ---
+    doc.setDrawColor(theme.r, theme.g, theme.b);
+    doc.rect(12, footerY - 5, 18, 18); // QR Box
+    
+    if (qrDataURL) {
+        try {
+            doc.addImage(qrDataURL, 'PNG', 13, footerY - 4, 16, 16);
+        } catch (e) {
+            console.warn('Failed to add QR image:', e);
+        }
+    }
+    
+    doc.setFontSize(5);
+    doc.setTextColor(theme.r, theme.g, theme.b);
+    doc.text("OFFICIAL VERIFICATION", 32, footerY - 1);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Scan this code to verify the", 32, footerY + 2);
+    doc.text("authenticity of this record", 32, footerY + 5);
+    doc.text("against our central ledger.", 32, footerY + 8);
     
     // --- Footer Section (Signatures) ---
     // Reuse footerY from above or adjust
@@ -557,3 +585,75 @@ export async function generatePaymentReceipt(payment, student, schoolInfo = {}) 
     doc.save(`Receipt_${payment.reference}.pdf`);
 }
 
+
+/**
+ * Generate Blank Score Sheet (Empty broadsheet for manual entry)
+ */
+export async function generateBlankScoreSheet(className, students, subjectName, term, session) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('landscape');
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    
+    const pageSize = 23; // Students per page
+    const totalPages = Math.ceil(students.length / pageSize);
+    
+    for (let p = 0; p < totalPages; p++) {
+        if (p > 0) doc.addPage();
+        
+        const pageStudents = students.slice(p * pageSize, (p + 1) * pageSize);
+        
+        // Header
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('CONTINUOUS ASSESSMENT SCORE SHEET', pageWidth / 2, 15, { align: 'center' });
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${className} | ${subjectName} | ${term} | ${session}`, pageWidth / 2, 22, { align: 'center' });
+        
+        // Table Construction
+        const head = [['S/N', 'STUDENT NAME', 'ASS (10)', 'T1 (10)', 'T2 (10)', 'PRJ (10)', 'EXAM (60)', 'TOTAL (100)']];
+        const body = pageStudents.map((s, idx) => [
+            (p * pageSize) + idx + 1,
+            s.name.toUpperCase(),
+            '', '', '', '', '', ''
+        ]);
+        
+        // Add extra blank rows if it's the last page and there's room
+        if (p === totalPages - 1 && body.length < pageSize) {
+            const extra = pageSize - body.length;
+            for (let i = 0; i < extra; i++) {
+                body.push([body.length + 1, '________________________________________', '', '', '', '', '', '']);
+            }
+        }
+        
+        doc.autoTable({
+            startY: 30,
+            head: head,
+            body: body,
+            theme: 'grid',
+            styles: { fontSize: 8, cellPadding: 2, minCellHeight: 8 },
+            headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: 'center' },
+            columnStyles: {
+                0: { cellWidth: 15, halign: 'center' },
+                1: { cellWidth: 80 },
+                2: { cellWidth: 25 },
+                3: { cellWidth: 25 },
+                4: { cellWidth: 25 },
+                5: { cellWidth: 25 },
+                6: { cellWidth: 25 },
+                7: { cellWidth: 25 }
+            }
+        });
+        
+        // Footer
+        const footerY = pageHeight - 15;
+        doc.setFontSize(8);
+        doc.text('Teacher Signature: __________________________', 14, footerY);
+        doc.text('Principal Signature: __________________________', pageWidth - 80, footerY);
+        doc.text(`Page ${p+1} of ${totalPages}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+    }
+    
+    doc.save(`BlankScoreSheet_${className}_${subjectName.replace(/\s+/g, '_')}.pdf`);
+}
