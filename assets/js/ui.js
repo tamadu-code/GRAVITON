@@ -12861,13 +12861,20 @@ export const UI = {
             let duplicateCount = 0;
             let lastPos = 0;
             matches.forEach((matchObj, idx) => {
+                // Precise block extraction using regex indices
                 const block = text.substring(lastPos, matchObj.index + matchObj.length).trim();
+                const splitIndexInBlock = matchObj.index - lastPos;
                 lastPos = matchObj.index + matchObj.length;
 
-                if (!block) return;
+                if (!block || splitIndexInBlock < 0) return;
 
                 // Strip question numbers like "1.", "36." from the start
                 let cleanBlock = block.replace(/^\d+[\.\)]\s*/, '').trim();
+                
+                // Adjust split index after trimming and number stripping
+                const cleanSplitPos = cleanBlock.toLowerCase().lastIndexOf(matchObj.ans.toLowerCase()) - 5; 
+                // Fallback: Just use the known match positions
+                const ansMarkerStart = cleanBlock.toLowerCase().lastIndexOf('ans');
 
                 // Detect MCQ vs Fill-in — Support A), A., (A), [A]
                 const optARegex = /(?:^|[\s])[\(\[]?A[\)\]\.]/i;
@@ -12899,29 +12906,25 @@ export const UI = {
                     // Extract text between markers
                     const aText = cleanBlock.substring(optA.index + optA[0].length, optB.index).trim();
                     
-                    let bEnd = optC ? optC.index : cleanBlock.toLowerCase().lastIndexOf('[ans');
-                    if (bEnd === -1) bEnd = cleanBlock.toLowerCase().lastIndexOf('(ans');
-                    if (bEnd <= optB.index) bEnd = cleanBlock.length;
+                    let bEnd = optC ? optC.index : ansMarkerStart;
+                    if (bEnd === -1 || bEnd <= optB.index) bEnd = cleanBlock.length;
 
                     const bText = cleanBlock.substring(optB.index + optB[0].length, bEnd).trim();
                     
                     let cText = '', dText = '', eText = '';
                     if (optC) {
-                        let cEnd = optD ? optD.index : cleanBlock.toLowerCase().lastIndexOf('[ans');
-                        if (cEnd === -1) cEnd = cleanBlock.toLowerCase().lastIndexOf('(ans');
-                        if (cEnd <= optC.index) cEnd = cleanBlock.length;
+                        let cEnd = optD ? optD.index : ansMarkerStart;
+                        if (cEnd === -1 || cEnd <= optC.index) cEnd = cleanBlock.length;
                         cText = cleanBlock.substring(optC.index + optC[0].length, cEnd).trim();
                     }
                     if (optD) {
-                        let dEnd = optE ? optE.index : cleanBlock.toLowerCase().lastIndexOf('[ans');
-                        if (dEnd === -1) dEnd = cleanBlock.toLowerCase().lastIndexOf('(ans');
-                        if (dEnd <= optD.index) dEnd = cleanBlock.length;
+                        let dEnd = optE ? optE.index : ansMarkerStart;
+                        if (dEnd === -1 || dEnd <= optD.index) dEnd = cleanBlock.length;
                         dText = cleanBlock.substring(optD.index + optD[0].length, dEnd).trim();
                     }
                     if (optE) {
-                        let eEnd = cleanBlock.toLowerCase().lastIndexOf('[ans');
-                        if (eEnd === -1) eEnd = cleanBlock.toLowerCase().lastIndexOf('(ans');
-                        if (eEnd <= optE.index) eEnd = cleanBlock.length;
+                        let eEnd = ansMarkerStart;
+                        if (eEnd === -1 || eEnd <= optE.index) eEnd = cleanBlock.length;
                         eText = cleanBlock.substring(optE.index + optE[0].length, eEnd).trim();
                     }
 
@@ -12949,11 +12952,7 @@ export const UI = {
                     existingTexts.add(qText);
                 } else {
                     // --- FILL-IN-THE-BLANK PARSING ---
-                    const ansPos = cleanBlock.toLowerCase().lastIndexOf('[ans');
-                    const ansPosAlt = cleanBlock.toLowerCase().lastIndexOf('(ans');
-                    const splitPos = ansPos !== -1 ? ansPos : (ansPosAlt !== -1 ? ansPosAlt : -1);
-
-                    const qText = splitPos !== -1 ? cleanBlock.substring(0, splitPos).trim() : '';
+                    const qText = ansMarkerStart !== -1 ? cleanBlock.substring(0, ansMarkerStart).trim() : '';
                     
                     if (qText && !existingTexts.has(qText)) {
                         const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
