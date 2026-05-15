@@ -3474,24 +3474,6 @@ export const UI = {
                         </select>
                     </div>
                     <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
-                        <div style="display:flex; align-items:center; gap:0.5rem; color:#ef4444;"><i data-lucide="file-text" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Printable Tools</span></div>
-                        <button id="btn-blank-scoresheet" class="btn btn-secondary" style="height:32px; font-size:0.75rem; border-radius:8px; width:100%; margin-top:0.25rem;">
-                            <i data-lucide="printer" style="width:12px;"></i> Empty Sheet
-                        </button>
-                    </div>
-                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
-                        <div style="display:flex; align-items:center; gap:0.5rem; color:#ef4444;"><i data-lucide="file-text" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Printable Tools</span></div>
-                        <button id="btn-blank-scoresheet" class="btn btn-secondary" style="height:32px; font-size:0.75rem; border-radius:8px; width:100%; margin-top:0.25rem;">
-                            <i data-lucide="printer" style="width:12px;"></i> Empty Sheet
-                        </button>
-                    </div>
-                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
-                        <div style="display:flex; align-items:center; gap:0.5rem; color:#ef4444;"><i data-lucide="file-text" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Printable Tools</span></div>
-                        <button id="btn-blank-scoresheet" class="btn btn-secondary" style="height:32px; font-size:0.75rem; border-radius:8px; width:100%; margin-top:0.25rem;">
-                            <i data-lucide="printer" style="width:12px;"></i> Empty Sheet
-                        </button>
-                    </div>
-                    <div class="card" style="padding: 1rem; border-radius: 16px; box-shadow: var(--shadow-sm); display:flex; flex-direction:column; gap:0.5rem;">
                         <div style="display:flex; align-items:center; gap:0.5rem; color:var(--accent-primary);"><i data-lucide="hash" style="width:16px;"></i> <span style="font-size:0.65rem; font-weight:800; text-transform:uppercase;">Term</span></div>
                         <select id="grade-term-filter" class="input" style="border:none; padding:0; font-size:1.1rem; font-weight:700; background:transparent;">
                             <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
@@ -4133,10 +4115,9 @@ export const UI = {
             win.onload = () => { setTimeout(() => { win.print(); }, 500); };
         });
 
-        // Blank Score Sheet Listener
-        document.getElementById('btn-blank-scoresheet').addEventListener('click', async () => {
+        // Blank Score Sheet Listener (Bulk Subject Generation)
+        document.getElementById('btn-print-empty').addEventListener('click', async () => {
             const className = document.getElementById('grade-class-filter').value;
-            const subjectName = document.getElementById('grade-subject-filter').value;
             const term = document.getElementById('grade-term-filter').value;
             
             if (!className) return Notifications.show('Please select a stream first', 'warning');
@@ -4144,9 +4125,16 @@ export const UI = {
             const classStudents = students.filter(s => s.class_name === className);
             if (classStudents.length === 0) return Notifications.show('No students found in this stream', 'error');
 
-            Notifications.show('Generating printable score sheet...', 'info');
-            const doc = await generateBlankScoreSheet(className, classStudents, subjectName || 'Unspecified Subject', term, currentSession);
-            if (doc) UI.showPDFPreview(doc, `ScoreSheet_${className}.pdf`);
+            // Find all subjects for this class
+            const assignments = await db.subject_assignments.where('class_name').equals(className).toArray();
+            const subjectIds = assignments.map(a => a.subject_id);
+            const classSubjects = (await db.subjects.toArray()).filter(s => subjectIds.includes(s.id));
+
+            if (classSubjects.length === 0) return Notifications.show('No subjects assigned to this stream', 'error');
+
+            Notifications.show(`Generating bundle for ${classSubjects.length} subjects...`, 'info');
+            const doc = await generateBlankScoreSheet(className, classStudents, classSubjects, term, currentSession);
+            if (doc) UI.showPDFPreview(doc, `Blank_Sheets_${className.replace(/\s+/g, '_')}.pdf`);
         });
     },
 

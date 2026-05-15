@@ -590,71 +590,81 @@ export async function generatePaymentReceipt(payment, student, schoolInfo = {}) 
 
 /**
  * Generate Blank Score Sheet (Empty broadsheet for manual entry)
+ * Supports multiple subjects for a single class (Bulk generation)
  */
-export async function generateBlankScoreSheet(className, students, subjectName, term, session) {
+export async function generateBlankScoreSheet(className, students, subjects, term, session) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('landscape');
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
     
+    // Ensure subjects is an array
+    const subjectsArray = Array.isArray(subjects) ? subjects : [subjects];
     const pageSize = 23; // Students per page
-    const totalPages = Math.ceil(students.length / pageSize);
     
-    for (let p = 0; p < totalPages; p++) {
-        if (p > 0) doc.addPage();
+    let firstPage = true;
+
+    for (const subject of subjectsArray) {
+        const subjectName = typeof subject === 'string' ? subject : (subject.name || 'Unspecified Subject');
+        const totalPages = Math.ceil(students.length / pageSize);
         
-        const pageStudents = students.slice(p * pageSize, (p + 1) * pageSize);
-        
-        // Header
-        doc.setFontSize(16);
-        doc.setFont('helvetica', 'bold');
-        doc.text('CONTINUOUS ASSESSMENT SCORE SHEET', pageWidth / 2, 15, { align: 'center' });
-        
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${className} | ${subjectName} | ${term} | ${session}`, pageWidth / 2, 22, { align: 'center' });
-        
-        // Table Construction
-        const head = [['S/N', 'STUDENT NAME', 'ASS (10)', 'T1 (10)', 'T2 (10)', 'PRJ (10)', 'EXAM (60)', 'TOTAL (100)']];
-        const body = pageStudents.map((s, idx) => [
-            (p * pageSize) + idx + 1,
-            s.name.toUpperCase(),
-            '', '', '', '', '', ''
-        ]);
-        
-        // Add extra blank rows if it's the last page and there's room
-        if (p === totalPages - 1 && body.length < pageSize) {
-            const extra = pageSize - body.length;
-            for (let i = 0; i < extra; i++) {
-                body.push([body.length + 1, '________________________________________', '', '', '', '', '', '']);
+        for (let p = 0; p < totalPages; p++) {
+            if (!firstPage) doc.addPage();
+            firstPage = false;
+            
+            const pageStudents = students.slice(p * pageSize, (p + 1) * pageSize);
+            
+            // Header
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.text('CONTINUOUS ASSESSMENT SCORE SHEET', pageWidth / 2, 15, { align: 'center' });
+            
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`${className} | ${subjectName.toUpperCase()} | ${term} | ${session}`, pageWidth / 2, 22, { align: 'center' });
+            
+            // Table Construction
+            const head = [['S/N', 'STUDENT NAME', 'ASS (10)', 'T1 (10)', 'T2 (10)', 'PRJ (10)', 'EXAM (60)', 'TOTAL (100)']];
+            const body = pageStudents.map((s, idx) => [
+                (p * pageSize) + idx + 1,
+                s.name.toUpperCase(),
+                '', '', '', '', '', ''
+            ]);
+            
+            // Add extra blank rows if it's the last page of this subject
+            if (p === totalPages - 1 && body.length < pageSize) {
+                const extra = Math.max(0, pageSize - body.length);
+                for (let i = 0; i < extra; i++) {
+                    body.push([(p * pageSize) + pageStudents.length + i + 1, '________________________________________', '', '', '', '', '', '']);
+                }
             }
+            
+            doc.autoTable({
+                startY: 30,
+                head: head,
+                body: body,
+                theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 2, minCellHeight: 8 },
+                headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: 'center' },
+                columnStyles: {
+                    0: { cellWidth: 15, halign: 'center' },
+                    1: { cellWidth: 80 },
+                    2: { cellWidth: 25, halign: 'center' },
+                    3: { cellWidth: 25, halign: 'center' },
+                    4: { cellWidth: 25, halign: 'center' },
+                    5: { cellWidth: 25, halign: 'center' },
+                    6: { cellWidth: 25, halign: 'center' },
+                    7: { cellWidth: 25, halign: 'center' }
+                }
+            });
+            
+            // Footer
+            const footerY = pageHeight - 15;
+            doc.setFontSize(8);
+            doc.text('Teacher Signature: __________________________', 14, footerY);
+            doc.text('Principal Signature: __________________________', pageWidth - 80, footerY);
+            doc.text(`${subjectName.toUpperCase()} - Page ${p+1} of ${totalPages}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
         }
-        
-        doc.autoTable({
-            startY: 30,
-            head: head,
-            body: body,
-            theme: 'grid',
-            styles: { fontSize: 8, cellPadding: 2, minCellHeight: 8 },
-            headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: 'center' },
-            columnStyles: {
-                0: { cellWidth: 15, halign: 'center' },
-                1: { cellWidth: 80 },
-                2: { cellWidth: 25 },
-                3: { cellWidth: 25 },
-                4: { cellWidth: 25 },
-                5: { cellWidth: 25 },
-                6: { cellWidth: 25 },
-                7: { cellWidth: 25 }
-            }
-        });
-        
-        // Footer
-        const footerY = pageHeight - 15;
-        doc.setFontSize(8);
-        doc.text('Teacher Signature: __________________________', 14, footerY);
-        doc.text('Principal Signature: __________________________', pageWidth - 80, footerY);
-        doc.text(`Page ${p+1} of ${totalPages}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
     }
     
     return doc; // Return for preview
