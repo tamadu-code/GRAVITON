@@ -511,7 +511,13 @@ export async function loginUser(identifier, password) {
         }
     }
 
-    if (error) console.error(`[Auth] Login failed: ${error.message}`);
+    if (error) {
+        console.error(`[Auth] Login failed: ${error.message}`);
+        // [DIAGNOSTIC] specifically catch unconfirmed email error
+        if (error.message.toLowerCase().includes('email not confirmed')) {
+            return { data, error: { message: 'Account exists but email is not confirmed. Please contact Administrator to manually verify your account in Supabase.' } };
+        }
+    }
     return { data, error };
 }
 
@@ -558,6 +564,12 @@ export async function registerUser(email, password, fullName, role) {
             status: 'Active',
             updated_at: new Date().toISOString()
         });
+    } else if (error && (error.message.includes('already registered') || error.message.includes('already exists'))) {
+        console.log(`[Register] User ${email} already exists, attempting to retrieve ID...`);
+        const { data: profile } = await client.from('profiles').select('id').eq('email', email).maybeSingle();
+        if (profile) {
+            return { data: { user: { id: profile.id } }, error: null };
+        }
     }
     return { data, error };
 }
@@ -565,6 +577,15 @@ export async function registerUser(email, password, fullName, role) {
 export async function updateUserPassword(email, newPassword) {
     const client = getSupabase();
     if (!client) return { error: { message: 'Supabase not initialized' } };
+    
+    // [SECURITY] auth.updateUser only updates the CURRENTLY LOGGED IN user.
+    // We should only call this if we are sure we want to change the active session's password.
+    const { data: { user } } = await client.auth.getUser();
+    if (user && user.email !== email) {
+        console.warn('[Auth] Attempted to change password for a different user. This is blocked to prevent admin lockout.');
+        return { error: { message: 'Cannot reset other users passwords from the frontend. Use Supabase Dashboard or an Edge Function.' } };
+    }
+
     const { data, error } = await client.auth.updateUser({ password: newPassword });
     return { data, error };
 }

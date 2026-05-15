@@ -2867,11 +2867,7 @@ export const UI = {
                     
                     const client = window.getSupabase ? window.getSupabase() : null;
 
-                    if (authError && authError.message.includes('already registered')) {
-                        // User exists, just ensure profile is there. 
-                        // If we can't get ID, we try to upsert by email if possible or just log it
-                        console.log('User already registered, ensuring profile exists...');
-                    } else if (authError) {
+                    if (authError) {
                         throw authError;
                     }
                     
@@ -8179,10 +8175,10 @@ export const UI = {
             // options containing ONLY "[Ans: B]" become empty and are properly filtered out
             const stripAnswerTags = (text) => {
                 if (!text) return '';
-                return text.toString().trim()
-                    .replace(/\[\s*(?:Ans|Answer)\s*[:\s]+.*?\]/gi, '')
-                    .replace(/\(\s*(?:Ans|Answer)\s*[:\s]+.*?\)/gi, '')
-                    .replace(/Ans\s*[:\s]+[A-E]/gi, '')
+                return text.toString()
+                    .replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '') // Robust bracket match
+                    .replace(/\s*\[Ans[:\s]+.*?\]/gi, '') // Fallback
+                    .replace(/\s*[\[\(]\s*Ans\s*[:\s]*$/gi, '') // Clean up any dangling "[ Ans:" at the very end
                     .trim();
             };
 
@@ -8213,6 +8209,7 @@ export const UI = {
                 
                 // Identify Fill-in-the-blank
                 const isFill = q.type === 'fill' || q.type === 'text' || q.question_type === 'fill_in_blank' || validOpts.length === 0;
+                if (isFill) q.question_type = 'fill_in_blank';
 
                 // 1. MCQ Integrity: Must have at least 2 options
                 if (!isFill && validOpts.length < 2) {
@@ -9154,12 +9151,12 @@ export const UI = {
         if (hasOptions) {
             // Options exist — just strip [Ans: X] from question_text if present
             q.question_type = 'mcq';
-            q.question_text = text.replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
+            q.question_text = text.replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '').replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
             return q;
         }
         
         // Check for embedded MCQ options: (A) ... (B) ... (C) ... (D) ...
-        const hasMCQOptions = /\(A\)/i.test(text);
+        const hasMCQOptions = /\([A-E]\)/i.test(text);
         
         if (hasMCQOptions) {
             // Split text at option markers (A), (B), (C), (D), (E)
@@ -9167,12 +9164,12 @@ export const UI = {
             // parts = [question_text, "A", opt_a_text, "B", opt_b_text, ...]
             
             if (parts.length >= 5) {
-                q.question_text = parts[0].replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
+                q.question_text = parts[0].replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '').replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
                 
                 const optMap = {};
                 for (let i = 1; i < parts.length; i += 2) {
                     const key = (parts[i] || '').toUpperCase();
-                    let val = (parts[i + 1] || '').replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
+                    let val = (parts[i + 1] || '').replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '').replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
                     // Clean trailing/leading whitespace and newlines
                     val = val.replace(/\n+/g, ' ').trim();
                     if (key && val) optMap[key] = val;
@@ -9185,7 +9182,7 @@ export const UI = {
                 if (optMap['E']) q.option_e = optMap['E'];
                 
                 // Extract correct answer from [Ans: X]
-                const ansMatch = text.match(/\[Ans[:\s]+(.*?)\]/i);
+                const ansMatch = text.match(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+([\s\S]*?)[\)\]]/i) || text.match(/\[Ans[:\s]+(.*?)\]/i);
                 if (ansMatch) {
                     const ans = ansMatch[1].trim();
                     if (/^[A-E]$/i.test(ans)) {
@@ -9201,17 +9198,20 @@ export const UI = {
         }
         
         // No (A)(B)(C)(D) found — check for fill-in-the-blank
-        const ansMatch = text.match(/[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]/i) || text.match(/\[Ans[:\s]+(.*?)\]/i);
+        const ansMatch = text.match(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+([\s\S]*?)[\)\]]/i) || text.match(/\[Ans[:\s]+(.*?)\]/i);
         if (ansMatch) {
             q.question_type = 'fill_in_blank';
             q.fill_answer = ansMatch[1].trim();
-            q.question_text = text.replace(/[\(\[]?(?:Ans|Answer)[\:\s]+[\s\S]*?[\)\]]/gi, '').replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
+            q.question_text = text.replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '').replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
             console.log(`[CBT NORMALIZE] Fill-in-blank detected: ${q.id}, answer: ${q.fill_answer}`);
-        } else if (q.type === 'fill' || q.type === 'text' || q.question_type === 'fill_in_blank') {
-            // Robust fallback: if it's already tagged as fill but has no answer tag in text (already cleaned)
-            q.question_type = 'fill_in_blank';
-            if (!q.fill_answer && q.correct_option) q.fill_answer = q.correct_option;
-            console.log(`[CBT NORMALIZE] Fill-in-blank recognized by metadata: ${q.id}`);
+        } else {
+            // Robust Zero-Option Fallback: If it's not explicitly MCQ and has no options, it MUST be fill_in_blank
+            const validOpts = [q.option_a, q.option_b, q.option_c, q.option_d, q.option_e].filter(o => o && o.toString().trim().length > 0);
+            if (validOpts.length === 0) {
+                q.question_type = 'fill_in_blank';
+                if (!q.fill_answer && q.correct_option) q.fill_answer = q.correct_option;
+                console.log(`[CBT NORMALIZE] Fallback to fill_in_blank (no options detected): ${q.id}`);
+            }
         }
         
         return q;
@@ -13811,20 +13811,23 @@ export const UI = {
             const studentEmail = `${studentId.toLowerCase()}@student.school`;
             
             // Call registration helper (it handles existing users gracefully)
-            const { error } = await registerUser(studentEmail, studentId, studentId, 'Student');
+            const { data: authData, error } = await registerUser(studentEmail, studentId, studentId, 'Student');
             
             if (error) {
-                if (error.message.includes('already registered') || error.message.includes('already exists')) {
-                    // If already exists, offer to reset password to ID
-                    if (confirm('Account already exists. Would you like to reset their password back to their Student ID?')) {
-                        const { error: resetError } = await updateUserPassword(studentEmail, studentId);
-                        if (resetError) throw resetError;
-                        Notifications.show('Password reset successfully.', 'success');
-                    }
-                } else {
-                    throw error;
-                }
+                throw error;
             } else {
+                // [RESILIENCE] Ensure profile is linked even if user already existed
+                const client = window.getSupabase ? window.getSupabase() : null;
+                if (client && authData?.user?.id) {
+                    await client.from('profiles').upsert({
+                        id: authData.user.id,
+                        full_name: studentId,
+                        role: 'Student',
+                        assigned_id: studentId,
+                        email: studentEmail,
+                        updated_at: new Date().toISOString()
+                    });
+                }
                 Notifications.show('Cloud access provisioned successfully.', 'success');
             }
         } catch (e) {
