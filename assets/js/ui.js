@@ -7786,9 +7786,10 @@ export const UI = {
             }
 
             // Data Integrity Check — Only MCQ requires Options A and B
+            // A question is fill-in-blank if explicitly typed OR if it has no options at all
             const invalidQuestions = this.cbtQuestions.filter(q => {
-                const isMCQ = q.question_type !== 'fill_in_blank' && q.type !== 'fill';
-                return isMCQ && (!q.option_a || !q.option_b);
+                const isFill = q.question_type === 'fill_in_blank' || q.type === 'fill' || q.type === 'text' || (!q.option_a && !q.option_b);
+                return !isFill && (!q.option_a || !q.option_b);
             });
 
             if (invalidQuestions.length > 0) {
@@ -9704,7 +9705,7 @@ export const UI = {
                             const sessionLabel = parts[3] ? parts[3].replace('-', '/') : '';
                             const count = bankGroups[key];
                             return `
-                                <div class="bank-item" style="padding: 1rem; border: 1px solid #e0e7ff; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; background: #f5f3ff;" onclick="const isSelected = this.classList.toggle('selected'); this.style.borderColor = isSelected ? '#4338ca' : '#e2e8f0'; this.style.background = isSelected ? '#eef2ff' : '#f5f3ff'; this.querySelector('.checkbox-box i').style.display = isSelected ? 'block' : 'none';">
+                                <div class="bank-item" style="padding: 1rem; border: 1px solid #e0e7ff; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; background: #f5f3ff;" onclick="const isSelected = this.classList.toggle('selected'); this.style.borderColor = isSelected ? '#4338ca' : '#e2e8f0'; this.style.background = isSelected ? '#eef2ff' : '#f5f3ff'; const ico = this.querySelector('.checkbox-box i, .checkbox-box svg'); if(ico) ico.style.display = isSelected ? 'block' : 'none';">
                                     <div style="display: flex; align-items: center; gap: 0.75rem;">
                                         <div class="checkbox-box" style="width: 18px; height: 18px; border: 2px solid #4338ca; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: white;">
                                             <i data-lucide="check" style="width: 14px; color: #4338ca; display: none;"></i>
@@ -9725,7 +9726,7 @@ export const UI = {
                     ${exams.length > 0 ? `
                         <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.25rem; margin-top: 0.75rem;">FROM EXISTING EXAMS</div>
                         ${exams.map(e => `
-                            <div class="bank-item" style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;" onclick="const isSelected = this.classList.toggle('selected'); this.style.borderColor = isSelected ? '#4338ca' : '#e2e8f0'; this.style.background = isSelected ? '#eef2ff' : '#fff'; this.querySelector('.checkbox-box i').style.display = isSelected ? 'block' : 'none';">
+                            <div class="bank-item" style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;" onclick="const isSelected = this.classList.toggle('selected'); this.style.borderColor = isSelected ? '#4338ca' : '#e2e8f0'; this.style.background = isSelected ? '#eef2ff' : '#fff'; const ico = this.querySelector('.checkbox-box i, .checkbox-box svg'); if(ico) ico.style.display = isSelected ? 'block' : 'none';">
                                 <div style="display: flex; align-items: center; gap: 0.75rem;">
                                     <div class="checkbox-box" style="width: 18px; height: 18px; border: 2px solid #4338ca; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: white;">
                                         <i data-lucide="check" style="width: 14px; color: #4338ca; display: none;"></i>
