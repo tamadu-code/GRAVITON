@@ -9153,6 +9153,7 @@ export const UI = {
         const hasOptions = q.option_a && q.option_a.toString().trim().length > 0;
         if (hasOptions) {
             // Options exist — just strip [Ans: X] from question_text if present
+            q.question_type = 'mcq';
             q.question_text = text.replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
             return q;
         }
@@ -9206,6 +9207,11 @@ export const UI = {
             q.fill_answer = ansMatch[1].trim();
             q.question_text = text.replace(/[\(\[]?(?:Ans|Answer)[\:\s]+[\s\S]*?[\)\]]/gi, '').replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
             console.log(`[CBT NORMALIZE] Fill-in-blank detected: ${q.id}, answer: ${q.fill_answer}`);
+        } else if (q.type === 'fill' || q.type === 'text' || q.question_type === 'fill_in_blank') {
+            // Robust fallback: if it's already tagged as fill but has no answer tag in text (already cleaned)
+            q.question_type = 'fill_in_blank';
+            if (!q.fill_answer && q.correct_option) q.fill_answer = q.correct_option;
+            console.log(`[CBT NORMALIZE] Fill-in-blank recognized by metadata: ${q.id}`);
         }
         
         return q;
@@ -9413,7 +9419,8 @@ export const UI = {
                 if (studentChoice) {
                     if (q.question_type === 'fill_in_blank') {
                         // Fill-in-blank: case-insensitive text comparison
-                        if (q.fill_answer && studentChoice.toLowerCase().trim() === q.fill_answer.toLowerCase().trim()) {
+                        const target = (q.fill_answer || q.correct_option || '').toString().toLowerCase().trim();
+                        if (target && studentChoice.toLowerCase().trim() === target) {
                             score += (parseFloat(q.marks) || 1);
                         }
                     } else {
@@ -9668,8 +9675,10 @@ export const UI = {
                 this.cbtQuestions.push({
                     id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
                     type: 'fill',
+                    question_type: 'fill_in_blank',
                     question_text: qText,
                     option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
+                    fill_answer: ans,
                     correct_option: ans, // For fill-in-the-blank, correct_option is the literal answer
                     marks: match[3] ? parseFloat(match[3]) : 1
                 });
