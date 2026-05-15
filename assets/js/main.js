@@ -633,21 +633,26 @@ if (logoutBtn) {
         }
         
         try {
-            // Sign out in the background (don't await it if it's slow)
-            logoutUser(); 
+            // Sign out in the background
+            await logoutUser(); 
             
-            // Clear local auth tokens immediately
+            // Safe cleanup: collect keys first to avoid index-shifting bugs
+            const keysToRemove = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && (key.includes('supabase.auth.token') || key.startsWith('sb-'))) {
-                    localStorage.removeItem(key);
+                if (key && (key.includes('supabase.auth.token') || key.startsWith('sb-') || key.includes('user_role'))) {
+                    keysToRemove.push(key);
                 }
             }
+            keysToRemove.forEach(key => localStorage.removeItem(key));
+            sessionStorage.clear();
+            
         } catch(e) {
             console.error('Logout error:', e);
         } finally {
             // Quick redirect to reset the app state cleanly
-            window.location.reload();
+            window.location.href = window.location.origin + window.location.pathname;
+        }
         }
     });
 }
