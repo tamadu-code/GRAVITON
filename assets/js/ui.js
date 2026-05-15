@@ -7691,7 +7691,7 @@ export const UI = {
         }
 
         area.innerHTML = this.cbtQuestions.map((q, idx) => {
-            const isFill = q.question_type === 'fill_in_blank' || q.type === 'fill';
+            const isFill = q.question_type === 'fill_in_blank' || q.type === 'fill' || q.type === 'text' || !q.option_a;
             
             let answerDisplayHTML = '';
             if (isFill) {
@@ -12869,12 +12869,12 @@ export const UI = {
                 // Strip question numbers like "1.", "36." from the start
                 let cleanBlock = block.replace(/^\d+[\.\)]\s*/, '').trim();
 
-                // Detect MCQ vs Fill-in
-                const optARegex = /[\(\[]A[\)\]\.]/i;
-                const optBRegex = /[\(\[]B[\)\]\.]/i;
-                const optCRegex = /[\(\[]C[\)\]\.]/i;
-                const optDRegex = /[\(\[]D[\)\]\.]/i;
-                const optERegex = /[\(\[]E[\)\]\.]/i;
+                // Detect MCQ vs Fill-in — Support A), A., (A), [A]
+                const optARegex = /(?:^|[\s])[\(\[]?A[\)\]\.]/i;
+                const optBRegex = /(?:^|[\s])[\(\[]?B[\)\]\.]/i;
+                const optCRegex = /(?:^|[\s])[\(\[]?C[\)\]\.]/i;
+                const optDRegex = /(?:^|[\s])[\(\[]?D[\)\]\.]/i;
+                const optERegex = /(?:^|[\s])[\(\[]?E[\)\]\.]/i;
 
                 const hasA = optARegex.test(cleanBlock);
                 const hasB = optBRegex.test(cleanBlock);
@@ -14022,7 +14022,7 @@ export const UI = {
                         <i data-lucide="calculator" style="width: 16px; color: #60a5fa;"></i>
                         <span style="color: white; font-weight: 800; font-size: 0.75rem; letter-spacing: 0.05em;">EXAM CALCULATOR</span>
                     </div>
-                    <button onclick="document.getElementById('cbt-calculator').style.display='none'" style="background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="x" style="width: 16px;"></i></button>
+                    <button onclick="const c = document.getElementById('cbt-calculator'); if(c) c.style.display='none'" style="background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="x" style="width: 16px;"></i></button>
                 </div>
                 <div style="padding: 1.25rem; box-sizing: border-box; width: 100%;">
                     <input type="text" id="calc-display" readonly style="width: 100%; height: 60px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #10b981; text-align: right; padding: 0 1rem; font-size: 1.75rem; font-family: 'monospace'; margin-bottom: 1rem; font-weight: 700; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); box-sizing: border-box;" value="0">
