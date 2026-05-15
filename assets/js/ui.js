@@ -6002,13 +6002,14 @@ export const UI = {
                 loadedStudents.sort((a,b) => a.name.localeCompare(b.name));
                 const studentIds = loadedStudents.map(s => s.student_id);
                 
-                // Fetch scores using indexed query
+                // Fetch scores for these students specifically
                 loadedScores = await db.scores
-                    .where('class_name').equals(className)
+                    .where('student_id')
+                    .anyOf(studentIds)
                     .filter(s => s.term === term && s.session === session)
                     .toArray();
                 
-                // Fetch attendance for these students specifically using compound index
+                // Fetch attendance for these students specifically
                 loadedAttendance = [];
                 for (const sid of studentIds) {
                     const studentAtt = await db.attendance_records
@@ -6130,11 +6131,14 @@ export const UI = {
                             score.subject_name = sub ? sub.name : 'Unknown Subject';
                         }
                         
-                        // Inject Term Closure into schoolInfo specifically for this run
-                        const allSettings = await db.settings.toArray();
-                        const settings = {};
-                        allSettings.forEach(s => settings[s.key] = s.value);
-                        
+                        // Resolve Form Teacher for this class
+                        const formTeacherEntry = await db.form_teachers.where('class_name').equals(className).first();
+                        let teacherName = 'Class Teacher';
+                        if (formTeacherEntry) {
+                            const teacherProfile = await db.profiles.get(formTeacherEntry.teacher_id);
+                            if (teacherProfile) teacherName = teacherProfile.full_name;
+                        }
+
                         const schoolInfo = {
                             name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
                             address: settings.schoolAddress || '123 Education Street, Academic City',
@@ -6146,7 +6150,9 @@ export const UI = {
                             logo: settings.schoolLogo || null,
                             themeColor: settings.themeColor || '#060495',
                             schoolManager: settings.schoolManager || 'TAMADU CODE',
-                            nextTermBegins: closureDate // Dynamic date passed from UI
+                            termEnd: closureDate,
+                            termStart: nextTermDate,
+                            teacherName: teacherName
                         };
 
                         Notifications.show(`Generating report for ${student.name}...`, 'info');
