@@ -13011,16 +13011,21 @@ export const UI = {
 
     async deleteBankQuestion(questionId) {
         try {
+            // Deep Delete: Master Library, Exam Flat Table, and Options
             await db.cbt_questions.delete(questionId);
+            await db.cbt_question_bank.delete(questionId);
+            await db.cbt_options.where('question_id').equals(questionId).delete();
             
             if (navigator.onLine) {
                 const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (client) {
                     await client.from('cbt_questions').delete().eq('id', questionId);
+                    await client.from('cbt_question_bank').delete().eq('id', questionId);
+                    await client.from('cbt_options').delete().eq('question_id', questionId);
                 }
             }
 
-            Notifications.show('Question deleted from bank.', 'success');
+            Notifications.show('Question deleted from all records.', 'success');
             this.renderQuestionBank();
         } catch (err) {
             console.error('Delete bank question error:', err);
@@ -13029,24 +13034,37 @@ export const UI = {
     },
 
     async deleteBankCategory(bankExamId) {
-        if (!confirm('Are you sure you want to permanently delete all questions in this category? This cannot be undone.')) return;
+        if (!confirm('Are you sure? This will PERMANENTLY delete all questions in this category from the Master Bank and Exam records.')) return;
         
         try {
+            // Find all question IDs in this category first to clear related tables
+            const questions = await db.cbt_questions.where('exam_id').equals(bankExamId).toArray();
+            const qIds = questions.map(q => q.id);
+
+            // 1. Local Deep Clean
             await db.cbt_questions.where('exam_id').equals(bankExamId).delete();
+            if (qIds.length > 0) {
+                await db.cbt_question_bank.where('id').anyOf(qIds).delete();
+                await db.cbt_options.where('question_id').anyOf(qIds).delete();
+            }
             
-            // Cloud Clean-up
+            // 2. Cloud Deep Clean
             if (navigator.onLine) {
                 const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (client) {
                     await client.from('cbt_questions').delete().eq('exam_id', bankExamId);
+                    if (qIds.length > 0) {
+                        await client.from('cbt_question_bank').delete().in('id', qIds);
+                        await client.from('cbt_options').delete().in('question_id', qIds);
+                    }
                 }
             }
 
-            Notifications.show('Category deleted from bank.', 'success');
+            Notifications.show('Category and Master Library cleared.', 'success');
             this.renderQuestionBank();
         } catch (err) {
             console.error('Delete bank category error:', err);
-            Notifications.show('Failed to delete category', 'error');
+            Notifications.show('Failed to clear category', 'error');
         }
     },
 
