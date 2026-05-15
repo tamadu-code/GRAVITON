@@ -409,6 +409,7 @@ if (loginForm) {
             loginError.style.display = 'none';
 
             const { data, error } = await loginUser(email, password);
+            console.log(`[Auth Debug] Login attempt finished. Success: ${!!data?.session}, Error: ${error?.message || 'None'}`);
 
             if (error) {
                 loginError.textContent = error.message || 'Invalid email or password.';
