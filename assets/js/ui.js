@@ -12801,63 +12801,86 @@ export const UI = {
             const fillRegex = /([\s\S]*?)\s*[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]?/gi;
 
             // --- NEW: Hyper-Robust Multi-Stage Parser ---
-            // We split by Answer tags first, then extract options from each block.
-            const ansRegex = /[\(\[]?(?:Ans|Answer)[\:\s]+([A-E])[\)\]]?/gi;
+            // 1. Capture ALL answer markers (A-E or Text) to prevent merging questions
+            const ansRegex = /[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]/gi;
             const newQuestions = [];
-            const relationalData = []; // JAMB Solution Accumulator
+            const relationalData = [];
             let failedBlocks = 0;
+
+            // Pre-load existing bank for deduplication
+            const existingBank = await db.cbt_question_bank.where('subject_id').equals(subjectId).toArray();
+            const existingTexts = new Set(existingBank.map(q => q.question_text.trim()));
 
             let matches = [];
             let m;
             while ((m = ansRegex.exec(text)) !== null) {
-                matches.push({ index: m.index, length: m[0].length, ans: m[1] });
+                matches.push({ index: m.index, length: m[0].length, ans: m[1].trim() });
             }
 
-            Notifications.show(`Scanning ${matches.length} answer markers...`, 'info');
+            Notifications.show(`Scanning ${matches.length} questions...`, 'info');
 
             let lastPos = 0;
             matches.forEach((matchObj, idx) => {
-                // The block is everything from the end of the last answer to the end of this one
                 const block = text.substring(lastPos, matchObj.index + matchObj.length).trim();
                 lastPos = matchObj.index + matchObj.length;
 
                 if (!block) return;
 
-                // Extract Options using reverse markers to avoid greedy mismatch
-                const optA = /[\(\[]?A[\)\]\.]/i.exec(block);
-                const optB = /[\(\[]?B[\)\]\.]/i.exec(block);
-                const optC = /[\(\[]?C[\)\]\.]/i.exec(block);
-                const optD = /[\(\[]?D[\)\]\.]/i.exec(block);
-                const optE = /[\(\[]?E[\)\]\.]/i.exec(block);
+                // Strip question numbers like "1.", "36." from the start
+                let cleanBlock = block.replace(/^\d+[\.\)]\s*/, '').trim();
 
-                if (optA && optB) {
-                    const qText = block.substring(0, optA.index).replace(/^\d+[\.\)]\s*/, '').trim();
-                    const aText = block.substring(optA.index + optA[0].length, optB.index).trim();
+                // Detect MCQ vs Fill-in
+                // Only treat as MCQ if (A) and (B) markers exist and the answer is a single letter A-E
+                const optARegex = /[\(\[]A[\)\]\.]/i;
+                const optBRegex = /[\(\[]B[\)\]\.]/i;
+                const optCRegex = /[\(\[]C[\)\]\.]/i;
+                const optDRegex = /[\(\[]D[\)\]\.]/i;
+                const optERegex = /[\(\[]E[\)\]\.]/i;
+
+                const hasA = optARegex.test(cleanBlock);
+                const hasB = optBRegex.test(cleanBlock);
+                const isLetterAns = /^[A-E]$/i.test(matchObj.ans);
+
+                if (hasA && hasB && isLetterAns) {
+                    // --- MCQ PARSING ---
+                    const optA = optARegex.exec(cleanBlock);
+                    const optB = optBRegex.exec(cleanBlock);
+                    const optC = optCRegex.exec(cleanBlock);
+                    const optD = optDRegex.exec(cleanBlock);
+                    const optE = optERegex.exec(cleanBlock);
+
+                    const qText = cleanBlock.substring(0, optA.index).trim();
                     
-                    let bEnd = optC ? optC.index : matchObj.index;
-                    const bText = block.substring(optB.index + optB[0].length, bEnd).trim();
+                    // Deduplicate
+                    if (existingTexts.has(qText)) return;
+
+                    const aText = cleanBlock.substring(optA.index + optA[0].length, optB.index).trim();
+                    let bEnd = optC ? optC.index : cleanBlock.indexOf(matchObj.ans, optB.index); 
+                    // Fallback to matchObj index if ans not found in block
+                    if (bEnd === -1) bEnd = cleanBlock.length - matchObj.length - 2;
+
+                    const bText = cleanBlock.substring(optB.index + optB[0].length, bEnd).trim();
                     
                     let cText = '', dText = '', eText = '';
                     if (optC) {
-                        let cEnd = optD ? optD.index : matchObj.index;
-                        cText = block.substring(optC.index + optC[0].length, cEnd).trim();
+                        let cEnd = optD ? optD.index : cleanBlock.indexOf(matchObj.ans, optC.index);
+                        if (cEnd === -1) cEnd = cleanBlock.length - matchObj.length - 2;
+                        cText = cleanBlock.substring(optC.index + optC[0].length, cEnd).trim();
                     }
                     if (optD) {
-                        let dEnd = optE ? optE.index : matchObj.index;
-                        dText = block.substring(optD.index + optD[0].length, dEnd).trim();
+                        let dEnd = optE ? optE.index : cleanBlock.indexOf(matchObj.ans, optD.index);
+                        if (dEnd === -1) dEnd = cleanBlock.length - matchObj.length - 2;
+                        dText = cleanBlock.substring(optD.index + optD[0].length, dEnd).trim();
                     }
                     if (optE) {
-                        eText = block.substring(optE.index + optE[0].length, matchObj.index).trim();
+                        let eEnd = cleanBlock.indexOf(matchObj.ans, optE.index);
+                        if (eEnd === -1) eEnd = cleanBlock.length - matchObj.length - 2;
+                        eText = cleanBlock.substring(optE.index + optE[0].length, eEnd).trim();
                     }
 
-                    // Prepare relational data (JAMB Solution)
                     const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
                     const bankQuestion = prepareForSync({
-                        id: qId,
-                        subject_id: subjectId,
-                        question_text: qText,
-                        type: 'mcq',
-                        marks: 1
+                        id: qId, subject_id: subjectId, question_text: qText, type: 'mcq', marks: 1
                     });
                     const bankOptions = [
                         { label: 'A', text: aText, correct: matchObj.ans.toUpperCase() === 'A' },
@@ -12867,48 +12890,34 @@ export const UI = {
                         { label: 'E', text: eText, correct: matchObj.ans.toUpperCase() === 'E' }
                     ].filter(o => o.text).map(o => prepareForSync({
                         id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                        question_id: qId,
-                        option_label: o.label,
-                        option_text: o.text,
-                        is_correct: o.correct ? 1 : 0
+                        question_id: qId, option_label: o.label, option_text: o.text, is_correct: o.correct ? 1 : 0
                     }));
 
-                    // Prepare legacy flat data
                     newQuestions.push(prepareForSync({
-                        id: qId,
-                        exam_id: bankExamId,
-                        type: 'mcq',
-                        question_text: qText,
-                        option_a: aText,
-                        option_b: bText,
-                        option_c: cText,
-                        option_d: dText,
-                        option_e: eText,
-                        correct_option: matchObj.ans.toUpperCase(),
-                        marks: 1
+                        id: qId, exam_id: bankExamId, type: 'mcq', question_text: qText,
+                        option_a: aText, option_b: bText, option_c: cText, option_d: dText, option_e: eText,
+                        correct_option: matchObj.ans.toUpperCase(), marks: 1
                     }));
-
-                    // Store relational data for batch processing
                     relationalData.push({ question: bankQuestion, options: bankOptions });
+                    existingTexts.add(qText);
                 } else {
-                    // Try Fill-in-the-blank fallback
-                    const qText = block.substring(0, matchObj.index).replace(/^\d+[\.\)]\s*/, '').trim();
-                    if (qText) {
+                    // --- FILL-IN-THE-BLANK PARSING ---
+                    const qText = cleanBlock.substring(0, cleanBlock.toLowerCase().lastIndexOf('[ans')).trim() || 
+                                 cleanBlock.substring(0, cleanBlock.toLowerCase().lastIndexOf('(ans')).trim();
+                    
+                    if (qText && !existingTexts.has(qText)) {
                         const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
                         newQuestions.push(prepareForSync({
-                            id: qId,
-                            exam_id: bankExamId,
-                            type: 'fill',
-                            question_text: qText,
+                            id: qId, exam_id: bankExamId, type: 'fill', question_text: qText,
                             option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
-                            correct_option: matchObj.ans,
-                            marks: 1
+                            correct_option: matchObj.ans, marks: 1
                         }));
                         relationalData.push({
                             question: prepareForSync({ id: qId, subject_id: subjectId, question_text: qText, type: 'fill', marks: 1 }),
                             options: [prepareForSync({ id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`, question_id: qId, option_label: 'A', option_text: matchObj.ans, is_correct: 1 })]
                         });
-                    } else {
+                        existingTexts.add(qText);
+                    } else if (!qText) {
                         failedBlocks++;
                     }
                 }
