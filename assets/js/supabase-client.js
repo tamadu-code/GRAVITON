@@ -185,16 +185,21 @@ export async function syncToCloud() {
                         }
                     }
 
-                    // --- NEW: Process Deletions from Cloud ---
+                    // --- Process Deletions from Cloud ---
                     if (table === 'audit_logs') {
                         const deletions = chunk.filter(log => log.operation === 'DELETE');
                         for (const del of deletions) {
                             try {
                                 const pk = (del.table === 'students' || del.table === 'student_analytics') ? 'student_id' : 'id';
-                                await client.from(del.table).delete().eq(pk, del.record_id);
-                                console.log(`[Sync] Successfully deleted ${del.record_id} from ${del.table} in cloud.`);
+                                const { error: delErr } = await client.from(del.table).delete().eq(pk, del.record_id);
+                                if (delErr) {
+                                    console.error(`[Sync Delete] FAILED for ${del.table}/${del.record_id}:`, delErr.message);
+                                    window.dispatchEvent(new CustomEvent('sync-error', { detail: { table: del.table, error: `Delete failed: ${delErr.message}`, code: delErr.code, hint: delErr.hint } }));
+                                } else {
+                                    console.log(`[Sync Delete] OK: ${del.table}/${del.record_id}`);
+                                }
                             } catch (e) {
-                                console.warn(`[Sync] Deferred cloud deletion for ${del.record_id}:`, e);
+                                console.warn(`[Sync Delete] Deferred: ${del.table}/${del.record_id}:`, e.message);
                             }
                         }
                     }
@@ -339,13 +344,11 @@ export async function syncFromCloud(forceAll = false) {
                             // --- 1B: Answer Protection for cbt_results ---
                             if (table === 'cbt_results') {
                                 const finalResults = [];
-                                for (const cloudItem of validData) {
+                                for (const cloudItem of processedData) {
                                     const localItem = await db.cbt_results.get(cloudItem.id);
                                     if (localItem && localItem.answers && Object.keys(localItem.answers).length > 0) {
                                         const cloudAnswers = cloudItem.answers || {};
-                                        // Only overwrite if cloud has MORE answers or is newer and not empty
                                         if (Object.keys(cloudAnswers).length < Object.keys(localItem.answers).length) {
-                                            console.log(`[Sync Shield] Preserving local answers for ${cloudItem.id}`);
                                             cloudItem.answers = localItem.answers;
                                         }
                                     }
@@ -354,7 +357,30 @@ export async function syncFromCloud(forceAll = false) {
                                 processedData = finalResults;
                             }
 
-                            await db[table].bulkPut(processedData);
+                            // --- 1C: Local Modification Shield (Generic) ---
+                            // Don't overwrite local records that have unsynced changes (is_synced: 0)
+                            // unless the cloud version is explicitly newer (based on updated_at)
+                            const finalProcessedData = [];
+                            const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
+                            
+                            for (const cloudItem of processedData) {
+                                const localItem = await db[table].get(cloudItem[pk]);
+                                if (localItem && localItem.is_synced === 0) {
+                                    const localTime = new Date(localItem.updated_at || 0).getTime();
+                                    const cloudTime = new Date(cloudItem.updated_at || 0).getTime();
+                                    
+                                    if (cloudTime <= localTime) {
+                                        console.log(`[Sync Shield] Skipping pull overwrite for modified ${table}/${cloudItem[pk]}`);
+                                        continue; 
+                                    }
+                                }
+                                finalProcessedData.push(cloudItem);
+                            }
+                            processedData = finalProcessedData;
+
+                            if (processedData.length > 0) {
+                                await db[table].bulkPut(processedData);
+                            }
                         }
                         
                         totalPulled += data.length;
@@ -371,11 +397,14 @@ export async function syncFromCloud(forceAll = false) {
                     console.log(`[Sync] Pulled ${totalPulled} total records into '${table}' table.`);
                 }
 
-                // --- NEW: Deletion Reconciliation for Core Tables ---
+                // --- Deletion Reconciliation for Core Tables ---
                 // Ensures deletions (e.g. classes, subjects) are propagated to devices
                 const syncCleanTables = ['classes', 'subjects', 'students', 'cbt_exams', 'cbt_questions', 'subject_assignments'];
                 if (syncCleanTables.includes(table)) {
-                    const localItems = await db[table].toArray();
+                    // ONLY reconcile records that are already synced (is_synced: 1)
+                    // If is_synced is 0, it's a new local record that hasn't reached the cloud yet; don't delete it!
+                    const localItems = await db[table].where('is_synced').equals(1).toArray();
+                    
                     if (localItems.length > 0) {
                         const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
                         const localIds = localItems.map(item => item[pk]);

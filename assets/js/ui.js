@@ -118,15 +118,20 @@ export const UI = {
                 ]);
             }
 
-            // 4. Optional: Immediate Cloud attempt if online
+            // 4. Immediate Cloud deletion if online
             if (navigator.onLine) {
                 const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (client) {
                     const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
-                    await client.from(table).delete().eq(pk, id);
+                    const { error: delError } = await client.from(table).delete().eq(pk, id);
+                    if (delError) {
+                        console.error(`[SafeDelete] Cloud delete failed for ${table}/${id}:`, delError);
+                        // Record stays in audit_logs for retry on next sync
+                    } else {
+                        console.log(`[SafeDelete] Cloud delete OK: ${table}/${id}`);
+                    }
                     
                     if (table === 'students') {
-                        // Cascading cloud deletions (Optional: Rely on DB foreign keys if set, but we do it manually for safety)
                         await client.from('attendance').delete().eq('student_id', id);
                         await client.from('attendance_records').delete().eq('student_id', id);
                         await client.from('scores').delete().eq('student_id', id);
@@ -1515,15 +1520,7 @@ export const UI = {
                     Notifications.show(`Cannot delete "${className}". It currently has ${count} active students. Please reassign them first.`, 'error');
                 } else {
                     if (confirm(`Are you sure you want to delete the empty stream "${className}"?`)) {
-                        await db.classes.delete(id);
-                        await db.audit_logs.add({
-                            id: crypto.randomUUID(),
-                            operation: 'DELETE',
-                            table: 'classes',
-                            record_id: id,
-                            timestamp: new Date().toISOString()
-                        });
-                        Notifications.show(`Stream "${className}" deleted successfully.`, 'success');
+                        await this.safeDelete('classes', id, `Stream "${className}" deleted successfully.`);
                         this.renderClasses();
                         this.debouncedSync();
                     }
@@ -1980,27 +1977,13 @@ export const UI = {
                 const ids = btn.dataset.ids.split(',');
                 if (confirm(`Are you sure you want to remove "${name}" from the curriculum? This will delete all ${ids.length} stream instances.`)) {
                     for (const id of ids) {
-                        await db.subjects.delete(id);
-                        // Also delete assignments
+                        // Delete associated assignments first (cascade)
                         const assignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
                         for (const asgn of assignments) {
-                            await db.subject_assignments.delete(asgn.id);
-                            await db.audit_logs.add({
-                                id: crypto.randomUUID(),
-                                operation: 'DELETE',
-                                table: 'subject_assignments',
-                                record_id: asgn.id,
-                                timestamp: new Date().toISOString()
-                            });
+                            await UI.safeDelete('subject_assignments', asgn.id, null);
                         }
-                        // Log subject deletion
-                        await db.audit_logs.add({
-                            id: crypto.randomUUID(),
-                            operation: 'DELETE',
-                            table: 'subjects',
-                            record_id: id,
-                            timestamp: new Date().toISOString()
-                        });
+                        // Delete the subject itself
+                        await UI.safeDelete('subjects', id, null);
                     }
                     Notifications.show(`Course "${name}" removed.`, 'success');
                     this.renderSubjects();
@@ -3105,7 +3088,17 @@ export const UI = {
                             if (confirm(`CRITICAL: Changing System ID from ${studentId} to ${newId}. This may affect existing reports. Proceed?`)) {
                                 // Perform cascading update
                                 const originalData = await db.students.get(studentId);
-                                await db.students.add({ ...originalData, ...updates, student_id: newId });
+                                await db.students.add(prepareForSync({ ...originalData, ...updates, student_id: newId }));
+                                
+                                // Log deletion of old ID for cloud sync (without local cascading)
+                                await db.audit_logs.add({
+                                    id: (typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : `del_${Date.now()}`,
+                                    operation: 'DELETE',
+                                    table: 'students',
+                                    record_id: studentId,
+                                    timestamp: new Date().toISOString(),
+                                    is_synced: 0
+                                });
                                 await db.students.delete(studentId);
                                 
                                 // Update related records (simplified for common tables)
@@ -3121,7 +3114,7 @@ export const UI = {
                         }
                     }
 
-                    await db.students.update(studentId, updates);
+                    await db.students.update(studentId, prepareForSync(updates));
                     Notifications.show('Profile updated successfully.', 'success');
                     this.renderStudentDetail(studentId);
                 }, 'Update Profile', 'save');
@@ -4632,40 +4625,17 @@ export const UI = {
                 if (confirm('Delete this stream? Students and assignments will be orphaned!')) {
                     const cls = await db.classes.get(id);
                     if (cls) {
-                        await db.classes.delete(id);
-                        await db.audit_logs.add({
-                            id: crypto.randomUUID(),
-                            operation: 'DELETE',
-                            table: 'classes',
-                            record_id: id,
-                            timestamp: new Date().toISOString()
-                        });
-
                         const formTeachers = await db.form_teachers.where('class_name').equals(cls.name).toArray();
                         for (const ft of formTeachers) {
-                            await db.form_teachers.delete(ft.id);
-                            await db.audit_logs.add({
-                                id: crypto.randomUUID(),
-                                operation: 'DELETE',
-                                table: 'form_teachers',
-                                record_id: ft.id,
-                                timestamp: new Date().toISOString()
-                            });
+                            await this.safeDelete('form_teachers', ft.id, null);
                         }
 
                         const assignments = await db.subject_assignments.where('class_name').equals(cls.name).toArray();
                         for (const asgn of assignments) {
-                            await db.subject_assignments.delete(asgn.id);
-                            await db.audit_logs.add({
-                                id: crypto.randomUUID(),
-                                operation: 'DELETE',
-                                table: 'subject_assignments',
-                                record_id: asgn.id,
-                                timestamp: new Date().toISOString()
-                            });
+                            await this.safeDelete('subject_assignments', asgn.id, null);
                         }
 
-                        Notifications.show('Stream removed', 'success');
+                        await this.safeDelete('classes', id, 'Stream removed');
                         this.renderAcademic();
                         this.debouncedSync();
                     }
@@ -9138,6 +9108,7 @@ export const UI = {
 
             // Initial Content Fill
             this.updateCBTQuestionDisplay();
+            this.startExamTimer();
             
             if (window.MathJax && window.MathJax.typesetPromise) window.MathJax.typesetPromise();
             if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -13263,20 +13234,22 @@ export const UI = {
                     await db.cbt_questions.bulkDelete(flatIds);
                 }
 
-                // 3. Cloud Sync Clear
+                // 3. Cloud Sync Clear (Thorough)
                 if (navigator.onLine) {
                     const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                     if (client) {
+                        // 3A. Clear cbt_question_bank and cbt_options via subject_id
+                        const { error: bankDelError } = await client.from('cbt_question_bank').delete().eq('subject_id', subjectId);
+                        if (bankDelError) console.warn('[Cloud Clear] Bank deletion error:', bankDelError);
+                        
+                        // Note: cbt_options usually has a cascade or we can rely on cleaning up question_ids
                         if (oldIds.length > 0) {
-                            await client.from('cbt_question_bank').delete().in('id', oldIds);
-                            await client.from('cbt_options').delete().in('question_id', oldIds);
+                             await client.from('cbt_options').delete().in('question_id', oldIds);
                         }
-                        if (flatIds.length > 0) {
-                            // Delete in batches of 50 to avoid URI length limits
-                            for (let i = 0; i < flatIds.length; i += 50) {
-                                await client.from('cbt_questions').delete().in('id', flatIds.slice(i, i + 50));
-                            }
-                        }
+
+                        // 3B. Clear cbt_questions for this specific bank identity
+                        const { error: flatDelError } = await client.from('cbt_questions').delete().ilike('exam_id', `${bankPrefix}%`);
+                        if (flatDelError) console.warn('[Cloud Clear] Flat table deletion error:', flatDelError);
                     }
                 }
                 console.log(`[Bank Clear] Deleted ${oldIds.length} bank + ${flatIds.length} flat records for subject ${subjectId}`);
