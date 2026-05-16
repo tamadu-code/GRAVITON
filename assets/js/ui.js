@@ -7479,8 +7479,8 @@ export const UI = {
         // Format subjects for display
         const formattedSubjects = subjects.map(s => ({
             ...s,
-            displayName: subjectNameCounts[s.name] > 1 ? `${s.name} (${s.type || 'General'})` : s.name
-        })).sort((a, b) => a.displayName.localeCompare(b.displayName));
+            displayName: (subjectNameCounts[s.name || ''] > 1 ? `${s.name} (${s.type || 'General'})` : s.name) || 'Untitled Subject'
+        })).sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
         
         subjects = formattedSubjects;
 
@@ -7505,7 +7505,8 @@ export const UI = {
             return a.name.localeCompare(b.name);
         });
         
-        if ((this.currentUser.role || '').toLowerCase() === 'teacher') {
+        const role = (this.currentUser && this.currentUser.role || '').toLowerCase();
+        if (role === 'teacher') {
             const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
             const assignedSubIds = new Set(assignments.map(a => a.subject_id));
             subjects = subjects.filter(s => assignedSubIds.has(s.id));
@@ -7652,7 +7653,7 @@ export const UI = {
                                 <label>Subject</label>
                                 <select id="exam-subject" class="cbt-input">
                                     <option value="">Select Subject</option>
-                                    ${exam.class_name ? '' : subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.displayName || s.name}</option>`).join('')}
+                                    ${subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.displayName || s.name}</option>`).join('')}
                                 </select>
 
 
@@ -7677,7 +7678,7 @@ export const UI = {
                                 </div>
                                 <div class="cbt-form-group">
                                     <label>Question Limit (0 for all)</label>
-                                    <input type="number" id="exam-limit" class="cbt-input" value="${exam.question_limit || 0}">
+                                    <input type="number" id="exam-limit" class="cbt-input" value="${exam.question_limit || 0}" ${exam.is_unified ? 'disabled title="Managed per section"' : ''}>
                                 </div>
                             </div>
 
@@ -8080,6 +8081,14 @@ export const UI = {
         const isUnified = document.getElementById('exam-is-unified').checked;
         const container = document.getElementById('unified-sections-container');
         if (container) container.style.display = isUnified ? 'block' : 'none';
+        
+        const limitInput = document.getElementById('exam-limit');
+        if (limitInput) {
+            limitInput.disabled = isUnified;
+            if (isUnified) limitInput.title = "Limit is managed per section in Unified Mode";
+            else limitInput.title = "";
+        }
+
         if (isUnified && (!this.cbtSections || this.cbtSections.length === 0)) {
             this.addCBTSection();
         }
@@ -8218,13 +8227,24 @@ export const UI = {
         // NEW ATTEMPT: Show instructions first
         this.renderCBTInstructions(examId);
     },
-
     async renderCBTInstructions(examId) {
         const exam = await db.cbt_exams.get(examId);
         const subject = await db.subjects.get(exam.subject_id);
-        const subjectName = subject ? subject.name : exam.subject_id;
-        const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
-        const limit = parseInt(exam.question_limit) || questions.length;
+        
+        let limit = 0;
+        let displaySubject = subject ? subject.name : exam.subject_id;
+        let questionsCount = 0;
+
+        if (exam.is_unified) {
+            const sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
+            limit = sections.reduce((sum, s) => sum + (parseInt(s.question_count) || 0), 0);
+            displaySubject = "Unified Composite Exam";
+            questionsCount = limit; // In unified, we assume the bank has enough
+        } else {
+            const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+            limit = parseInt(exam.question_limit) || questions.length;
+            questionsCount = questions.length;
+        }
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="max-width: 800px; margin: 0 auto; padding: clamp(0.5rem, 3vw, 2rem);">
@@ -8240,7 +8260,7 @@ export const UI = {
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1.5rem; margin-bottom: 3rem;">
                         <div style="background: #f8fafc; padding: 1.5rem; border-radius: 20px; border: 1px solid #f1f5f9; text-align: center;">
                             <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem;">SUBJECT</div>
-                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${subjectName}</div>
+                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${displaySubject}</div>
                         </div>
                         <div style="background: #f8fafc; padding: 1.5rem; border-radius: 20px; border: 1px solid #f1f5f9; text-align: center;">
                             <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem;">DURATION</div>
@@ -8248,7 +8268,7 @@ export const UI = {
                         </div>
                         <div style="background: #f8fafc; padding: 1.5rem; border-radius: 20px; border: 1px solid #f1f5f9; text-align: center;">
                             <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem;">QUESTIONS</div>
-                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${Math.min(limit, questions.length)} Items</div>
+                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${Math.min(limit, questionsCount)} Items</div>
                         </div>
                     </div>
 
