@@ -9779,9 +9779,10 @@ export const UI = {
                 const studentChoice = this.userAnswers[q.id];
                 if (studentChoice) {
                     if (q.question_type === 'fill_in_blank') {
-                        // Fill-in-blank: case-insensitive text comparison
-                        const target = (q.fill_answer || q.correct_option || '').toString().toLowerCase().trim();
-                        if (target && studentChoice.toLowerCase().trim() === target) {
+                        // Fill-in-blank: support multiple correct answers via comma-separation
+                        const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+                        const studentAns = (studentChoice || '').toLowerCase().trim();
+                        if (targets.includes(studentAns)) {
                             score += (parseFloat(q.marks) || 1);
                         }
                     } else {
@@ -9899,9 +9900,10 @@ export const UI = {
             let correctText = '';
 
             if (q.question_type === 'fill_in_blank') {
-                const target = (q.fill_answer || q.correct_option || '').toString().toLowerCase().trim();
-                isCorrect = studentChoice && studentChoice.toLowerCase().trim() === target;
-                correctText = target;
+                const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+                const studentAns = (studentChoice || '').toLowerCase().trim();
+                isCorrect = targets.includes(studentAns);
+                correctText = targets.join(' / ');
             } else {
                 // MCQ
                 const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + result.exam_id))).split('').reverse().join('');
