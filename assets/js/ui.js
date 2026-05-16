@@ -7033,6 +7033,9 @@ export const UI = {
         });
     },
 
+    async renderSettings() {
+        const url = localStorage.getItem('sb_url') || '';
+        const key = localStorage.getItem('sb_key') || '';
         const allSettings = await db.settings.toArray();
         const jssLimit = allSettings.find(s => s.key === 'jss_subject_limit')?.value || 11;
         const sssLimit = allSettings.find(s => s.key === 'sss_subject_limit')?.value || 17;
