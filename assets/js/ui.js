@@ -7231,7 +7231,7 @@ export const UI = {
                                         </div>
                                         <div>
                                             <div style="font-weight: 800; color: #1e293b; font-size: 1.05rem;">
-                                                ${subMap[e.subject_id] || 'General'}: ${e.title}
+                                                ${e.is_unified ? `<span style="color: #4338ca; background: #eef2ff; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; margin-right: 6px; border: 1px solid #c7d2fe;">UNIFIED</span>` : `${subMap[e.subject_id] || 'General'}: `}${e.title}
                                             </div>
                                             <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">${e.class_name} | ${e.term} | ${e.session}</div>
                                         </div>
@@ -8156,7 +8156,7 @@ export const UI = {
                     </div>
                 </div>
                 <div style="margin-top:0.5rem; text-align:right;">
-                    <a href="javascript:void(0)" onclick="UI.previewBankSection('${s.subject_id}', '${s.class_name || ''}')" style="font-size:0.65rem; color:#4338ca; font-weight:700; text-decoration:none;"><i data-lucide="eye" style="width:10px; display:inline; vertical-align:middle;"></i> Preview Bank Pool</a>
+                    <a href="javascript:void(0)" onclick="UI.previewBankSection(UI.cbtSections[${idx}].subject_id, UI.cbtSections[${idx}].class_name || '')" style="font-size:0.65rem; color:#4338ca; font-weight:700; text-decoration:none;"><i data-lucide="eye" style="width:10px; display:inline; vertical-align:middle;"></i> Preview Bank Pool</a>
                 </div>
             </div>
         `).join('');
@@ -8390,41 +8390,84 @@ export const UI = {
 
     async finalizeStartCBTExam(examId, isResume = false) {
         try {
-            const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
-            let session;
-            if (!navigator.onLine || !supabase) {
-                return Notifications.show('Cloud-Direct mode requires an active internet connection to start.', 'error');
-            }
-
-            Notifications.show('Connecting to Cloud Exam Server...', 'info');
-            
-            // 1. Fetch exam & questions — Cloud first, local IndexedDB fallback
-            let exam = null;
-            let rawQuestions = [];
             const studentId = await this.resolveCBTStudentId();
             if (!studentId) throw new Error('Unable to identify student record.');
 
+            const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+            
+            // 1. Fetch Exam Meta
+            let exam = null;
             try {
-                // Try New Relational Schema First (JAMB Solution)
-                const examRes = await supabase.from('cbt_exams').select('*').eq('id', examId).single();
-                if (examRes.error) throw examRes.error;
-                exam = examRes.data;
+                const { data } = await supabase.from('cbt_exams').select('*').eq('id', examId).single();
+                exam = data;
+            } catch (e) {}
+            if (!exam) exam = await db.cbt_exams.get(examId);
+            if (!exam) throw new Error('Exam metadata not found.');
 
-                // Fetch both relational and legacy data in parallel for comparison
-                const [relRes, legacyRes] = await Promise.all([
-                    supabase.from('cbt_exam_questions').select('question_id, question_number').eq('exam_id', examId).order('question_number'),
-                    supabase.from('cbt_questions').select('*').eq('exam_id', examId)
-                ]);
+            // 2. Fetch Existing Session (Sticky Randomization Source)
+            let session = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            if (!session && navigator.onLine && supabase) {
+                const { data } = await supabase.from('cbt_results').select('*').eq('exam_id', examId).eq('student_id', studentId).single();
+                if (data) session = data;
+            }
 
-                let relationalQuestions = [];
-                if (relRes.data && relRes.data.length > 0) {
-                    const qIds = relRes.data.map(d => d.question_id);
-                    const { data: qData } = await supabase.from('cbt_question_bank')
-                        .select('*, cbt_options(*)')
-                        .in('id', qIds);
+            let finalQuestions = [];
+            const lockedIds = session?.question_ids || [];
 
-                    if (qData) {
-                        relationalQuestions = qData.map(q => {
+            if (lockedIds.length > 0) {
+                // --- RESUME MODE: Load Locked Questions ---
+                console.log(`[CBT] Resuming session with ${lockedIds.length} locked IDs.`);
+                
+                const { data: bankData } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').in('id', lockedIds);
+                const legacyData = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+                
+                const qMap = {};
+                (bankData || []).forEach(q => {
+                    const opts = q.cbt_options || [];
+                    qMap[q.id] = {
+                        ...q,
+                        option_a: (opts.find(o => o.option_label === 'A') || {}).option_text || '',
+                        option_b: (opts.find(o => o.option_label === 'B') || {}).option_text || '',
+                        option_c: (opts.find(o => o.option_label === 'C') || {}).option_text || '',
+                        option_d: (opts.find(o => o.option_label === 'D') || {}).option_text || '',
+                        option_e: (opts.find(o => o.option_label === 'E') || {}).option_text || '',
+                        correct_option: (opts.find(o => o.is_correct) || {}).option_label || 'A'
+                    };
+                });
+                legacyData.forEach(q => qMap[q.id] = q);
+                finalQuestions = lockedIds.map(id => qMap[id]).filter(Boolean);
+            } else {
+                // --- FRESH START: Assign Questions ---
+                if (exam.is_unified) {
+                    const { data: sections } = await supabase.from('cbt_exam_sections').select('*').eq('exam_id', examId);
+                    if (!sections || sections.length === 0) throw new Error('Unified exam has no subject sections.');
+
+                    for (const sec of sections) {
+                        const { data: bankPool } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').eq('subject_id', sec.subject_id);
+                        if (bankPool && bankPool.length > 0) {
+                            bankPool.sort(() => Math.random() - 0.5);
+                            const count = parseInt(sec.question_count) || 40;
+                            const selected = bankPool.slice(0, count);
+                            finalQuestions.push(...selected.map(q => {
+                                const opts = q.cbt_options || [];
+                                return {
+                                    ...q,
+                                    option_a: (opts.find(o => o.option_label === 'A') || {}).option_text || '',
+                                    option_b: (opts.find(o => o.option_label === 'B') || {}).option_text || '',
+                                    option_c: (opts.find(o => o.option_label === 'C') || {}).option_text || '',
+                                    option_d: (opts.find(o => o.option_label === 'D') || {}).option_text || '',
+                                    option_e: (opts.find(o => o.option_label === 'E') || {}).option_text || '',
+                                    correct_option: (opts.find(o => o.is_correct) || {}).option_label || 'A'
+                                };
+                            }));
+                        }
+                    }
+                } else {
+                    let pool = [];
+                    const { data: relMap } = await supabase.from('cbt_exam_questions').select('question_id').eq('exam_id', examId);
+                    if (relMap && relMap.length > 0) {
+                        const { data: bankData } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').in('id', relMap.map(m => m.question_id));
+                        pool = (bankData || []).map(q => {
                             const opts = q.cbt_options || [];
                             return {
                                 ...q,
@@ -8436,404 +8479,84 @@ export const UI = {
                                 correct_option: (opts.find(o => o.is_correct) || {}).option_label || 'A'
                             };
                         });
-                        // Sort by relational order
-                        const qNumMap = {};
-                        relRes.data.forEach(d => qNumMap[d.question_id] = d.question_number);
-                        relationalQuestions.sort((a, b) => qNumMap[a.id] - qNumMap[b.id]);
+                    } else {
+                        pool = await db.cbt_questions.where('exam_id').equals(examId).toArray();
                     }
-                }
-
-                const legacyQuestions = legacyRes.data || [];
-
-                // Logic: Prefer Relational if it has ANY questions, as it's the modern source.
-                // Fallback to Legacy only if Relational is empty.
-                if (relationalQuestions.length > 0) {
-                    rawQuestions = relationalQuestions;
-                    console.log(`[CBT] Using Relational Pool (${relationalQuestions.length} questions).`);
-                } else if (legacyQuestions.length > 0) {
-                    rawQuestions = legacyQuestions;
-                    console.log(`[CBT] Using Legacy Pool (${legacyQuestions.length} questions).`);
-                }
-            } catch (cloudErr) {
-                console.warn('[CBT] Cloud fetch failed, using local data:', cloudErr.message);
-                exam = await db.cbt_exams.get(examId);
-                // Check if we have exam_questions locally
-                const eqLocal = await db.cbt_exam_questions.where('exam_id').equals(examId).toArray();
-                if (eqLocal.length > 0) {
-                    const qIds = eqLocal.map(d => d.question_id);
-                    const qData = await db.cbt_question_bank.where('id').anyOf(qIds).toArray();
-                    const opts = await db.cbt_options.where('question_id').anyOf(qIds).toArray();
-                    
-                    rawQuestions = qData.map(q => {
-                        const qOpts = opts.filter(o => o.question_id === q.id);
-                        return {
-                            ...q,
-                            option_a: (qOpts.find(o => o.option_label === 'A') || {}).option_text || '',
-                            option_b: (qOpts.find(o => o.option_label === 'B') || {}).option_text || '',
-                            option_c: (qOpts.find(o => o.option_label === 'C') || {}).option_text || '',
-                            option_d: (qOpts.find(o => o.option_label === 'D') || {}).option_text || '',
-                            option_e: (qOpts.find(o => o.option_label === 'E') || {}).option_text || '',
-                            correct_option: (qOpts.find(o => o.is_correct) || {}).option_label || 'A'
-                        };
-                    });
-                } else {
-                    rawQuestions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+                    pool.sort(() => Math.random() - 0.5);
+                    finalQuestions = pool.slice(0, parseInt(exam.question_limit) || pool.length);
                 }
             }
 
-            if (!exam) throw new Error('Exam not found. Please sync and try again.');
-
-            // 2. Fetch existing result directly from cloud
-            const { data: cloudResults } = await supabase.from('cbt_results')
-                .select('*')
-                .eq('exam_id', examId)
-                .in('student_id', [studentId, this.currentUser.id].filter(Boolean));
-            
-            // Latest Wins among cloud results
-            const cloudSession = cloudResults?.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
-            
-            // [SYNC SHIELD] Only take cloud answers if local answers are empty or if cloud is significantly more advanced
-            const localSession = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
-            
-            if (cloudSession && localSession) {
-                const cloudAnswerCount = Object.keys(cloudSession.answers || {}).length;
-                const localAnswerCount = Object.keys(localSession.answers || {}).length;
-                
-                // If cloud has fewer answers, keep local answers but update other fields
-                if (cloudAnswerCount < localAnswerCount) {
-                    session = { ...cloudSession, answers: localSession.answers };
-                } else {
-                    session = cloudSession;
-                }
-            } else {
-                session = cloudSession || localSession;
-            }
-
-            // [RESILIENCE] If cloud questions are missing, fallback to local database
-            let questionsToUse = rawQuestions;
-            if (questionsToUse.length === 0) {
-                console.warn('[CBT] Cloud questions empty, falling back to local DB...');
-                questionsToUse = await db.cbt_questions.where('exam_id').equals(examId).toArray();
-            }
-
-            // Mirror to local DB to keep it in sync
-            await db.cbt_exams.put(exam);
-            if (questionsToUse.length > 0) {
-                // Coerce nulls during local mirroring
-                const processedQuestions = questionsToUse.map(q => ({
-                    ...q,
-                    option_a: (q.option_a ?? '').toString().trim(),
-                    option_b: (q.option_b ?? '').toString().trim(),
-                    option_c: (q.option_c ?? '').toString().trim(),
-                    option_d: (q.option_d ?? '').toString().trim(),
-                    option_e: (q.option_e ?? '').toString().trim(),
-                    correct_option: (q.correct_option ?? 'A').toString().trim().toUpperCase(),
-                    marks: parseFloat(q.marks) || 1
-                }));
-                
-                // Only wipe and bulkPut if we actually have questions to put
-                if (rawQuestions.length > 0) {
-                    await db.cbt_questions.where('exam_id').equals(examId).delete();
-                    await db.cbt_questions.bulkPut(processedQuestions);
-                }
-                rawQuestions = processedQuestions;
-            }
-            if (session) await db.cbt_results.put(session);
-
-            console.log(`[CBT HUB] Loading ${rawQuestions.length} questions for exam ${examId}`);
-
-            // Safety: Remove any null/undefined entries
-            let questions = rawQuestions.filter(q => q && typeof q === 'object');
-            
-            // Normalise every question's option fields for rendering
-            // CRITICAL: Strip answer indicators BEFORE integrity check so that
-            // options containing ONLY "[Ans: B]" become empty and are properly filtered out
-            const stripAnswerTags = (text) => {
-                if (!text) return '';
-                return text.toString()
-                    .replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '') // Robust bracket match
-                    .replace(/\s*\[Ans[:\s]+.*?\]/gi, '') // Fallback
-                    .replace(/\s*[\[\(]\s*Ans\s*[:\s]*$/gi, '') // Clean up any dangling "[ Ans:" at the very end
-                    .trim();
-            };
-
-            questions = questions.map(q => ({
+            // 3. Normalization & Integrity
+            const strip = (t) => (t || '').toString().replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '').trim();
+            const questions = finalQuestions.map(q => ({
                 ...q,
-                option_a: stripAnswerTags(q.option_a),
-                option_b: stripAnswerTags(q.option_b),
-                option_c: stripAnswerTags(q.option_c),
-                option_d: stripAnswerTags(q.option_d),
-                option_e: stripAnswerTags(q.option_e),
-                // Fallback for Legacy questions where field is 'question'
-                question_text: stripAnswerTags(q.question_text || q.question || ''),
+                question_text: strip(q.question_text || q.question || ''),
+                option_a: strip(q.option_a),
+                option_b: strip(q.option_b),
+                option_c: strip(q.option_c),
+                option_d: strip(q.option_d),
+                option_e: strip(q.option_e),
                 correct_option: (q.correct_option || 'A').toUpperCase(),
                 marks: parseFloat(q.marks) || 1
-            }));
-
-            // *** Integrity Check: Filter broken questions ***
-            const skippedQuestions = [];
-            const validQuestions = questions.filter((q, i) => {
-                const optMap = {
-                    'A': (q.option_a || '').trim(),
-                    'B': (q.option_b || '').trim(),
-                    'C': (q.option_c || '').trim(),
-                    'D': (q.option_d || '').trim(),
-                    'E': (q.option_e || '').trim()
-                };
-                const validOpts = Object.keys(optMap).filter(k => optMap[k].length > 0);
-                
-                // Identify Fill-in-the-blank
-                const isFill = q.type === 'fill' || q.type === 'text' || q.question_type === 'fill_in_blank' || validOpts.length === 0;
-                if (isFill) q.question_type = 'fill_in_blank';
-
-                // 1. MCQ Integrity: Must have at least 2 options
-                if (!isFill && validOpts.length < 2) {
-                    skippedQuestions.push({ index: i+1, id: q.id, reason: `MCQ has only ${validOpts.length} option(s)`, text: (q.question_text || '').substring(0, 60) });
-                    return false;
-                }
-
-                // 2. Correct answer MUST have content
-                // For MCQ, q.correct_option is a key (A, B, C...). For Fill, it's the actual text.
-                const answerText = isFill ? (q.correct_option || q.fill_answer) : optMap[q.correct_option];
-                if (!answerText || answerText.toString().trim().length === 0) {
-                    skippedQuestions.push({ index: i+1, id: q.id, reason: `Correct answer is empty`, text: (q.question_text || '').substring(0, 60) });
-                    return false;
-                }
-                return true;
+            })).filter(q => {
+                const hasOpts = [q.option_a, q.option_b, q.option_c, q.option_d].filter(o => o.length > 0).length >= 2;
+                if (!hasOpts) q.question_type = 'fill_in_blank';
+                return q.question_text.length > 0;
             });
 
-            // Diagnostic Summary
-            if (skippedQuestions.length > 0) {
-                console.warn(`[CBT INTEGRITY] ${skippedQuestions.length} of ${questions.length} questions FAILED validation:`);
-                skippedQuestions.forEach(sq => console.warn(`  Q${sq.index} (${sq.id}): ${sq.reason} — "${sq.text}..."`));
-            }
-            console.log(`[CBT INTEGRITY] ${validQuestions.length} valid questions out of ${questions.length} total.`);
+            if (questions.length === 0) throw new Error('No valid questions found.');
 
-            if (validQuestions.length === 0) {
-                return Notifications.show('This exam has no valid questions. Please check that all questions have at least 2 options and a correct answer key.', 'error');
-            }
-
-            const requestedLimit = parseInt(exam.question_limit) || 0;
-            const limit = (requestedLimit > 0) ? Math.min(requestedLimit, validQuestions.length) : validQuestions.length;
-            
-            // --- NEW: Question Locking Mechanism (Fixes Resume Question Injection) ---
-            const seedStr = studentId + examId;
-            let seed = 0;
-            for (let i = 0; i < seedStr.length; i++) {
-                seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
-                seed |= 0; // Force to 32-bit integer
-            }
-            seed = Math.abs(seed); // Ensure positive
-
-
-            const seededShuffle = (array, seed) => {
-                let m = array.length, t, i;
-                while (m) {
-                    seed = (seed * 9301 + 49297) % 233280;
-                    i = Math.floor((seed / 233280) * m--);
-                    t = array[m];
-                    array[m] = array[i];
-                    array[i] = t;
-                }
-                return array;
-            };
-
-            let finalSlice = [];
-            const existingQuestionIds = (session?.question_ids || []).map(id => String(id).trim()).filter(id => id && id !== 'undefined' && id !== 'null');
-
-            if (existingQuestionIds.length > 0) {
-                // RESUME: Load exactly the same questions as before, in the same order
-                console.log(`[CBT RESUME] Reconstituting locked session with ${existingQuestionIds.length} IDs.`);
-                const qMap = {};
-                validQuestions.forEach(q => {
-                    if (q && q.id) qMap[String(q.id).trim()] = q;
-                });
-                
-                // Map existing IDs to questions, explicitly filtering out any nulls that failed the map
-                const mappedQuestions = existingQuestionIds.map(id => qMap[id]).filter(Boolean);
-                
-                // [RESILIENCE] Hole-Filling Logic: If some questions are missing from the local pool,
-                // refill them from the available validQuestions to maintain the expected count.
-                if (mappedQuestions.length < existingQuestionIds.length) {
-                    const missingCount = existingQuestionIds.length - mappedQuestions.length;
-                    console.warn(`[CBT RESILIENCE] ${missingCount} questions missing from pool on resume. IDs in session: ${existingQuestionIds.length}, found in DB: ${mappedQuestions.length}. Refilling...`);
-                    
-                    const usedIds = new Set(mappedQuestions.map(q => String(q.id).trim()));
-                    const availablePool = validQuestions.filter(q => !usedIds.has(String(q.id).trim()));
-                    
-                    // Add enough questions from the available pool to fill the holes
-                    const refill = availablePool.slice(0, missingCount);
-                    finalSlice = [...mappedQuestions, ...refill];
-                    
-                    console.log(`[CBT RESILIENCE] Refilled ${refill.length} questions. Final set count: ${finalSlice.length}`);
-                } else {
-                    finalSlice = mappedQuestions;
-                }
-            } else {
-                // FIRST START: Shuffle and Lock IDs
-                console.log(`[CBT START] New session initialization. Pool: ${validQuestions.length}, Limit: ${limit}`);
-                let poolCopy = [...validQuestions];
-                let shuffled = seededShuffle(poolCopy, seed);
-                finalSlice = (limit > 0) ? shuffled.slice(0, limit) : shuffled;
-            }
-
-            // [INTEGRITY SHIELD] Final sanity check: If we are still below the intended limit 
-            // (e.g. because validQuestions was too small), but we have more questions in the raw pool, pad it.
-            if (finalSlice.length < limit && validQuestions.length > finalSlice.length) {
-                console.warn(`[CBT INTEGRITY] finalSlice (${finalSlice.length}) is below limit (${limit}). Panning to refill from pool...`);
-                const currentIds = new Set(finalSlice.map(q => String(q.id).trim()));
-                const extra = validQuestions.filter(q => !currentIds.has(String(q.id).trim())).slice(0, limit - finalSlice.length);
-                finalSlice = [...finalSlice, ...extra];
-            }
-
-                
-            // Lock these IDs into the session immediately (ensures next resume has them)
-            if (session) {
-                session.question_ids = finalSlice.filter(q => q && q.id).map(q => String(q.id));
-            }
-
-            // Audit the slice before filtering to see if any nulls were introduced
-            const holes = finalSlice.filter(q => !q).length;
-            if (holes > 0) {
-                console.warn(`[CBT AUDIT] Detected ${holes} null/undefined questions in the initial slice!`);
-            }
-
-            // Final filter to ensure NO holes or undefined elements exist before mapping
-            const shuffledQuestions = finalSlice.filter(q => q && q.id);
-
-            if (shuffledQuestions.length < limit && holes === 0) {
-                 console.warn(`[CBT AUDIT] Count mismatch! Requested ${limit}, but only got ${shuffledQuestions.length}. This suggests duplicate questions were filtered out.`);
-            }
-
-            console.log(`[CBT AUDIT] Final Rendering: ${shuffledQuestions.length} questions.`);
-
-            // Prepare Questions — normalize embedded data, then build options
-            const finalQuestions = shuffledQuestions.map((q, idx) => {
-                if (!q) {
-                    console.error(`[CBT FATAL] Undefined question encountered at index ${idx}`);
-                    return null;
-                }
-
-                // NORMALIZE: Extract embedded options or detect fill-in-blank
-                this.normalizeQuestionData(q);
-
-                // Handle fill-in-the-blank questions (no MCQ options)
-                if (q.question_type === 'fill_in_blank') {
-                    return { 
-                        ...q, 
-                        shuffledOptions: [], 
-                        answerHash: q.fill_answer ? q.fill_answer.toLowerCase().trim() : ''
-                    };
-                }
-
-                const options = [
-                    { key: 'a', text: (q.option_a || '').toString().trim() },
-                    { key: 'b', text: (q.option_b || '').toString().trim() },
-                    { key: 'c', text: (q.option_c || '').toString().trim() },
-                    { key: 'd', text: (q.option_d || '').toString().trim() },
-                    { key: 'e', text: (q.option_e || '').toString().trim() }
-                ];
-
-                // Only include options that have actual content
-                const validOptions = options.filter(o => o.text && o.text.length > 0);
-
-                if (validOptions.length < 2) {
-                    console.warn(`[CBT Integrity] Question ${idx + 1} (${q.id}) only has ${validOptions.length} options after normalization.`);
-                }
-
-                let qSeed = seed + idx;
-                const shuffledOptions = seededShuffle([...validOptions], qSeed);
-                
-                const correctKey = (q.correct_option || 'A').toLowerCase();
-                const rawCorrectText = q[`option_${correctKey}`] || '';
-                const answerHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join(''); 
-
-                return { ...q, shuffledOptions, answerHash };
-            }).filter(Boolean); // Remove any nulls generated by the safety check
-
-            // Use the prepared questions for the rest of the session
-            questions = finalQuestions;
-
-            // Smart ID matching: find ANY result for this student (by record ID or profile ID)
-            const profiles = await db.profiles.toArray();
-            const studentProfiles = profiles.filter(p => p.assigned_id === studentId || p.id === studentId);
-            const possibleIds = [studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
-            
-            const results = await db.cbt_results.where('exam_id').equals(examId).toArray();
-            session = results.find(r => possibleIds.includes(r.student_id));
-
+            // 4. Persistence
             const now = new Date();
             const durationSeconds = (parseInt(exam.duration) || 60) * 60;
-
-            if (session) {
-                if (session.status === 'In Progress') {
-                    const startTime = new Date(session.started_at).getTime();
-                    const elapsedSeconds = isNaN(startTime) ? 0 : Math.floor((now.getTime() - startTime) / 1000);
-                    this.examTimeLeft = durationSeconds - elapsedSeconds;
-                } else if (session.status === 'Completed') {
-                    // Prevent starting if already completed
-                    return Notifications.show('You have already completed this exam and your score has been recorded.', 'info');
-                }
-            } else {
-                const totalMarks = questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
-                
-                const newSession = prepareForSync({
+            if (!session) {
+                session = prepareForSync({
                     id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                     exam_id: examId,
                     student_id: studentId,
-                    score: 0,
-                    total_questions: questions.length,
-                    total_marks: totalMarks,
-                    answers: {},
-                    warnings: 0,
-                    violations: [],
+                    status: 'In Progress',
                     started_at: now.toISOString(),
-                    status: 'In Progress'
+                    updated_at: now.toISOString(),
+                    total_questions: questions.length,
+                    total_marks: questions.reduce((s, q) => s + q.marks, 0),
+                    question_ids: questions.map(q => String(q.id)),
+                    answers: {}, warnings: 0, violations: []
                 });
-                await db.cbt_results.add(newSession);
-                
-                // Real-time Cloud Push
-                if (navigator.onLine) {
-                    const { is_synced, ...cloudSession } = newSession;
-                    supabase.from('cbt_results').upsert(cloudSession, { onConflict: 'student_id,exam_id' })
-                        .then(res => {
-                            if (res.error) console.warn('[CBT CLOUD] Init push error:', res.error);
-                            else console.log('[CBT CLOUD] New session initialized.');
-                        });
-                }
-
-                session = newSession;
-                this.examTimeLeft = durationSeconds;
+                await db.cbt_results.add(session);
+                if (navigator.onLine && supabase) await supabase.from('cbt_results').upsert(session);
+            } else if (session.status === 'Completed') {
+                return Notifications.show('Exam already completed.', 'info');
+            } else {
+                this.examTimeLeft = durationSeconds - Math.floor((now - new Date(session.started_at)) / 1000);
             }
 
-            // Store session state
             this.currentExam = exam;
             this.currentQuestions = questions;
+            this.userAnswers = session.answers || {};
             this.currentQuestionIndex = 0;
-            
-            // Ensure answers is always an object, never null/undefined
-            this.userAnswers = (session && session.answers && typeof session.answers === 'object') ? session.answers : {};
 
-            if (isResume && this.userAnswers) {
-                const answeredCount = Object.keys(this.userAnswers).length;
-                if (answeredCount > 0) {
-                    this.currentQuestionIndex = Math.min(answeredCount, questions.length - 1);
+            this.currentQuestions.forEach((q, i) => {
+                this.normalizeQuestionData(q);
+                if (q.question_type !== 'fill_in_blank') {
+                    const opts = [
+                        { key: 'A', text: q.option_a }, { key: 'B', text: q.option_b },
+                        { key: 'C', text: q.option_c }, { key: 'D', text: q.option_d }, { key: 'E', text: q.option_e }
+                    ].filter(o => o.text.length > 0);
+                    opts.sort(() => Math.sin(studentId.length + i) - 0.5);
+                    q.shuffledOptions = opts;
                 }
-            }
+            });
 
-            this.examDurationSeconds = durationSeconds;
-            document.body.classList.add('exam-mode');
-            
             this.renderCBTExamInterface();
-            this.startExamTimer();
-            this.attachSecurityListeners();
-
-        } catch (error) {
-            console.error('[CBT START FATAL]', error);
-            const errorMsg = error.message || 'Unknown Error';
-            Notifications.show(`Initialization failed: ${errorMsg}. Please contact support with this message.`, 'error');
+            this.startCBTTimer();
+        } catch (err) {
+            console.error('[CBT FATAL]', err);
+            Notifications.show(err.message || 'Failed to start exam.', 'error');
         }
     },
+
+
 
 
 
