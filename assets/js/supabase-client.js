@@ -79,7 +79,7 @@ export async function syncToCloud() {
                 // Table-level field whitelists
                 const whitelist = {
                     profiles: ['id', 'full_name', 'role', 'email', 'status', 'updated_at'],
-                    students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'passport_url', 'updated_at'],
+                    students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'specialization', 'legacy_student_id', 'passport_url', 'updated_at'],
                     classes: ['id', 'name', 'level', 'updated_at'],
                     subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
                     subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'updated_at'],
@@ -116,6 +116,12 @@ export async function syncToCloud() {
                         columns.forEach(col => {
                             if (item[col] !== undefined) sanitized[col] = item[col];
                         });
+                        
+                        // Bridge sub_class vs specialization for students table
+                        if (table === 'students') {
+                            if (item.sub_class && !sanitized.specialization) sanitized.specialization = item.sub_class;
+                            if (item.specialization && !sanitized.sub_class) sanitized.sub_class = item.specialization;
+                        }
 
                         // Defensive check for profiles role constraint
                         if (table === 'profiles') {
@@ -341,6 +347,14 @@ export async function syncFromCloud(forceAll = false) {
                                     option_e: q.option_e ?? '',
                                     correct_option: q.correct_option ?? 'A',
                                     marks: q.marks ?? 1
+                                }));
+                            }
+
+                            // --- 1A: Student Arm/Specialization Bridging ---
+                            if (table === 'students') {
+                                processedData = processedData.map(s => ({
+                                    ...s,
+                                    sub_class: s.sub_class || s.specialization || null
                                 }));
                             }
 

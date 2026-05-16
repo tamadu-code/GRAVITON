@@ -3037,9 +3037,9 @@ export const UI = {
                                     <option value="B" ${student.sub_class === 'B' ? 'selected' : ''}>B</option>
                                     <option value="C" ${student.sub_class === 'C' ? 'selected' : ''}>C</option>
                                     <option value="D" ${student.sub_class === 'D' ? 'selected' : ''}>D</option>
-                                    <option value="SCIENCE" ${student.sub_class === 'SCIENCE' ? 'selected' : ''}>SCIENCE</option>
-                                    <option value="ARTS" ${student.sub_class === 'ARTS' ? 'selected' : ''}>ARTS</option>
-                                    <option value="COMMERCIAL" ${student.sub_class === 'COMMERCIAL' ? 'selected' : ''}>COMMERCIAL</option>
+                                    <option value="Science" ${['Science', 'SCIENCE'].includes(student.sub_class) ? 'selected' : ''}>Science</option>
+                                    <option value="Arts" ${['Arts', 'ARTS'].includes(student.sub_class) ? 'selected' : ''}>Arts</option>
+                                    <option value="Commercial" ${['Commercial', 'COMMERCIAL'].includes(student.sub_class) ? 'selected' : ''}>Commercial</option>
                                 </select></div>
                             </div>
                             <div><label>Gender</label><select id="edit-std-gender" class="input" style="width:100%;"><option value="Male" ${student.gender === 'Male' ? 'selected' : ''}>Male</option><option value="Female" ${student.gender === 'Female' ? 'selected' : ''}>Female</option></select></div>
@@ -14844,6 +14844,19 @@ export const UI = {
                         user_id: this.currentUser.id, 
                         is_synced: 0 
                     });
+                }
+            }
+
+            // 3. Normalize Student Arms (sub_class) to Title Case
+            const allStudents = await db.students.toArray();
+            for (const s of allStudents) {
+                if (!s.sub_class) continue;
+                // Normalize SCIENCE -> Science, ARTS -> Arts, etc.
+                const normalized = s.sub_class.charAt(0).toUpperCase() + s.sub_class.slice(1).toLowerCase();
+                const validStreams = ['Science', 'Arts', 'Commercial'];
+                if (normalized !== s.sub_class && validStreams.includes(normalized)) {
+                    console.log(`[HealthCheck] Normalizing student arm: ${s.name} (${s.sub_class} -> ${normalized})`);
+                    await db.students.update(s.student_id, { sub_class: normalized, is_synced: 0 });
                 }
             }
             
