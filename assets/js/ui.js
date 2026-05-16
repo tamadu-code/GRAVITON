@@ -3893,9 +3893,13 @@ export const UI = {
                 return;
             }
             
-            // Dynamically load subjects assigned to this specific class
+            // Dynamically load subjects assigned to this specific class or its base class
             const allSubjects = await db.subjects.toArray();
-            let assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
+            
+            // Arm-aware matching: JSS 1A should also see subjects assigned to JSS 1
+            const baseClass = cls.split(' (')[0].split(/[A-Z]$/)[0].trim(); // JSS 1A -> JSS 1, SSS 2 (Science) -> SSS 2
+            
+            let assignments = await db.subject_assignments.where('class_name').anyOf([cls, baseClass]).toArray();
             
             if (isTeacher) {
                 assignments = assignments.filter(a => a.teacher_id === teacherId);
