@@ -28,7 +28,7 @@ db.version(32).stores({
 });
 
 // Final consolidated schema for Graviton Core v24.0
-db.version(38).stores({
+db.version(39).stores({
     // --- CORE IDENTITY & ACCESS ---
     profiles: 'id, full_name, role, assigned_id, email, status, updated_at, is_synced',
     students: 'student_id, name, gender, address, class_name, status, is_active, deactivated_at, attendance_code, admission_year, sub_class, legacy_student_id, updated_at, is_synced',
@@ -39,6 +39,7 @@ db.version(38).stores({
     subjects: 'id, name, type, credits, updated_at, is_synced',
     subject_assignments: 'id, teacher_id, subject_id, class_name, specialization, updated_at, is_synced',
     form_teachers: 'id, teacher_id, class_name, updated_at, is_synced',
+    timetable: 'id, class_name, day_of_week, period_number, subject_id, teacher_id, updated_at, is_synced',
     
     // --- PERFORMANCE & RECORDS ---
     scores: 'id, student_id, subject_id, term, session, class_name, [student_id+subject_id+term+session], updated_at, is_synced',
@@ -59,6 +60,7 @@ db.version(38).stores({
     cbt_exam_questions: 'id, exam_id, question_id, question_number, [exam_id+question_id], updated_at, is_synced',
     cbt_questions: 'id, exam_id, question_text, passage_text, option_a, option_b, option_c, option_d, option_e, correct_option, marks, updated_at, is_synced',
     cbt_results: 'id, exam_id, student_id, [student_id+exam_id], score, total_questions, total_marks, answers, warnings, violations, started_at, status, updated_at, is_synced',
+    exam_progress: 'id, exam_id, student_id, [student_id+exam_id], current_question, answers, started_at, updated_at, is_synced',
     
     // --- COMMUNICATION & NOTICES ---
     notices: 'id, title, content, category, target, is_active, updated_at, is_synced',
@@ -69,6 +71,8 @@ db.version(38).stores({
     payments: 'id, student_id, amount, date, term, session, category, updated_at, is_synced',
     fee_items: 'id, name, amount, category, updated_at, is_synced',
     fee_balances: 'id, student_id, balance, updated_at, is_synced',
+    fee_structures: 'id, class_name, amount, term, session, category, updated_at, is_synced',
+    pins: 'id, pin_code, serial, status, student_id, term, session, used_count, usage_limit, updated_at, is_synced',
     receipts: 'id, student_id, amount, date, details, updated_at, is_synced',
     inventory: 'id, item_name, category, quantity, unit, updated_at, is_synced',
     inventory_transactions: 'id, item_id, type, quantity, reason, date, updated_at, is_synced',

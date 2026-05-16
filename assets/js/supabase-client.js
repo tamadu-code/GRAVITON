@@ -55,7 +55,7 @@ export async function syncToCloud() {
     const client = getSupabase();
     if (!client) return { success: false, message: 'Supabase not configured' };
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections'];
     let syncCount = 0;
     const failedTables = new Set();
 
@@ -96,6 +96,7 @@ export async function syncToCloud() {
                     cbt_exams: ['id', 'title', 'subject_id', 'class_name', 'teacher_id', 'mode', 'term', 'session', 'score_field', 'date', 'start_time', 'end_time', 'duration', 'question_limit', 'status', 'updated_at'],
                     cbt_questions: ['id', 'exam_id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'updated_at'],
                     cbt_results: ['id', 'exam_id', 'student_id', 'score', 'total_questions', 'total_marks', 'answers', 'warnings', 'violations', 'started_at', 'status', 'updated_at'],
+                    cbt_exam_sections: ['id', 'exam_id', 'subject_id', 'class_name', 'score_field', 'question_count', 'target_mark', 'updated_at'],
                     duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'updated_at'],
                     audit_logs: ['id', 'operation', 'table', 'record_id', 'timestamp', 'user_id'],
                     parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'updated_at']
@@ -229,7 +230,7 @@ export async function syncFromCloud(forceAll = false) {
     const client = getSupabase();
     if (!client) return;
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 'cbt_exam_sections'];
     
     // ── Block sync during active exam to prevent flickering and state resets ──
     if (document.body.classList.contains('exam-mode')) {
