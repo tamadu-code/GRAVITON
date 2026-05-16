@@ -7559,18 +7559,11 @@ export const UI = {
 
         this.cbtQuestions = isEdit ? await db.cbt_questions.where('exam_id').equals(examId).toArray() : [];
 
-        let allSubjects = await db.subjects.toArray();
-        let filteredSubjects = allSubjects;
-        
-        if (exam.class_name) {
-            const assignments = await db.subject_assignments.where('class_name').equals(exam.class_name).toArray();
-            const assignedSubIds = new Set(assignments.map(a => a.subject_id));
-            filteredSubjects = allSubjects.filter(s => assignedSubIds.has(s.id));
-        }
+        let subjects = await this.getSubjectsForClass(exam.class_name);
 
         // Global Deduplication by Name
         const uniqueMap = new Map();
-        filteredSubjects.forEach(s => {
+        subjects.forEach(s => {
             const name = (s.name || '').trim();
             if (!uniqueMap.has(name)) uniqueMap.set(name, s);
         });
@@ -7866,41 +7859,27 @@ export const UI = {
             
             if (!selectedClass) return;
 
-            const assignments = await db.subject_assignments.where('class_name').equals(selectedClass).toArray();
-            const teacherId = this.currentUser.id;
-            const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
-
-            let classSubjects = [];
-            
-            if (isTeacher) {
-                // Teachers only see subjects assigned to THEM in this class
-                const filteredAssignments = assignments.filter(a => a.teacher_id === teacherId);
-                const subIds = [...new Set(filteredAssignments.map(a => a.subject_id))];
-                classSubjects = (await Promise.all(subIds.map(id => db.subjects.get(id)))).filter(Boolean);
-            } else {
-                // Admins: STRICT filtering. Only show subjects assigned to this class.
-                const allAssignedSubIds = [...new Set(assignments.map(a => a.subject_id))];
-                classSubjects = (await Promise.all(allAssignedSubIds.map(id => db.subjects.get(id)))).filter(Boolean);
-                
-                // If NO subjects are assigned to this class yet, show the full list as fallback
-                if (classSubjects.length === 0) {
-                    classSubjects = await db.subjects.toArray();
-                }
-            }
-
-            classSubjects.sort((a, b) => a.name.localeCompare(b.name));
+            const classSubjects = await this.getSubjectsForClass(selectedClass);
             
             // Deduplicate for display
-            const subCounts = {};
-            classSubjects.forEach(s => subCounts[s.name] = (subCounts[s.name] || 0) + 1);
-
+            const subMap = new Map();
             classSubjects.forEach(s => {
+                const name = (s.name || '').trim();
+                if (!subMap.has(name)) subMap.set(name, s);
+            });
+
+            Array.from(subMap.values()).forEach(s => {
                 const opt = document.createElement('option');
                 opt.value = s.id;
-                opt.textContent = subCounts[s.name] > 1 ? `${s.name} (${s.type || 'General'})` : s.name;
+                opt.textContent = s.name;
                 opt.selected = exam && exam.subject_id === s.id;
                 subjectSelect.appendChild(opt);
             });
+
+            // Refresh sections if unified
+            if (document.getElementById('cbt-sections-list')) {
+                this.renderCBTSections();
+            }
         });
 
         // Trigger initial filter if class is pre-selected
@@ -8247,17 +8226,8 @@ export const UI = {
         if (!list) return;
 
         const className = document.getElementById('exam-class')?.value;
-        let subjects = [];
+        const subjects = await this.getSubjectsForClass(className);
         const classes = await db.classes.toArray();
-
-        if (className) {
-            const assignments = await db.subject_assignments.where('class_name').equals(className).toArray();
-            const assignedSubIds = new Set(assignments.map(a => a.subject_id));
-            const all = await db.subjects.toArray();
-            subjects = all.filter(s => assignedSubIds.has(s.id));
-        } else {
-            subjects = await db.subjects.toArray();
-        }
 
         // Global Deduplication by Name
         const uniqueMap = new Map();
@@ -14866,6 +14836,22 @@ export const UI = {
         } catch (e) {
             console.error('[HealthCheck] Failed:', e);
         }
+    },
+
+    async getSubjectsForClass(className) {
+        const all = await db.subjects.toArray();
+        if (!className || this.currentUser?.role === 'Admin') return all.sort((a,b) => a.name.localeCompare(b.name));
+
+        // Fuzzy match: SSS 2 matches SSS 2 Science, SSS 2A, etc.
+        const assignments = await db.subject_assignments.toArray();
+        const assignedSubIds = new Set(
+            assignments
+                .filter(a => a.class_name && a.class_name.startsWith(className))
+                .map(a => a.subject_id)
+        );
+
+        const filtered = all.filter(s => assignedSubIds.has(s.id));
+        return (filtered.length > 0 ? filtered : all).sort((a,b) => a.name.localeCompare(b.name));
     }
 };
 
