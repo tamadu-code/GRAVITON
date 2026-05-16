@@ -6004,11 +6004,8 @@ export const UI = {
                     if (sub) loadedSubjects.push(sub);
                 }
 
-                // Analytics Calculation
-                let qualifiedPass = 0;
-                let eliteCount = 0;
-                
-                const studentStats = loadedStudents.map(student => {
+                // 1. First Pass: Calculate averages for all students
+                let studentStats = loadedStudents.map(student => {
                     const studentScores = loadedScores.filter(s => s.student_id === student.student_id);
                     let totalScore = 0;
                     let subjectCount = studentScores.length;
@@ -6017,10 +6014,7 @@ export const UI = {
                         totalScore += Number(s.total) || 0;
                     });
                     
-                    const average = subjectCount > 0 ? (totalScore / subjectCount).toFixed(1) : 0;
-                    
-                    if (average >= 50) qualifiedPass++;
-                    if (average >= 75) eliteCount++; // 75+ is generally A1/B2 range
+                    const average = subjectCount > 0 ? (totalScore / subjectCount).toFixed(2) : 0;
                     
                     return {
                         ...student,
@@ -6028,6 +6022,56 @@ export const UI = {
                         average: Number(average)
                     };
                 });
+
+                // 2. Second Pass: Group by specialization and calculate ranks
+                // If it's an SSS class, we rank within sub_class. Otherwise, we rank within the whole class.
+                const isSenior = className.includes('SSS') || className.includes('SS ');
+                
+                if (isSenior) {
+                    const groups = {};
+                    studentStats.forEach(s => {
+                        const spec = s.sub_class || 'General';
+                        if (!groups[spec]) groups[spec] = [];
+                        groups[spec].push(s);
+                    });
+
+                    Object.keys(groups).forEach(spec => {
+                        const members = groups[spec];
+                        members.sort((a, b) => b.average - a.average);
+                        members.forEach((s, idx) => {
+                            let rank = idx + 1;
+                            if (idx > 0 && s.average === members[idx-1].average) {
+                                // Tie handling (optional, but good for consistency)
+                                s.rank = members[idx-1].rank;
+                                s.rankRaw = members[idx-1].rankRaw;
+                            } else {
+                                s.rank = ScoringEngine.getOrdinal(rank);
+                                s.rankRaw = rank;
+                            }
+                            s.specializationSize = members.length;
+                        });
+                    });
+                } else {
+                    studentStats.sort((a, b) => b.average - a.average);
+                    studentStats.forEach((s, idx) => {
+                        let rank = idx + 1;
+                        if (idx > 0 && s.average === studentStats[idx-1].average) {
+                            s.rank = studentStats[idx-1].rank;
+                            s.rankRaw = studentStats[idx-1].rankRaw;
+                        } else {
+                            s.rank = ScoringEngine.getOrdinal(rank);
+                            s.rankRaw = rank;
+                        }
+                        s.specializationSize = studentStats.length;
+                    });
+                }
+
+                // Restore alpha sort for UI display if preferred, or keep rank sort
+                studentStats.sort((a,b) => a.name.localeCompare(b.name));
+
+                // Final Analytics for Header
+                let qualifiedPass = studentStats.filter(s => s.average >= 50).length;
+                let eliteCount = studentStats.filter(s => s.average >= 75).length;
 
                 // Update Header
                 document.getElementById('stat-qualified').textContent = qualifiedPass;
@@ -6097,7 +6141,7 @@ export const UI = {
                 document.querySelectorAll('.generate-individual-pdf').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const id = e.currentTarget.dataset.id;
-                        const student = loadedStudents.find(st => st.student_id === id);
+                        const student = studentStats.find(st => st.student_id === id);
                         if (!student) return;
 
                         const sScores = loadedScores.filter(sc => sc.student_id === id);
@@ -6132,7 +6176,9 @@ export const UI = {
                             termStart: nextTermDate,
                             teacherName: teacherName,
                             session: session,
-                            term: term
+                            term: term,
+                            position: student.rank,
+                            specializationSize: student.specializationSize
                         };
 
                         Notifications.show(`Generating report for ${student.name}...`, 'info');
@@ -6142,17 +6188,17 @@ export const UI = {
                 });
 
                 document.getElementById('btn-matrix-view').addEventListener('click', async () => {
-                    if (loadedStudents.length === 0) return Notifications.show('No students to generate mastersheet', 'error');
+                    if (studentStats.length === 0) return Notifications.show('No students to generate mastersheet', 'error');
                     Notifications.show('Compiling matrix view...', 'info');
-                    const doc = await generateMastersheet(className, loadedStudents, loadedSubjects, loadedScores, term, session);
+                    const doc = await generateMastersheet(className, studentStats, loadedSubjects, loadedScores, term, session);
                     if (doc) this.showPDFPreview(doc, `Mastersheet_${className}_${term}.pdf`);
                     Notifications.show('Mastersheet generated!', 'success');
                 });
 
                 document.getElementById('btn-batch-print').addEventListener('click', async () => {
-                    if (loadedStudents.length === 0) return Notifications.show('No students to generate batch', 'error');
+                    if (studentStats.length === 0) return Notifications.show('No students to generate batch', 'error');
                     
-                    Notifications.show(`Generating batch reports for ${loadedStudents.length} students...`, 'info');
+                    Notifications.show(`Generating batch reports for ${studentStats.length} students...`, 'info');
                     
                     const { jsPDF } = window.jspdf;
                     const batchDoc = new jsPDF('p', 'mm', 'a4');
@@ -6165,7 +6211,7 @@ export const UI = {
                         if (teacherProfile) teacherName = teacherProfile.full_name;
                     }
 
-                    const schoolInfo = {
+                    const schoolInfoTemplate = {
                         name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
                         address: settings.schoolAddress || '123 Education Street, Academic City',
                         phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
@@ -6175,7 +6221,6 @@ export const UI = {
                         principalSignature: settings.principalSignature || null,
                         logo: settings.schoolLogo || null,
                         themeColor: settings.themeColor || '#060495',
-                        schoolManager: settings.schoolManager || 'TAMADU CODE',
                         termEnd: closureDate,
                         termStart: nextTermDate,
                         teacherName: teacherName,
@@ -6183,8 +6228,8 @@ export const UI = {
                         term: term
                     };
 
-                    for (let i = 0; i < loadedStudents.length; i++) {
-                        const student = loadedStudents[i];
+                    for (let i = 0; i < studentStats.length; i++) {
+                        const student = studentStats[i];
                         const sScores = loadedScores.filter(sc => sc.student_id === student.student_id);
                         const sAtt = loadedAttendance.filter(a => a.student_id === student.student_id);
                         
@@ -6195,8 +6240,14 @@ export const UI = {
 
                         if (i > 0) batchDoc.addPage();
                         
+                        const studentSchoolInfo = {
+                            ...schoolInfoTemplate,
+                            position: student.rank,
+                            specializationSize: student.specializationSize
+                        };
+
                         // Pass existing doc to avoid multiple downloads
-                        await generateReportCard(student, sScores, schoolInfo, sAtt, batchDoc);
+                        await generateReportCard(student, sScores, studentSchoolInfo, sAtt, batchDoc);
                     }
 
                     this.showPDFPreview(batchDoc, `Batch_Reports_${className}.pdf`);

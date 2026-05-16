@@ -28,6 +28,26 @@ export const ScoringEngine = {
         return 'Fail';
     },
 
+    getTeacherRemark(avg) {
+        const score = parseFloat(avg);
+        if (score >= 85) return "An exceptionally brilliant performance! You have shown a high level of academic maturity and consistency. Keep it up.";
+        if (score >= 75) return "A very impressive result. Your dedication to your studies is evident in your performance. Maintain this momentum.";
+        if (score >= 65) return "A good performance overall. You have a solid grasp of the subjects, but there is still room for more effort to reach the top.";
+        if (score >= 55) return "A fair performance. You have potential, but you need to be more serious with your studies to achieve better grades.";
+        if (score >= 45) return "Your performance is below average. You need to put in significantly more effort and focus on your weak areas.";
+        return "A very poor result. You are advised to be more studious and seek help in subjects where you are struggling.";
+    },
+
+    getPrincipalRemark(avg) {
+        const score = parseFloat(avg);
+        if (score >= 80) return "Excellent result! You are a credit to this institution. Continue to strive for excellence.";
+        if (score >= 70) return "A very good performance. I am pleased with your progress. Keep up the hard work.";
+        if (score >= 60) return "Good performance. With more consistency and focus, you can achieve even greater heights.";
+        if (score >= 50) return "Average performance. You can do much better if you devote more time to your studies.";
+        if (score >= 40) return "A weak performance. You need to double your efforts to avoid falling behind.";
+        return "Very poor performance. You must improve your attitude towards your studies to avoid failure.";
+    },
+
     getOrdinal(n) {
         const s = ["th", "st", "nd", "rd"];
         const v = n % 100;
@@ -163,15 +183,10 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.setTextColor(0, 0, 0);
     doc.text(schoolInfo.address.toUpperCase(), pageWidth / 2 + 10, 20, { align: 'center' });
     doc.text(`Tel: ${schoolInfo.phone} | Email: ${schoolInfo.email}`, pageWidth / 2 + 10, 23.5, { align: 'center' });
-    if (schoolInfo.schoolManager) {
-        doc.setFont('helvetica', 'bold');
-        doc.text(`MANAGEMENT: ${schoolInfo.schoolManager.toUpperCase()}`, pageWidth / 2 + 10, 27, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-    }
     
     doc.setFont('helvetica', 'bolditalic');
     doc.setTextColor(theme.r, theme.g, theme.b);
-    doc.text(`Motto: ${schoolInfo.motto}`, pageWidth / 2 + 10, schoolInfo.schoolManager ? 30.5 : 28, { align: 'center' });
+    doc.text(`Motto: ${schoolInfo.motto}`, pageWidth / 2 + 10, 27, { align: 'center' });
     
     // Report Title Box
     doc.setFillColor(theme.r, theme.g, theme.b);
@@ -197,9 +212,13 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     
     y += 7;
     // Row 2
-    doc.text(`CLASS: ${student.class_name}`, leftX, y);
+    let displayClass = student.class_name;
+    if (student.sub_class && (student.class_name.includes('SSS') || student.class_name.includes('SS '))) {
+        displayClass += ` (${student.sub_class})`;
+    }
+    doc.text(`CLASS: ${displayClass}`, leftX, y);
     doc.text(`SESSION: ${scores[0]?.session || '2025/2026'}`, midX, y);
-    doc.text(`NO. IN CLASS: ${schoolInfo.classSize || '27'}`, rightX, y);
+    doc.text(`POS: ${schoolInfo.position || 'N/A'} / ${schoolInfo.specializationSize || schoolInfo.classSize || '0'}`, rightX, y);
     
     y += 7;
     // Row 3
@@ -292,8 +311,8 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.text("TEACHER'S COMMENT:", 12, currentY + 5);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
-    doc.text(schoolInfo.teacherComment || "Exceptional brilliance! You have consistently shown deep understanding and mastery of all subjects.", 12, currentY + 10, { maxWidth: pageWidth - 25 });
-    doc.text(`Name: ${schoolInfo.teacherName || 'Oyivwita Arwerosuaghene'}`, 12, currentY + 18);
+    doc.text(schoolInfo.teacherComment || ScoringEngine.getTeacherRemark(avg), 12, currentY + 10, { maxWidth: pageWidth - 25 });
+    doc.text(`Name: ${schoolInfo.teacherName || 'Form Teacher'}`, 12, currentY + 18);
     doc.text(`Sign: ____________________`, pageWidth - 60, currentY + 18);
     
     currentY += 25;
@@ -305,7 +324,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.text("PRINCIPAL'S COMMENT:", 12, currentY + 5);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
-    doc.text(schoolInfo.principalComment || "A truly distinctive performance. You are the pride of the school. Keep reaching for the stars!", 12, currentY + 10, { maxWidth: pageWidth - 25 });
+    doc.text(schoolInfo.principalComment || ScoringEngine.getPrincipalRemark(avg), 12, currentY + 10, { maxWidth: pageWidth - 25 });
     doc.text(`Name: ${schoolInfo.principalName || 'Mr. Lartey Sampson'}`, 12, currentY + 18);
     doc.text(`Sign: ____________________`, pageWidth - 60, currentY + 18);
     
@@ -338,16 +357,16 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     // Principal's Signature Area
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
-    doc.text("__________________________", 25, footerY - 5);
+    doc.text("__________________________", 75, footerY - 5);
     doc.setFont('helvetica', 'bold');
-    doc.text(schoolInfo.principalName.toUpperCase(), 25, footerY);
+    doc.text(schoolInfo.principalName.toUpperCase(), 75, footerY);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    doc.text("School Principal", 25, footerY + 4);
+    doc.text("School Principal", 75, footerY + 4);
     
     if (schoolInfo.principalSignature) {
         try {
-            doc.addImage(schoolInfo.principalSignature, 'PNG', 25, footerY - 18, 30, 12);
+            doc.addImage(schoolInfo.principalSignature, 'PNG', 75, footerY - 18, 30, 12);
         } catch (e) {
             console.warn('Failed to add signature to PDF:', e);
         }
