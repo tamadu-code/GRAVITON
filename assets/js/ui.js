@@ -6178,7 +6178,8 @@ export const UI = {
                             session: session,
                             term: term,
                             position: student.rank,
-                            specializationSize: student.specializationSize
+                            specializationSize: student.specializationSize,
+                            gradingSystem: settings.gradingSystem || 'Positional Ranking'
                         };
 
                         Notifications.show(`Generating report for ${student.name}...`, 'info');
@@ -6225,7 +6226,8 @@ export const UI = {
                         termStart: nextTermDate,
                         teacherName: teacherName,
                         session: session,
-                        term: term
+                        term: term,
+                        gradingSystem: settings.gradingSystem || 'Positional Ranking'
                     };
 
                     for (let i = 0; i < studentStats.length; i++) {

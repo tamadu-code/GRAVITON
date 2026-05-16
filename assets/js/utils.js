@@ -218,15 +218,24 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     }
     doc.text(`CLASS: ${displayClass}`, leftX, y);
     doc.text(`SESSION: ${scores[0]?.session || '2025/2026'}`, midX, y);
-    doc.text(`POS: ${schoolInfo.position || 'N/A'} / ${schoolInfo.specializationSize || schoolInfo.classSize || '0'}`, rightX, y);
+    
+    // Conditional Ranking Display
+    const gSystem = schoolInfo.gradingSystem || 'Positional Ranking';
+    if (gSystem === 'Positional Ranking') {
+        doc.text(`POSITION: ${schoolInfo.position || 'N/A'} / ${schoolInfo.specializationSize || schoolInfo.classSize || '0'}`, rightX, y);
+    } else if (gSystem === 'Point System (5.0 CGPA)') {
+        const gpa = (parseFloat(avg) / 20).toFixed(2); // Simple conversion for demo
+        doc.text(`GPA: ${gpa} / 5.00`, rightX, y);
+    } else {
+        doc.text(`OVERALL GRADE: ${ScoringEngine.getGrade(parseFloat(avg))}`, rightX, y);
+    }
     
     y += 7;
     // Row 3
     doc.text(`TERM: ${scores[0]?.term || 'N/A'}`, leftX, y);
     const avg = scores.length > 0 ? (scores.reduce((a, b) => a + (b.total || 0), 0) / scores.length).toFixed(2) : 0;
     doc.text(`AVERAGE: ${avg}%`, midX, y);
-    doc.text(`OVERALL GRADE: ${ScoringEngine.getGrade(parseFloat(avg))}`, rightX, y);
-    
+    // Blank right side to respect the "one or the other" rule
     y += 7;
     // Row 4
     doc.text(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'}`, leftX, y);
