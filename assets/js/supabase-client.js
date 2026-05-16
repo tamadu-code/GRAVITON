@@ -163,10 +163,11 @@ export async function syncToCloud() {
                         let { error } = await client.from(table).upsert(dataToSync);
                         
                         if (error) {
-                            console.error(`Sync error for ${table}:`, error, "Data:", dataToSync);
-                            
-                            // Self-healing for schema mismatches
-                            if (error.message.includes('violations') || error.message.includes('warnings')) {
+                            // Self-healing for Unique Constraint Violations (e.g. duplicate subject assignments)
+                            if (error.code === '23505') {
+                                console.warn(`[Sync Self-Heal] Record already exists in cloud for ${table}. Marking as synced to resolve loop.`);
+                                error = null; // Clear error to allow local sync mark
+                            } else if (error.message.includes('violations') || error.message.includes('warnings')) {
                                 console.warn(`[Sync Self-Heal] Cloud schema mismatch for ${table}. Retrying without telemetry columns...`);
                                 const sanitizedData = dataToSync.map(item => {
                                     const cleaned = { ...item };
@@ -176,6 +177,8 @@ export async function syncToCloud() {
                                 });
                                 const retry = await client.from(table).upsert(sanitizedData);
                                 error = retry.error;
+                            } else {
+                                console.error(`Sync error for ${table}:`, error, "Data:", dataToSync);
                             }
                         }
 

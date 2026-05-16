@@ -14780,6 +14780,77 @@ export const UI = {
                 card.style.display = 'none';
             }
         });
+    },
+
+    async runDatabaseHealthCheck() {
+        if (this.currentUser?.role !== 'Admin') return;
+        console.log('[HealthCheck] Starting data deduplication...');
+        
+        try {
+            // 1. Deduplicate Subjects
+            const allSubjects = await db.subjects.toArray();
+            const subMap = new Map(); // name -> id
+            for (const s of allSubjects) {
+                const name = (s.name || '').trim().toLowerCase();
+                if (!name) continue;
+
+                if (!subMap.has(name)) {
+                    subMap.set(name, s.id);
+                } else {
+                    const originalId = subMap.get(name);
+                    console.log(`[HealthCheck] Merging duplicate subject: ${s.name} (${s.id} -> ${originalId})`);
+                    
+                    // Update dependencies to point to the "master" subject ID
+                    await db.subject_assignments.where('subject_id').equals(s.id).modify({ subject_id: originalId, is_synced: 0 });
+                    await db.scores.where('subject_id').equals(s.id).modify({ subject_id: originalId, is_synced: 0 });
+                    await db.timetable.where('subject_id').equals(s.id).modify({ subject_id: originalId, is_synced: 0 });
+                    await db.cbt_exams.where('subject_id').equals(s.id).modify({ subject_id: originalId, is_synced: 0 });
+                    await db.cbt_question_bank.where('subject_id').equals(s.id).modify({ subject_id: originalId, is_synced: 0 });
+                    
+                    // Delete the duplicate local subject
+                    await db.subjects.delete(s.id);
+                    
+                    // Log the deletion for cloud propagation
+                    await db.audit_logs.add({ 
+                        id: `AUD${Date.now()}_${Math.random().toString(36).substr(2,4)}`, 
+                        operation: 'DELETE', 
+                        table: 'subjects', 
+                        record_id: s.id, 
+                        timestamp: new Date().toISOString(), 
+                        user_id: this.currentUser.id, 
+                        is_synced: 0 
+                    });
+                }
+            }
+
+            // 2. Deduplicate Subject Assignments
+            const allAss = await db.subject_assignments.toArray();
+            const assMap = new Map(); // compositeKey -> id
+            for (const a of allAss) {
+                const key = `${a.teacher_id}-${a.subject_id}-${a.class_name}-${a.specialization}`;
+                if (!assMap.has(key)) {
+                    assMap.set(key, a.id);
+                } else {
+                    console.log(`[HealthCheck] Removing duplicate assignment: ${key}`);
+                    await db.subject_assignments.delete(a.id);
+                    
+                    // Log for cloud
+                    await db.audit_logs.add({ 
+                        id: `AUD${Date.now()}_${Math.random().toString(36).substr(2,4)}`, 
+                        operation: 'DELETE', 
+                        table: 'subject_assignments', 
+                        record_id: a.id, 
+                        timestamp: new Date().toISOString(), 
+                        user_id: this.currentUser.id, 
+                        is_synced: 0 
+                    });
+                }
+            }
+            
+            console.log('[HealthCheck] Maintenance complete.');
+        } catch (e) {
+            console.error('[HealthCheck] Failed:', e);
+        }
     }
 };
 

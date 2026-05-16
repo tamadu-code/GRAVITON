@@ -7,7 +7,7 @@ import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, 
 import db from './db.js';
 import { Notifications } from './utils.js';
 
-console.log('--- GRAVITON CORE v24.0 (BUILD v197) - INITIALIZING ---');
+console.log('--- GRAVITON CORE v24.0 (BUILD v198) - INITIALIZING ---');
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -331,6 +331,9 @@ async function loadAuthenticatedApp(authUser) {
     createAccountScreen.style.display = 'none';
     forgotPasswordScreen.style.display = 'none';
     appContainer.style.display = 'flex';
+
+    // Run Data Health Check (Admin only)
+    await UI.runDatabaseHealthCheck();
 
     // Start Data Sync Loop and update status when first sync completes
     updateSyncStatus('Syncing', 'syncing');
