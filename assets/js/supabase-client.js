@@ -101,7 +101,7 @@ export async function syncToCloud() {
                     duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'updated_at'],
                     audit_logs: ['id', 'operation', 'table', 'record_id', 'timestamp', 'user_id'],
                     parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'updated_at'],
-                    cbt_question_bank: ['id', 'subject_id', 'class_name', 'question_text', 'passage_text', 'topic_area', 'difficulty_level', 'updated_at'],
+                    cbt_question_bank: ['id', 'subject_id', 'class_name', 'question_text', 'topic_area', 'difficulty_level', 'updated_at'],
                     cbt_options: ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'updated_at']
                 };
 
