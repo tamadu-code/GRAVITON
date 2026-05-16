@@ -614,55 +614,54 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
             
             const pageStudents = students.slice(p * pageSize, (p + 1) * pageSize);
             
-            // --- Header Section (Photo Match) ---
+            // --- Header Section (Optical Centering) ---
             if (schoolInfo.logo) {
                 try {
-                    doc.addImage(schoolInfo.logo, 'PNG', 12, 10, 20, 20);
+                    doc.addImage(schoolInfo.logo, 'PNG', 12, 10, 18, 18);
                 } catch (e) {}
             }
             
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
-            doc.text(schoolInfo.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL', 35, 18);
+            const schoolName = schoolInfo.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL';
+            doc.text(schoolName.toUpperCase(), pageWidth / 2, 18, { align: 'center' });
             
             doc.setFontSize(11);
-            doc.text('CONTINUOUS ASSESSMENT SCORE SHEET', 35, 24);
-            doc.line(35, 25, 120, 25); // Underline
+            doc.text('CONTINUOUS ASSESSMENT SCORE SHEET', pageWidth / 2, 24, { align: 'center' });
             
-            // --- Metadata Grid (Photo Match) ---
+            const titleWidth = doc.getTextWidth('CONTINUOUS ASSESSMENT SCORE SHEET');
+            doc.line((pageWidth / 2) - (titleWidth / 2), 25, (pageWidth / 2) + (titleWidth / 2), 25); // Centered Underline
+            
+            // --- Metadata Grid (Overlap Fix) ---
             doc.setFontSize(8);
             const metaY = 35;
             
-            // Draw Table Grid for Metadata
             doc.setDrawColor(0);
             doc.setLineWidth(0.2);
             doc.rect(12, metaY, pageWidth - 24, 12); // Outer box
             doc.line(12, metaY + 6, pageWidth - 12, metaY + 6); // Horizontal divider
             
-            // Vertical Dividers
-            doc.line(45, metaY, 45, metaY + 12);
-            doc.line(100, metaY, 100, metaY + 6);
-            doc.line(135, metaY, 135, metaY + 6);
+            // Re-calculated Vertical Dividers for optimal spacing
+            doc.line(55, metaY, 55, metaY + 12); // Moved from 45 to 55 for CLASS space
+            doc.line(145, metaY, 145, metaY + 6); // Moved from 135 to 145 for SUBJECT space
             
-            // Labels and Values
-            const drawMeta = (label, val, x, y) => {
+            const drawMeta = (label, val, x, y, valOffset = 15) => {
                 doc.setFont('helvetica', 'normal');
-                doc.text(label, x + 1, y + 4);
+                doc.text(label, x + 2, y + 4);
                 doc.setFont('helvetica', 'bold');
-                doc.text(String(val).toUpperCase(), x + 12, y + 4);
+                doc.text(String(val).toUpperCase(), x + valOffset, y + 4);
             };
             
-            drawMeta('CLASS:', className, 12, metaY);
-            drawMeta('SUBJECT:', subjectName, 45, metaY);
-            drawMeta('SESSION:', session, 135, metaY);
+            drawMeta('CLASS:', className, 12, metaY, 12);
+            drawMeta('SUBJECT:', subjectName, 55, metaY, 16);
+            drawMeta('SESSION:', session, 145, metaY, 15);
             
-            drawMeta('TERM:', term, 12, metaY + 6);
+            drawMeta('TERM:', term, 12, metaY + 6, 12);
             
-            // Teacher Label (Longer)
             doc.setFont('helvetica', 'normal');
-            doc.text('TEACHER:', 46, metaY + 10);
+            doc.text('TEACHER:', 57, metaY + 10);
             doc.setFont('helvetica', 'bold');
-            doc.text(teacherName.toUpperCase(), 65, metaY + 10);
+            doc.text(teacherName.toUpperCase(), 75, metaY + 10);
             
             // --- Main Score Table ---
             const head = [['S/N', 'STUDENT NAME', 'ASS', 'T1', 'T2', 'PRJ', 'EXAM', 'TOTAL']];
@@ -672,11 +671,11 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
                 '', '', '', '', '', ''
             ]);
             
-            // Extra blank rows
+            // Extra blank rows (NO UNDERSCORES)
             if (p === totalPages - 1 && body.length < pageSize) {
                 const extra = pageSize - body.length;
                 for (let i = 0; i < extra; i++) {
-                    body.push([(p * pageSize) + pageStudents.length + i + 1, '________________________________', '', '', '', '', '', '']);
+                    body.push([(p * pageSize) + pageStudents.length + i + 1, '', '', '', '', '', '', '']);
                 }
             }
             
