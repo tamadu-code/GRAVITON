@@ -7092,11 +7092,27 @@ export const UI = {
             const sClass = student ? student.class_name : '';
             
             activeExams = exams.filter(e => {
-                const isMyClass = sClass.toLowerCase().includes(e.class_name.toLowerCase()) || 
-                                 e.class_name.toLowerCase().includes(sClass.toLowerCase());
+                const isMyClass = sClass && e.class_name && (
+                    sClass.toLowerCase().includes(e.class_name.toLowerCase()) || 
+                    e.class_name.toLowerCase().includes(sClass.toLowerCase())
+                );
                 const isActive = e.status === 'Active';
-                const hasStarted = !e.start_time || new Date(e.start_time) <= now;
-                const hasNotEnded = !e.end_time || new Date(e.end_time) >= now;
+                
+                // Scheduling logic: ensure we compare local times correctly
+                const parseDate = (d) => {
+                    if (!d) return null;
+                    // If it's just a date (YYYY-MM-DD), append midnight local time to prevent UTC shift
+                    const normalized = (typeof d === 'string' && d.length === 10) ? `${d}T00:00` : d;
+                    const date = new Date(normalized);
+                    return isNaN(date.getTime()) ? null : date;
+                };
+
+                const start = parseDate(e.start_time);
+                const end = parseDate(e.end_time);
+                
+                const hasStarted = !start || start <= now;
+                const hasNotEnded = !end || end >= now;
+                
                 return isMyClass && isActive && hasStarted && hasNotEnded;
             });
 
@@ -7612,57 +7628,91 @@ export const UI = {
                             </div>
 
                             <div class="cbt-form-group">
-                                <label>Class</label>
+                                <label>Target Class</label>
                                 <select id="exam-class" class="cbt-input">
                                     <option value="">Select Class</option>
                                     ${classes.map(c => `<option value="${c.name}" ${exam.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
                                 </select>
                             </div>
 
-                            <div class="cbt-form-group">
-                                <label>Subject</label>
-                                <select id="exam-subject" class="cbt-input">
-                                    <option value="">Select Subject</option>
-                                    ${subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.displayName || s.name}</option>`).join('')}
-                                </select>
-
-
-
-                            </div>
-
-                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
+                            <!-- Standard Settings Section -->
+                            <div id="cbt-standard-settings" style="display: ${exam.is_unified ? 'none' : 'block'};">
                                 <div class="cbt-form-group">
-                                    <label>Start Date/Time</label>
-                                    <input type="datetime-local" id="exam-start" class="cbt-input" value="${formatDateForInput(exam.start_time)}">
+                                    <label>Subject</label>
+                                    <select id="exam-subject" class="cbt-input">
+                                        <option value="">Select Subject</option>
+                                        ${subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.displayName || s.name}</option>`).join('')}
+                                    </select>
                                 </div>
-                                <div class="cbt-form-group">
-                                    <label>End Date/Time</label>
-                                    <input type="datetime-local" id="exam-end" class="cbt-input" value="${formatDateForInput(exam.end_time)}">
-                                </div>
-                            </div>
 
-                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1rem;">
-                                <div class="cbt-form-group">
-                                    <label>Duration (Minutes)</label>
-                                    <input type="number" id="exam-duration" class="cbt-input" value="${exam.duration || 30}">
-                                </div>
                                 <div class="cbt-form-group">
                                     <label>Question Limit (0 for all)</label>
-                                    <input type="number" id="exam-limit" class="cbt-input" value="${exam.question_limit || 0}" ${exam.is_unified ? 'disabled title="Managed per section"' : ''}>
+                                    <input type="number" id="exam-limit" class="cbt-input" value="${exam.question_limit || 0}">
+                                    <p style="font-size:0.6rem; color:#64748b; margin-top:0.25rem;">Max questions to pull from bank for each student.</p>
                                 </div>
                             </div>
 
-                            <div class="cbt-form-group">
-                                <label>Exam Mode</label>
-                                <select id="exam-mode" class="cbt-input">
-                                    <option value="Official Exam" ${exam.mode === 'Official Exam' ? 'selected' : ''}>Official Exam (Update Records)</option>
-                                    <option value="Practice" ${exam.mode === 'Practice' ? 'selected' : ''}>Practice Mode (Mock Only)</option>
-                                </select>
+                            <!-- Unified Settings Section -->
+                            <div id="cbt-unified-settings" style="display: ${exam.is_unified ? 'block' : 'none'}; background: #f0f7ff; padding: 1rem; border-radius: 12px; border: 1px solid #bfdbfe; margin-bottom: 1.5rem;">
+                                <div style="font-weight: 800; color: #1e40af; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem;">
+                                    <i data-lucide="info" style="width: 14px;"></i> UNIFIED EXAM SETTINGS
+                                </div>
+                                <p style="font-size: 0.7rem; color: #1e3a8a; line-height: 1.4; margin-bottom: 1rem;">
+                                    In Unified Mode, subjects and question limits are managed per section. Students will see all added subjects as tabs during the exam.
+                                </p>
+                                
+                                <div id="unified-sections-container">
+                                    <h4 style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i data-lucide="list-checks" style="width: 14px;"></i> Exam Sections (Subjects)
+                                    </h4>
+                                    <div id="cbt-sections-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                                        <!-- Dynamic Sections -->
+                                    </div>
+                                    <button class="btn btn-sm w-100" style="margin-top: 0.75rem; background: #3b82f6; color: white; border: none; font-weight: 800; border-radius: 8px; height: 38px;" onclick="UI.addCBTSection()">
+                                        <i data-lucide="plus" style="width: 14px;"></i> Add New Subject Section
+                                    </button>
+                                </div>
                             </div>
 
-                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem;">
+                            <!-- Shared Scheduling & Metadata -->
+                            <div style="background: #f8fafc; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 1.5rem;">
+                                <div style="font-weight: 800; color: #475569; margin-bottom: 0.75rem; font-size: 0.7rem; text-transform: uppercase;">Scheduling & Duration</div>
+                                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:1rem; margin-bottom:1rem;">
+                                    <div class="cbt-form-group">
+                                        <label>Open From (Start)</label>
+                                        <input type="datetime-local" id="exam-start" class="cbt-input" value="${formatDateForInput(exam.start_time)}">
+                                    </div>
+                                    <div class="cbt-form-group">
+                                        <label>Close At (End)</label>
+                                        <input type="datetime-local" id="exam-end" class="cbt-input" value="${formatDateForInput(exam.end_time)}">
+                                    </div>
+                                </div>
                                 <div class="cbt-form-group">
-                                    <label>Target Term</label>
+                                    <label>Exam Duration (Minutes)</label>
+                                    <input type="number" id="exam-duration" class="cbt-input" value="${exam.duration || 30}">
+                                </div>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom: 1rem;">
+                                <div class="cbt-form-group">
+                                    <label>Exam Mode</label>
+                                    <select id="exam-mode" class="cbt-input">
+                                        <option value="Official Exam" ${exam.mode === 'Official Exam' ? 'selected' : ''}>Official Exam</option>
+                                        <option value="Practice" ${exam.mode === 'Practice' ? 'selected' : ''}>Practice Mode</option>
+                                    </select>
+                                </div>
+                                <div class="cbt-form-group">
+                                    <label>Visibility Status</label>
+                                    <select id="exam-status" class="cbt-input">
+                                        <option value="Draft" ${exam.status === 'Draft' ? 'selected' : ''}>Draft (Hidden)</option>
+                                        <option value="Active" ${exam.status === 'Active' ? 'selected' : ''}>Active (Open)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:1rem; margin-bottom:1.5rem;">
+                                <div class="cbt-form-group">
+                                    <label>Term</label>
                                     <select id="exam-term" class="cbt-input">
                                         <option value="1st Term" ${exam.term === '1st Term' ? 'selected' : ''}>1st Term</option>
                                         <option value="2nd Term" ${exam.term === '2nd Term' ? 'selected' : ''}>2nd Term</option>
@@ -7670,32 +7720,23 @@ export const UI = {
                                     </select>
                                 </div>
                                 <div class="cbt-form-group">
-                                    <label>Target Session</label>
+                                    <label>Session</label>
                                     <select id="exam-session" class="cbt-input">
                                         <option value="2024/2025" ${exam.session === '2024/2025' ? 'selected' : ''}>2024/2025</option>
                                         <option value="2025/2026" ${exam.session === '2025/2026' ? 'selected' : ''}>2025/2026</option>
                                     </select>
                                 </div>
+                                <div class="cbt-form-group">
+                                    <label>Target Field</label>
+                                    <select id="exam-score-field" class="cbt-input">
+                                        <option value="test1" ${exam.score_field === 'test1' ? 'selected' : ''}>Test 1</option>
+                                        <option value="test2" ${exam.score_field === 'test2' ? 'selected' : ''}>Test 2</option>
+                                        <option value="exam" ${exam.score_field === 'exam' ? 'selected' : ''}>Exam</option>
+                                    </select>
+                                </div>
                             </div>
 
-                            <div class="cbt-form-group">
-                                <label>Push Score To:</label>
-                                <select id="exam-score-field" class="cbt-input">
-                                    <option value="test1" ${exam.score_field === 'test1' ? 'selected' : ''}>Test 1</option>
-                                    <option value="test2" ${exam.score_field === 'test2' ? 'selected' : ''}>Test 2</option>
-                                    <option value="exam" ${exam.score_field === 'exam' ? 'selected' : ''}>Final Exam</option>
-                                </select>
-                            </div>
-
-                            <div class="cbt-form-group">
-                                <label>Visibility Status</label>
-                                <select id="exam-status" class="cbt-input">
-                                    <option value="Draft" ${exam.status === 'Draft' ? 'selected' : ''}>Draft (Hidden)</option>
-                                    <option value="Active" ${exam.status === 'Active' ? 'selected' : ''}>Active (Open for Students)</option>
-                                </select>
-                            </div>
-
-                            <button class="btn btn-primary w-100" style="padding:1rem; border-radius:12px; background:#000080;" onclick="UI.saveExam('${examId || ''}')">
+                            <button class="btn btn-primary w-100" style="padding:1rem; border-radius:12px; background:#4338ca; font-weight: 800; font-size: 1.1rem; box-shadow: 0 4px 6px -1px rgba(67, 56, 202, 0.2);" onclick="UI.saveExam('${examId || ''}')">
                                 <i data-lucide="save"></i> Save Exam
                             </button>
                         </div>
@@ -7921,8 +7962,10 @@ export const UI = {
             const subId = document.getElementById('exam-subject').value;
             const cls = document.getElementById('exam-class').value;
 
-            if (!title || !subId || !cls) {
-                return Notifications.show('Please fill in required fields (Title, Subject, Class)', 'error');
+            const isUnified = document.getElementById('exam-is-unified').checked;
+
+            if (!title || !cls || (!isUnified && !subId)) {
+                return Notifications.show('Please fill in required fields (Title, Class, and Subject for non-unified exams)', 'error');
             }
 
             // Data Integrity Check — Only MCQ requires Options A and B
@@ -7942,15 +7985,14 @@ export const UI = {
             const startVal = document.getElementById('exam-start').value;
             const endVal = document.getElementById('exam-end').value;
 
-            const isUnified = document.getElementById('exam-is-unified').checked;
             const examData = prepareForSync({
                 id: examId,
                 title,
-                subject_id: subId,
+                subject_id: isUnified ? null : subId,
                 class_name: cls,
                 teacher_id: this.currentUser.id,
                 duration: parseInt(document.getElementById('exam-duration').value) || 30,
-                question_limit: parseInt(document.getElementById('exam-limit').value) || 0,
+                question_limit: isUnified ? 0 : (parseInt(document.getElementById('exam-limit').value) || 0),
                 mode: document.getElementById('exam-mode').value,
                 term: document.getElementById('exam-term').value,
                 session: document.getElementById('exam-session').value,
@@ -8050,19 +8092,17 @@ export const UI = {
 
     toggleCBTUnifiedMode() {
         const isUnified = document.getElementById('exam-is-unified').checked;
-        const container = document.getElementById('unified-sections-container');
-        if (container) container.style.display = isUnified ? 'block' : 'none';
+        const standardSettings = document.getElementById('cbt-standard-settings');
+        const unifiedSettings = document.getElementById('cbt-unified-settings');
         
-        const limitInput = document.getElementById('exam-limit');
-        if (limitInput) {
-            limitInput.disabled = isUnified;
-            if (isUnified) limitInput.title = "Limit is managed per section in Unified Mode";
-            else limitInput.title = "";
-        }
-
+        if (standardSettings) standardSettings.style.display = isUnified ? 'none' : 'block';
+        if (unifiedSettings) unifiedSettings.style.display = isUnified ? 'block' : 'none';
+        
         if (isUnified && (!this.cbtSections || this.cbtSections.length === 0)) {
             this.addCBTSection();
         }
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     async addCBTSection() {
