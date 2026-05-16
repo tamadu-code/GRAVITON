@@ -7457,8 +7457,13 @@ export const UI = {
         
         let exam = isEdit ? await db.cbt_exams.get(examId) : {
             title: '', subject_id: '', class_name: '', duration: 30, mode: 'Official Exam', term: '3rd Term', session: '2025/2026', score_field: 'test1', status: 'Draft',
-            start_time: '', end_time: ''
+            start_time: '', end_time: '', is_unified: false
         };
+
+        this.cbtSections = isEdit ? await db.cbt_exam_sections.where('exam_id').equals(examId).toArray() : [];
+        
+        // Ensure the UI renders sections if unified
+        setTimeout(() => { if (exam.is_unified) this.renderCBTSections(); }, 100);
 
         this.cbtQuestions = isEdit ? await db.cbt_questions.where('exam_id').equals(examId).toArray() : [];
 
@@ -7540,7 +7545,12 @@ export const UI = {
 
                             <div class="cbt-form-group">
                                 <label>Question Text</label>
-                                <textarea id="q-text" class="cbt-input" style="height:100px; resize:none;" placeholder="Type Question Here... (e.g. Solve the equation in the image)"></textarea>
+                                <textarea id="q-text" class="cbt-input" style="height:80px; resize:none;" placeholder="Type Question Here..."></textarea>
+                            </div>
+
+                            <div class="cbt-form-group">
+                                <label style="color:#6d28d9; font-weight:800;">Comprehension Passage / Context (Optional)</label>
+                                <textarea id="q-passage" class="cbt-input" style="height:100px; resize:none; border-color:#ddd6fe; background:#f5f3ff;" placeholder="Type the passage or context here. It will appear above the question."></textarea>
                             </div>
 
                             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:1rem; margin-bottom:1rem;">
@@ -7595,14 +7605,38 @@ export const UI = {
                     <!-- Right Column: Exam Details -->
                     <div class="cbt-side-card">
                         <div class="card" style="border-radius:20px; padding:1.5rem;">
-                            <h3 style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1.5rem;"><i data-lucide="settings"></i> Exam Details</h3>
-                            
+                            <div class="cbt-form-group" style="background: #f8fafc; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 1.5rem;">
+                                <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; margin:0;">
+                                    <span style="display:flex; align-items:center; gap:0.5rem; font-weight:800; color:#1e40af;">
+                                        <i data-lucide="layers" style="width:18px;"></i> Unified Exam Mode
+                                    </span>
+                                    <div class="toggle-switch">
+                                        <input type="checkbox" id="exam-is-unified" ${exam.is_unified ? 'checked' : ''} onchange="UI.toggleCBTUnifiedMode()">
+                                        <span class="slider round"></span>
+                                    </div>
+                                </label>
+                                <p style="font-size:0.65rem; color:#64748b; margin-top:0.5rem; font-weight:600;">Combine multiple subjects/columns into one sitting.</p>
+                            </div>
+
+                            <div id="unified-sections-container" style="display: ${exam.is_unified ? 'block' : 'none'}; margin-bottom: 1.5rem;">
+                                <h4 style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i data-lucide="list-checks" style="width: 14px;"></i> Exam Sections
+                                </h4>
+                                <div id="cbt-sections-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                                    <!-- Dynamic Sections -->
+                                </div>
+                                <button class="btn btn-sm w-100" style="margin-top: 0.75rem; background: #e0e7ff; color: #4338ca; border: none; font-weight: 800; border-radius: 8px; height: 36px;" onclick="UI.addCBTSection()">
+                                    <i data-lucide="plus" style="width: 14px;"></i> Add Section
+                                </button>
+                            </div>
+
                             <div class="cbt-form-group">
                                 <label>Exam Type</label>
                                 <select id="exam-title" class="cbt-input">
                                     <option value="Test 1" ${exam.title === 'Test 1' ? 'selected' : ''}>Test 1</option>
                                     <option value="Test 2" ${exam.title === 'Test 2' ? 'selected' : ''}>Test 2</option>
                                     <option value="Exam" ${exam.title === 'Exam' ? 'selected' : ''}>Final Exam</option>
+                                    <option value="Unified Mock" ${exam.title === 'Unified Mock' ? 'selected' : ''}>Unified Mock</option>
                                 </select>
                             </div>
 
@@ -7787,6 +7821,7 @@ export const UI = {
         const q = {
             id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
             question_text: text,
+            passage_text: document.getElementById('q-passage').value.trim(),
             option_a: document.getElementById('opt-a').value.trim(),
             option_b: document.getElementById('opt-b').value.trim(),
             option_c: document.getElementById('opt-c').value.trim(),
@@ -7804,6 +7839,7 @@ export const UI = {
         
         // Reset inputs
         document.getElementById('q-text').value = '';
+        document.getElementById('q-passage').value = '';
         document.getElementById('opt-a').value = '';
         document.getElementById('opt-b').value = '';
         document.getElementById('opt-c').value = '';
@@ -7935,6 +7971,7 @@ export const UI = {
             const startVal = document.getElementById('exam-start').value;
             const endVal = document.getElementById('exam-end').value;
 
+            const isUnified = document.getElementById('exam-is-unified').checked;
             const examData = prepareForSync({
                 id: examId,
                 title,
@@ -7950,6 +7987,7 @@ export const UI = {
                 status: document.getElementById('exam-status').value,
                 start_time: startVal || null,
                 end_time: endVal || null,
+                is_unified: isUnified ? 1 : 0,
                 date: new Date().toISOString().split('T')[0]
             });
 
@@ -7959,10 +7997,21 @@ export const UI = {
                 // Re-save questions
                 await db.cbt_questions.where('exam_id').equals(existingId).delete();
                 await db.cbt_exam_questions.where('exam_id').equals(existingId).delete();
+                await db.cbt_exam_sections.where('exam_id').equals(existingId).delete();
                 console.log('Old questions and mappings cleared.');
             } else {
                 await db.cbt_exams.add(examData);
                 console.log('New exam created.');
+            }
+
+            // Save Unified Sections if applicable
+            if (isUnified && this.cbtSections) {
+                for (const sec of this.cbtSections) {
+                    await db.cbt_exam_sections.add(prepareForSync({
+                        ...sec,
+                        exam_id: examId
+                    }));
+                }
             }
 
             // Save all current questions
@@ -7984,6 +8033,7 @@ export const UI = {
                     id: qId,
                     subject_id: subId,
                     question_text: q.question_text,
+                    passage_text: q.passage_text || null,
                     type: q.type || 'mcq',
                     marks: q.marks || 1
                 });
@@ -8026,13 +8076,120 @@ export const UI = {
         }
     },
 
+    toggleCBTUnifiedMode() {
+        const isUnified = document.getElementById('exam-is-unified').checked;
+        const container = document.getElementById('unified-sections-container');
+        if (container) container.style.display = isUnified ? 'block' : 'none';
+        if (isUnified && (!this.cbtSections || this.cbtSections.length === 0)) {
+            this.addCBTSection();
+        }
+    },
+
+    async addCBTSection() {
+        if (!this.cbtSections) this.cbtSections = [];
+        this.cbtSections.push({
+            id: `SEC${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+            subject_id: '',
+            score_field: 'exam',
+            question_count: 20,
+            target_mark: 60
+        });
+        await this.renderCBTSections();
+    },
+
+    async renderCBTSections() {
+        const list = document.getElementById('cbt-sections-list');
+        if (!list) return;
+
+        const subjects = await db.subjects.toArray();
+        
+        list.innerHTML = this.cbtSections.map((s, idx) => `
+            <div class="cbt-section-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:0.75rem; position:relative;">
+                <button onclick="UI.removeCBTSection(${idx})" style="position:absolute; top:-8px; right:-8px; background:#ef4444; color:white; border:none; border-radius:50%; width:20px; height:20px; font-size:10px; display:flex; align-items:center; justify-content:center; cursor:pointer;"><i data-lucide="x" style="width:12px;"></i></button>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; margin-bottom:0.5rem;">
+                    <div>
+                        <label style="font-size:0.6rem; font-weight:800; color:#94a3b8; display:block; margin-bottom:2px;">SUBJECT</label>
+                        <select onchange="UI.updateCBTSection(${idx}, 'subject_id', this.value)" class="cbt-input" style="padding:4px; font-size:0.75rem;">
+                            <option value="">Select</option>
+                            ${subjects.map(sub => `<option value="${sub.id}" ${s.subject_id === sub.id ? 'selected' : ''}>${sub.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:0.6rem; font-weight:800; color:#94a3b8; display:block; margin-bottom:2px;">PUSH TO</label>
+                        <select onchange="UI.updateCBTSection(${idx}, 'score_field', this.value)" class="cbt-input" style="padding:4px; font-size:0.75rem;">
+                            <option value="assignment" ${s.score_field === 'assignment' ? 'selected' : ''}>Assignment</option>
+                            <option value="test1" ${s.score_field === 'test1' ? 'selected' : ''}>Test 1</option>
+                            <option value="test2" ${s.score_field === 'test2' ? 'selected' : ''}>Test 2</option>
+                            <option value="project" ${s.score_field === 'project' ? 'selected' : ''}>Project</option>
+                            <option value="exam" ${s.score_field === 'exam' ? 'selected' : ''}>Final Exam</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                    <div>
+                        <label style="font-size:0.6rem; font-weight:800; color:#94a3b8; display:block; margin-bottom:2px;">QUESTIONS</label>
+                        <input type="number" value="${s.question_count}" onchange="UI.updateCBTSection(${idx}, 'question_count', parseInt(this.value))" class="cbt-input" style="padding:4px; font-size:0.75rem;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.6rem; font-weight:800; color:#94a3b8; display:block; margin-bottom:2px;">TARGET MARK</label>
+                        <input type="number" value="${s.target_mark}" onchange="UI.updateCBTSection(${idx}, 'target_mark', parseInt(this.value))" class="cbt-input" style="padding:4px; font-size:0.75rem;">
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    updateCBTSection(idx, field, val) {
+        if (!this.cbtSections[idx]) return;
+        this.cbtSections[idx][field] = val;
+    },
+
+    removeCBTSection(idx) {
+        this.cbtSections.splice(idx, 1);
+        this.renderCBTSections();
+    },
+
     async startCBTExam(examId) {
         const exam = await db.cbt_exams.get(examId);
         if (!exam) return;
 
-        const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+        let questions = [];
+        if (exam.is_unified) {
+            console.log('[CBT Player] Initializing Unified Exam...');
+            const sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
+            
+            for (const sec of sections) {
+                // Pull questions for each section from the bank
+                let secQuestions = await db.cbt_question_bank.where('subject_id').equals(sec.subject_id).toArray();
+                
+                // Shuffle and slice to question_count
+                secQuestions.sort(() => Math.random() - 0.5);
+                secQuestions = secQuestions.slice(0, sec.question_count);
+                
+                // Fetch options for each question
+                for (const q of secQuestions) {
+                    const options = await db.cbt_options.where('question_id').equals(q.id).toArray();
+                    // Map to legacy format for player compatibility
+                    questions.push({
+                        ...q,
+                        exam_id: examId,
+                        section_id: sec.id, // Track which section this belongs to
+                        option_a: options.find(o => o.option_label === 'A')?.option_text || '',
+                        option_b: options.find(o => o.option_label === 'B')?.option_text || '',
+                        option_c: options.find(o => o.option_label === 'C')?.option_text || '',
+                        option_d: options.find(o => o.option_label === 'D')?.option_text || '',
+                        option_e: options.find(o => o.option_label === 'E')?.option_text || '',
+                        correct_option: options.find(o => o.is_correct === 1)?.option_label || 'A'
+                    });
+                }
+            }
+        } else {
+            questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+        }
+
         if (questions.length === 0) {
-            return Notifications.show('This exam has no questions yet.', 'error');
+            return Notifications.show('This exam has no questions available.', 'error');
         }
 
         // Broad ID matching: find ANY result for this student (handles admin re-opens under different ID variant)
@@ -9182,6 +9339,13 @@ export const UI = {
                         <div style="background: #f1f5f9; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 700; color: #475569; font-size: 0.65rem;">${q.marks || 1} PT(S)</div>
                     </div>
 
+                    ${q.passage_text ? `
+                        <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem; border-left: 6px solid #6d28d9; max-height: 250px; overflow-y: auto;">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #6d28d9; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em;">Comprehension Passage / Context</div>
+                            <div style="font-size: 1rem; color: #334155; line-height: 1.7; font-weight: 500;">${this.parseCBTContent(q.passage_text)}</div>
+                        </div>
+                    ` : ''}
+
                     <div id="cbt-question-text" style="font-size: 1.05rem; font-weight: 600; color: #1e293b; line-height: 1.5; margin-bottom: 1.5rem; width: 100%; box-sizing: border-box;">
                         ${this.parseCBTContent(q.question_text)}
                     </div>
@@ -9687,6 +9851,56 @@ export const UI = {
             if (exam.mode === 'Practice') {
                 console.log('[SCORE POST] Skipping Practice Mode exam.');
                 return;
+            }
+
+            if (exam.is_unified) {
+                console.log('[SCORE POST] Processing Unified Exam Sections...');
+                const sections = await db.cbt_exam_sections.where('exam_id').equals(exam.id).toArray();
+                
+                for (const sec of sections) {
+                    const secQuestions = this.currentQuestions.filter(q => q.section_id === sec.id);
+                    if (secQuestions.length === 0) continue;
+
+                    let secRawScore = 0;
+                    secQuestions.forEach(q => {
+                        const studentChoice = this.userAnswers[q.id];
+                        if (studentChoice) {
+                             if (q.question_type === 'fill_in_blank') {
+                                 const target = (q.fill_answer || q.correct_option || '').toString().toLowerCase().trim();
+                                 if (target && studentChoice.toLowerCase().trim() === target) secRawScore += (parseFloat(q.marks) || 1);
+                             } else {
+                                 const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + this.currentExam.id))).split('').reverse().join('');
+                                 if (choiceHash === q.answerHash) secRawScore += (parseFloat(q.marks) || 1);
+                             }
+                        }
+                    });
+
+                    // Scaling logic: (Raw Score / Total Possible) * Target Mark
+                    const secMaxPossible = secQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+                    const targetMax = parseFloat(sec.target_mark) || 60;
+                    const scaledScore = secMaxPossible > 0 ? (secRawScore / secMaxPossible) * targetMax : 0;
+                    
+                    const sectionScoreId = `${result.student_id}_${sec.subject_id}_${exam.term}_${exam.session}`;
+                    let scoreRecord = await db.scores.get(sectionScoreId);
+                    
+                    if (!scoreRecord) {
+                        scoreRecord = {
+                            id: sectionScoreId,
+                            student_id: result.student_id,
+                            subject_id: sec.subject_id,
+                            term: exam.term,
+                            session: exam.session,
+                            class_name: exam.class_name,
+                            updated_at: new Date().toISOString()
+                        };
+                    }
+
+                    // Update specific field
+                    scoreRecord[sec.score_field || 'exam'] = parseFloat(scaledScore.toFixed(1));
+                    await db.scores.put(prepareForSync(scoreRecord));
+                    console.log(`[SCORE POST] Unified Success: ${sec.subject_id} (${sec.score_field}) = ${scaledScore.toFixed(1)}`);
+                }
+                return; // Finished processing unified sections
             }
 
             // Deterministic Standard ID: studentId_subjectId_term_session
