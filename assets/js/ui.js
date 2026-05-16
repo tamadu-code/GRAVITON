@@ -8569,6 +8569,7 @@ export const UI = {
             const now = new Date();
             const durationSeconds = (parseInt(exam.duration) || 60) * 60;
             if (!session) {
+                this.examTimeLeft = durationSeconds;
                 session = prepareForSync({
                     id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                     exam_id: examId,
@@ -13202,6 +13203,8 @@ export const UI = {
             // --- OPTIONAL CLEAN START ---
             if (shouldClear) {
                 Notifications.show('Cleaning master library for this subject...', 'info');
+                
+                // 1. Clear relational bank (cbt_question_bank + cbt_options)
                 const oldBank = await db.cbt_question_bank.where('subject_id').equals(subjectId).toArray();
                 const oldIds = oldBank.map(q => q.id);
                 
@@ -13210,14 +13213,32 @@ export const UI = {
                     await db.cbt_options.where('question_id').anyOf(oldIds).delete();
                 }
 
-                // Cloud Sync Clear
+                // 2. Clear flat table (cbt_questions with BANK- prefix for this subject)
+                const allFlatQ = await db.cbt_questions.toArray();
+                const bankPrefix = `BANK-${subjectId}`;
+                const flatToDelete = allFlatQ.filter(q => q.exam_id && q.exam_id.startsWith(bankPrefix));
+                const flatIds = flatToDelete.map(q => q.id);
+                if (flatIds.length > 0) {
+                    await db.cbt_questions.bulkDelete(flatIds);
+                }
+
+                // 3. Cloud Sync Clear
                 if (navigator.onLine) {
                     const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
-                    if (client && oldIds.length > 0) {
-                        await client.from('cbt_question_bank').delete().in('id', oldIds);
-                        await client.from('cbt_options').delete().in('question_id', oldIds);
+                    if (client) {
+                        if (oldIds.length > 0) {
+                            await client.from('cbt_question_bank').delete().in('id', oldIds);
+                            await client.from('cbt_options').delete().in('question_id', oldIds);
+                        }
+                        if (flatIds.length > 0) {
+                            // Delete in batches of 50 to avoid URI length limits
+                            for (let i = 0; i < flatIds.length; i += 50) {
+                                await client.from('cbt_questions').delete().in('id', flatIds.slice(i, i + 50));
+                            }
+                        }
                     }
                 }
+                console.log(`[Bank Clear] Deleted ${oldIds.length} bank + ${flatIds.length} flat records for subject ${subjectId}`);
             }
 
             // --- NEW: Hyper-Robust Multi-Stage Parser ---
