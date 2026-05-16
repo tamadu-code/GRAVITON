@@ -5986,6 +5986,45 @@ export const UI = {
                     .anyOf(studentIds)
                     .filter(s => s.term === term && s.session === session)
                     .toArray();
+
+                // --- AUTO-FINALIZE ANALYTICS (Commit scores to ledger automatically) ---
+                // This ensures CBT and manual entries have Ranks/Grades without manual commitment.
+                const subjectGroups = {};
+                loadedScores.forEach(s => {
+                    if (!subjectGroups[s.subject_id]) subjectGroups[s.subject_id] = [];
+                    subjectGroups[s.subject_id].push(s);
+                });
+
+                for (const subId in subjectGroups) {
+                    const subScores = subjectGroups[subId];
+                    // 1. First ensure all scores have totals calculated
+                    subScores.forEach(s => {
+                        const ca = (Number(s.assignment) || 0) + (Number(s.test1) || 0) + (Number(s.test2) || 0) + (Number(s.project) || 0);
+                        const total = ca + (Number(s.exam) || 0);
+                        s.ca = ca;
+                        s.total = total;
+                    });
+
+                    // 2. Calculate Ranks within this subject
+                    subScores.sort((a, b) => b.total - a.total);
+                    let currentRank = 1;
+                    for (let i = 0; i < subScores.length; i++) {
+                        const s = subScores[i];
+                        if (i > 0 && s.total < subScores[i-1].total) currentRank = i + 1;
+                        
+                        const rankStr = ScoringEngine.getOrdinal(currentRank);
+                        const gradeStr = ScoringEngine.getGrade(s.total);
+                        const remarkStr = ScoringEngine.getRemark(s.total);
+                        
+                        if (s.rank !== rankStr || s.grade !== gradeStr || s.remark !== remarkStr) {
+                            s.rank = rankStr;
+                            s.grade = gradeStr;
+                            s.remark = remarkStr;
+                            await db.scores.put(prepareForSync(s));
+                        }
+                    }
+                }
+                // --- END AUTO-FINALIZE ---
                 
                 // Fetch attendance for these students specifically
                 loadedAttendance = [];
