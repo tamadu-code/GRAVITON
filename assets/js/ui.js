@@ -3125,6 +3125,7 @@ export const UI = {
                         }
                     }
 
+                    console.log(`[Modify] Saving updates for ${studentId}:`, updates);
                     await db.students.update(studentId, prepareForSync(updates));
                     Notifications.show('Profile updated successfully.', 'success');
                     this.renderStudentDetail(studentId);
