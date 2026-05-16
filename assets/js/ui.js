@@ -7574,7 +7574,7 @@ export const UI = {
             const name = (s.name || '').trim();
             if (!uniqueMap.has(name)) uniqueMap.set(name, s);
         });
-        subjects = Array.from(uniqueMap.values()).sort((a,b) => a.name.localeCompare(b.name));
+        let subjects = Array.from(uniqueMap.values()).sort((a,b) => a.name.localeCompare(b.name));
 
 
         let classes = (await db.classes.toArray());
