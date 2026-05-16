@@ -4183,7 +4183,24 @@ export const UI = {
                                                     </div>
                                                     <div>
                                                         <div style="font-size: 0.6rem; color: #94a3b8; font-weight: 700;">SUBJECTS OFFERED</div>
-                                                        <div style="font-weight: 800; color: #1e293b;">${assignments.filter(a => a.class_name === c.name).length} Courses</div>
+                                                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                            <div style="font-weight: 800; color: #1e293b;">
+                                                                ${[...new Set(assignments.filter(a => a.class_name === c.name).map(a => a.subject_id))].length} Courses
+                                                            </div>
+                                                            ${(() => {
+                                                                const count = [...new Set(assignments.filter(a => a.class_name === c.name).map(a => a.subject_id))].length;
+                                                                const isJSS = c.name.toUpperCase().includes('JSS') || (c.level || '').toUpperCase().includes('JUNIOR');
+                                                                const isSSS = c.name.toUpperCase().includes('SSS') || (c.level || '').toUpperCase().includes('SENIOR');
+                                                                const limit = isJSS ? 11 : (isSSS ? 17 : null);
+                                                                
+                                                                if (limit && count > limit) {
+                                                                    return `<span style="background: #fee2e2; color: #ef4444; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; border: 1px solid #fecaca;">EXCEEDS LIMIT (${limit})</span>`;
+                                                                } else if (limit) {
+                                                                    return `<span style="background: #f0fdf4; color: #16a34a; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; border: 1px solid #dcfce7;">${count}/${limit}</span>`;
+                                                                }
+                                                                return '';
+                                                            })()}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -4203,40 +4220,52 @@ export const UI = {
                     if (el) el.textContent = `${count} Students`;
                 });
             } else if (tab === 'subjects') {
+                // Deduplicate subjects by name for display to handle existing duplicates
+                const seenNames = new Set();
+                const displaySubjects = subjects.filter(s => {
+                    const name = (s.name || '').trim().toUpperCase();
+                    if (seenNames.has(name)) return false;
+                    seenNames.add(name);
+                    return true;
+                });
+
                 container.innerHTML = `
                     <div style="display: flex; flex-direction: column; gap: 1rem;">
-                        ${subjects.map(s => `
-                            <div class="glass-collapse-card">
-                                <input type="checkbox" id="toggle-sub-${s.id}" class="glass-collapse-checkbox">
-                                <label for="toggle-sub-${s.id}" class="glass-collapse-header" style="padding: 1rem;">
-                                    <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1;">
-                                        <div style="width: 40px; height: 40px; background: #f0fdf4; color: #16a34a; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                                            <i data-lucide="book" style="width: 18px;"></i>
-                                        </div>
-                                        <div>
-                                            <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem;">${s.name}</div>
-                                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem;">
-                                                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">${s.type} • ${s.credits} Credits</div>
-                                                <div style="display: flex; gap: 0.25rem;">
-                                                    ${assignments.filter(a => a.subject_id === s.id).map(a => `<span style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; font-size: 0.6rem; padding: 0.1rem 0.3rem; font-weight: 700;">${a.class_name}</span>`).join('')}
+                        ${displaySubjects.map(s => {
+                            const subAssignments = assignments.filter(a => a.subject_id === s.id);
+                            return `
+                                <div class="glass-collapse-card">
+                                    <input type="checkbox" id="toggle-sub-${s.id}" class="glass-collapse-checkbox">
+                                    <label for="toggle-sub-${s.id}" class="glass-collapse-header" style="padding: 1rem;">
+                                        <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1;">
+                                            <div style="width: 40px; height: 40px; background: #f0fdf4; color: #16a34a; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                                                <i data-lucide="book" style="width: 18px;"></i>
+                                            </div>
+                                            <div>
+                                                <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem;">${s.name}</div>
+                                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem;">
+                                                    <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">${s.type} • ${s.credits} Credits</div>
+                                                    <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+                                                        ${subAssignments.map(a => `<span style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; font-size: 0.6rem; padding: 0.1rem 0.3rem; font-weight: 700;">${a.class_name}</span>`).join('')}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
-                                </label>
-                                <div class="glass-collapse-content" style="background: #f8fafc; border-top: 1px solid #f1f5f9;">
-                                    <div style="padding: 1rem; display: flex; gap: 0.75rem;">
-                                        <button class="btn btn-secondary edit-subject" data-id="${s.id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 40px;">
-                                            <i data-lucide="edit-2"></i> Edit Course
-                                        </button>
-                                        <button class="btn btn-danger delete-sub" data-id="${s.id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 40px;">
-                                            <i data-lucide="trash-2"></i> Delete
-                                        </button>
+                                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                                    </label>
+                                    <div class="glass-collapse-content" style="background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                                        <div style="padding: 1rem; display: flex; gap: 0.75rem;">
+                                            <button class="btn btn-secondary edit-subject" data-id="${s.id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 40px;">
+                                                <i data-lucide="edit-2"></i> Edit Course
+                                            </button>
+                                            <button class="btn btn-danger delete-sub" data-id="${s.id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 40px;">
+                                                <i data-lucide="trash-2"></i> Delete
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     </div>
                 `;
             } else if (tab === 'assignments') {
@@ -4372,7 +4401,17 @@ export const UI = {
                         throw new Error('Validation failed');
                     }
 
-                    // Validate duplicates
+                    // Prevent duplicate subject names
+                    const existingSub = subjects.find(s => (s.name || '').trim().toLowerCase() === name.toLowerCase());
+                    let subjectId = existingSub ? existingSub.id : `SUB${Math.random().toString(36).substr(2,6).toUpperCase()}`;
+                    
+                    if (!existingSub) {
+                        await db.subjects.add(prepareForSync({ id: subjectId, name, type, credits }));
+                    } else {
+                        console.log(`[Academic] Using existing subject ID for "${name}": ${subjectId}`);
+                    }
+                    
+                    // Validate row-level duplicates in the modal
                     const seen = new Set();
                     for (const row of rows) {
                         const className = row.querySelector('.reg-cls').value;
@@ -4385,13 +4424,18 @@ export const UI = {
                         seen.add(key);
                     }
 
-                    const subjectId = `SUB${Math.random().toString(36).substr(2,6).toUpperCase()}`;
-                    await db.subjects.add(prepareForSync({ id: subjectId, name, type, credits }));
-                    
                     // Create assignments
                     for (const row of rows) {
                         const className = row.querySelector('.reg-cls').value;
                         const specialization = row.querySelector('.reg-spec').value || null;
+                        
+                        // Check if THIS specific assignment (subject + class) already exists to avoid redundant records
+                        const existingAsgn = assignments.find(a => a.subject_id === subjectId && a.class_name === className);
+                        if (existingAsgn) {
+                            console.log(`[Academic] Assignment already exists for ${className}: ${subjectId}`);
+                            continue;
+                        }
+
                         await db.subject_assignments.add(prepareForSync({
                             id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
                             subject_id: subjectId,
