@@ -3968,10 +3968,12 @@ export const UI = {
 
             Notifications.show('Committing grades to ledger...', 'info');
 
-            // Collect all data first to calculate final rankings
+            // Process all rows
             const entries = [];
             for (const row of rows) {
                 const studentId = row.dataset.studentId;
+                const standardId = `${studentId}_${subId}_${term}_${session}`;
+                
                 const getVal = (f) => {
                     const v = row.querySelector(`[data-field="${f}"]`).value.trim();
                     return v === '' ? null : parseFloat(v);
@@ -3983,43 +3985,38 @@ export const UI = {
                 const project = getVal('project');
                 const exam = getVal('exam');
 
-                // A student has a record only if at least one field is not null
                 const hasScore = [assignment, test1, test2, project, exam].some(v => v !== null);
                 
                 if (hasScore) {
                     const ca = (assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0);
                     const total = ca + (exam || 0);
-                    entries.push({
-                        studentId, assignment, test1, test2, project, ca, exam, total, hasScore: true
-                    });
+                    const rankValue = ''; // Will be filled after sorting
+                    
+                    const entry = {
+                        id: standardId,
+                        student_id: studentId,
+                        subject_id: subId,
+                        term, session,
+                        assignment, test1, test2, project, ca, exam, total,
+                        updated_at: new Date().toISOString()
+                    };
+                    entries.push(entry);
+                } else {
+                    // Delete empty record to prevent "ghost" zeros
+                    await db.scores.delete(standardId);
                 }
             }
 
-            // Calculate Rankings (Only for students with scores)
+            // Calculate Rankings (Only for students with actual scores)
             entries.sort((a, b) => b.total - a.total);
             let currentRank = 1;
             for (let i = 0; i < entries.length; i++) {
                 if (i > 0 && entries[i].total < entries[i - 1].total) currentRank = i + 1;
-                entries[i].rankValue = ScoringEngine.getOrdinal(currentRank);
-            }
-
-            for (const entry of entries) {
-                await db.scores.put(prepareForSync({
-                    id: `${entry.studentId}_${subId}_${term}_${session}`,
-                    student_id: entry.studentId,
-                    subject_id: subId,
-                    term, session,
-                    assignment: entry.assignment, 
-                    test1: entry.test1, 
-                    test2: entry.test2, 
-                    project: entry.project, 
-                    ca: entry.ca, 
-                    exam: entry.exam, 
-                    total: entry.total,
-                    rank: entry.rankValue,
-                    grade: ScoringEngine.getGrade(entry.total),
-                    updated_at: new Date().toISOString()
-                }));
+                entries[i].rank = ScoringEngine.getOrdinal(currentRank);
+                entries[i].grade = ScoringEngine.getGrade(entries[i].total);
+                entries[i].remark = ScoringEngine.getRemark(entries[i].total);
+                
+                await db.scores.put(prepareForSync(entries[i]));
             }
 
             try {
@@ -6001,20 +5998,26 @@ export const UI = {
 
                 for (const subId in subjectGroups) {
                     const subScores = subjectGroups[subId];
-                    // 1. First ensure all scores have totals calculated
-                    subScores.forEach(s => {
-                        const ca = (Number(s.assignment) || 0) + (Number(s.test1) || 0) + (Number(s.test2) || 0) + (Number(s.project) || 0);
-                        const total = ca + (Number(s.exam) || 0);
-                        s.ca = ca;
-                        s.total = total;
-                    });
+                    
+                    // 1. Calculate Totals & Cleanup Empties
+                    const activeScores = [];
+                    for (const s of subScores) {
+                        const hasScore = [s.assignment, s.test1, s.test2, s.project, s.exam].some(v => v !== null && v !== '');
+                        if (hasScore) {
+                            s.ca = (Number(s.assignment) || 0) + (Number(s.test1) || 0) + (Number(s.test2) || 0) + (Number(s.project) || 0);
+                            s.total = s.ca + (Number(s.exam) || 0);
+                            activeScores.push(s);
+                        } else {
+                            await db.scores.delete(s.id);
+                        }
+                    }
 
-                    // 2. Calculate Ranks within this subject
-                    subScores.sort((a, b) => b.total - a.total);
+                    // 2. Calculate Ranks within active scores
+                    activeScores.sort((a, b) => b.total - a.total);
                     let currentRank = 1;
-                    for (let i = 0; i < subScores.length; i++) {
-                        const s = subScores[i];
-                        if (i > 0 && s.total < subScores[i-1].total) currentRank = i + 1;
+                    for (let i = 0; i < activeScores.length; i++) {
+                        const s = activeScores[i];
+                        if (i > 0 && s.total < activeScores[i-1].total) currentRank = i + 1;
                         
                         const rankStr = ScoringEngine.getOrdinal(currentRank);
                         const gradeStr = ScoringEngine.getGrade(s.total);
