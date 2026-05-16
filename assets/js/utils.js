@@ -587,25 +587,25 @@ export async function generatePaymentReceipt(payment, student, schoolInfo = {}) 
     doc.save(`Receipt_${payment.reference}.pdf`);
 }
 
-
 /**
  * Generate Blank Score Sheet (Empty broadsheet for manual entry)
  * Supports multiple subjects for a single class (Bulk generation)
+ * Refined Portrait Layout with Dynamic Teacher Names
  */
-export async function generateBlankScoreSheet(className, students, subjects, term, session) {
+export async function generateBlankScoreSheet(className, students, subjects, term, session, schoolInfo = {}) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('landscape');
+    const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
     
-    // Ensure subjects is an array
     const subjectsArray = Array.isArray(subjects) ? subjects : [subjects];
-    const pageSize = 23; // Students per page
+    const pageSize = 30; // More rows in Portrait
     
     let firstPage = true;
 
     for (const subject of subjectsArray) {
         const subjectName = typeof subject === 'string' ? subject : (subject.name || 'Unspecified Subject');
+        const teacherName = subject.teacherName || '________________________________________';
         const totalPages = Math.ceil(students.length / pageSize);
         
         for (let p = 0; p < totalPages; p++) {
@@ -614,58 +614,100 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
             
             const pageStudents = students.slice(p * pageSize, (p + 1) * pageSize);
             
-            // Header
-            doc.setFontSize(16);
+            // --- Header Section (Photo Match) ---
+            if (schoolInfo.logo) {
+                try {
+                    doc.addImage(schoolInfo.logo, 'PNG', 12, 10, 20, 20);
+                } catch (e) {}
+            }
+            
+            doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
-            doc.text('CONTINUOUS ASSESSMENT SCORE SHEET', pageWidth / 2, 15, { align: 'center' });
+            doc.text(schoolInfo.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL', 35, 18);
             
-            doc.setFontSize(10);
+            doc.setFontSize(11);
+            doc.text('CONTINUOUS ASSESSMENT SCORE SHEET', 35, 24);
+            doc.line(35, 25, 120, 25); // Underline
+            
+            // --- Metadata Grid (Photo Match) ---
+            doc.setFontSize(8);
+            const metaY = 35;
+            
+            // Draw Table Grid for Metadata
+            doc.setDrawColor(0);
+            doc.setLineWidth(0.2);
+            doc.rect(12, metaY, pageWidth - 24, 12); // Outer box
+            doc.line(12, metaY + 6, pageWidth - 12, metaY + 6); // Horizontal divider
+            
+            // Vertical Dividers
+            doc.line(45, metaY, 45, metaY + 12);
+            doc.line(100, metaY, 100, metaY + 6);
+            doc.line(135, metaY, 135, metaY + 6);
+            
+            // Labels and Values
+            const drawMeta = (label, val, x, y) => {
+                doc.setFont('helvetica', 'normal');
+                doc.text(label, x + 1, y + 4);
+                doc.setFont('helvetica', 'bold');
+                doc.text(String(val).toUpperCase(), x + 12, y + 4);
+            };
+            
+            drawMeta('CLASS:', className, 12, metaY);
+            drawMeta('SUBJECT:', subjectName, 45, metaY);
+            drawMeta('SESSION:', session, 135, metaY);
+            
+            drawMeta('TERM:', term, 12, metaY + 6);
+            
+            // Teacher Label (Longer)
             doc.setFont('helvetica', 'normal');
-            doc.text(`${className} | ${subjectName.toUpperCase()} | ${term} | ${session}`, pageWidth / 2, 22, { align: 'center' });
+            doc.text('TEACHER:', 46, metaY + 10);
+            doc.setFont('helvetica', 'bold');
+            doc.text(teacherName.toUpperCase(), 65, metaY + 10);
             
-            // Table Construction
-            const head = [['S/N', 'STUDENT NAME', 'ASS (10)', 'T1 (10)', 'T2 (10)', 'PRJ (10)', 'EXAM (60)', 'TOTAL (100)']];
+            // --- Main Score Table ---
+            const head = [['S/N', 'STUDENT NAME', 'ASS', 'T1', 'T2', 'PRJ', 'EXAM', 'TOTAL']];
             const body = pageStudents.map((s, idx) => [
                 (p * pageSize) + idx + 1,
                 s.name.toUpperCase(),
                 '', '', '', '', '', ''
             ]);
             
-            // Add extra blank rows if it's the last page of this subject
+            // Extra blank rows
             if (p === totalPages - 1 && body.length < pageSize) {
-                const extra = Math.max(0, pageSize - body.length);
+                const extra = pageSize - body.length;
                 for (let i = 0; i < extra; i++) {
-                    body.push([(p * pageSize) + pageStudents.length + i + 1, '________________________________________', '', '', '', '', '', '']);
+                    body.push([(p * pageSize) + pageStudents.length + i + 1, '________________________________', '', '', '', '', '', '']);
                 }
             }
             
             doc.autoTable({
-                startY: 30,
+                startY: metaY + 15,
                 head: head,
                 body: body,
                 theme: 'grid',
-                styles: { fontSize: 8, cellPadding: 2, minCellHeight: 8 },
-                headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: 'center' },
+                styles: { fontSize: 8, cellPadding: 1.5, minCellHeight: 7 },
+                headStyles: { fillColor: [241, 245, 249], textColor: 0, halign: 'center', fontStyle: 'bold', lineWidth: 0.1 },
                 columnStyles: {
-                    0: { cellWidth: 15, halign: 'center' },
-                    1: { cellWidth: 80 },
-                    2: { cellWidth: 25, halign: 'center' },
-                    3: { cellWidth: 25, halign: 'center' },
-                    4: { cellWidth: 25, halign: 'center' },
-                    5: { cellWidth: 25, halign: 'center' },
-                    6: { cellWidth: 25, halign: 'center' },
-                    7: { cellWidth: 25, halign: 'center' }
+                    0: { cellWidth: 10, halign: 'center' },
+                    1: { cellWidth: 75 },
+                    2: { cellWidth: 18, halign: 'center' },
+                    3: { cellWidth: 18, halign: 'center' },
+                    4: { cellWidth: 18, halign: 'center' },
+                    5: { cellWidth: 18, halign: 'center' },
+                    6: { cellWidth: 18, halign: 'center' },
+                    7: { cellWidth: 18, halign: 'center' }
                 }
             });
             
             // Footer
-            const footerY = pageHeight - 15;
-            doc.setFontSize(8);
-            doc.text('Teacher Signature: __________________________', 14, footerY);
-            doc.text('Principal Signature: __________________________', pageWidth - 80, footerY);
-            doc.text(`${subjectName.toUpperCase()} - Page ${p+1} of ${totalPages}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+            const footerY = pageHeight - 10;
+            doc.setFontSize(7);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100);
+            doc.text(`Generated for ${className} | Subject: ${subjectName} | Page ${p+1} of ${totalPages}`, 12, footerY);
+            doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth - 40, footerY);
         }
     }
     
-    return doc; // Return for preview
+    return doc;
 }

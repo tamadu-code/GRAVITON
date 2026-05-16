@@ -3413,6 +3413,12 @@ export const UI = {
         settingsArray.forEach(s => settings[s.key] = s.value);
         const currentTerm = settings.currentTerm || '1st Term';
         const currentSession = settings.currentSession || '2025/2026';
+        const profiles = await db.profiles.toArray();
+        const schoolInfo = {
+            schoolName: settings.schoolName,
+            logo: settings.schoolLogo,
+            principalName: settings.principalName
+        };
         
         // --- Teacher Specific Filtering ---
         if (isTeacher) {
@@ -4125,15 +4131,26 @@ export const UI = {
             const classStudents = students.filter(s => s.class_name === className);
             if (classStudents.length === 0) return Notifications.show('No students found in this stream', 'error');
 
-            // Find all subjects for this class
-            const assignments = await db.subject_assignments.where('class_name').equals(className).toArray();
-            const subjectIds = assignments.map(a => a.subject_id);
+            // Find all subjects for this class and their assigned teachers
+            const allAssignments = await db.subject_assignments.toArray();
+            const classAssignments = allAssignments.filter(a => a.class_name === className);
+            const subjectIds = classAssignments.map(a => a.subject_id);
             const classSubjects = (await db.subjects.toArray()).filter(s => subjectIds.includes(s.id));
 
             if (classSubjects.length === 0) return Notifications.show('No subjects assigned to this stream', 'error');
 
-            Notifications.show(`Generating bundle for ${classSubjects.length} subjects...`, 'info');
-            const doc = await generateBlankScoreSheet(className, classStudents, classSubjects, term, currentSession);
+            // Enrich subjects with teacher names
+            const enrichedSubjects = classSubjects.map(subj => {
+                const assign = classAssignments.find(a => a.subject_id === subj.id);
+                const teacher = assign ? profiles.find(p => p.id === assign.teacher_id) : null;
+                return {
+                    ...subj,
+                    teacherName: teacher ? teacher.full_name : '________________________________'
+                };
+            });
+
+            Notifications.show(`Generating bundle for ${enrichedSubjects.length} subjects...`, 'info');
+            const doc = await generateBlankScoreSheet(className, classStudents, enrichedSubjects, term, currentSession, schoolInfo);
             if (doc) UI.showPDFPreview(doc, `Blank_Sheets_${className.replace(/\s+/g, '_')}.pdf`);
         });
     },
