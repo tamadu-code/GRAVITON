@@ -204,6 +204,8 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     const midX = 85;
     const rightX = 145;
     
+    const avg = scores.length > 0 ? (scores.reduce((a, b) => a + (b.total || 0), 0) / scores.length).toFixed(2) : 0;
+    
     // Row 1
     doc.text(`NAME: ${student.name.toUpperCase()}`, leftX, y);
     doc.line(23, y + 1, 80, y + 1); // Underline name
@@ -233,7 +235,6 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     y += 7;
     // Row 3
     doc.text(`TERM: ${scores[0]?.term || 'N/A'}`, leftX, y);
-    const avg = scores.length > 0 ? (scores.reduce((a, b) => a + (b.total || 0), 0) / scores.length).toFixed(2) : 0;
     doc.text(`AVERAGE: ${avg}%`, midX, y);
     // Blank right side to respect the "one or the other" rule
     y += 7;
