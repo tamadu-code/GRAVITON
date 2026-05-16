@@ -13402,44 +13402,51 @@ export const UI = {
                 console.log(`[Bank Clear] Deleted ${oldIds.length} bank + ${flatIds.length} flat records for period: ${term} ${session}`);
             }
 
-            // --- NEW: Hyper-Robust Multi-Stage Parser ---
-            // 1. Capture ALL answer markers (A-E or Text) to prevent merging questions
-            const ansRegex = /[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]/gi;
+            // --- IMPROVED HYBRID PARSER (BUILD v193) ---
+            // 1. Detect if we should use Number-based splitting (Standard for school banks)
+            const numberRegex = /(?:\n|^)(\d+)[\.\)]\s+/g;
+            let matches = [];
+            let m;
+            
+            // Try to find question numbers first
+            while ((m = numberRegex.exec(text)) !== null) {
+                matches.push({ index: m.index, length: m[0].length, number: m[1] });
+            }
+
+            if (matches.length === 0) {
+                return Notifications.show('Could not detect any questions or numbers. Please check format.', 'error');
+            }
+
             const newQuestions = [];
             const relationalData = [];
             let failedBlocks = 0;
+            let duplicateCount = 0;
 
-            // Pre-load existing bank for deduplication
             const existingBank = await db.cbt_question_bank.where('subject_id').equals(subjectId).toArray();
             const existingTexts = new Set(existingBank.map(q => q.question_text.trim()));
 
-            let matches = [];
-            let m;
-            while ((m = ansRegex.exec(text)) !== null) {
-                matches.push({ index: m.index, length: m[0].length, ans: m[1].trim() });
+            const blocks = [];
+            for (let i = 0; i < matches.length; i++) {
+                const start = matches[i].index;
+                const end = (i + 1 < matches.length) ? matches[i + 1].index : text.length;
+                blocks.push({
+                    text: text.substring(start, end).trim(),
+                    marker: matches[i]
+                });
             }
 
-            Notifications.show(`Scanning ${matches.length} questions...`, 'info');
+            blocks.forEach((blockObj) => {
+                let cleanBlock = blockObj.text;
+                cleanBlock = cleanBlock.replace(/^\d+[\.\)]\s*/, '').trim();
 
-            let duplicateCount = 0;
-            let lastPos = 0;
-            matches.forEach((matchObj, idx) => {
-                // Precise block extraction using regex indices
-                const block = text.substring(lastPos, matchObj.index + matchObj.length).trim();
-                const splitIndexInBlock = matchObj.index - lastPos;
-                lastPos = matchObj.index + matchObj.length;
-
-                if (!block || splitIndexInBlock < 0) return;
-
-                // Strip question numbers like "1.", "36." from the start
-                let cleanBlock = block.replace(/^\d+[\.\)]\s*/, '').trim();
+                const blockAnsRegex = /[\(\[]\s*(?:Ans|Answer)?[\:\s]*([A-E])\s*[\)\]]|(?:Ans|Answer)[\:\s]+([A-E])/i;
+                const ansMatch = blockAnsRegex.exec(cleanBlock);
+                const detectedAns = (ansMatch ? (ansMatch[1] || ansMatch[2]) : 'A').toUpperCase();
                 
-                // Adjust split index after trimming and number stripping
-                const cleanSplitPos = cleanBlock.toLowerCase().lastIndexOf(matchObj.ans.toLowerCase()) - 5; 
-                // Fallback: Just use the known match positions
+                if (ansMatch) cleanBlock = cleanBlock.replace(ansMatch[0], '').trim();
+
                 const ansMarkerStart = cleanBlock.toLowerCase().lastIndexOf('ans');
 
-                // Detect MCQ vs Fill-in — Support A), A., (A), [A]
                 const optARegex = /(?:^|[\s])[\(\[]?A[\)\]\.]/i;
                 const optBRegex = /(?:^|[\s])[\(\[]?B[\)\]\.]/i;
                 const optCRegex = /(?:^|[\s])[\(\[]?C[\)\]\.]/i;
@@ -13448,10 +13455,8 @@ export const UI = {
 
                 const hasA = optARegex.test(cleanBlock);
                 const hasB = optBRegex.test(cleanBlock);
-                const isLetterAns = /^[A-E]$/i.test(matchObj.ans);
 
-                if (hasA && hasB && isLetterAns) {
-                    // --- MCQ PARSING ---
+                if (hasA && hasB) {
                     const optA = optARegex.exec(cleanBlock);
                     const optB = optBRegex.exec(cleanBlock);
                     const optC = optCRegex.exec(cleanBlock);
@@ -13459,35 +13464,27 @@ export const UI = {
                     const optE = optERegex.exec(cleanBlock);
 
                     const qText = cleanBlock.substring(0, optA.index).trim();
-                    
-                    // Deduplicate
-                    if (existingTexts.has(qText)) {
-                        duplicateCount++;
-                        return;
-                    }
+                    if (existingTexts.has(qText)) { duplicateCount++; return; }
 
-                    // Extract text between markers
                     const aText = cleanBlock.substring(optA.index + optA[0].length, optB.index).trim();
-                    
-                    let bEnd = optC ? optC.index : ansMarkerStart;
-                    if (bEnd === -1 || bEnd <= optB.index) bEnd = cleanBlock.length;
-
+                    let bEnd = optC ? optC.index : (ansMarkerStart !== -1 ? ansMarkerStart : cleanBlock.length);
+                    if (bEnd <= optB.index) bEnd = cleanBlock.length;
                     const bText = cleanBlock.substring(optB.index + optB[0].length, bEnd).trim();
                     
                     let cText = '', dText = '', eText = '';
                     if (optC) {
-                        let cEnd = optD ? optD.index : ansMarkerStart;
-                        if (cEnd === -1 || cEnd <= optC.index) cEnd = cleanBlock.length;
+                        let cEnd = optD ? optD.index : (ansMarkerStart !== -1 ? ansMarkerStart : cleanBlock.length);
+                        if (cEnd <= optC.index) cEnd = cleanBlock.length;
                         cText = cleanBlock.substring(optC.index + optC[0].length, cEnd).trim();
                     }
                     if (optD) {
-                        let dEnd = optE ? optE.index : ansMarkerStart;
-                        if (dEnd === -1 || dEnd <= optD.index) dEnd = cleanBlock.length;
+                        let dEnd = optE ? optE.index : (ansMarkerStart !== -1 ? ansMarkerStart : cleanBlock.length);
+                        if (dEnd <= optD.index) dEnd = cleanBlock.length;
                         dText = cleanBlock.substring(optD.index + optD[0].length, dEnd).trim();
                     }
                     if (optE) {
-                        let eEnd = ansMarkerStart;
-                        if (eEnd === -1 || eEnd <= optE.index) eEnd = cleanBlock.length;
+                        let eEnd = (ansMarkerStart !== -1 ? ansMarkerStart : cleanBlock.length);
+                        if (eEnd <= optE.index) eEnd = cleanBlock.length;
                         eText = cleanBlock.substring(optE.index + optE[0].length, eEnd).trim();
                     }
 
@@ -13496,11 +13493,11 @@ export const UI = {
                         id: qId, subject_id: subjectId, class_name: className, term: term, session: session, question_text: qText, type: 'mcq', marks: 1
                     });
                     const bankOptions = [
-                        { label: 'A', text: aText, correct: matchObj.ans.toUpperCase() === 'A' },
-                        { label: 'B', text: bText, correct: matchObj.ans.toUpperCase() === 'B' },
-                        { label: 'C', text: cText, correct: matchObj.ans.toUpperCase() === 'C' },
-                        { label: 'D', text: dText, correct: matchObj.ans.toUpperCase() === 'D' },
-                        { label: 'E', text: eText, correct: matchObj.ans.toUpperCase() === 'E' }
+                        { label: 'A', text: aText, correct: detectedAns === 'A' },
+                        { label: 'B', text: bText, correct: detectedAns === 'B' },
+                        { label: 'C', text: cText, correct: detectedAns === 'C' },
+                        { label: 'D', text: dText, correct: detectedAns === 'D' },
+                        { label: 'E', text: eText, correct: detectedAns === 'E' }
                     ].filter(o => o.text).map(o => prepareForSync({
                         id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                         question_id: qId, option_label: o.label, option_text: o.text, is_correct: o.correct ? 1 : 0
@@ -13509,24 +13506,22 @@ export const UI = {
                     newQuestions.push(prepareForSync({
                         id: qId, exam_id: bankExamId, type: 'mcq', question_text: qText,
                         option_a: aText, option_b: bText, option_c: cText, option_d: dText, option_e: eText,
-                        correct_option: matchObj.ans.toUpperCase(), marks: 1
+                        correct_option: detectedAns, marks: 1
                     }));
                     relationalData.push({ question: bankQuestion, options: bankOptions });
                     existingTexts.add(qText);
                 } else {
-                    // --- FILL-IN-THE-BLANK PARSING ---
-                    const qText = ansMarkerStart !== -1 ? cleanBlock.substring(0, ansMarkerStart).trim() : '';
-                    
+                    const qText = ansMarkerStart !== -1 ? cleanBlock.substring(0, ansMarkerStart).trim() : cleanBlock.trim();
                     if (qText && !existingTexts.has(qText)) {
                         const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
                         newQuestions.push(prepareForSync({
                             id: qId, exam_id: bankExamId, type: 'fill', question_text: qText,
                             option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
-                            correct_option: matchObj.ans, marks: 1
+                            correct_option: detectedAns, marks: 1
                         }));
                         relationalData.push({
                             question: prepareForSync({ id: qId, subject_id: subjectId, class_name: className, term: term, session: session, question_text: qText, type: 'fill', marks: 1 }),
-                            options: [prepareForSync({ id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`, question_id: qId, option_label: 'A', option_text: matchObj.ans, is_correct: 1 })]
+                            options: [prepareForSync({ id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`, question_id: qId, option_label: 'A', option_text: detectedAns, is_correct: 1 })]
                         });
                         existingTexts.add(qText);
                     } else if (qText && existingTexts.has(qText)) {
