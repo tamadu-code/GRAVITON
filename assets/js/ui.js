@@ -8416,13 +8416,14 @@ export const UI = {
 
             const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
             
-            // 1. Fetch Exam Meta
+            // 1. Fetch Exam Meta (merge cloud + local to ensure all fields like is_unified are present)
             let exam = null;
+            const localExam = await db.cbt_exams.get(examId);
             try {
                 const { data } = await supabase.from('cbt_exams').select('*').eq('id', examId).single();
-                exam = data;
+                if (data) exam = { ...(localExam || {}), ...data };
             } catch (e) {}
-            if (!exam) exam = await db.cbt_exams.get(examId);
+            if (!exam) exam = localExam;
             if (!exam) throw new Error('Exam metadata not found.');
 
             // 2. Fetch Existing Session (Sticky Randomization Source)
@@ -8431,6 +8432,10 @@ export const UI = {
                 const { data } = await supabase.from('cbt_results').select('*').eq('exam_id', examId).eq('student_id', studentId).single();
                 if (data) session = data;
             }
+
+            // Pre-load subjects for section labeling
+            const allSubjects = await db.subjects.toArray();
+            const subjectMap = allSubjects.reduce((m, s) => { m[s.id] = s.name; return m; }, {});
 
             let finalQuestions = [];
             const lockedIds = session?.question_ids || [];
@@ -8447,6 +8452,7 @@ export const UI = {
                     const opts = q.cbt_options || [];
                     qMap[q.id] = {
                         ...q,
+                        subject_name: subjectMap[q.subject_id] || '',
                         option_a: (opts.find(o => o.option_label === 'A') || {}).option_text || '',
                         option_b: (opts.find(o => o.option_label === 'B') || {}).option_text || '',
                         option_c: (opts.find(o => o.option_label === 'C') || {}).option_text || '',
@@ -8460,19 +8466,50 @@ export const UI = {
             } else {
                 // --- FRESH START: Assign Questions ---
                 if (exam.is_unified) {
-                    const { data: sections } = await supabase.from('cbt_exam_sections').select('*').eq('exam_id', examId);
+                    console.log('[CBT] Unified exam detected. Loading sections...');
+                    let sections = null;
+                    try {
+                        const { data } = await supabase.from('cbt_exam_sections').select('*').eq('exam_id', examId);
+                        sections = data;
+                    } catch (e) {}
+                    // Local fallback for sections
+                    if (!sections || sections.length === 0) {
+                        sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
+                    }
                     if (!sections || sections.length === 0) throw new Error('Unified exam has no subject sections.');
 
                     for (const sec of sections) {
-                        const { data: bankPool } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').eq('subject_id', sec.subject_id);
-                        if (bankPool && bankPool.length > 0) {
+                        const secSubjectName = subjectMap[sec.subject_id] || sec.subject_id;
+                        const count = parseInt(sec.question_count) || 40;
+                        console.log(`[CBT] Section: ${secSubjectName} — pulling ${count} questions`);
+
+                        // Try cloud first
+                        let bankPool = [];
+                        try {
+                            const { data } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').eq('subject_id', sec.subject_id);
+                            bankPool = data || [];
+                        } catch (e) {}
+
+                        // Local fallback if cloud returned nothing
+                        if (bankPool.length === 0) {
+                            console.log(`[CBT] Cloud bank empty for ${secSubjectName}, using local bank...`);
+                            const localBank = await db.cbt_question_bank.where('subject_id').equals(sec.subject_id).toArray();
+                            for (const q of localBank) {
+                                const opts = await db.cbt_options.where('question_id').equals(q.id).toArray();
+                                bankPool.push({ ...q, cbt_options: opts });
+                            }
+                        }
+
+                        if (bankPool.length > 0) {
                             bankPool.sort(() => Math.random() - 0.5);
-                            const count = parseInt(sec.question_count) || 40;
                             const selected = bankPool.slice(0, count);
+                            console.log(`[CBT] Selected ${selected.length}/${bankPool.length} for ${secSubjectName}`);
                             finalQuestions.push(...selected.map(q => {
                                 const opts = q.cbt_options || [];
                                 return {
                                     ...q,
+                                    subject_name: secSubjectName,
+                                    section_id: sec.id,
                                     option_a: (opts.find(o => o.option_label === 'A') || {}).option_text || '',
                                     option_b: (opts.find(o => o.option_label === 'B') || {}).option_text || '',
                                     option_c: (opts.find(o => o.option_label === 'C') || {}).option_text || '',
@@ -9160,7 +9197,10 @@ export const UI = {
             <div class="jamb-question-box">
                 <div style="max-width: 100%; margin: 0 auto; box-sizing: border-box;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.4rem;">
-                        <div style="font-weight: 800; color: #64748b; font-size: 0.75rem;">QUESTION ${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}</div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div style="font-weight: 800; color: #64748b; font-size: 0.75rem;">QUESTION ${this.currentQuestionIndex + 1} OF ${this.currentQuestions.length}</div>
+                            ${(q.subject_name && this.currentExam.is_unified) ? `<span style="background: linear-gradient(135deg, #4338ca, #6d28d9); color: white; font-size: 0.6rem; font-weight: 800; padding: 0.15rem 0.5rem; border-radius: 20px; letter-spacing: 0.3px;">${q.subject_name}</span>` : ''}
+                        </div>
                         <div style="background: #f1f5f9; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 700; color: #475569; font-size: 0.65rem;">${q.marks || 1} PT(S)</div>
                     </div>
 
@@ -9206,10 +9246,26 @@ export const UI = {
 
         // 2. Update Palette Items
         if (palette) {
+            // Build section color map for unified exams
+            const sectionColors = ['#4338ca', '#059669', '#d97706', '#dc2626', '#7c3aed', '#0891b2'];
+            const sectionIds = [...new Set(this.currentQuestions.map(cq => cq.section_id || cq.subject_id).filter(Boolean))];
+            const sectionColorMap = {};
+            sectionIds.forEach((sid, i) => { sectionColorMap[sid] = sectionColors[i % sectionColors.length]; });
+
+            let lastSection = null;
             palette.innerHTML = this.currentQuestions.map((cq, i) => {
                 const isAnswered = this.userAnswers[cq.id];
                 const isActive = i === this.currentQuestionIndex;
-                return `<div class="q-map-item ${isActive ? 'active' : ''} ${isAnswered ? 'answered' : ''}" onclick="UI.goToQuestion(${i})">${i + 1}</div>`;
+                const secId = cq.section_id || cq.subject_id;
+                const secColor = sectionColorMap[secId] || '#4338ca';
+                
+                // Section divider for unified exams
+                let sectionHeader = '';
+                if (this.currentExam.is_unified && secId && secId !== lastSection) {
+                    lastSection = secId;
+                    sectionHeader = `<div style="grid-column: 1 / -1; font-size: 0.6rem; font-weight: 800; color: ${secColor}; padding: 0.3rem 0; margin-top: ${i > 0 ? '0.4rem' : '0'}; border-top: ${i > 0 ? '2px solid #e2e8f0' : 'none'}; text-transform: uppercase; letter-spacing: 0.5px;">${cq.subject_name || 'Section'}</div>`;
+                }
+                return `${sectionHeader}<div class="q-map-item ${isActive ? 'active' : ''} ${isAnswered ? 'answered' : ''}" onclick="UI.goToQuestion(${i})" style="${this.currentExam.is_unified ? `border-left: 3px solid ${secColor};` : ''}">${i + 1}</div>`;
             }).join('');
         }
 
