@@ -9810,6 +9810,9 @@ export const UI = {
                 </div>
 
                 <button class="btn btn-primary" onclick="UI.renderCBT()" style="padding: 1rem 3rem; border-radius: 12px; font-weight: 800;">Return to Hub</button>
+                ${this.currentExam.mode === 'Practice' ? `
+                    <button class="btn btn-secondary" onclick="UI.renderCBTReview('${finalResult.id}')" style="padding: 1rem 3rem; border-radius: 12px; font-weight: 800; margin-left: 1rem; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;">Review Responses</button>
+                ` : ''}
             </div>
         `;
         
@@ -9818,6 +9821,114 @@ export const UI = {
         
         // Wait for cloud sync to finish before allowing navigation
         await this.debouncedSync();
+    },
+
+    async renderCBTReview(resultId) {
+        const result = await db.cbt_results.get(resultId);
+        if (!result) return Notifications.show('Result record not found.', 'error');
+
+        const exam = await db.cbt_exams.get(result.exam_id);
+        if (!exam) return Notifications.show('Exam context lost.', 'error');
+
+        // Reuse currentQuestions if available, otherwise fetch
+        let questions = this.currentQuestions;
+        if (!questions || questions.length === 0) {
+            questions = await db.cbt_questions.where('exam_id').equals(result.exam_id).toArray();
+        }
+
+        const studentAnswers = result.answers || {};
+
+        let reviewHtml = `
+            <div class="view-container animate-fade-in" style="max-width: 900px; margin: 0 auto; padding-bottom: 5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h1 style="font-weight: 900; color: #1e293b; margin: 0;">Performance Review</h1>
+                        <p style="color: #64748b;">${exam.title} | ${result.score.toFixed(1)} / ${result.total_marks.toFixed(1)}</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="UI.renderCBT()" style="border-radius: 12px;">Close Review</button>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 2rem;">
+        `;
+
+        questions.forEach((q, idx) => {
+            const studentChoice = studentAnswers[q.id];
+            let isCorrect = false;
+            let correctText = '';
+
+            if (q.question_type === 'fill_in_blank') {
+                const target = (q.fill_answer || q.correct_option || '').toString().toLowerCase().trim();
+                isCorrect = studentChoice && studentChoice.toLowerCase().trim() === target;
+                correctText = target;
+            } else {
+                // MCQ
+                const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + result.exam_id))).split('').reverse().join('');
+                isCorrect = choiceHash === q.answerHash;
+                
+                // Identify correct option text
+                const options = [
+                    { label: 'A', text: q.option_a },
+                    { label: 'B', text: q.option_b },
+                    { label: 'C', text: q.option_c },
+                    { label: 'D', text: q.option_d },
+                    { label: 'E', text: q.option_e }
+                ];
+                const correctOpt = options.find(o => {
+                    const hash = btoa(unescape(encodeURIComponent(o.text + result.exam_id))).split('').reverse().join('');
+                    return hash === q.answerHash;
+                });
+                correctText = correctOpt ? `(${correctOpt.label}) ${correctOpt.text}` : 'Unknown';
+            }
+
+            reviewHtml += `
+                <div class="card" style="padding: 2rem; border-radius: 20px; border: 2px solid ${isCorrect ? '#ecfdf5' : '#fef2f2'}; position: relative; overflow: hidden;">
+                    <div style="position: absolute; top: 0; left: 0; width: 6px; height: 100%; background: ${isCorrect ? '#10b981' : '#ef4444'};"></div>
+                    
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                        <span style="font-weight: 800; color: #94a3b8; font-size: 0.8rem;">QUESTION ${idx + 1}</span>
+                        <span style="padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; background: ${isCorrect ? '#ecfdf5' : '#fef2f2'}; color: ${isCorrect ? '#059669' : '#dc2626'};">
+                            ${isCorrect ? 'CORRECT' : 'INCORRECT'}
+                        </span>
+                    </div>
+
+                    ${q.passage_text ? `
+                        <div style="background: #f8fafc; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; font-size: 0.9rem; color: #475569; border-left: 4px solid #cbd5e1;">
+                            ${this.parseCBTContent(q.passage_text)}
+                        </div>
+                    ` : ''}
+
+                    <div style="font-size: 1.1rem; font-weight: 600; color: #1e293b; margin-bottom: 1.5rem;">
+                        ${this.parseCBTContent(q.question_text)}
+                    </div>
+
+                    <div style="display: grid; gap: 1rem;">
+                        <div style="padding: 1rem; border-radius: 12px; background: ${isCorrect ? '#f0fdf4' : '#fff1f2'}; border: 1px solid ${isCorrect ? '#bcf0da' : '#fecaca'};">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: ${isCorrect ? '#166534' : '#991b1b'}; margin-bottom: 0.25rem;">YOUR ANSWER</div>
+                            <div style="font-weight: 600; color: #1e293b;">${studentChoice || '<span style="color:#94a3b8; font-style:italic;">No Answer Provided</span>'}</div>
+                        </div>
+
+                        ${!isCorrect ? `
+                            <div style="padding: 1rem; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                                <div style="font-size: 0.7rem; font-weight: 800; color: #475569; margin-bottom: 0.25rem;">CORRECT ANSWER</div>
+                                <div style="font-weight: 600; color: #1e293b;">${correctText}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        });
+
+        reviewHtml += `
+                </div>
+                <div class="text-center" style="margin-top: 4rem;">
+                    <button class="btn btn-primary" onclick="UI.renderCBT()" style="padding: 1rem 4rem; border-radius: 14px; font-weight: 800;">Finish Review</button>
+                </div>
+            </div>
+        `;
+
+        this.contentArea.innerHTML = reviewHtml;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
     async postCBTToScoresheet(result) {
