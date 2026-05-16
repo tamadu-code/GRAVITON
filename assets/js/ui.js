@@ -6669,13 +6669,13 @@ export const UI = {
         assignments.forEach(a => {
             const s = subjects.find(sub => sub.id === a.subject_id);
             const name = s ? s.name : 'Unknown Subject';
-            if (!grouped[name]) grouped[name] = [];
-            grouped[name].push(a.class_name);
+            if (!grouped[name]) grouped[name] = new Set();
+            grouped[name].add(a.class_name);
         });
 
-        const groupedAssignments = Object.entries(grouped).map(([name, classes]) => ({
+        const groupedAssignments = Object.entries(grouped).map(([name, classSet]) => ({
             name,
-            classes: classes.join(', ')
+            classes: [...classSet].sort().join(', ')
         }));
 
 
@@ -8546,7 +8546,7 @@ export const UI = {
             }
 
             // 3. Normalization & Integrity
-            const strip = (t) => (t || '').toString().replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '').trim();
+            const strip = (t) => (t || '').toString().replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '').replace(/[\[\(]\s*$/, '').trim();
             const questions = finalQuestions.map(q => ({
                 ...q,
                 question_text: strip(q.question_text || q.question || ''),
@@ -9160,11 +9160,35 @@ export const UI = {
         if (q.question_type === 'fill_in_blank') {
             // Fill-in-the-Blank Input
             const savedAnswer = this.userAnswers[q.id] || '';
+            
+            // Extract special symbols from question text for the symbol tray
+            const symbolChars = new Set();
+            const qText = q.question_text || '';
+            for (const ch of qText) {
+                // Detect non-ASCII or math/special characters
+                if (ch.charCodeAt(0) > 127 || '÷×±√∞≠≈≤≥°²³⁴πΔΣαβγθμλφΩ∫∂∑∏'.includes(ch)) {
+                    symbolChars.add(ch);
+                }
+            }
+            // Also add commonly needed symbols that may appear in answers
+            const commonSymbols = ['÷', '×', '±', '√', '²', '³', '°', 'Δ', 'π', '≠', '≈', '≤', '≥'];
+            commonSymbols.forEach(s => symbolChars.add(s));
+            
+            const symbolTrayHTML = symbolChars.size > 0 ? `
+                <div style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.6rem;">
+                    ${[...symbolChars].map(s => `<button type="button" onclick="UI.insertSymbol('cbt-fill-input-${q.id}', '${s.replace(/'/g, "\\'")}')"
+                        style="width: 36px; height: 36px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #334155; font-size: 1.1rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s;"
+                        onmouseover="this.style.background='#6d28d9'; this.style.color='white'; this.style.borderColor='#6d28d9';"
+                        onmouseout="this.style.background='#f8fafc'; this.style.color='#334155'; this.style.borderColor='#e2e8f0';">${s}</button>`).join('')}
+                </div>
+            ` : '';
+            
             answerSectionHTML = `
                 <div style="margin-top: 0.5rem;">
                     <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
                         <span style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; font-size: 0.65rem; font-weight: 800; padding: 0.2rem 0.6rem; border-radius: 20px; letter-spacing: 0.5px;">FILL IN THE BLANK</span>
                     </div>
+                    ${symbolTrayHTML}
                     <input type="text" 
                         id="cbt-fill-input-${q.id}" 
                         placeholder="Type your answer here..." 
@@ -9550,6 +9574,23 @@ export const UI = {
 
         // Persist progress to IndexedDB
         this.saveExamProgress(questionId, trimmed || '');
+    },
+
+    /**
+     * Inserts a symbol at the cursor position in a fill-in-blank input
+     */
+    insertSymbol(inputId, symbol) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        const start = input.selectionStart || input.value.length;
+        const end = input.selectionEnd || start;
+        const val = input.value;
+        input.value = val.substring(0, start) + symbol + val.substring(end);
+        input.focus();
+        input.selectionStart = input.selectionEnd = start + symbol.length;
+        // Trigger save
+        const qId = inputId.replace('cbt-fill-input-', '');
+        this.saveFillAnswer(qId, input.value);
     },
 
     showSubmitReview() {
