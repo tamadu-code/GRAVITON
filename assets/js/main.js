@@ -7,7 +7,7 @@ import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, 
 import db from './db.js';
 import { Notifications } from './utils.js';
 
-console.log('--- GRAVITON CORE v24.0 (BUILD v182) - INITIALIZING ---');
+console.log('--- GRAVITON CORE v24.0 (BUILD v183) - INITIALIZING ---');
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -378,6 +378,39 @@ async function loadAuthenticatedApp(authUser) {
         } catch (e) { console.warn('Self-heal deferred:', e); }
     }
     await repairCBTData();
+
+    // ─── One-Time Migration: Backfill class_name on Question Bank ───
+    async function patchBankClassNames() {
+        const PATCH_KEY = 'bank_classname_patch_v1';
+        if (localStorage.getItem(PATCH_KEY)) return;
+        try {
+            const bankRecords = await db.cbt_question_bank.toArray();
+            const needsPatch = bankRecords.filter(q => !q.class_name);
+            if (needsPatch.length === 0) { localStorage.setItem(PATCH_KEY, '1'); return; }
+
+            // Build a lookup from cbt_questions BANK exam_ids
+            const allQ = await db.cbt_questions.toArray();
+            const bankQ = allQ.filter(q => q.exam_id && q.exam_id.startsWith('BANK-'));
+            const idToClass = {};
+            bankQ.forEach(q => {
+                // Format: BANK-{subjectId}__{className}__{term}__{session}
+                const parts = q.exam_id.replace('BANK-', '').split('__');
+                if (parts[1]) idToClass[q.id] = parts[1];
+            });
+
+            let patched = 0;
+            for (const rec of needsPatch) {
+                const className = idToClass[rec.id];
+                if (className) {
+                    await db.cbt_question_bank.update(rec.id, { class_name: className, is_synced: 0 });
+                    patched++;
+                }
+            }
+            console.log(`[Migration] Backfilled class_name on ${patched}/${needsPatch.length} bank records.`);
+            localStorage.setItem(PATCH_KEY, '1');
+        } catch (e) { console.warn('[Migration] Bank class_name patch deferred:', e); }
+    }
+    await patchBankClassNames();
 
     // Handle initial route
     const hash = window.location.hash.substring(1) || 'dashboard';

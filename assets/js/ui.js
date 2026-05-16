@@ -8169,13 +8169,27 @@ export const UI = {
         const subjects = await db.subjects.toArray();
         const subName = subjects.find(s => s.id === subjectId)?.name || subjectId;
         
-        let questions = await db.cbt_question_bank.where('subject_id').equals(subjectId).toArray();
+        let allSubjectQuestions = await db.cbt_question_bank.where('subject_id').equals(subjectId).toArray();
+        let questions = allSubjectQuestions;
+        let fallbackNote = '';
+        
         if (className) {
-            questions = questions.filter(q => q.class_name === className);
+            const targetClass = className.toLowerCase().trim();
+            const classFiltered = allSubjectQuestions.filter(q => (q.class_name || '').toLowerCase().trim() === targetClass);
+            if (classFiltered.length > 0) {
+                questions = classFiltered;
+            } else if (allSubjectQuestions.length > 0) {
+                // Legacy data: questions exist but weren't tagged with class_name
+                fallbackNote = `<div style="margin-bottom: 0.75rem; padding: 0.6rem; background: #fef3c7; border-radius: 10px; font-size: 0.8rem; color: #92400e; font-weight: 600;">
+                    ⚠️ No questions tagged for class "${className}". Showing all ${allSubjectQuestions.length} questions for ${subName}. Re-import to apply class tags.
+                </div>`;
+                questions = allSubjectQuestions;
+            }
         }
 
         const modalHtml = `
             <div style="max-height: 400px; overflow-y: auto;">
+                ${fallbackNote}
                 <div style="margin-bottom: 1rem; padding: 0.75rem; background: #eef2ff; border-radius: 12px; font-size: 0.85rem; color: #4338ca; font-weight: 600;">
                     Found ${questions.length} question(s) in the ${subName} ${className ? `(${className})` : 'Global'} pool.
                 </div>
@@ -8230,7 +8244,14 @@ export const UI = {
                 
                 // If a specific class pool is set for this section, filter by it
                 if (sec.class_name) {
-                    secQuestions = secQuestions.filter(q => q.class_name === sec.class_name);
+                    const targetClass = sec.class_name.toLowerCase().trim();
+                    const classFiltered = secQuestions.filter(q => (q.class_name || '').toLowerCase().trim() === targetClass);
+                    // Fallback: if class filter yields 0 (legacy data without class_name), use full subject pool
+                    if (classFiltered.length > 0) {
+                        secQuestions = classFiltered;
+                    } else {
+                        console.warn(`[CBT] Class filter "${sec.class_name}" returned 0 for subject ${sec.subject_id}. Using full subject pool (${secQuestions.length} questions).`);
+                    }
                 }
                 
                 // Shuffle and slice to question_count
@@ -13234,7 +13255,7 @@ export const UI = {
 
                     const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
                     const bankQuestion = prepareForSync({
-                        id: qId, subject_id: subjectId, question_text: qText, type: 'mcq', marks: 1
+                        id: qId, subject_id: subjectId, class_name: className, question_text: qText, type: 'mcq', marks: 1
                     });
                     const bankOptions = [
                         { label: 'A', text: aText, correct: matchObj.ans.toUpperCase() === 'A' },
@@ -13266,7 +13287,7 @@ export const UI = {
                             correct_option: matchObj.ans, marks: 1
                         }));
                         relationalData.push({
-                            question: prepareForSync({ id: qId, subject_id: subjectId, question_text: qText, type: 'fill', marks: 1 }),
+                            question: prepareForSync({ id: qId, subject_id: subjectId, class_name: className, question_text: qText, type: 'fill', marks: 1 }),
                             options: [prepareForSync({ id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`, question_id: qId, option_label: 'A', option_text: matchObj.ans, is_correct: 1 })]
                         });
                         existingTexts.add(qText);
