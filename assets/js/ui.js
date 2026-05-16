@@ -10256,7 +10256,7 @@ export const UI = {
         const teachers = (await db.profiles.where('role').equals('Teacher').toArray())
             .filter(t => t.full_name && t.full_name !== 'Unnamed Staff' && t.full_name !== 'Unknown Staff' && t.status !== 'Terminated' && t.status !== 'Inactive');
         const classes = await db.classes.toArray();
-        const subjects = await db.subjects.toArray();
+        let subjects = await db.subjects.toArray();
         const assignments = await db.subject_assignments.toArray();
         const profiles = await db.profiles.toArray();
 
@@ -10277,7 +10277,7 @@ export const UI = {
             return a.name.localeCompare(b.name);
         });
 
-        subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+        subjects.sort((a, b) => (a.name || '').localeCompare((b.name || '').trim()));
 
         
         // Deduplicate subjects by name for cleaner bulk selection
