@@ -4076,6 +4076,11 @@ export const UI = {
         const profiles = await db.profiles.toArray();
         const formTeachers = await db.form_teachers.toArray();
         
+        // Dynamic Limits
+        const allSettings = await db.settings.toArray();
+        const jssLimit = parseInt(allSettings.find(s => s.key === 'jss_subject_limit')?.value) || 11;
+        const sssLimit = parseInt(allSettings.find(s => s.key === 'sss_subject_limit')?.value) || 17;
+        
         this.contentArea.innerHTML = `
             <div class="view-container" style="padding: 0.75rem;">
                 <div class="page-banner" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 1rem; min-height: auto; margin-bottom: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem;">
@@ -4191,7 +4196,7 @@ export const UI = {
                                                                 const count = [...new Set(assignments.filter(a => a.class_name === c.name).map(a => a.subject_id))].length;
                                                                 const isJSS = c.name.toUpperCase().includes('JSS') || (c.level || '').toUpperCase().includes('JUNIOR');
                                                                 const isSSS = c.name.toUpperCase().includes('SSS') || (c.level || '').toUpperCase().includes('SENIOR');
-                                                                const limit = isJSS ? 11 : (isSSS ? 17 : null);
+                                                                const limit = isJSS ? jssLimit : (isSSS ? sssLimit : null);
                                                                 
                                                                 if (limit && count > limit) {
                                                                     return `<span style="background: #fee2e2; color: #ef4444; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; border: 1px solid #fecaca;">EXCEEDS LIMIT (${limit})</span>`;
@@ -7028,34 +7033,56 @@ export const UI = {
         });
     },
 
-    async renderSettings() {
-        const url = localStorage.getItem('sb_url') || '';
-        const key = localStorage.getItem('sb_key') || '';
+        const allSettings = await db.settings.toArray();
+        const jssLimit = allSettings.find(s => s.key === 'jss_subject_limit')?.value || 11;
+        const sssLimit = allSettings.find(s => s.key === 'sss_subject_limit')?.value || 17;
 
         this.contentArea.innerHTML = `
-            <div class="card" style="max-width: 600px;">
-                <h3>Supabase Configuration</h3>
-                <p class="text-secondary mb-2">Configure your Supabase project to enable cloud synchronization.</p>
-                
-                <div class="form-group mb-2">
-                    <label>Supabase URL</label>
-                    <input type="text" id="sb-url" class="input w-100" value="${url}" placeholder="https://your-project.supabase.co">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1.5rem; max-width: 1200px;">
+                <div class="card">
+                    <h3 style="display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="cloud"></i> Supabase Configuration</h3>
+                    <p class="text-secondary mb-2">Configure your Supabase project to enable cloud synchronization.</p>
+                    
+                    <div class="form-group mb-2">
+                        <label>Supabase URL</label>
+                        <input type="text" id="sb-url" class="input w-100" value="${url}" placeholder="https://your-project.supabase.co">
+                    </div>
+                    
+                    <div class="form-group mb-2">
+                        <label>Anon Key</label>
+                        <input type="password" id="sb-key" class="input w-100" value="${key}" placeholder="your-anon-key">
+                    </div>
+                    
+                    <button id="save-settings" class="btn btn-primary" style="width: 100%; border-radius: 12px; height: 48px;">Save Sync Credentials</button>
                 </div>
-                
-                <div class="form-group mb-2">
-                    <label>Anon Key</label>
-                    <input type="password" id="sb-key" class="input w-100" value="${key}" placeholder="your-anon-key">
-                </div>
-                
-                <button id="save-settings" class="btn btn-primary">Save Configuration</button>
 
-                <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e2e8f0;">
-                
-                <h3>Biometric Maintenance</h3>
-                <p class="text-secondary mb-2">Synchronize and fix class divisions (Arms) for all students based on the biometric system data.</p>
-                <button id="btn-bulk-repair-arms" class="btn btn-secondary" style="background: #fdf2f7; color: #9d174d; border: 1px solid #fce7f3; font-weight: 800;">
-                    <i data-lucide="wrench"></i> Bulk Repair Class Arms
-                </button>
+                <div class="card">
+                    <h3 style="display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="book-open"></i> Curriculum Configuration</h3>
+                    <p class="text-secondary mb-2">Adjust the maximum subject thresholds for different academic levels.</p>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                        <div class="form-group">
+                            <label>JSS Subject Limit</label>
+                            <input type="number" id="jss-limit" class="input w-100" value="${jssLimit}" min="5" max="30">
+                        </div>
+                        <div class="form-group">
+                            <label>SSS Subject Limit</label>
+                            <input type="number" id="sss-limit" class="input w-100" value="${sssLimit}" min="5" max="40">
+                        </div>
+                    </div>
+                    
+                    <button id="save-curriculum-settings" class="btn btn-secondary" style="width: 100%; border-radius: 12px; height: 48px; background: #eef2ff; color: #4338ca; border: 1px solid #dbeafe;">
+                        Update Academic Limits
+                    </button>
+                </div>
+
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h3 style="display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="shield-check"></i> System Maintenance</h3>
+                    <p class="text-secondary mb-2">Synchronize and fix class divisions (Arms) for all students based on the biometric system data.</p>
+                    <button id="btn-bulk-repair-arms" class="btn btn-secondary" style="background: #fdf2f7; color: #9d174d; border: 1px solid #fce7f3; font-weight: 800; border-radius: 12px; height: 48px;">
+                        <i data-lucide="wrench"></i> Bulk Repair Class Arms
+                    </button>
+                </div>
             </div>
         `;
 
@@ -7066,7 +7093,27 @@ export const UI = {
             localStorage.setItem('sb_url', newUrl);
             localStorage.setItem('sb_key', newKey);
             
-            Notifications.show('Settings saved. Please refresh the page to apply.', 'success');
+            Notifications.show('Sync credentials saved. Page refresh recommended.', 'success');
+        });
+
+        document.getElementById('save-curriculum-settings').addEventListener('click', async () => {
+            const jss = document.getElementById('jss-limit').value;
+            const sss = document.getElementById('sss-limit').value;
+
+            const upsert = async (key, val) => {
+                const existing = await db.settings.get(key);
+                if (existing) {
+                    await db.settings.update(key, prepareForSync({ value: val.toString() }));
+                } else {
+                    await db.settings.add(prepareForSync({ id: key, key: key, value: val.toString() }));
+                }
+            };
+
+            await upsert('jss_subject_limit', jss);
+            await upsert('sss_subject_limit', sss);
+
+            Notifications.show('Academic limits updated successfully.', 'success');
+            this.debouncedSync();
         });
 
         const repairBtn = document.getElementById('btn-bulk-repair-arms');
