@@ -13439,9 +13439,10 @@ export const UI = {
                 let cleanBlock = blockObj.text;
                 cleanBlock = cleanBlock.replace(/^\d+[\.\)]\s*/, '').trim();
 
-                const blockAnsRegex = /[\(\[]\s*(?:Ans|Answer)?[\:\s]*([A-E])\s*[\)\]]|(?:Ans|Answer)[\:\s]+([A-E])/i;
+                // Look for an answer in this block: [Ans: B], [B], (B), Answer: expenditure
+                const blockAnsRegex = /[\(\[]\s*(?:Ans|Answer)?[\:\s]*([\s\S]*?)\s*[\)\]]|(?:Ans|Answer)[\:\s]+(\S+)/i;
                 const ansMatch = blockAnsRegex.exec(cleanBlock);
-                const detectedAns = (ansMatch ? (ansMatch[1] || ansMatch[2]) : 'A').toUpperCase();
+                let detectedAns = (ansMatch ? (ansMatch[1] || ansMatch[2]) : 'A').trim();
                 
                 if (ansMatch) cleanBlock = cleanBlock.replace(ansMatch[0], '').trim();
 
@@ -13455,6 +13456,12 @@ export const UI = {
 
                 const hasA = optARegex.test(cleanBlock);
                 const hasB = optBRegex.test(cleanBlock);
+
+                // If it's an MCQ, we want the letter. If it's FITB, the detectedAns is already the word.
+                if (hasA && hasB) {
+                    detectedAns = detectedAns.toUpperCase().charAt(0);
+                    if (!['A','B','C','D','E'].includes(detectedAns)) detectedAns = 'A';
+                }
 
                 if (hasA && hasB) {
                     const optA = optARegex.exec(cleanBlock);
