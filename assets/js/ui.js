@@ -13359,42 +13359,44 @@ export const UI = {
                 Notifications.show('Cleaning master library for this subject...', 'info');
                 
                 // 1. Clear relational bank (cbt_question_bank + cbt_options)
-                const oldBank = await db.cbt_question_bank.where('subject_id').equals(subjectId).toArray();
+                const oldBank = await db.cbt_question_bank
+                    .where('subject_id').equals(subjectId)
+                    .filter(q => q.class_name === className && q.term === term && q.session === session)
+                    .toArray();
                 const oldIds = oldBank.map(q => q.id);
                 
-                await db.cbt_question_bank.where('subject_id').equals(subjectId).delete();
                 if (oldIds.length > 0) {
+                    await db.cbt_question_bank.bulkDelete(oldIds);
                     await db.cbt_options.where('question_id').anyOf(oldIds).delete();
                 }
 
-                // 2. Clear flat table (cbt_questions with BANK- prefix for this subject)
-                const allFlatQ = await db.cbt_questions.toArray();
-                const bankPrefix = `BANK-${subjectId}`;
-                const flatToDelete = allFlatQ.filter(q => q.exam_id && q.exam_id.startsWith(bankPrefix));
+                // 2. Clear flat table (cbt_questions for this EXACT bankExamId)
+                const flatToDelete = await db.cbt_questions.where('exam_id').equals(bankExamId).toArray();
                 const flatIds = flatToDelete.map(q => q.id);
                 if (flatIds.length > 0) {
                     await db.cbt_questions.bulkDelete(flatIds);
                 }
 
-                // 3. Cloud Sync Clear (Thorough)
+                // 3. Cloud Sync Clear (Specific to current bank identity)
                 if (navigator.onLine) {
                     const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                     if (client) {
-                        // 3A. Clear cbt_question_bank and cbt_options via subject_id
-                        const { error: bankDelError } = await client.from('cbt_question_bank').delete().eq('subject_id', subjectId);
+                        const { error: bankDelError } = await client.from('cbt_question_bank')
+                            .delete()
+                            .eq('subject_id', subjectId)
+                            .eq('class_name', className)
+                            .eq('term', term)
+                            .eq('session', session);
                         if (bankDelError) console.warn('[Cloud Clear] Bank deletion error:', bankDelError);
                         
-                        // Note: cbt_options usually has a cascade or we can rely on cleaning up question_ids
-                        if (oldIds.length > 0) {
-                             await client.from('cbt_options').delete().in('question_id', oldIds);
-                        }
+                        // Related options are cleared via DB cascade or handled by question deletion cleanup logic
 
-                        // 3B. Clear cbt_questions for this specific bank identity
-                        const { error: flatDelError } = await client.from('cbt_questions').delete().ilike('exam_id', `${bankPrefix}%`);
+                        // 3B. Clear cbt_questions for this specific exam_id
+                        const { error: flatDelError } = await client.from('cbt_questions').delete().eq('exam_id', bankExamId);
                         if (flatDelError) console.warn('[Cloud Clear] Flat table deletion error:', flatDelError);
                     }
                 }
-                console.log(`[Bank Clear] Deleted ${oldIds.length} bank + ${flatIds.length} flat records for subject ${subjectId}`);
+                console.log(`[Bank Clear] Deleted ${oldIds.length} bank + ${flatIds.length} flat records for period: ${term} ${session}`);
             }
 
             // --- NEW: Hyper-Robust Multi-Stage Parser ---
@@ -13488,7 +13490,7 @@ export const UI = {
 
                     const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
                     const bankQuestion = prepareForSync({
-                        id: qId, subject_id: subjectId, class_name: className, question_text: qText, type: 'mcq', marks: 1
+                        id: qId, subject_id: subjectId, class_name: className, term: term, session: session, question_text: qText, type: 'mcq', marks: 1
                     });
                     const bankOptions = [
                         { label: 'A', text: aText, correct: matchObj.ans.toUpperCase() === 'A' },
@@ -13520,7 +13522,7 @@ export const UI = {
                             correct_option: matchObj.ans, marks: 1
                         }));
                         relationalData.push({
-                            question: prepareForSync({ id: qId, subject_id: subjectId, class_name: className, question_text: qText, type: 'fill', marks: 1 }),
+                            question: prepareForSync({ id: qId, subject_id: subjectId, class_name: className, term: term, session: session, question_text: qText, type: 'fill', marks: 1 }),
                             options: [prepareForSync({ id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`, question_id: qId, option_label: 'A', option_text: matchObj.ans, is_correct: 1 })]
                         });
                         existingTexts.add(qText);

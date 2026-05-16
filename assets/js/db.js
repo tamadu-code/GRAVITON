@@ -28,7 +28,7 @@ db.version(32).stores({
 });
 
 // Final consolidated schema for Graviton Core v24.0
-db.version(39).stores({
+db.version(40).stores({
     // --- CORE IDENTITY & ACCESS ---
     profiles: 'id, full_name, role, assigned_id, email, status, updated_at, is_synced',
     students: 'student_id, name, gender, address, class_name, status, is_active, deactivated_at, attendance_code, admission_year, sub_class, legacy_student_id, updated_at, is_synced',
@@ -55,7 +55,7 @@ db.version(39).stores({
     // --- COMPUTER BASED TESTING (CBT) ---
     cbt_exams: 'id, title, subject_id, class_name, teacher_id, mode, term, session, score_field, date, start_time, end_time, duration, status, is_unified, updated_at, is_synced',
     cbt_exam_sections: 'id, exam_id, subject_id, class_name, score_field, question_count, target_mark, updated_at, is_synced',
-    cbt_question_bank: 'id, subject_id, class_name, question_text, passage_text, topic_area, difficulty_level, updated_at, is_synced',
+    cbt_question_bank: 'id, subject_id, class_name, term, session, question_text, passage_text, topic_area, difficulty_level, updated_at, is_synced',
     cbt_options: 'id, question_id, option_label, option_text, is_correct, updated_at, is_synced',
     cbt_exam_questions: 'id, exam_id, question_id, question_number, [exam_id+question_id], updated_at, is_synced',
     cbt_questions: 'id, exam_id, question_text, passage_text, option_a, option_b, option_c, option_d, option_e, correct_option, marks, updated_at, is_synced',
