@@ -8033,6 +8033,7 @@ export const UI = {
                 const bankQuestion = prepareForSync({
                     id: qId,
                     subject_id: subId,
+                    class_name: cls,
                     question_text: q.question_text,
                     passage_text: q.passage_text || null,
                     type: q.type || 'mcq',
@@ -8111,10 +8112,12 @@ export const UI = {
         if (!list) return;
 
         const subjects = await db.subjects.toArray();
+        const classes = await db.classes.toArray();
         
         list.innerHTML = this.cbtSections.map((s, idx) => `
             <div class="cbt-section-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:0.75rem; position:relative;">
-                <button onclick="UI.removeCBTSection(${idx})" style="position:absolute; top:-8px; right:-8px; background:#ef4444; color:white; border:none; border-radius:50%; width:20px; height:20px; font-size:10px; display:flex; align-items:center; justify-content:center; cursor:pointer;"><i data-lucide="x" style="width:12px;"></i></button>
+                <button onclick="UI.removeCBTSection(${idx})" style="position:absolute; top:-8px; right:-8px; background:#ef4444; color:white; border:none; border-radius:50%; width:20px; height:20px; font-size:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:10;"><i data-lucide="x" style="width:12px;"></i></button>
+                
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; margin-bottom:0.5rem;">
                     <div>
                         <label style="font-size:0.6rem; font-weight:800; color:#94a3b8; display:block; margin-bottom:2px;">SUBJECT</label>
@@ -8134,9 +8137,17 @@ export const UI = {
                         </select>
                     </div>
                 </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:0.5rem;">
                     <div>
-                        <label style="font-size:0.6rem; font-weight:800; color:#94a3b8; display:block; margin-bottom:2px;">QUESTIONS</label>
+                        <label style="font-size:0.6rem; font-weight:800; color:#94a3b8; display:block; margin-bottom:2px;">CLASS POOL</label>
+                        <select onchange="UI.updateCBTSection(${idx}, 'class_name', this.value)" class="cbt-input" style="padding:4px; font-size:0.75rem;">
+                            <option value="">Any Class</option>
+                            ${classes.map(c => `<option value="${c.name}" ${s.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:0.6rem; font-weight:800; color:#94a3b8; display:block; margin-bottom:2px;">PULL COUNT</label>
                         <input type="number" value="${s.question_count}" onchange="UI.updateCBTSection(${idx}, 'question_count', parseInt(this.value))" class="cbt-input" style="padding:4px; font-size:0.75rem;">
                     </div>
                     <div>
@@ -8144,9 +8155,53 @@ export const UI = {
                         <input type="number" value="${s.target_mark}" onchange="UI.updateCBTSection(${idx}, 'target_mark', parseInt(this.value))" class="cbt-input" style="padding:4px; font-size:0.75rem;">
                     </div>
                 </div>
+                <div style="margin-top:0.5rem; text-align:right;">
+                    <a href="javascript:void(0)" onclick="UI.previewBankSection('${s.subject_id}', '${s.class_name || ''}')" style="font-size:0.65rem; color:#4338ca; font-weight:700; text-decoration:none;"><i data-lucide="eye" style="width:10px; display:inline; vertical-align:middle;"></i> Preview Bank Pool</a>
+                </div>
             </div>
         `).join('');
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async previewBankSection(subjectId, className = '') {
+        if (!subjectId) return Notifications.show('Please select a subject first.', 'warning');
+        
+        const subjects = await db.subjects.toArray();
+        const subName = subjects.find(s => s.id === subjectId)?.name || subjectId;
+        
+        let questions = await db.cbt_question_bank.where('subject_id').equals(subjectId).toArray();
+        if (className) {
+            questions = questions.filter(q => q.class_name === className);
+        }
+
+        const modalHtml = `
+            <div style="max-height: 400px; overflow-y: auto;">
+                <div style="margin-bottom: 1rem; padding: 0.75rem; background: #eef2ff; border-radius: 12px; font-size: 0.85rem; color: #4338ca; font-weight: 600;">
+                    Found ${questions.length} question(s) in the ${subName} ${className ? `(${className})` : 'Global'} pool.
+                </div>
+                <table class="table table-sm" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="text-align: left; border-bottom: 2px solid #f1f5f9; font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">
+                            <th style="padding: 0.5rem;">#</th>
+                            <th style="padding: 0.5rem;">Question Text</th>
+                            <th style="padding: 0.5rem;">Type</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${questions.map((q, i) => `
+                            <tr style="border-bottom: 1px solid #f1f5f9; font-size: 0.85rem;">
+                                <td style="padding: 0.75rem; color: #94a3b8; font-weight: 800;">${i + 1}</td>
+                                <td style="padding: 0.75rem; color: #1e293b;">${q.question_text.substring(0, 80)}${q.question_text.length > 80 ? '...' : ''}</td>
+                                <td style="padding: 0.75rem;"><span style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700;">${q.type || 'MCQ'}</span></td>
+                            </tr>
+                        `).join('')}
+                        ${questions.length === 0 ? '<tr><td colspan="3" style="text-align: center; padding: 2rem; color: #94a3b8;">No questions found. Please add questions to the Bank for this subject.</td></tr>' : ''}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        this.showModal(`Pool Preview: ${subName}`, modalHtml, null, 'Close', 'database');
     },
 
     updateCBTSection(idx, field, val) {
@@ -8170,7 +8225,13 @@ export const UI = {
             
             for (const sec of sections) {
                 // Pull questions for each section from the bank
-                let secQuestions = await db.cbt_question_bank.where('subject_id').equals(sec.subject_id).toArray();
+                let qry = db.cbt_question_bank.where('subject_id').equals(sec.subject_id);
+                let secQuestions = await qry.toArray();
+                
+                // If a specific class pool is set for this section, filter by it
+                if (sec.class_name) {
+                    secQuestions = secQuestions.filter(q => q.class_name === sec.class_name);
+                }
                 
                 // Shuffle and slice to question_count
                 secQuestions.sort(() => Math.random() - 0.5);
