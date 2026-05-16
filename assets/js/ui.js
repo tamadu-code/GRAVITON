@@ -7710,18 +7710,6 @@ export const UI = {
                                 <p style="font-size:0.65rem; color:#64748b; margin-top:0.5rem; font-weight:600;">Combine multiple subjects/columns into one sitting.</p>
                             </div>
 
-                            <div id="unified-sections-container" style="display: ${exam.is_unified ? 'block' : 'none'}; margin-bottom: 1.5rem;">
-                                <h4 style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-                                    <i data-lucide="list-checks" style="width: 14px;"></i> Exam Sections
-                                </h4>
-                                <div id="cbt-sections-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
-                                    <!-- Dynamic Sections -->
-                                </div>
-                                <button class="btn btn-sm w-100" style="margin-top: 0.75rem; background: #e0e7ff; color: #4338ca; border: none; font-weight: 800; border-radius: 8px; height: 36px;" onclick="UI.addCBTSection()">
-                                    <i data-lucide="plus" style="width: 14px;"></i> Add Section
-                                </button>
-                            </div>
-
                             <div class="cbt-form-group">
                                 <label>Exam Type</label>
                                 <select id="exam-title" class="cbt-input">
