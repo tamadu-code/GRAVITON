@@ -8248,6 +8248,7 @@ export const UI = {
 
         const className = document.getElementById('exam-class')?.value;
         let subjects = [];
+        const classes = await db.classes.toArray();
 
         if (className) {
             const assignments = await db.subject_assignments.where('class_name').equals(className).toArray();
