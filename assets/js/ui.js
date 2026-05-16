@@ -9534,6 +9534,7 @@ export const UI = {
         const studentId = this.resolveCBTStudentId();
         const examId = this.currentExam.id;
         const existing = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+        let finalResult = existing;
 
         let score = isExternal && existing ? (parseFloat(existing.score) || 0) : 0;
         let totalMarks = isExternal && existing ? (parseFloat(existing.total_marks) || 0) : this.currentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
@@ -9568,16 +9569,16 @@ export const UI = {
                 is_synced: 0
             };
 
-            const finalResult = existing ? { ...existing, ...resultUpdate } : { 
-                id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                exam_id: examId,
-                student_id: studentId,
-                ...resultUpdate 
-            };
-
             if (existing) {
                 await db.cbt_results.update(existing.id, resultUpdate);
+                finalResult = { ...existing, ...resultUpdate };
             } else {
+                finalResult = { 
+                    id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                    exam_id: examId,
+                    student_id: studentId,
+                    ...resultUpdate 
+                };
                 await db.cbt_results.add(finalResult);
             }
 
@@ -9598,6 +9599,8 @@ export const UI = {
 
         } else {
             Notifications.show('Your exam has been submitted and scored by an administrator.', 'info');
+            // Ensure finalResult is available for the UI if it exists locally
+            finalResult = existing;
         }
 
         this.contentArea.innerHTML = `
@@ -9614,7 +9617,7 @@ export const UI = {
                 </div>
 
                 <button class="btn btn-primary" onclick="UI.renderCBT()" style="padding: 1rem 3rem; border-radius: 12px; font-weight: 800;">Return to Hub</button>
-                ${this.currentExam.mode === 'Practice' ? `
+                ${(this.currentExam.mode === 'Practice' && finalResult) ? `
                     <button class="btn btn-secondary" onclick="UI.renderCBTReview('${finalResult.id}')" style="padding: 1rem 3rem; border-radius: 12px; font-weight: 800; margin-left: 1rem; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;">Review Responses</button>
                 ` : ''}
             </div>
