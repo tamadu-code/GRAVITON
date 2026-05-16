@@ -16,33 +16,60 @@ export const UI = {
     
     showPDFPreview(doc, filename = 'document.pdf') {
         const blobUrl = doc.output('bloburl');
-        const modalHtml = `
-            <div id="pdf-preview-container" style="height: 80vh; display: flex; flex-direction: column;">
-                <div style="flex: 1; position: relative; background: #525659; border-radius: 8px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);">
-                    <iframe src="${blobUrl}#toolbar=0" style="width: 100%; height: 100%; border: none;"></iframe>
+        const existing = document.getElementById('full-pdf-preview');
+        if (existing) existing.remove();
+
+        const previewHtml = `
+            <div id="full-pdf-preview" class="animate-fade-in" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0f172a; z-index: 9999999; display: flex; flex-direction: column; font-family: 'Outfit', sans-serif;">
+                <!-- Full Page Header -->
+                <div style="height: 70px; background: #1e293b; display: flex; align-items: center; justify-content: space-between; padding: 0 2rem; border-bottom: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 40px; height: 40px; background: #3b82f6; color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);">
+                            <i data-lucide="eye" style="width: 22px;"></i>
+                        </div>
+                        <div>
+                            <div style="color: white; font-weight: 900; font-size: 1.1rem; letter-spacing: 0.5px;">REPORT REVIEW & AUDIT</div>
+                            <div style="color: #94a3b8; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">PREVIEWING: ${filename}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <button id="btn-preview-cancel" class="btn" style="background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; height: 44px; padding: 0 1.5rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="x" style="width: 18px;"></i> Close Preview
+                        </button>
+                        <button id="btn-final-print" class="btn" style="background: #10b981; color: white; border: none; border-radius: 12px; height: 44px; padding: 0 2rem; font-weight: 800; font-size: 0.9rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);">
+                            <i data-lucide="printer" style="width: 18px;"></i> Secure Print
+                        </button>
+                    </div>
                 </div>
-                <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 1rem;">
-                    <button class="btn btn-secondary" onclick="document.getElementById('ui-modal').remove()" style="border-radius: 12px; height: 48px; padding: 0 1.5rem; font-weight: 700;">
-                        Cancel Review
-                    </button>
-                    <button id="btn-final-print" class="btn btn-primary" style="border-radius: 12px; height: 48px; padding: 0 2rem; font-weight: 800; background: #10b981; display: flex; align-items: center; gap: 0.75rem;">
-                        <i data-lucide="printer"></i> Secure Print
-                    </button>
+
+                <!-- Main Content Area -->
+                <div style="flex: 1; background: #525659; overflow: hidden; position: relative; display: flex; justify-content: center; padding: 1.5rem;">
+                    <div style="width: 100%; max-width: 1200px; height: 100%; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+                        <iframe src="${blobUrl}#toolbar=0" style="width: 100%; height: 100%; border: none;"></iframe>
+                    </div>
+                </div>
+
+                <!-- Floating Info (Bottom Left) -->
+                <div style="position: fixed; bottom: 30px; left: 30px; background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(8px); padding: 0.75rem 1.25rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 0.75rem; color: #94a3b8; font-size: 0.75rem; pointer-events: none;">
+                    <i data-lucide="info" style="width: 14px; color: #3b82f6;"></i>
+                    <span>Scroll within the document to review all pages. All signatures are automatically embedded.</span>
                 </div>
             </div>
         `;
         
-        this.showModal('Report Review & Audit', modalHtml, null, 'Print', 'printer');
-        
-        // Hide the default modal footer because we have our own
-        const modalFooter = document.querySelector('.modal-footer');
-        if (modalFooter) modalFooter.style.display = 'none';
+        document.body.insertAdjacentHTML('beforeend', previewHtml);
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        document.getElementById('btn-preview-cancel').onclick = () => {
+            document.getElementById('full-pdf-preview').remove();
+        };
 
         const printBtn = document.getElementById('btn-final-print');
         if (printBtn) {
             printBtn.onclick = () => {
                 doc.save(filename);
-                document.getElementById('ui-modal').remove();
+                document.getElementById('full-pdf-preview').remove();
                 Notifications.show('Document saved for printing!', 'success');
             };
         }
