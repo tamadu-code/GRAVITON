@@ -123,6 +123,17 @@ export const UI = {
                 const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (client) {
                     const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
+                    
+                    // Handle foreign key constraints for classes in the cloud
+                    if (table === 'classes') {
+                        const cls = await db.classes.get(id);
+                        if (cls && cls.name) {
+                            console.log(`[SafeDelete] Cleaning up children for class: ${cls.name}`);
+                            await client.from('form_teachers').delete().eq('class_name', cls.name);
+                            await client.from('subject_assignments').delete().eq('class_name', cls.name);
+                        }
+                    }
+
                     const { error: delError } = await client.from(table).delete().eq(pk, id);
                     if (delError) {
                         console.error(`[SafeDelete] Cloud delete failed for ${table}/${id}:`, delError);
