@@ -4001,28 +4001,7 @@ export const UI = {
             loadAcademicLedger(); // Refresh to show ranks
         });
 
-                                <tr>
-                                    <td colspan="7" style="border:none; padding:0;">
-                                        <div class="footer-info">
-                                            <div>Course: ${activeSub.name} | Printed from Graviton LMS</div>
-                                            <div>Date Generated: ${generatedDate}</div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </body>
-                </html>
-            `;
 
-
-            printHTML += `</body></html>`;
-            const win = window.open('', '_blank');
-            win.document.write(printHTML);
-            win.document.close();
-            win.onload = () => { setTimeout(() => { win.print(); }, 500); };
-        });
 
         // Blank Score Sheet Listener (Bulk Subject Generation)
         document.getElementById('btn-print-empty').addEventListener('click', async () => {
