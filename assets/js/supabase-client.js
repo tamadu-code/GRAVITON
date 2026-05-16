@@ -167,6 +167,10 @@ export async function syncToCloud() {
                             if (error.code === '23505') {
                                 console.warn(`[Sync Self-Heal] Record already exists in cloud for ${table}. Marking as synced to resolve loop.`);
                                 error = null; // Clear error to allow local sync mark
+                                await db[table].where(pk).equals(dataToSync[0][pk]).modify({ is_synced: 1 });
+                            } else if (error.code === '22001') {
+                                console.error(`[Sync Error] Field too long for ${table}:`, error.message);
+                                if (typeof Notifications !== 'undefined') Notifications.show(`Database Error: A field in ${table} is too long. Please increase column length in Supabase.`, 'error');
                             } else if (error.message.includes('violations') || error.message.includes('warnings')) {
                                 console.warn(`[Sync Self-Heal] Cloud schema mismatch for ${table}. Retrying without telemetry columns...`);
                                 const sanitizedData = dataToSync.map(item => {
@@ -178,7 +182,7 @@ export async function syncToCloud() {
                                 const retry = await client.from(table).upsert(sanitizedData);
                                 error = retry.error;
                             } else {
-                                console.error(`Sync error for ${table}:`, error, "Data:", dataToSync);
+                                console.error(`Sync error for ${table}:`, error, "Data:", chunk);
                             }
                         }
 
@@ -536,7 +540,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('[Auth] Login successful via profile lookup!');
+                    console.log('--- GRAVITON CORE v24.0 (BUILD v202) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);
