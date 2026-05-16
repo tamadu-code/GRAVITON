@@ -7558,22 +7558,22 @@ export const UI = {
 
         this.cbtQuestions = isEdit ? await db.cbt_questions.where('exam_id').equals(examId).toArray() : [];
 
-        let subjects = await db.subjects.toArray();
+        let allSubjects = await db.subjects.toArray();
+        let filteredSubjects = allSubjects;
         
-        // Smarter Subject Resolution: Handle duplicates by showing type/ID context
-        const subjectNameCounts = {};
-        subjects.forEach(s => {
-            const name = (s.name || '').trim();
-            subjectNameCounts[name] = (subjectNameCounts[name] || 0) + 1;
-        });
+        if (exam.class_name) {
+            const assignments = await db.subject_assignments.where('class_name').equals(exam.class_name).toArray();
+            const assignedSubIds = new Set(assignments.map(a => a.subject_id));
+            filteredSubjects = allSubjects.filter(s => assignedSubIds.has(s.id));
+        }
 
-        // Format subjects for display
-        const formattedSubjects = subjects.map(s => ({
-            ...s,
-            displayName: (subjectNameCounts[s.name || ''] > 1 ? `${s.name} (${s.type || 'General'})` : s.name) || 'Untitled Subject'
-        })).sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
-        
-        subjects = formattedSubjects;
+        // Global Deduplication by Name
+        const uniqueMap = new Map();
+        filteredSubjects.forEach(s => {
+            const name = (s.name || '').trim();
+            if (!uniqueMap.has(name)) uniqueMap.set(name, s);
+        });
+        subjects = Array.from(uniqueMap.values()).sort((a,b) => a.name.localeCompare(b.name));
 
 
         let classes = (await db.classes.toArray());
@@ -7722,7 +7722,7 @@ export const UI = {
 
                             <div class="cbt-form-group">
                                 <label>Target Class</label>
-                                <select id="exam-class" class="cbt-input">
+                                <select id="exam-class" class="cbt-input" onchange="UI.handleCBTClassChange(this.value)">
                                     <option value="">Select Class</option>
                                     ${classes.map(c => `<option value="${c.name}" ${exam.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
                                 </select>
@@ -8210,12 +8210,60 @@ export const UI = {
         await this.renderCBTSections();
     },
 
+    async handleCBTClassChange(className) {
+        if (!className) return;
+        await this.refreshCBTSubjectLists(className);
+    },
+
+    async refreshCBTSubjectLists(className) {
+        const assignments = await db.subject_assignments.where('class_name').equals(className).toArray();
+        const assignedSubIds = new Set(assignments.map(a => a.subject_id));
+        
+        const allSubjects = await db.subjects.toArray();
+        const filtered = allSubjects.filter(s => assignedSubIds.has(s.id));
+        
+        const uniqueMap = new Map();
+        filtered.forEach(s => {
+            const name = (s.name || '').trim();
+            if (!uniqueMap.has(name)) uniqueMap.set(name, s);
+        });
+        const finalSubjects = Array.from(uniqueMap.values()).sort((a,b) => a.name.localeCompare(b.name));
+
+        const subSelect = document.getElementById('exam-subject');
+        if (subSelect) {
+            const currentVal = subSelect.value;
+            subSelect.innerHTML = `<option value="">Select Subject</option>` + 
+                finalSubjects.map(s => `<option value="${s.id}" ${s.id === currentVal ? 'selected' : ''}>${s.name}</option>`).join('');
+        }
+
+        if (this.cbtSections && this.cbtSections.length > 0) {
+            await this.renderCBTSections();
+        }
+    },
+
     async renderCBTSections() {
         const list = document.getElementById('cbt-sections-list');
         if (!list) return;
 
-        const subjects = await db.subjects.toArray();
-        const classes = await db.classes.toArray();
+        const className = document.getElementById('exam-class')?.value;
+        let subjects = [];
+
+        if (className) {
+            const assignments = await db.subject_assignments.where('class_name').equals(className).toArray();
+            const assignedSubIds = new Set(assignments.map(a => a.subject_id));
+            const all = await db.subjects.toArray();
+            subjects = all.filter(s => assignedSubIds.has(s.id));
+        } else {
+            subjects = await db.subjects.toArray();
+        }
+
+        // Global Deduplication by Name
+        const uniqueMap = new Map();
+        subjects.forEach(s => {
+            const name = (s.name || '').trim();
+            if (!uniqueMap.has(name)) uniqueMap.set(name, s);
+        });
+        subjects = Array.from(uniqueMap.values()).sort((a,b) => a.name.localeCompare(b.name));
         
         list.innerHTML = this.cbtSections.map((s, idx) => `
             <div class="cbt-section-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:0.75rem; position:relative;">
