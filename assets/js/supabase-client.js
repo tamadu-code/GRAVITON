@@ -55,7 +55,7 @@ export async function syncToCloud() {
     const client = getSupabase();
     if (!client) return { success: false, message: 'Supabase not configured' };
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections'];
+    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections', 'cbt_question_bank', 'cbt_options'];
     let syncCount = 0;
     const failedTables = new Set();
 
@@ -68,6 +68,7 @@ export async function syncToCloud() {
             if ((table === 'scores' || table === 'subject_assignments' || table === 'cbt_exams') && failedTables.has('subjects')) continue;
             if (table === 'cbt_questions' && failedTables.has('cbt_exams')) continue;
             if (table === 'cbt_results' && failedTables.has('students')) continue;
+            if (table === 'cbt_options' && failedTables.has('cbt_question_bank')) continue;
 
             try {
                 const unsynced = await db[table].filter(r => r.is_synced === 0 || r.is_synced === -1).toArray();
@@ -99,7 +100,9 @@ export async function syncToCloud() {
                     cbt_exam_sections: ['id', 'exam_id', 'subject_id', 'class_name', 'score_field', 'question_count', 'target_mark', 'updated_at'],
                     duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'updated_at'],
                     audit_logs: ['id', 'operation', 'table', 'record_id', 'timestamp', 'user_id'],
-                    parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'updated_at']
+                    parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'updated_at'],
+                    cbt_question_bank: ['id', 'subject_id', 'class_name', 'question_text', 'passage_text', 'topic_area', 'difficulty_level', 'updated_at'],
+                    cbt_options: ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'updated_at']
                 };
 
                 const CHUNK_SIZE = 50;
