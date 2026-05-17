@@ -7300,12 +7300,17 @@ export const UI = {
                 );
                 const isActive = e.status === 'Active';
                 
-                // Scheduling logic: ensure we compare local times correctly
+                // Scheduling logic: ensure we compare local times correctly (Nigerian Time / WAT)
                 const parseDate = (d) => {
                     if (!d) return null;
-                    // If it's just a date (YYYY-MM-DD), append midnight local time to prevent UTC shift
-                    const normalized = (typeof d === 'string' && d.length === 10) ? `${d}T00:00` : d;
-                    const date = new Date(normalized);
+                    // Strip trailing Z or timezone offsets to force interpretation in the local school timezone
+                    const normalized = (typeof d === 'string') 
+                        ? d.replace(/Z|[-+]\d{2}:\d{2}$/i, '') 
+                        : d;
+                    const finalStr = (typeof normalized === 'string' && normalized.length === 10) 
+                        ? `${normalized}T00:00` 
+                        : normalized;
+                    const date = new Date(finalStr);
                     return isNaN(date.getTime()) ? null : date;
                 };
 
@@ -7431,7 +7436,8 @@ export const UI = {
                                             }
                                             
                                             const now = new Date();
-                                            const end = e.end_time ? new Date(e.end_time) : null;
+                                            const cleanEndStr = e.end_time ? e.end_time.replace(/Z|[-+]\d{2}:\d{2}$/i, '') : null;
+                                            const end = cleanEndStr ? new Date(cleanEndStr) : null;
                                             const isExpired = end && now > end;
                                             
                                             if (isExpired && e.status === 'Active') {
@@ -7471,7 +7477,34 @@ export const UI = {
                                                 <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">TERM / SESSION</div>
                                                 <div style="font-weight: 700; color: #334155;">${e.term} | ${e.session}</div>
                                             </div>
-                                            <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end;">
+                                            <div>
+                                                <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; margin-bottom: 0.25rem;">SCHEDULED WINDOW</div>
+                                                <div style="font-weight: 700; color: #334155; font-size: 0.85rem;">
+                                                    ${(() => {
+                                                        const cleanDate = (dStr) => {
+                                                            if (!dStr) return null;
+                                                            const norm = dStr.replace(/Z|[-+]\d{2}:\d{2}$/i, '');
+                                                            return new Date(norm);
+                                                        };
+                                                        const start = cleanDate(e.start_time);
+                                                        const end = cleanDate(e.end_time);
+                                                        if (!start && !end) return 'Always Open';
+                                                        
+                                                        const fmt = (date) => {
+                                                            if (!date || isNaN(date.getTime())) return '—';
+                                                            return date.toLocaleString('en-US', {
+                                                                month: 'short',
+                                                                day: 'numeric',
+                                                                hour: '2-digit',
+                                                                minute: '2-digit',
+                                                                hour12: true
+                                                            });
+                                                        };
+                                                        return `${fmt(start)} to ${fmt(end)}`;
+                                                    })()}
+                                                </div>
+                                            </div>
+                                            <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end; grid-column: 1 / -1; margin-top: 0.5rem;">
                                                 ${(() => {
                                                     if (isStudent) {
                                                         if (result && result.status === 'Completed') {

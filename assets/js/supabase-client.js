@@ -181,6 +181,15 @@ export async function syncToCloud() {
                                 });
                                 const retry = await client.from(table).upsert(sanitizedData);
                                 error = retry.error;
+                            } else if (error.message.includes('specialization') || error.code === 'PGRST204') {
+                                console.warn(`[Sync Self-Heal] Cloud schema mismatch for 'specialization' column in ${table}. Retrying without 'specialization'...`);
+                                const sanitizedData = dataToSync.map(item => {
+                                    const cleaned = { ...item };
+                                    delete cleaned.specialization;
+                                    return cleaned;
+                                });
+                                const retry = await client.from(table).upsert(sanitizedData);
+                                error = retry.error;
                             } else {
                                 console.error(`Sync error for ${table}:`, error, "Data:", chunk);
                             }
