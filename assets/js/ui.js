@@ -8539,15 +8539,22 @@ export const UI = {
                 let qry = db.cbt_question_bank.where('subject_id').equals(sec.subject_id);
                 let secQuestions = await qry.toArray();
                 
-                // If a specific class pool is set for this section, filter by it
-                if (sec.class_name) {
-                    const targetClass = sec.class_name.toLowerCase().trim();
-                    const classFiltered = secQuestions.filter(q => (q.class_name || '').toLowerCase().trim() === targetClass);
-                    // Fallback: if class filter yields 0 (legacy data without class_name), use full subject pool
+                // If a specific class pool is set for this section or the parent exam, filter by it
+                const targetClassStr = sec.class_name || exam.class_name;
+                if (targetClassStr) {
+                    const targetClass = targetClassStr.toLowerCase().trim();
+                    const baseTarget = targetClass.split(' (')[0].split(/[a-z]$/i)[0].trim();
+                    
+                    const classFiltered = secQuestions.filter(q => {
+                        const qClass = (q.class_name || '').toLowerCase().trim();
+                        const qBase = qClass.split(' (')[0].split(/[a-z]$/i)[0].trim();
+                        return qClass === targetClass || qBase === baseTarget || qClass.includes(baseTarget) || baseTarget.includes(qClass);
+                    });
+                    
                     if (classFiltered.length > 0) {
                         secQuestions = classFiltered;
                     } else {
-                        console.warn(`[CBT] Class filter "${sec.class_name}" returned 0 for subject ${sec.subject_id}. Using full subject pool (${secQuestions.length} questions).`);
+                        console.warn(`[CBT] Class filter "${targetClassStr}" returned 0 for subject ${sec.subject_id}. Using full subject pool (${secQuestions.length} questions).`);
                     }
                 }
                 
@@ -8905,6 +8912,25 @@ export const UI = {
                             for (const q of localBank) {
                                 const opts = await db.cbt_options.where('question_id').equals(q.id).toArray();
                                 bankPool.push({ ...q, cbt_options: opts });
+                            }
+                        }
+
+                        // Filter bankPool by section class or global exam target class to prevent bleed
+                        const targetClassStr = sec.class_name || exam.class_name;
+                        if (targetClassStr && bankPool.length > 0) {
+                            const targetClass = targetClassStr.toLowerCase().trim();
+                            const baseTarget = targetClass.split(' (')[0].split(/[a-z]$/i)[0].trim();
+                            
+                            const classFiltered = bankPool.filter(q => {
+                                const qClass = (q.class_name || '').toLowerCase().trim();
+                                const qBase = qClass.split(' (')[0].split(/[a-z]$/i)[0].trim();
+                                return qClass === targetClass || qBase === baseTarget || qClass.includes(baseTarget) || baseTarget.includes(qClass);
+                            });
+                            
+                            if (classFiltered.length > 0) {
+                                bankPool = classFiltered;
+                            } else {
+                                console.warn(`[CBT Cloud/Local Bank] Class filter "${targetClassStr}" returned 0 for subject ${sec.subject_id}. Using full pool.`);
                             }
                         }
 
