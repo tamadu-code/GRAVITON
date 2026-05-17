@@ -10235,6 +10235,173 @@ export const UI = {
         }
     },
 
+    parseBulkQuestions(text) {
+        if (!text) return [];
+
+        // 1. Split text into raw question blocks
+        // We'll try to find question numbering: e.g., "1.", "2)", "A 43."
+        // We look for patterns like: (new line or start) followed by optional letters/spaces, a number, and a dot or paren, followed by space.
+        const numberRegex = /(?:\n|^)\s*(?:[A-Za-z]\s+)?(\d+)[\.\)]\s+/g;
+        let matches = [];
+        let m;
+        
+        while ((m = numberRegex.exec(text)) !== null) {
+            matches.push({ index: m.index, markerLength: m[0].length, number: m[1] });
+        }
+
+        let blocks = [];
+        if (matches.length > 1) {
+            // Split by numbers
+            for (let i = 0; i < matches.length; i++) {
+                const start = matches[i].index;
+                const end = (i + 1 < matches.length) ? matches[i + 1].index : text.length;
+                blocks.push(text.substring(start, end).trim());
+            }
+        } else {
+            // Fallback: split by empty double lines
+            blocks = text.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+        }
+
+        const parsedQuestions = [];
+
+        for (let block of blocks) {
+            if (!block) continue;
+
+            // Remove any starting number prefix (like "1. ", "43) ", "A 43. ")
+            block = block.replace(/^\s*(?:[A-Za-z]\s+)?\d+[\.\)]\s*/i, '').trim();
+
+            // Extract Explicit Type if defined: [Type: MCQ] or [Type: Fill] or [Type: FITB]
+            let explicitType = null;
+            const typeMatch = /\[Type\s*:\s*(MCQ|Fill|FITB|Fill-in-the-blank)\]/i.exec(block);
+            if (typeMatch) {
+                const typeStr = typeMatch[1].toLowerCase();
+                explicitType = (typeStr === 'mcq') ? 'mcq' : 'fill';
+                block = block.replace(typeMatch[0], '').trim();
+            }
+
+            // Extract Answer
+            // Search for: [Ans: ...], [Answer: ...], (Ans: ...), Correct: ..., Correct Option: ...
+            const ansRegex = /(?:\[\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\]|\(\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\)|(?:Correct|Correct\s+Option|Answer)\s*:\s*([^\n\r]*))/i;
+            const ansMatch = ansRegex.exec(block);
+            
+            let answerText = '';
+            if (ansMatch) {
+                answerText = (ansMatch[1] || ansMatch[2] || ansMatch[3] || '').trim();
+                block = block.replace(ansMatch[0], '').trim();
+            }
+
+            // Detect if this block is MCQ or Fill
+            // Check for option tags: A), B), C), D) or A., B., C., D.
+            const optAReg = /(?:^|\s)[\(\[]?A[\)\]\.]/i;
+            const optBReg = /(?:^|\s)[\(\[]?B[\)\]\.]/i;
+            const optCReg = /(?:^|\s)[\(\[]?C[\)\]\.]/i;
+            const optDReg = /(?:^|\s)[\(\[]?D[\)\]\.]/i;
+            const optEReg = /(?:^|\s)[\(\[]?E[\)\]\.]/i;
+
+            const hasA = optAReg.test(block);
+            const hasB = optBReg.test(block);
+
+            let type = 'fill';
+            if (explicitType) {
+                type = explicitType;
+            } else if (hasA && hasB) {
+                type = 'mcq';
+            }
+
+            if (type === 'mcq') {
+                // MCQ Parser
+                // Find indices of all option markers to parse them cleanly
+                const markers = [
+                    { label: 'A', regex: optAReg },
+                    { label: 'B', regex: optBReg },
+                    { label: 'C', regex: optCReg },
+                    { label: 'D', regex: optDReg },
+                    { label: 'E', regex: optEReg }
+                ];
+
+                const foundOptions = [];
+                for (const m of markers) {
+                    const match = m.regex.exec(block);
+                    if (match) {
+                        foundOptions.push({
+                            label: m.label,
+                            index: match.index,
+                            length: match[0].length
+                        });
+                    }
+                }
+
+                // Sort by position in block
+                foundOptions.sort((x, y) => x.index - y.index);
+
+                let questionText = block;
+                let optA = '', optB = '', optC = '', optD = '', optE = '';
+
+                if (foundOptions.length > 0) {
+                    questionText = block.substring(0, foundOptions[0].index).trim();
+                    
+                    for (let i = 0; i < foundOptions.length; i++) {
+                        const start = foundOptions[i].index + foundOptions[i].length;
+                        const end = (i + 1 < foundOptions.length) ? foundOptions[i + 1].index : block.length;
+                        const optVal = block.substring(start, end).trim();
+                        
+                        switch (foundOptions[i].label) {
+                            case 'A': optA = optVal; break;
+                            case 'B': optB = optVal; break;
+                            case 'C': optC = optVal; break;
+                            case 'D': optD = optVal; break;
+                            case 'E': optE = optVal; break;
+                        }
+                    }
+                }
+
+                // Clean answer
+                let correctOpt = 'A';
+                if (answerText) {
+                    const letter = answerText.toUpperCase().trim().charAt(0);
+                    if (['A','B','C','D','E'].includes(letter)) {
+                        correctOpt = letter;
+                    }
+                }
+
+                parsedQuestions.push({
+                    type: 'mcq',
+                    question_text: questionText,
+                    passage_text: null,
+                    option_a: optA,
+                    option_b: optB,
+                    option_c: optC,
+                    option_d: optD,
+                    option_e: optE,
+                    correct_option: correctOpt,
+                    fill_answer: '',
+                    marks: 1
+                });
+
+            } else {
+                // Fill in the Blank Parser
+                let correctOpt = answerText || 'TEXT';
+                correctOpt = correctOpt.replace(/[\]\)]+$/, '').trim();
+
+                parsedQuestions.push({
+                    type: 'fill',
+                    question_text: block,
+                    passage_text: null,
+                    option_a: '',
+                    option_b: '',
+                    option_c: '',
+                    option_d: '',
+                    option_e: '',
+                    correct_option: correctOpt,
+                    fill_answer: correctOpt,
+                    marks: 1
+                });
+            }
+        }
+
+        return parsedQuestions;
+    },
+
     bulkImportQuestions() {
         const modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1rem;">
@@ -10242,16 +10409,14 @@ export const UI = {
                     <div style="font-weight: 800; color: #4338ca; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.7rem;">Formatting Guide & Samples</div>
                     <div style="display: flex; flex-direction: column; gap: 0.75rem; color: #475569;">
                         <div>
-                            <strong style="color: #1e293b;">• Multiple Choice:</strong><br>
+                            <strong style="color: #1e293b;">• Multiple Choice (MCQ):</strong><br>
                             <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">What is 2+2? (A) 3 (B) 4 (C) 5 [Ans: B]</code>
+                            <p style="font-size:0.65rem; color:#64748b; margin-top:2px;">Tip: Supports explicit marker <code style="font-weight:bold;">[Type: MCQ]</code> to force MCQ type.</p>
                         </div>
                         <div>
-                            <strong style="color: #1e293b;">• Fill in the Blank:</strong><br>
+                            <strong style="color: #1e293b;">• Fill in the Blank (FITB):</strong><br>
                             <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">The capital of Nigeria is _____. [Ans: Abuja]</code>
-                        </div>
-                        <div>
-                            <strong style="color: #1e293b;">• Math / Formulas:</strong><br>
-                            <code style="display: block; background: #fff; padding: 4px 8px; border-radius: 6px; margin-top: 4px; border: 1px dashed #cbd5e1;">Solve \( x^2 = 16 \). [Ans: 4]</code>
+                            <p style="font-size:0.65rem; color:#64748b; margin-top:2px;">Tip: Supports comma-separated alternative answers (e.g. <code style="font-weight:bold;">[Ans: Abuja, FCT]</code>) and explicit marker <code style="font-weight:bold;">[Type: Fill]</code>.</p>
                         </div>
                     </div>
                 </div>
@@ -10266,63 +10431,31 @@ export const UI = {
             const text = document.getElementById('bulk-q-text').value;
             if (!text) return;
 
-            // Ultra-Flexible Scanner: Handles case variations, extra spaces, dots, and varied delimiters
-            // Enhanced MCQ Regex: Much more robust with flexible answer tags [Ans: A], [Answer: A], (Ans: A), etc.
-            const mcqRegex = /((?:(?![\(\[]?[A-E][\)\]\.]).)*?)\s*[\(\[]?A[\)\]\.]\s*([\s\S]*?)\s*[\(\[]?B[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?C[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?D[\)\]\.]\s*([\s\S]*?)\s*(?:[\(\[]?E[\)\]\.]\s*([\s\S]*?)\s*)?)?)?[\(\[]?(?:Ans|Answer)[\:\s]+([A-E])[\)\]]?/gi;
-            
-            // Second attempt to parse Fill-in-the-Blank (No options, just [Ans: ...])
-            const fillRegex = /([\s\S]*?)\s*[\(\[]?(?:Ans|Answer)[\:\s]+([\s\S]*?)[\)\]]?/gi;
-            
-            let match;
-            let count = 0;
-            const seenQuestions = new Set();
-
-            // Try MCQ first
-            while ((match = mcqRegex.exec(text)) !== null) {
-                const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
-                seenQuestions.add(match[0]); // Mark this segment as processed
-                this.cbtQuestions.push({
-                    id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
-                    type: 'mcq',
-                    question_text: qText,
-                    option_a: (match[2] || '').trim(),
-                    option_b: (match[3] || '').trim(),
-                    option_c: (match[4] || '').trim(),
-                    option_d: (match[5] || '').trim(),
-                    option_e: (match[6] || '').trim(),
-                    correct_option: match[7].toUpperCase(),
-                    marks: match[8] ? parseFloat(match[8]) : 1
-                });
-                count++;
+            const parsed = UI.parseBulkQuestions(text);
+            if (parsed.length === 0) {
+                return Notifications.show('Could not parse any questions. Please check the format.', 'error');
             }
 
-            // Try Fill-in-the-blank for the remaining text
-            while ((match = fillRegex.exec(text)) !== null) {
-                if (seenQuestions.has(match[0])) continue; // Skip already processed MCQs
-                
-                const qText = match[1].replace(/^\d+[\.\)]\s*/, '').trim();
-                const ans = match[2].trim();
-                
-                // If it looks like an MCQ that we missed (contains (A) or (B)), skip it or handle as MCQ
-                if (qText.includes('(A)') || qText.includes('(B)') || qText.includes('A.') || qText.includes('B.')) {
-                    continue; 
-                }
-
+            parsed.forEach(q => {
                 this.cbtQuestions.push({
                     id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
-                    type: 'fill',
-                    question_type: 'fill_in_blank',
-                    question_text: qText,
-                    option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
-                    fill_answer: ans,
-                    correct_option: ans, // For fill-in-the-blank, correct_option is the literal answer
-                    marks: match[3] ? parseFloat(match[3]) : 1
+                    type: q.type,
+                    question_type: q.type === 'fill' ? 'fill_in_blank' : 'mcq',
+                    question_text: q.question_text,
+                    passage_text: q.passage_text || null,
+                    option_a: q.option_a,
+                    option_b: q.option_b,
+                    option_c: q.option_c,
+                    option_d: q.option_d,
+                    option_e: q.option_e,
+                    correct_option: q.correct_option,
+                    fill_answer: q.fill_answer || '',
+                    marks: q.marks || 1
                 });
-                count++;
-            }
+            });
 
             this.refreshQuestionPreview();
-            Notifications.show(`Successfully imported ${count} questions`, 'success');
+            Notifications.show(`Successfully imported ${parsed.length} questions`, 'success');
         }, 'Import Now');
     },
 
@@ -13514,24 +13647,15 @@ export const UI = {
                 console.log(`[Bank Clear] Deleted ${oldIds.length} bank + ${flatIds.length} flat records for period: ${term} ${session}`);
             }
 
-            // --- IMPROVED HYBRID PARSER (BUILD v193) ---
-            // 1. Detect if we should use Number-based splitting (Standard for school banks)
-            const numberRegex = /(?:\n|^)(\d+)[\.\)]\s+/g;
-            let matches = [];
-            let m;
-            
-            // Try to find question numbers first
-            while ((m = numberRegex.exec(text)) !== null) {
-                matches.push({ index: m.index, length: m[0].length, number: m[1] });
-            }
+            // --- IMPROVED STANDARDIZED PARSER (BUILD v212) ---
+            const parsed = UI.parseBulkQuestions(text);
 
-            if (matches.length === 0) {
-                return Notifications.show('Could not detect any questions or numbers. Please check format.', 'error');
+            if (parsed.length === 0) {
+                return Notifications.show('Could not parse any questions. Please check the format.', 'error');
             }
 
             const newQuestions = [];
             const relationalData = [];
-            let failedBlocks = 0;
             let duplicateCount = 0;
 
             const existingBank = await db.cbt_question_bank
@@ -13540,117 +13664,93 @@ export const UI = {
                 .toArray();
             const existingTexts = new Set(existingBank.map(q => q.question_text.trim()));
 
-            const blocks = [];
-            for (let i = 0; i < matches.length; i++) {
-                const start = matches[i].index;
-                const end = (i + 1 < matches.length) ? matches[i + 1].index : text.length;
-                blocks.push({
-                    text: text.substring(start, end).trim(),
-                    marker: matches[i]
-                });
-            }
-
-            blocks.forEach((blockObj) => {
-                let cleanBlock = blockObj.text;
-                cleanBlock = cleanBlock.replace(/^\d+[\.\)]\s*/, '').trim();
-
-                // Look for an answer in this block: [Ans: B], [B], (B), Answer: expenditure
-                const blockAnsRegex = /[\(\[]\s*(?:Ans|Answer)?[\:\s]*([\s\S]*?)\s*[\)\]]|(?:Ans|Answer)[\:\s]+(\S+)/i;
-                const ansMatch = blockAnsRegex.exec(cleanBlock);
-                let detectedAns = (ansMatch ? (ansMatch[1] || ansMatch[2]) : 'A').trim();
-                
-                if (ansMatch) cleanBlock = cleanBlock.replace(ansMatch[0], '').trim();
-
-                const ansMarkerStart = cleanBlock.toLowerCase().lastIndexOf('ans');
-
-                const optARegex = /(?:^|[\s])[\(\[]?A[\)\]\.]/i;
-                const optBRegex = /(?:^|[\s])[\(\[]?B[\)\]\.]/i;
-                const optCRegex = /(?:^|[\s])[\(\[]?C[\)\]\.]/i;
-                const optDRegex = /(?:^|[\s])[\(\[]?D[\)\]\.]/i;
-                const optERegex = /(?:^|[\s])[\(\[]?E[\)\]\.]/i;
-
-                const hasA = optARegex.test(cleanBlock);
-                const hasB = optBRegex.test(cleanBlock);
-
-                // If it's an MCQ, we want the letter. If it's FITB, the detectedAns is already the word.
-                if (hasA && hasB) {
-                    detectedAns = detectedAns.toUpperCase().charAt(0);
-                    if (!['A','B','C','D','E'].includes(detectedAns)) detectedAns = 'A';
+            parsed.forEach(q => {
+                const qText = q.question_text.trim();
+                if (existingTexts.has(qText)) {
+                    duplicateCount++;
+                    return;
                 }
 
-                if (hasA && hasB) {
-                    const optA = optARegex.exec(cleanBlock);
-                    const optB = optBRegex.exec(cleanBlock);
-                    const optC = optCRegex.exec(cleanBlock);
-                    const optD = optDRegex.exec(cleanBlock);
-                    const optE = optERegex.exec(cleanBlock);
+                const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
 
-                    const qText = cleanBlock.substring(0, optA.index).trim();
-                    if (existingTexts.has(qText)) { duplicateCount++; return; }
-
-                    const aText = cleanBlock.substring(optA.index + optA[0].length, optB.index).trim();
-                    let bEnd = optC ? optC.index : (ansMarkerStart !== -1 ? ansMarkerStart : cleanBlock.length);
-                    if (bEnd <= optB.index) bEnd = cleanBlock.length;
-                    const bText = cleanBlock.substring(optB.index + optB[0].length, bEnd).trim();
-                    
-                    let cText = '', dText = '', eText = '';
-                    if (optC) {
-                        let cEnd = optD ? optD.index : (ansMarkerStart !== -1 ? ansMarkerStart : cleanBlock.length);
-                        if (cEnd <= optC.index) cEnd = cleanBlock.length;
-                        cText = cleanBlock.substring(optC.index + optC[0].length, cEnd).trim();
-                    }
-                    if (optD) {
-                        let dEnd = optE ? optE.index : (ansMarkerStart !== -1 ? ansMarkerStart : cleanBlock.length);
-                        if (dEnd <= optD.index) dEnd = cleanBlock.length;
-                        dText = cleanBlock.substring(optD.index + optD[0].length, dEnd).trim();
-                    }
-                    if (optE) {
-                        let eEnd = (ansMarkerStart !== -1 ? ansMarkerStart : cleanBlock.length);
-                        if (eEnd <= optE.index) eEnd = cleanBlock.length;
-                        eText = cleanBlock.substring(optE.index + optE[0].length, eEnd).trim();
-                    }
-
-                    const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
+                if (q.type === 'mcq') {
                     const bankQuestion = prepareForSync({
-                        id: qId, subject_id: subjectId, class_name: className, term: term, session: session, question_text: qText, type: 'mcq', marks: 1
+                        id: qId,
+                        subject_id: subjectId,
+                        class_name: className,
+                        term: term,
+                        session: session,
+                        question_text: q.question_text,
+                        passage_text: q.passage_text || null,
+                        type: 'mcq',
+                        marks: q.marks || 1
                     });
-                    const bankOptions = [
-                        { label: 'A', text: aText, correct: detectedAns === 'A' },
-                        { label: 'B', text: bText, correct: detectedAns === 'B' },
-                        { label: 'C', text: cText, correct: detectedAns === 'C' },
-                        { label: 'D', text: dText, correct: detectedAns === 'D' },
-                        { label: 'E', text: eText, correct: detectedAns === 'E' }
+
+                    const opts = [
+                        { label: 'A', text: q.option_a, correct: q.correct_option === 'A' },
+                        { label: 'B', text: q.option_b, correct: q.correct_option === 'B' },
+                        { label: 'C', text: q.option_c, correct: q.correct_option === 'C' },
+                        { label: 'D', text: q.option_d, correct: q.correct_option === 'D' },
+                        { label: 'E', text: q.option_e, correct: q.correct_option === 'E' }
                     ].filter(o => o.text).map(o => prepareForSync({
                         id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                        question_id: qId, option_label: o.label, option_text: o.text, is_correct: o.correct ? 1 : 0
+                        question_id: qId,
+                        option_label: o.label,
+                        option_text: o.text,
+                        is_correct: o.correct ? 1 : 0
                     }));
 
                     newQuestions.push(prepareForSync({
-                        id: qId, exam_id: bankExamId, type: 'mcq', question_text: qText,
-                        option_a: aText, option_b: bText, option_c: cText, option_d: dText, option_e: eText,
-                        correct_option: detectedAns, marks: 1
+                        id: qId,
+                        exam_id: bankExamId,
+                        type: 'mcq',
+                        question_text: q.question_text,
+                        passage_text: q.passage_text || null,
+                        option_a: q.option_a,
+                        option_b: q.option_b,
+                        option_c: q.option_c,
+                        option_d: q.option_d,
+                        option_e: q.option_e,
+                        correct_option: q.correct_option,
+                        marks: q.marks || 1
                     }));
-                    relationalData.push({ question: bankQuestion, options: bankOptions });
+
+                    relationalData.push({ question: bankQuestion, options: opts });
                     existingTexts.add(qText);
                 } else {
-                    const qText = ansMarkerStart !== -1 ? cleanBlock.substring(0, ansMarkerStart).trim() : cleanBlock.trim();
-                    if (qText && !existingTexts.has(qText)) {
-                        const qId = `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
-                        newQuestions.push(prepareForSync({
-                            id: qId, exam_id: bankExamId, type: 'fill', question_text: qText,
-                            option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
-                            correct_option: detectedAns, marks: 1
-                        }));
-                        relationalData.push({
-                            question: prepareForSync({ id: qId, subject_id: subjectId, class_name: className, term: term, session: session, question_text: qText, type: 'fill', marks: 1 }),
-                            options: [prepareForSync({ id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`, question_id: qId, option_label: 'A', option_text: detectedAns, is_correct: 1 })]
-                        });
-                        existingTexts.add(qText);
-                    } else if (qText && existingTexts.has(qText)) {
-                        duplicateCount++;
-                    } else {
-                        failedBlocks++;
-                    }
+                    // Fill-in-the-blank
+                    newQuestions.push(prepareForSync({
+                        id: qId,
+                        exam_id: bankExamId,
+                        type: 'fill',
+                        question_text: q.question_text,
+                        passage_text: q.passage_text || null,
+                        option_a: '', option_b: '', option_c: '', option_d: '', option_e: '',
+                        correct_option: q.correct_option,
+                        marks: q.marks || 1
+                    }));
+
+                    relationalData.push({
+                        question: prepareForSync({
+                            id: qId,
+                            subject_id: subjectId,
+                            class_name: className,
+                            term: term,
+                            session: session,
+                            question_text: q.question_text,
+                            passage_text: q.passage_text || null,
+                            type: 'fill',
+                            marks: q.marks || 1
+                        }),
+                        options: [prepareForSync({
+                            id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                            question_id: qId,
+                            option_label: 'A',
+                            option_text: q.correct_option,
+                            is_correct: 1
+                        })]
+                    });
+                    existingTexts.add(qText);
                 }
             });
 
@@ -13694,8 +13794,7 @@ export const UI = {
                 document.getElementById('ui-modal')?.remove();
                 
                 let msg = `Successfully imported ${newQuestions.length} questions!`;
-                if (failedBlocks > 0) msg += ` (${failedBlocks} sections failed to parse)`;
-                Notifications.show(msg, failedBlocks > 0 ? 'warning' : 'success');
+                Notifications.show(msg, 'success');
                 
                 this.renderQuestionBank();
             } catch (err) {
