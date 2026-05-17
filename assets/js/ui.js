@@ -13456,7 +13456,44 @@ export const UI = {
             grouped[tag].push(q);
         });
 
-        const groupKeys = Object.keys(grouped);
+        const groupKeys = Object.keys(grouped).sort((a, b) => {
+            const partsA = a.split('__');
+            const partsB = b.split('__');
+            
+            const subNameA = (subMap[partsA[0]] || partsA[0]).toLowerCase().trim();
+            const subNameB = (subMap[partsB[0]] || partsB[0]).toLowerCase().trim();
+            
+            // 1. Sort by subject name alphabetically
+            if (subNameA !== subNameB) {
+                return subNameA.localeCompare(subNameB);
+            }
+            
+            // 2. Sort by class name naturally (e.g. SSS 1 before SSS 2)
+            const classA = (partsA[1] || '').trim();
+            const classB = (partsB[1] || '').trim();
+            
+            const parseClassStr = (str) => {
+                const normalized = str.toUpperCase().trim();
+                const match = normalized.match(/^([A-Z\s]+)?(\d+)?/);
+                if (!match) return { prefix: normalized, num: 0 };
+                const prefix = (match[1] || '').trim();
+                const num = match[2] ? parseInt(match[2], 10) : 0;
+                return { prefix, num };
+            };
+            
+            const parsedA = parseClassStr(classA);
+            const parsedB = parseClassStr(classB);
+            
+            if (parsedA.prefix !== parsedB.prefix) {
+                return parsedA.prefix.localeCompare(parsedB.prefix);
+            }
+            if (parsedA.num !== parsedB.num) {
+                return parsedA.num - parsedB.num;
+            }
+            
+            // 3. Fallback to full tag comparison (term, session, etc.)
+            return a.localeCompare(b);
+        });
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in">
