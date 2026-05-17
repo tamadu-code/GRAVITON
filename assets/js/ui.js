@@ -8286,7 +8286,8 @@ export const UI = {
             subject_id: '',
             score_field: 'exam',
             question_count: 20,
-            target_mark: 60
+            target_mark: 60,
+            specialization: 'Common'
         });
         await this.renderCBTSections();
     },
@@ -8342,12 +8343,24 @@ export const UI = {
             <div class="cbt-section-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:0.75rem; position:relative;">
                 <button onclick="UI.removeCBTSection(${idx})" style="position:absolute; top:-8px; right:-8px; background:#ef4444; color:white; border:none; border-radius:50%; width:20px; height:20px; font-size:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:10;"><i data-lucide="x" style="width:12px;"></i></button>
                 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; margin-bottom:0.5rem;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:0.5rem; margin-bottom:0.5rem;">
                     <div>
                         <label style="font-size:0.6rem; font-weight:800; color:#94a3b8; display:block; margin-bottom:2px;">SUBJECT</label>
                         <select onchange="UI.updateCBTSection(${idx}, 'subject_id', this.value)" class="cbt-input" style="padding:4px; font-size:0.75rem;">
                             <option value="">Select</option>
                             ${subjects.map(sub => `<option value="${sub.id}" ${s.subject_id === sub.id ? 'selected' : ''}>${sub.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:0.6rem; font-weight:800; color:#94a3b8; display:block; margin-bottom:2px;">TRACK SPECIALIZATION</label>
+                        <select onchange="UI.updateCBTSection(${idx}, 'specialization', this.value)" class="cbt-input" style="padding:4px; font-size:0.75rem;">
+                            <option value="Common" ${s.specialization === 'Common' || !s.specialization ? 'selected' : ''}>Common (Core)</option>
+                            <option value="Science" ${s.specialization === 'Science' ? 'selected' : ''}>Science (Core)</option>
+                            <option value="Science-Optional" ${s.specialization === 'Science-Optional' ? 'selected' : ''}>Science (Optional)</option>
+                            <option value="Arts" ${s.specialization === 'Arts' ? 'selected' : ''}>Arts (Core)</option>
+                            <option value="Arts-Optional" ${s.specialization === 'Arts-Optional' ? 'selected' : ''}>Arts (Optional)</option>
+                            <option value="Commercial" ${s.specialization === 'Commercial' ? 'selected' : ''}>Commercial (Core)</option>
+                            <option value="Commercial-Optional" ${s.specialization === 'Commercial-Optional' ? 'selected' : ''}>Commercial (Optional)</option>
                         </select>
                     </div>
                     <div>
@@ -8562,19 +8575,98 @@ export const UI = {
         // NEW ATTEMPT: Show instructions first
         this.renderCBTInstructions(examId);
     },
+    validateAndStartUnifiedExam(examId) {
+        const checkboxes = document.querySelectorAll('.unified-subject-cb');
+        const selectedSubjectIds = [];
+        checkboxes.forEach(cb => {
+            if (cb.checked) selectedSubjectIds.push(cb.getAttribute('data-subject-id'));
+        });
+        
+        if (selectedSubjectIds.length === 0) {
+            return Notifications.show('Please select at least one subject to start the exam.', 'warning');
+        }
+        
+        sessionStorage.setItem(`cbt_selected_subjects_${examId}`, JSON.stringify(selectedSubjectIds));
+        this.finalizeStartCBTExam(examId, false);
+    },
+
     async renderCBTInstructions(examId) {
         const exam = await db.cbt_exams.get(examId);
-        const subject = await db.subjects.get(exam.subject_id);
+        const subject = exam.subject_id ? await db.subjects.get(exam.subject_id) : null;
         
         let limit = 0;
         let displaySubject = subject ? subject.name : exam.subject_id;
         let questionsCount = 0;
+        let subjectSelectionHtml = '';
+        let startExamOnclick = `UI.finalizeStartCBTExam('${examId}', false)`;
 
         if (exam.is_unified) {
+            const studentId = this.resolveCBTStudentId();
+            const student = await db.students.get(studentId);
+            const studentStream = (student ? (student.sub_class || '') : '').trim().toLowerCase(); // e.g. "science", "arts", "commercial"
+            
             const sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
+            const allSubjects = await db.subjects.toArray();
+            const subjectMap = allSubjects.reduce((m, s) => { m[s.id] = s.name; return m; }, {});
+
             limit = sections.reduce((sum, s) => sum + (parseInt(s.question_count) || 0), 0);
             displaySubject = "Unified Composite Exam";
             questionsCount = limit; // In unified, we assume the bank has enough
+
+            if (sections.length > 0) {
+                startExamOnclick = `UI.validateAndStartUnifiedExam('${examId}')`;
+                
+                subjectSelectionHtml = `
+                    <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; margin-bottom: 2.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
+                        <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem; font-family: 'Inter', sans-serif;">
+                            <i data-lucide="book-open" style="color: #4338ca; width: 20px; height: 20px;"></i> Subject Registration & Verification
+                        </h3>
+                        <p style="color: #64748b; font-size: 0.8rem; font-weight: 600; margin-bottom: 1.25rem;">
+                            Verify and select the subjects you are registered for. Core subjects are mandatory.
+                        </p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${sections.map(sec => {
+                                const subName = subjectMap[sec.subject_id] || sec.subject_id;
+                                const spec = (sec.specialization || 'Common').toLowerCase().trim();
+                                
+                                let isCore = spec === 'common';
+                                let isStreamMatch = spec === studentStream;
+                                let isStreamOptional = spec === `${studentStream}-optional`;
+                                
+                                // Default Checked Rules
+                                let isChecked = isCore || isStreamMatch || isStreamOptional;
+                                // Core subjects (Common) are locked
+                                let isDisabled = isCore;
+                                
+                                let labelSuffix = '';
+                                
+                                if (isCore) {
+                                    labelSuffix = ' <span style="font-size: 0.65rem; color: #059669; font-weight: 800; background: #e6fdf4; padding: 2px 6px; border-radius: 6px; margin-left: 6px; border: 1px solid #a7f3d0;">CORE (ALL)</span>';
+                                } else if (isStreamMatch) {
+                                    labelSuffix = ` <span style="font-size: 0.65rem; color: #2563eb; font-weight: 800; background: #eff6ff; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #bfdbfe;">CORE (${sec.specialization.toUpperCase()})</span>`;
+                                } else if (isStreamOptional) {
+                                    labelSuffix = ` <span style="font-size: 0.65rem; color: #d97706; font-weight: 800; background: #fffbeb; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #fde68a;">ELECTIVE (OPTIONAL)</span>`;
+                                } else {
+                                    labelSuffix = ` <span style="font-size: 0.65rem; color: #4b5563; font-weight: 800; background: #f9fafb; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #e5e7eb;">ELECTIVE (${sec.specialization.toUpperCase()})</span>`;
+                                }
+
+                                return `
+                                    <label class="cbt-sub-selection-row" style="display: flex; align-items: center; justify-content: space-between; background: white; padding: 0.85rem 1.25rem; border-radius: 12px; border: 1px solid #e2e8f0; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; transition: all 0.2s ease; margin-bottom: 0;">
+                                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                            <input type="checkbox" class="unified-subject-cb" data-subject-id="${sec.subject_id}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} style="width: 20px; height: 20px; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; accent-color: #4338ca;">
+                                            <span style="font-weight: 750; color: ${isDisabled ? '#64748b' : '#1e293b'}; font-size: 0.95rem;">${subName}${labelSuffix}</span>
+                                        </div>
+                                        <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-align: right;">
+                                            ${sec.question_count} Questions | ${sec.target_mark} Marks
+                                        </div>
+                                    </label>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
         } else {
             const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
             limit = parseInt(exam.question_limit) || questions.length;
@@ -8606,6 +8698,8 @@ export const UI = {
                             <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${Math.min(limit, questionsCount)} Items</div>
                         </div>
                     </div>
+
+                    ${subjectSelectionHtml}
 
                     <div style="margin-bottom: 3rem;">
                         <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
@@ -8648,7 +8742,7 @@ export const UI = {
 
                     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
                         <button class="btn btn-secondary" onclick="UI.renderCBT()" style="flex: 1; min-width: 120px; height: 56px; border-radius: 14px; font-weight: 800; background: #f1f5f9; color: #475569; border: none; font-size: 1rem;">Go Back</button>
-                        <button class="btn btn-primary" id="btn-start-exam" disabled onclick="UI.finalizeStartCBTExam('${examId}', false)" style="flex: 2; min-width: 200px; height: 56px; border-radius: 14px; font-weight: 900; background: #4338ca; color: white; border: none; font-size: 1.1rem; box-shadow: 0 10px 15px -3px rgba(67, 56, 202, 0.4); opacity: 0.5; cursor: not-allowed; transition: all 0.3s;" onmouseover="if(this.disabled) this.title='Please check the box above first'">
+                        <button class="btn btn-primary" id="btn-start-exam" disabled onclick="${startExamOnclick}" style="flex: 2; min-width: 200px; height: 56px; border-radius: 14px; font-weight: 900; background: #4338ca; color: white; border: none; font-size: 1.1rem; box-shadow: 0 10px 15px -3px rgba(67, 56, 202, 0.4); opacity: 0.5; cursor: not-allowed; transition: all 0.3s;" onmouseover="if(this.disabled) this.title='Please check the box above first'">
                             START EXAMINATION
                         </button>
                     </div>
@@ -8730,6 +8824,27 @@ export const UI = {
                         sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
                     }
                     if (!sections || sections.length === 0) throw new Error('Unified exam has no subject sections.');
+
+                    // Filter sections by student's selected subjects
+                    const stored = sessionStorage.getItem(`cbt_selected_subjects_${examId}`);
+                    let selectedIds = null;
+                    if (stored) {
+                        try { selectedIds = JSON.parse(stored); } catch (e) {}
+                    }
+                    
+                    if (selectedIds && Array.isArray(selectedIds)) {
+                        sections = sections.filter(sec => selectedIds.includes(sec.subject_id));
+                        console.log(`[CBT] Filtered unified exam sections using selected subjects:`, selectedIds);
+                    } else {
+                        // Fallback: Use student stream defaults
+                        const student = await db.students.get(studentId);
+                        const studentStream = (student ? (student.sub_class || '') : '').trim().toLowerCase();
+                        sections = sections.filter(sec => {
+                            const spec = (sec.specialization || 'Common').toLowerCase().trim();
+                            return spec === 'common' || spec === studentStream || spec === `${studentStream}-optional`;
+                        });
+                        console.log(`[CBT] No sessionStorage selection. Fallback to student stream "${studentStream}" sections.`);
+                    }
 
                     for (const sec of sections) {
                         const secSubjectName = subjectMap[sec.subject_id] || sec.subject_id;
