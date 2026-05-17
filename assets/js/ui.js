@@ -8398,6 +8398,15 @@ export const UI = {
             }
         }
 
+        // Fetch options for these questions to dynamically determine MCQ vs FITB type
+        const questionIds = questions.map(q => q.id);
+        const options = await db.cbt_options.where('question_id').anyOf(questionIds).toArray();
+        const optsMap = {};
+        options.forEach(opt => {
+            if (!optsMap[opt.question_id]) optsMap[opt.question_id] = [];
+            optsMap[opt.question_id].push(opt);
+        });
+
         const modalHtml = `
             <div style="max-height: 400px; overflow-y: auto;">
                 ${fallbackNote}
@@ -8413,13 +8422,24 @@ export const UI = {
                         </tr>
                     </thead>
                     <tbody>
-                        ${questions.map((q, i) => `
-                            <tr style="border-bottom: 1px solid #f1f5f9; font-size: 0.85rem;">
-                                <td style="padding: 0.75rem; color: #94a3b8; font-weight: 800;">${i + 1}</td>
-                                <td style="padding: 0.75rem; color: #1e293b;">${q.question_text.substring(0, 80)}${q.question_text.length > 80 ? '...' : ''}</td>
-                                <td style="padding: 0.75rem;"><span style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700;">${q.type || 'MCQ'}</span></td>
-                            </tr>
-                        `).join('')}
+                        ${questions.map((q, i) => {
+                            const qOpts = optsMap[q.id] || [];
+                            const hasA = qOpts.some(o => o.option_label === 'A');
+                            const hasB = qOpts.some(o => o.option_label === 'B');
+                            const isMCQ = hasA && hasB;
+                            const typeLabel = isMCQ ? 'MCQ' : 'FITB';
+                            const badgeStyle = isMCQ 
+                                ? 'background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;' 
+                                : 'background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0;';
+
+                            return `
+                                <tr style="border-bottom: 1px solid #f1f5f9; font-size: 0.85rem;">
+                                    <td style="padding: 0.75rem; color: #94a3b8; font-weight: 800;">${i + 1}</td>
+                                    <td style="padding: 0.75rem; color: #1e293b;">${q.question_text.substring(0, 80)}${q.question_text.length > 80 ? '...' : ''}</td>
+                                    <td style="padding: 0.75rem;"><span style="${badgeStyle} padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase;">${typeLabel}</span></td>
+                                </tr>
+                            `;
+                        }).join('')}
                         ${questions.length === 0 ? '<tr><td colspan="3" style="text-align: center; padding: 2rem; color: #94a3b8;">No questions found. Please add questions to the Bank for this subject.</td></tr>' : ''}
                     </tbody>
                 </table>
@@ -8472,17 +8492,26 @@ export const UI = {
                 // Fetch options for each question
                 for (const q of secQuestions) {
                     const options = await db.cbt_options.where('question_id').equals(q.id).toArray();
+                    
+                    const hasA = options.some(o => o.option_label === 'A');
+                    const hasB = options.some(o => o.option_label === 'B');
+                    const isMCQ = hasA && hasB;
+
                     // Map to legacy format for player compatibility
                     questions.push({
                         ...q,
                         exam_id: examId,
                         section_id: sec.id, // Track which section this belongs to
-                        option_a: options.find(o => o.option_label === 'A')?.option_text || '',
-                        option_b: options.find(o => o.option_label === 'B')?.option_text || '',
-                        option_c: options.find(o => o.option_label === 'C')?.option_text || '',
-                        option_d: options.find(o => o.option_label === 'D')?.option_text || '',
-                        option_e: options.find(o => o.option_label === 'E')?.option_text || '',
-                        correct_option: options.find(o => o.is_correct === 1)?.option_label || 'A'
+                        type: isMCQ ? 'mcq' : 'fill',
+                        question_type: isMCQ ? 'mcq' : 'fill_in_blank',
+                        option_a: isMCQ ? (options.find(o => o.option_label === 'A')?.option_text || '') : '',
+                        option_b: isMCQ ? (options.find(o => o.option_label === 'B')?.option_text || '') : '',
+                        option_c: isMCQ ? (options.find(o => o.option_label === 'C')?.option_text || '') : '',
+                        option_d: isMCQ ? (options.find(o => o.option_label === 'D')?.option_text || '') : '',
+                        option_e: isMCQ ? (options.find(o => o.option_label === 'E')?.option_text || '') : '',
+                        correct_option: isMCQ 
+                            ? (options.find(o => o.is_correct === 1)?.option_label || 'A')
+                            : (options.find(o => o.option_label === 'A')?.option_text || 'TEXT')
                     });
                 }
             }
