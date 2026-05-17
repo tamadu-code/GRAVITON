@@ -13772,21 +13772,58 @@ export const UI = {
                     const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                     if (client) {
                         const BATCH_SIZE = 50;
-                        const totalBatches = Math.ceil(newQuestions.length / BATCH_SIZE);
                         
+                        // Strict whitelists to ensure no schema mismatch error (PGRST204)
+                        const qCols = ['id', 'exam_id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'updated_at'];
+                        const bankCols = ['id', 'subject_id', 'class_name', 'question_text', 'topic_area', 'difficulty_level', 'updated_at'];
+                        const optCols = ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'updated_at'];
+
                         for (let i = 0; i < newQuestions.length; i += BATCH_SIZE) {
                             const batch = newQuestions.slice(i, i + BATCH_SIZE);
-                            const cloudBatch = batch.map(({ is_synced, type, ...rest }) => rest);
-                            const { error } = await client.from('cbt_questions').upsert(cloudBatch);
-                            if (error) throw error;
-
-                            // Also save to relational tables
-                            const relBatch = relationalData.slice(i, i + BATCH_SIZE);
-                            const cloudQ = relBatch.map(({ question }) => { const { is_synced, ...rest } = question; return rest; });
-                            const cloudO = [].concat(...relBatch.map(({ options }) => options.map(({ is_synced, ...rest }) => rest)));
                             
-                            await client.from('cbt_question_bank').upsert(cloudQ);
-                            await client.from('cbt_options').upsert(cloudO);
+                            // 1. Sanitize cbt_questions
+                            const cloudBatch = batch.map(item => {
+                                const sanitized = {};
+                                qCols.forEach(col => {
+                                    if (item[col] !== undefined) sanitized[col] = item[col];
+                                });
+                                if (!sanitized.updated_at) sanitized.updated_at = new Date().toISOString();
+                                return sanitized;
+                            });
+
+                            const { error: errQ } = await client.from('cbt_questions').upsert(cloudBatch);
+                            if (errQ) throw errQ;
+
+                            // 2. Also save to relational tables
+                            const relBatch = relationalData.slice(i, i + BATCH_SIZE);
+                            
+                            // Sanitize cbt_question_bank
+                            const cloudQ = relBatch.map(({ question }) => {
+                                const sanitized = {};
+                                bankCols.forEach(col => {
+                                    if (question[col] !== undefined) sanitized[col] = question[col];
+                                });
+                                if (!sanitized.updated_at) sanitized.updated_at = new Date().toISOString();
+                                return sanitized;
+                            });
+
+                            // Sanitize cbt_options
+                            const cloudO = [].concat(...relBatch.map(({ options }) => 
+                                options.map(opt => {
+                                    const sanitized = {};
+                                    optCols.forEach(col => {
+                                        if (opt[col] !== undefined) sanitized[col] = opt[col];
+                                    });
+                                    if (!sanitized.updated_at) sanitized.updated_at = new Date().toISOString();
+                                    return sanitized;
+                                })
+                            ));
+                            
+                            const { error: errBank } = await client.from('cbt_question_bank').upsert(cloudQ);
+                            if (errBank) throw errBank;
+
+                            const { error: errOpt } = await client.from('cbt_options').upsert(cloudO);
+                            if (errOpt) throw errOpt;
                         }
                     }
                 }
