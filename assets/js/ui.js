@@ -13529,7 +13529,10 @@ export const UI = {
             let failedBlocks = 0;
             let duplicateCount = 0;
 
-            const existingBank = await db.cbt_question_bank.where('subject_id').equals(subjectId).toArray();
+            const existingBank = await db.cbt_question_bank
+                .where('subject_id').equals(subjectId)
+                .filter(q => q.class_name === className && q.term === term && q.session === session)
+                .toArray();
             const existingTexts = new Set(existingBank.map(q => q.question_text.trim()));
 
             const blocks = [];
