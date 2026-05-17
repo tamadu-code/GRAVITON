@@ -21,37 +21,120 @@ export const UI = {
 
         const previewHtml = `
             <div id="full-pdf-preview" class="animate-fade-in" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0f172a; z-index: 9999999; display: flex; flex-direction: column; font-family: 'Outfit', sans-serif;">
+                <style>
+                    .pdf-preview-header {
+                        height: 70px;
+                        background: #1e293b;
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        padding: 0 2rem;
+                        border-bottom: 1px solid rgba(255,255,255,0.1);
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                        box-sizing: border-box;
+                    }
+                    .pdf-preview-btn {
+                        border-radius: 12px;
+                        height: 44px;
+                        padding: 0 1.5rem;
+                        font-weight: 700;
+                        font-size: 0.85rem;
+                        display: flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        cursor: pointer;
+                        box-sizing: border-box;
+                        transition: all 0.2s ease;
+                    }
+                    .pdf-mobile-notice {
+                        display: none;
+                    }
+                    @media (max-width: 768px) {
+                        .pdf-preview-header {
+                            height: 60px;
+                            padding: 0 0.75rem;
+                        }
+                        .pdf-preview-icon {
+                            display: none !important;
+                        }
+                        .pdf-preview-title {
+                            font-size: 0.9rem !important;
+                        }
+                        .pdf-preview-subtitle {
+                            font-size: 0.6rem !important;
+                            max-width: 150px;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                        }
+                        .pdf-preview-btn {
+                            height: 38px;
+                            padding: 0 0.75rem;
+                            font-size: 0.75rem;
+                        }
+                        .pdf-preview-btn span {
+                            display: none !important; /* Hide button text on mobile */
+                        }
+                        .pdf-preview-btn i {
+                            margin: 0 !important;
+                        }
+                        .pdf-preview-content {
+                            padding: 0.5rem !important;
+                        }
+                        .pdf-preview-footer {
+                            display: none !important;
+                        }
+                        .pdf-mobile-notice {
+                            display: flex !important;
+                        }
+                    }
+                </style>
+
                 <!-- Full Page Header -->
-                <div style="height: 70px; background: #1e293b; display: flex; align-items: center; justify-content: space-between; padding: 0 2rem; border-bottom: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+                <div class="pdf-preview-header">
                     <div style="display: flex; align-items: center; gap: 1rem;">
-                        <div style="width: 40px; height: 40px; background: #3b82f6; color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);">
+                        <div class="pdf-preview-icon" style="width: 40px; height: 40px; background: #3b82f6; color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);">
                             <i data-lucide="eye" style="width: 22px;"></i>
                         </div>
                         <div>
-                            <div style="color: white; font-weight: 900; font-size: 1.1rem; letter-spacing: 0.5px;">REPORT REVIEW & AUDIT</div>
-                            <div style="color: #94a3b8; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">PREVIEWING: ${filename}</div>
+                            <div class="pdf-preview-title" style="color: white; font-weight: 900; font-size: 1.1rem; letter-spacing: 0.5px;">REPORT REVIEW & AUDIT</div>
+                            <div class="pdf-preview-subtitle" style="color: #94a3b8; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">PREVIEWING: ${filename}</div>
                         </div>
                     </div>
                     
-                    <div style="display: flex; align-items: center; gap: 1rem;">
-                        <button id="btn-preview-cancel" class="btn" style="background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; height: 44px; padding: 0 1.5rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">
-                            <i data-lucide="x" style="width: 18px;"></i> Close Preview
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <button id="btn-preview-cancel" class="pdf-preview-btn" style="background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1);">
+                            <i data-lucide="x" style="width: 18px;"></i> <span>Close Preview</span>
                         </button>
-                        <button id="btn-final-print" class="btn" style="background: #10b981; color: white; border: none; border-radius: 12px; height: 44px; padding: 0 2rem; font-weight: 800; font-size: 0.9rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);">
-                            <i data-lucide="printer" style="width: 18px;"></i> Secure Print
+                        <button id="btn-final-print" class="pdf-preview-btn" style="background: #10b981; color: white; border: none; box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);">
+                            <i data-lucide="printer" style="width: 18px;"></i> <span>Secure Print</span>
                         </button>
                     </div>
                 </div>
 
                 <!-- Main Content Area -->
-                <div style="flex: 1; background: #525659; overflow: hidden; position: relative; display: flex; justify-content: center; padding: 1.5rem;">
-                    <div style="width: 100%; max-width: 1200px; height: 100%; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+                <div class="pdf-preview-content" style="flex: 1; background: #525659; overflow: hidden; position: relative; display: flex; flex-direction: column; align-items: center; padding: 1.5rem; box-sizing: border-box; gap: 0.75rem;">
+                    <!-- Mobile Warning / Fast Access Notice -->
+                    <div class="pdf-mobile-notice" style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 14px; padding: 0.75rem 1rem; align-items: center; gap: 0.75rem; width: 100%; max-width: 1200px; box-sizing: border-box; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                        <div style="background: #3b82f6; color: white; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <i data-lucide="smartphone" style="width: 18px;"></i>
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: 800; color: #1e3a8a; font-size: 0.75rem;">Mobile Preview Support</div>
+                            <div style="color: #1e40af; font-size: 0.65rem; font-weight: 500; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">If the preview fails to load, tap to open the PDF directly.</div>
+                        </div>
+                        <button onclick="window.open('${blobUrl}', '_blank')" class="btn" style="background: #3b82f6; color: white; border: none; border-radius: 8px; height: 32px; padding: 0 0.75rem; font-size: 0.7rem; font-weight: 800; display: flex; align-items: center; gap: 0.25rem; white-space: nowrap; cursor: pointer;">
+                            <i data-lucide="external-link" style="width: 12px;"></i> View Native
+                        </button>
+                    </div>
+
+                    <div style="width: 100%; max-width: 1200px; flex: 1; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
                         <iframe src="${blobUrl}#toolbar=0" style="width: 100%; height: 100%; border: none;"></iframe>
                     </div>
                 </div>
 
                 <!-- Floating Info (Bottom Left) -->
-                <div style="position: fixed; bottom: 30px; left: 30px; background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(8px); padding: 0.75rem 1.25rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 0.75rem; color: #94a3b8; font-size: 0.75rem; pointer-events: none;">
+                <div class="pdf-preview-footer" style="position: fixed; bottom: 30px; left: 30px; background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(8px); padding: 0.75rem 1.25rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 0.75rem; color: #94a3b8; font-size: 0.75rem; pointer-events: none; z-index: 10;">
                     <i data-lucide="info" style="width: 14px; color: #3b82f6;"></i>
                     <span>Scroll within the document to review all pages. All signatures are automatically embedded.</span>
                 </div>
@@ -8226,7 +8309,7 @@ export const UI = {
         if (!list) return;
 
         const className = document.getElementById('exam-class')?.value;
-        const subjects = await this.getSubjectsForClass(className);
+        let subjects = await this.getSubjectsForClass(className);
         const classes = await db.classes.toArray();
 
         // Global Deduplication by Name
@@ -8670,17 +8753,31 @@ export const UI = {
 
             // 3. Normalization & Integrity
             const strip = (t) => (t || '').toString().replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '').replace(/[\[\(]\s*$/, '').trim();
-            const questions = finalQuestions.map(q => ({
-                ...q,
-                question_text: strip(q.question_text || q.question || ''),
-                option_a: strip(q.option_a),
-                option_b: strip(q.option_b),
-                option_c: strip(q.option_c),
-                option_d: strip(q.option_d),
-                option_e: strip(q.option_e),
-                correct_option: (q.correct_option || 'A').toUpperCase(),
-                marks: parseFloat(q.marks) || 1
-            })).filter(q => {
+            const questions = finalQuestions.map(q => {
+                const correctOptLetter = (q.correct_option || 'A').toUpperCase();
+                const cleanOptA = strip(q.option_a);
+                const cleanOptB = strip(q.option_b);
+                const cleanOptC = strip(q.option_c);
+                const cleanOptD = strip(q.option_d);
+                const cleanOptE = strip(q.option_e);
+                
+                const optMap = { 'A': cleanOptA, 'B': cleanOptB, 'C': cleanOptC, 'D': cleanOptD, 'E': cleanOptE };
+                const correctOptText = optMap[correctOptLetter] || '';
+                const answerHash = q.answerHash || btoa(unescape(encodeURIComponent(correctOptText + examId))).split('').reverse().join('');
+                
+                return {
+                    ...q,
+                    question_text: strip(q.question_text || q.question || ''),
+                    option_a: cleanOptA,
+                    option_b: cleanOptB,
+                    option_c: cleanOptC,
+                    option_d: cleanOptD,
+                    option_e: cleanOptE,
+                    correct_option: correctOptLetter,
+                    answerHash: answerHash,
+                    marks: parseFloat(q.marks) || 1
+                };
+            }).filter(q => {
                 const hasOpts = [q.option_a, q.option_b, q.option_c, q.option_d].filter(o => o.length > 0).length >= 2;
                 if (!hasOpts) q.question_type = 'fill_in_blank';
                 return q.question_text.length > 0;
@@ -8731,7 +8828,6 @@ export const UI = {
             });
 
             this.renderCBTExamInterface();
-            this.startCBTTimer();
         } catch (err) {
             console.error('[CBT FATAL]', err);
             Notifications.show(err.message || 'Failed to start exam.', 'error');
@@ -9914,8 +10010,12 @@ export const UI = {
                 correctText = targets.join(' / ');
             } else {
                 // MCQ
+                const correctOptLetter = (q.correct_option || 'A').toUpperCase();
+                const correctOptText = q[`option_${correctOptLetter.toLowerCase()}`] || '';
+                const answerHash = q.answerHash || btoa(unescape(encodeURIComponent(correctOptText + result.exam_id))).split('').reverse().join('');
+                
                 const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + result.exam_id))).split('').reverse().join('');
-                isCorrect = choiceHash === q.answerHash;
+                isCorrect = choiceHash === answerHash;
                 
                 // Identify correct option text
                 const options = [
@@ -9925,10 +10025,7 @@ export const UI = {
                     { label: 'D', text: q.option_d },
                     { label: 'E', text: q.option_e }
                 ];
-                const correctOpt = options.find(o => {
-                    const hash = btoa(unescape(encodeURIComponent(o.text + result.exam_id))).split('').reverse().join('');
-                    return hash === q.answerHash;
-                });
+                const correctOpt = options.find(o => o.label === correctOptLetter);
                 correctText = correctOpt ? `(${correctOpt.label}) ${correctOpt.text}` : 'Unknown';
             }
 
