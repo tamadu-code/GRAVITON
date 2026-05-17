@@ -8183,61 +8183,66 @@ export const UI = {
                 }
             }
 
-            // Save all current questions
+            // Save all current questions (only for standard exams; unified exams pull dynamically via cbt_exam_sections)
             let qCount = 0;
-            const relationalData = [];
-            
-            for (const q of this.cbtQuestions) {
-                const qId = q.id || `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
-                
-                // 1. Legacy Save
-                await db.cbt_questions.add(prepareForSync({
-                    ...q,
-                    id: qId,
-                    exam_id: examId
-                }));
+            if (!isUnified) {
+                for (const q of this.cbtQuestions) {
+                    const qId = q.id || `BQ${Math.random().toString(36).substr(2,9).toUpperCase()}`;
+                    
+                    // 1. Legacy Save
+                    await db.cbt_questions.add(prepareForSync({
+                        ...q,
+                        id: qId,
+                        exam_id: examId
+                    }));
 
-                // 2. JAMB Solution: Question Bank & Options
-                const bankQuestion = prepareForSync({
-                    id: qId,
-                    subject_id: subId,
-                    class_name: cls,
-                    question_text: q.question_text,
-                    passage_text: q.passage_text || null,
-                    type: q.type || 'mcq',
-                    marks: q.marks || 1
-                });
-                await db.cbt_question_bank.put(bankQuestion);
+                    // 2. JAMB Solution: Question Bank & Options
+                    const bankQuestion = prepareForSync({
+                        id: qId,
+                        subject_id: subId,
+                        class_name: cls,
+                        question_text: q.question_text,
+                        passage_text: q.passage_text || null,
+                        type: q.type || 'mcq',
+                        marks: q.marks || 1
+                    });
+                    await db.cbt_question_bank.put(bankQuestion);
 
-                const opts = [
-                    { label: 'A', text: q.option_a, correct: q.correct_option === 'A' },
-                    { label: 'B', text: q.option_b, correct: q.correct_option === 'B' },
-                    { label: 'C', text: q.option_c, correct: q.correct_option === 'C' },
-                    { label: 'D', text: q.option_d, correct: q.correct_option === 'D' },
-                    { label: 'E', text: q.option_e, correct: q.correct_option === 'E' }
-                ].filter(o => o.text).map(o => prepareForSync({
-                    id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                    question_id: qId,
-                    option_label: o.label,
-                    option_text: o.text,
-                    is_correct: o.correct ? 1 : 0
-                }));
-                await db.cbt_options.where('question_id').equals(qId).delete();
-                await db.cbt_options.bulkPut(opts);
+                    const opts = [
+                        { label: 'A', text: q.option_a, correct: q.correct_option === 'A' },
+                        { label: 'B', text: q.option_b, correct: q.correct_option === 'B' },
+                        { label: 'C', text: q.option_c, correct: q.correct_option === 'C' },
+                        { label: 'D', text: q.option_d, correct: q.correct_option === 'D' },
+                        { label: 'E', text: q.option_e, correct: q.correct_option === 'E' }
+                    ].filter(o => o.text).map(o => prepareForSync({
+                        id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        question_id: qId,
+                        option_label: o.label,
+                        option_text: o.text,
+                        is_correct: o.correct ? 1 : 0
+                    }));
+                    await db.cbt_options.where('question_id').equals(qId).delete();
+                    await db.cbt_options.bulkPut(opts);
 
-                // 3. JAMB Solution: Join Table
-                await db.cbt_exam_questions.add(prepareForSync({
-                    id: `EQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                    exam_id: examId,
-                    question_id: qId,
-                    question_number: qCount + 1
-                }));
+                    // 3. JAMB Solution: Join Table
+                    await db.cbt_exam_questions.add(prepareForSync({
+                        id: `EQ${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        exam_id: examId,
+                        question_id: qId,
+                        question_number: qCount + 1
+                    }));
 
-                qCount++;
+                    qCount++;
+                }
+                console.log(`Saved ${qCount} questions to legacy and relational databases.`);
             }
-            console.log(`Saved ${qCount} questions to legacy and relational databases.`);
 
-            Notifications.show(`Exam saved successfully with ${qCount} questions`, 'success');
+            if (isUnified) {
+                const totalQuestions = (this.cbtSections || []).reduce((sum, sec) => sum + (parseInt(sec.question_count) || 0), 0);
+                Notifications.show(`Unified Exam saved successfully with ${this.cbtSections.length} sections (${totalQuestions} total questions)`, 'success');
+            } else {
+                Notifications.show(`Exam saved successfully with ${qCount} questions`, 'success');
+            }
             this.renderCBT();
             this.debouncedSync();
         } catch (err) {
