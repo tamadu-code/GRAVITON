@@ -198,6 +198,23 @@ export async function syncToCloud() {
                         for (const del of deletions) {
                             try {
                                 const pk = (del.table === 'students' || del.table === 'student_analytics') ? 'student_id' : 'id';
+                                
+                                // Cascade cloud deletions to satisfy foreign key constraints before deleting parent
+                                if (del.table === 'classes') {
+                                    const { data: clsData } = await client.from('classes').select('name').eq('id', del.record_id).maybeSingle();
+                                    if (clsData && clsData.name) {
+                                        console.log(`[Sync Delete] Cascade cleaning cloud dependencies for class: ${clsData.name}`);
+                                        await client.from('form_teachers').delete().eq('class_name', clsData.name);
+                                        await client.from('subject_assignments').delete().eq('class_name', clsData.name);
+                                    }
+                                } else if (del.table === 'students') {
+                                    console.log(`[Sync Delete] Cascade cleaning cloud dependencies for student: ${del.record_id}`);
+                                    await client.from('attendance').delete().eq('student_id', del.record_id);
+                                    await client.from('attendance_records').delete().eq('student_id', del.record_id);
+                                    await client.from('scores').delete().eq('student_id', del.record_id);
+                                    await client.from('payments').delete().eq('student_id', del.record_id);
+                                }
+
                                 const { error: delErr } = await client.from(del.table).delete().eq(pk, del.record_id);
                                 if (delErr) {
                                     console.error(`[Sync Delete] FAILED for ${del.table}/${del.record_id}:`, delErr.message);

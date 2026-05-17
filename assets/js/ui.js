@@ -182,10 +182,16 @@ export const UI = {
                 is_synced: 0
             });
 
+            // Fetch metadata BEFORE deleting from IndexedDB
+            let classDetails = null;
+            if (table === 'classes') {
+                classDetails = await db.classes.get(id);
+            }
+
             // 2. Perform local deletion
             await db[table].delete(id);
             
-            // 3. Cascade deletion for students
+            // 3. Cascade deletion for students & classes
             if (table === 'students') {
                 const sid = String(id);
                 console.log(`[SafeDelete] Cascading deletion for student: ${sid}`);
@@ -199,6 +205,14 @@ export const UI = {
                     db.parent_links.where('student_id').equals(sid).delete(),
                     db.student_analytics.where('student_id').equals(sid).delete()
                 ]);
+            } else if (table === 'classes') {
+                if (classDetails && classDetails.name) {
+                    console.log(`[SafeDelete] Cascading local deletion for class: ${classDetails.name}`);
+                    await Promise.all([
+                        db.form_teachers.where('class_name').equals(classDetails.name).delete(),
+                        db.subject_assignments.where('class_name').equals(classDetails.name).delete()
+                    ]);
+                }
             }
 
             // 4. Immediate Cloud deletion if online
@@ -207,13 +221,12 @@ export const UI = {
                 if (client) {
                     const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
                     
-                    // Handle foreign key constraints for classes in the cloud
+                    // Handle foreign key constraints for classes in the cloud (using preserved metadata)
                     if (table === 'classes') {
-                        const cls = await db.classes.get(id);
-                        if (cls && cls.name) {
-                            console.log(`[SafeDelete] Cleaning up children for class: ${cls.name}`);
-                            await client.from('form_teachers').delete().eq('class_name', cls.name);
-                            await client.from('subject_assignments').delete().eq('class_name', cls.name);
+                        if (classDetails && classDetails.name) {
+                            console.log(`[SafeDelete] Cleaning up cloud children for class: ${classDetails.name}`);
+                            await client.from('form_teachers').delete().eq('class_name', classDetails.name);
+                            await client.from('subject_assignments').delete().eq('class_name', classDetails.name);
                         }
                     }
 
