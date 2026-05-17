@@ -9788,8 +9788,9 @@ export const UI = {
         
         const text = q.question_text.toString().trim();
         
-        // Check if options are already populated in separate fields
-        const hasOptions = q.option_a && q.option_a.toString().trim().length > 0;
+        // Check if options are already populated in separate fields (at least 2 valid options required for MCQ)
+        const validOpts = [q.option_a, q.option_b, q.option_c, q.option_d, q.option_e].filter(o => o && o.toString().trim().length > 0);
+        const hasOptions = validOpts.length >= 2;
         if (hasOptions) {
             // Options exist — just strip [Ans: X] from question_text if present
             q.question_type = 'mcq';
@@ -9847,12 +9848,20 @@ export const UI = {
             q.question_text = text.replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '').replace(/\s*\[Ans[:\s]+.*?\]/gi, '').trim();
             console.log(`[CBT NORMALIZE] Fill-in-blank detected: ${q.id}, answer: ${q.fill_answer}`);
         } else {
-            // Robust Zero-Option Fallback: If it's not explicitly MCQ and has no options, it MUST be fill_in_blank
-            const validOpts = [q.option_a, q.option_b, q.option_c, q.option_d, q.option_e].filter(o => o && o.toString().trim().length > 0);
-            if (validOpts.length === 0) {
+            // Robust Fallback: If it has fewer than 2 valid options, it cannot be a choice-based MCQ, so it MUST be fill_in_blank
+            if (validOpts.length < 2) {
                 q.question_type = 'fill_in_blank';
-                if (!q.fill_answer && q.correct_option) q.fill_answer = q.correct_option;
-                console.log(`[CBT NORMALIZE] Fallback to fill_in_blank (no options detected): ${q.id}`);
+                if (!q.fill_answer) {
+                    // Extract correct answer from option_a or correct_option if fill_answer is missing
+                    q.fill_answer = q.option_a || q.correct_option || '';
+                }
+                // Clear any options to ensure the Exam Player does not render option buttons
+                q.option_a = '';
+                q.option_b = '';
+                q.option_c = '';
+                q.option_d = '';
+                q.option_e = '';
+                console.log(`[CBT NORMALIZE] Fallback to fill_in_blank (fewer than 2 options): ${q.id}, answer: ${q.fill_answer}`);
             }
         }
         
