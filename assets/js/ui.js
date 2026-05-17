@@ -4007,7 +4007,9 @@ export const UI = {
             }
             
             const assignedIds = new Set(assignments.map(a => a.subject_id));
-            const availableSubjects = allSubjects.filter(s => assignedIds.has(s.id));
+            const availableSubjects = allSubjects
+                .filter(s => assignedIds.has(s.id))
+                .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             
             if (availableSubjects.length > 0) {
                 subjectFilter.innerHTML = availableSubjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
@@ -7509,9 +7511,14 @@ export const UI = {
                                                     if (isStudent) {
                                                         if (result && result.status === 'Completed') {
                                                             return `
-                                                                <div>
-                                                                    <div style="font-size: 0.7rem; font-weight: 800; color: #10b981; margin-bottom: 0.25rem;">YOUR SCORE</div>
+                                                                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem;">
+                                                                    <div style="font-size: 0.7rem; font-weight: 800; color: #10b981;">YOUR SCORE</div>
                                                                     <div style="font-weight: 800; color: #064e3b; font-size: 1.25rem;">${result.score.toFixed(1)} / ${(result.total_marks || result.total_questions).toFixed(1)}</div>
+                                                                    ${e.is_unified ? `
+                                                                        <button class="btn btn-secondary btn-sm" onclick="UI.showUnifiedScorecard('${result.student_id}', '${e.id}')" style="height: 28px; padding: 0 0.75rem; border-radius: 6px; font-size: 0.65rem; font-weight: 800; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.25rem; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; cursor: pointer;">
+                                                                            <i data-lucide="eye" style="width: 12px; height: 12px;"></i> View Scorecard
+                                                                        </button>
+                                                                    ` : ''}
                                                                 </div>
                                                             `;
                                                         }
@@ -10147,6 +10154,93 @@ export const UI = {
             finalResult = existing;
         }
 
+        // --- Calculate Subject-wise Breakdown for Unified Exams ---
+        const userAnswersToUse = !isExternal ? this.userAnswers : (finalResult?.answers || {});
+        const sectionDetails = [];
+        if (this.currentExam && this.currentExam.is_unified) {
+            try {
+                const subjectsList = await db.subjects.toArray();
+                const subNameMap = subjectsList.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
+                const sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
+                
+                for (const sec of sections) {
+                    const secQuestions = this.currentQuestions.filter(q => q.section_id === sec.id);
+                    if (secQuestions.length === 0) continue;
+
+                    let secRawScore = 0;
+                    secQuestions.forEach(q => {
+                        const studentChoice = userAnswersToUse[q.id];
+                        if (studentChoice) {
+                            if (q.question_type === 'fill_in_blank') {
+                                const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+                                const studentAns = (studentChoice || '').toLowerCase().trim();
+                                if (targets.includes(studentAns)) secRawScore += (parseFloat(q.marks) || 1);
+                            } else {
+                                const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + this.currentExam.id))).split('').reverse().join('');
+                                if (choiceHash === q.answerHash) secRawScore += (parseFloat(q.marks) || 1);
+                            }
+                        }
+                    });
+
+                    const secMaxPossible = secQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+                    const targetMax = parseFloat(sec.target_mark) || 60;
+                    const scaledScore = secMaxPossible > 0 ? (secRawScore / secMaxPossible) * targetMax : 0;
+
+                    sectionDetails.push({
+                        subjectName: subNameMap[sec.subject_id] || 'Subject',
+                        rawScore: secRawScore,
+                        maxPossible: secMaxPossible,
+                        scaledScore: scaledScore,
+                        targetMax: targetMax
+                    });
+                }
+            } catch (secErr) {
+                console.warn('[CBT SUBMIT] Failed to calculate section details:', secErr);
+            }
+        }
+
+        const isUnified = this.currentExam && this.currentExam.is_unified;
+        let scoreCardHTML = '';
+        if (isUnified && sectionDetails.length > 0) {
+            scoreCardHTML = `
+                <div class="card animate-fade-in" style="max-width: 550px; margin: 0 auto 3rem; padding: 2rem; border-radius: 24px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05); text-align: left; background: white; border: 1px solid #f1f5f9;">
+                    <div style="font-size: 0.8rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 1.5rem; text-align: center; border-bottom: 1.5px dashed #e2e8f0; padding-bottom: 1rem;">
+                        UNIFIED REPORT CARD
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${sectionDetails.map(sec => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: #f8fafc; border-radius: 12px; border: 1px solid #f1f5f9;">
+                                <div>
+                                    <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem;">${sec.subjectName}</div>
+                                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; margin-top: 0.1rem;">
+                                        Raw: ${sec.rawScore.toFixed(0)} / ${sec.maxPossible.toFixed(0)} questions correct
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 1.25rem; font-weight: 900; color: #4338ca;">${sec.scaledScore.toFixed(1)} <span style="font-size: 0.8rem; color: #94a3b8;">/ ${sec.targetMax.toFixed(0)}</span></div>
+                                    <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">SCALED SCORE</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1.5px dashed #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 800; color: #64748b; font-size: 0.9rem;">CUMULATIVE SCALED TOTAL</span>
+                        <span style="font-size: 1.5rem; font-weight: 900; color: #10b981;">
+                            ${sectionDetails.reduce((sum, s) => sum + s.scaledScore, 0).toFixed(1)} 
+                            <span style="font-size: 1rem; color: #94a3b8;">/ ${sectionDetails.reduce((sum, s) => sum + s.targetMax, 0).toFixed(0)}</span>
+                        </span>
+                    </div>
+                </div>
+            `;
+        } else {
+            scoreCardHTML = `
+                <div class="card animate-fade-in" style="max-width: 400px; margin: 0 auto 3rem; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05); background: white;">
+                    <div style="font-size: 0.85rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">FINAL SCORE</div>
+                    <div style="font-size: 4rem; font-weight: 900; color: #4338ca;">${score.toFixed(1)} <span style="font-size: 1.5rem; color: #94a3b8;">/ ${totalMarks.toFixed(1)}</span></div>
+                </div>
+            `;
+        }
+
         this.contentArea.innerHTML = `
             <div class="view-container text-center animate-fade-in" style="padding-top: 5rem;">
                 <div style="width: 100px; height: 100px; background: #ecfdf5; color: #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 2rem;">
@@ -10155,10 +10249,7 @@ export const UI = {
                 <h1 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem;">Exam Completed!</h1>
                 <p style="color: #64748b; font-size: 1.1rem; margin-bottom: 3rem;">Your responses have been securely recorded and synced to the cloud.</p>
                 
-                <div class="card" style="max-width: 400px; margin: 0 auto 3rem; padding: 2rem; border-radius: 20px;">
-                    <div style="font-size: 0.85rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">FINAL SCORE</div>
-                    <div style="font-size: 4rem; font-weight: 900; color: #4338ca;">${score.toFixed(1)} <span style="font-size: 1.5rem; color: #94a3b8;">/ ${totalMarks.toFixed(1)}</span></div>
-                </div>
+                ${scoreCardHTML}
 
                 <button class="btn btn-primary" onclick="UI.renderCBT()" style="padding: 1rem 3rem; border-radius: 12px; font-weight: 800;">Return to Hub</button>
                 ${(this.currentExam.mode === 'Practice' && finalResult) ? `
@@ -10282,6 +10373,122 @@ export const UI = {
         this.contentArea.innerHTML = reviewHtml;
         if (typeof lucide !== 'undefined') lucide.createIcons();
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+
+    async showUnifiedScorecard(studentId, examId) {
+        try {
+            const result = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            if (!result) return Notifications.show('Result details not found.', 'error');
+
+            const exam = await db.cbt_exams.get(examId);
+            if (!exam) return Notifications.show('Exam context lost.', 'error');
+
+            const questions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+            const subjectsList = await db.subjects.toArray();
+            const subNameMap = subjectsList.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
+            const sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
+
+            const studentAnswers = result.answers || {};
+
+            const sectionDetails = [];
+            for (const sec of sections) {
+                const secQuestions = questions.filter(q => q.section_id === sec.id);
+                if (secQuestions.length === 0) continue;
+
+                let secRawScore = 0;
+                secQuestions.forEach(q => {
+                    const studentChoice = studentAnswers[q.id];
+                    if (studentChoice) {
+                        if (q.question_type === 'fill_in_blank') {
+                            const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+                            const studentAns = (studentChoice || '').toLowerCase().trim();
+                            if (targets.includes(studentAns)) secRawScore += (parseFloat(q.marks) || 1);
+                        } else {
+                            const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + examId))).split('').reverse().join('');
+                            if (choiceHash === q.answerHash) secRawScore += (parseFloat(q.marks) || 1);
+                        }
+                    }
+                });
+
+                const secMaxPossible = secQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+                const targetMax = parseFloat(sec.target_mark) || 60;
+                const scaledScore = secMaxPossible > 0 ? (secRawScore / secMaxPossible) * targetMax : 0;
+
+                sectionDetails.push({
+                    subjectName: subNameMap[sec.subject_id] || 'Subject',
+                    rawScore: secRawScore,
+                    maxPossible: secMaxPossible,
+                    scaledScore: scaledScore,
+                    targetMax: targetMax
+                });
+            }
+
+            // Create modal overlay
+            const overlay = document.createElement('div');
+            overlay.id = 'unified-scorecard-modal';
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100vw';
+            overlay.style.height = '100vh';
+            overlay.style.backgroundColor = 'rgba(15, 23, 42, 0.6)';
+            overlay.style.backdropFilter = 'blur(8px)';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.zIndex = '999999';
+            overlay.style.padding = '1rem';
+            overlay.style.boxSizing = 'border-box';
+            overlay.style.animation = 'fadeIn 0.25s ease-out';
+
+            overlay.innerHTML = `
+                <style>
+                    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+                    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+                </style>
+                <div style="background: white; width: 100%; max-width: 550px; border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15); padding: 2rem; box-sizing: border-box; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); border: 1px solid #f1f5f9; position: relative;">
+                    <button onclick="document.getElementById('unified-scorecard-modal').remove()" style="position: absolute; top: 1.5rem; right: 1.5rem; width: 36px; height: 36px; border-radius: 50%; border: none; background: #f1f5f9; color: #475569; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; transition: all 0.2s;">&times;</button>
+                    
+                    <div style="text-align: center; margin-bottom: 1.5rem;">
+                        <span style="background: #eff6ff; color: #2563eb; font-size: 0.65rem; font-weight: 800; padding: 0.3rem 0.75rem; border-radius: 20px; letter-spacing: 1px; text-transform: uppercase;">Unified Exam Results</span>
+                        <h2 style="font-weight: 900; color: #1e293b; margin: 0.75rem 0 0.25rem 0; font-size: 1.5rem; line-height: 1.2;">${exam.title}</h2>
+                        <p style="color: #64748b; font-size: 0.85rem; font-weight: 600; margin: 0;">${exam.term} | ${exam.session}</p>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.85rem; max-height: 350px; overflow-y: auto; padding-right: 0.25rem;">
+                        ${sectionDetails.map(sec => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: #f8fafc; border-radius: 12px; border: 1px solid #f1f5f9;">
+                                <div>
+                                    <div style="font-weight: 800; color: #1e293b; font-size: 0.9rem;">${sec.subjectName}</div>
+                                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; margin-top: 0.1rem;">
+                                        Raw Score: ${sec.rawScore.toFixed(0)} / ${sec.maxPossible.toFixed(0)} correct
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 1.15rem; font-weight: 900; color: #4338ca;">${sec.scaledScore.toFixed(1)} <span style="font-size: 0.75rem; color: #94a3b8;">/ ${sec.targetMax.toFixed(0)}</span></div>
+                                    <div style="font-size: 0.6rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">SCALED</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1.5px dashed #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 800; color: #64748b; font-size: 0.85rem;">CUMULATIVE TOTAL</span>
+                        <span style="font-size: 1.35rem; font-weight: 900; color: #10b981;">
+                            ${sectionDetails.reduce((sum, s) => sum + s.scaledScore, 0).toFixed(1)} 
+                            <span style="font-size: 0.9rem; color: #94a3b8;">/ ${sectionDetails.reduce((sum, s) => sum + s.targetMax, 0).toFixed(0)}</span>
+                        </span>
+                    </div>
+
+                    <button onclick="document.getElementById('unified-scorecard-modal').remove()" style="width: 100%; margin-top: 1.5rem; height: 48px; border-radius: 12px; border: none; background: #4338ca; color: white; font-weight: 800; font-size: 0.9rem; cursor: pointer; transition: opacity 0.2s;">Close Scorecard</button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        } catch (err) {
+            console.error('[CBT SCORECARD]', err);
+            Notifications.show('Failed to load unified scorecard.', 'error');
+        }
     },
 
     async postCBTToScoresheet(result) {
