@@ -10397,28 +10397,49 @@ export const UI = {
                     }
                 }
 
-                // Clean answer
-                let correctOpt = 'A';
-                if (answerText) {
-                    const letter = answerText.toUpperCase().trim().charAt(0);
-                    if (['A','B','C','D','E'].includes(letter)) {
-                        correctOpt = letter;
-                    }
-                }
+                // Downgrade to Fill-in-the-blank if less than 2 options have any text
+                const nonEmptyOpts = [optA, optB, optC, optD, optE].filter(o => o.trim().length > 0);
+                if (nonEmptyOpts.length < 2) {
+                    let correctOpt = answerText || 'TEXT';
+                    correctOpt = correctOpt.replace(/[\]\)]+$/, '').trim();
 
-                parsedQuestions.push({
-                    type: 'mcq',
-                    question_text: questionText,
-                    passage_text: null,
-                    option_a: optA,
-                    option_b: optB,
-                    option_c: optC,
-                    option_d: optD,
-                    option_e: optE,
-                    correct_option: correctOpt,
-                    fill_answer: '',
-                    marks: 1
-                });
+                    parsedQuestions.push({
+                        type: 'fill',
+                        question_text: questionText,
+                        passage_text: null,
+                        option_a: '',
+                        option_b: '',
+                        option_c: '',
+                        option_d: '',
+                        option_e: '',
+                        correct_option: correctOpt,
+                        fill_answer: correctOpt,
+                        marks: 1
+                    });
+                } else {
+                    // Clean answer
+                    let correctOpt = 'A';
+                    if (answerText) {
+                        const letter = answerText.toUpperCase().trim().charAt(0);
+                        if (['A','B','C','D','E'].includes(letter)) {
+                            correctOpt = letter;
+                        }
+                    }
+
+                    parsedQuestions.push({
+                        type: 'mcq',
+                        question_text: questionText,
+                        passage_text: null,
+                        option_a: optA,
+                        option_b: optB,
+                        option_c: optC,
+                        option_d: optD,
+                        option_e: optE,
+                        correct_option: correctOpt,
+                        fill_answer: '',
+                        marks: 1
+                    });
+                }
 
             } else {
                 // Fill in the Blank Parser
@@ -13515,23 +13536,33 @@ export const UI = {
                                     </div>
                                     <div class="bank-details-area" style="max-height: ${this.lastOpenedBankCategory === tag ? '2000px' : '0'}; overflow: hidden; transition: max-height 0.3s ease-out; border-top: 1px solid #f1f5f9; background: #fff;">
                                         <div id="bank-scroll-${tag}" onscroll="UI.lastBankScrollPos = this.scrollTop" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; max-height: 550px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #cbd5e1 #f8fafc;">
-                                            ${questions.map((q, i) => `
-                                                <div style="background: #f8fafc; border-radius: 12px; padding: 1.25rem; border: 1px solid #f1f5f9; position: relative;">
-                                                    <button onclick="if(confirm('Delete this question?')) UI.deleteBankQuestion('${q.id}')" style="position: absolute; top: 1rem; right: 1rem; width: 28px; height: 28px; border-radius: 6px; border: none; background: #fff; color: #ef4444; border: 1px solid #fee2e2; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="Delete Question">
-                                                        <i data-lucide="trash-2" style="width: 14px;"></i>
-                                                    </button>
-                                                    <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; margin-bottom: 0.75rem; padding-right: 2rem;">
-                                                        ${i + 1}. ${this.parseCBTContent(q.question_text)}
+                                            ${questions.map((q, i) => {
+                                                const isFill = q.question_type === 'fill_in_blank' || q.type === 'fill' || q.type === 'text' || (!q.option_a && !q.option_b);
+                                                
+                                                const answerDisplayHTML = isFill
+                                                    ? `<div style="font-size: 0.85rem; color: #16a34a; font-weight: 800; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 0.5rem 0.75rem; border-radius: 8px; display: inline-block;">
+                                                            📝 TEXT ANSWER: ${q.correct_option || 'TEXT'}
+                                                       </div>`
+                                                    : `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; font-size: 0.85rem; color: #64748b;">
+                                                            <div style="${q.correct_option === 'A' ? 'color: #059669; font-weight: 800;' : ''}">A) ${this.parseCBTContent(q.option_a)}</div>
+                                                            <div style="${q.correct_option === 'B' ? 'color: #059669; font-weight: 800;' : ''}">B) ${this.parseCBTContent(q.option_b)}</div>
+                                                            <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${this.parseCBTContent(q.option_c)}</div>
+                                                            <div style="${q.correct_option === 'D' ? 'color: #059669; font-weight: 800;' : ''}">D) ${this.parseCBTContent(q.option_d)}</div>
+                                                            ${q.option_e ? `<div style="${q.correct_option === 'E' ? 'color: #059669; font-weight: 800;' : ''}">E) ${this.parseCBTContent(q.option_e)}</div>` : ''}
+                                                       </div>`;
+
+                                                return `
+                                                    <div style="background: #f8fafc; border-radius: 12px; padding: 1.25rem; border: 1px solid #f1f5f9; position: relative;">
+                                                        <button onclick="if(confirm('Delete this question?')) UI.deleteBankQuestion('${q.id}')" style="position: absolute; top: 1rem; right: 1rem; width: 28px; height: 28px; border-radius: 6px; border: none; background: #fff; color: #ef4444; border: 1px solid #fee2e2; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="Delete Question">
+                                                            <i data-lucide="trash-2" style="width: 14px;"></i>
+                                                        </button>
+                                                        <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; margin-bottom: 0.75rem; padding-right: 2rem;">
+                                                            ${i + 1}. ${this.parseCBTContent(q.question_text)}
+                                                        </div>
+                                                        ${answerDisplayHTML}
                                                     </div>
-                                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; font-size: 0.85rem; color: #64748b;">
-                                                        <div style="${q.correct_option === 'A' ? 'color: #059669; font-weight: 800;' : ''}">A) ${this.parseCBTContent(q.option_a)}</div>
-                                                        <div style="${q.correct_option === 'B' ? 'color: #059669; font-weight: 800;' : ''}">B) ${this.parseCBTContent(q.option_b)}</div>
-                                                        <div style="${q.correct_option === 'C' ? 'color: #059669; font-weight: 800;' : ''}">C) ${this.parseCBTContent(q.option_c)}</div>
-                                                        <div style="${q.correct_option === 'D' ? 'color: #059669; font-weight: 800;' : ''}">D) ${this.parseCBTContent(q.option_d)}</div>
-                                                        ${q.option_e ? `<div style="${q.correct_option === 'E' ? 'color: #059669; font-weight: 800;' : ''}">E) ${this.parseCBTContent(q.option_e)}</div>` : ''}
-                                                    </div>
-                                                </div>
-                                            `).join('')}
+                                                `;
+                                            }).join('')}
                                         </div>
                                     </div>
                                 </div>
