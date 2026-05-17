@@ -244,8 +244,10 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.text(`NEXT BEGINS: ${schoolInfo.termStart || '13th April, 2026'}`, rightX, y);
     
     // --- Subjects Table ---
+    const sortedScores = [...scores].sort((a, b) => (a.subject_name || '').localeCompare(b.subject_name || ''));
+    
     const tableHead = [['SUBJECTS', 'ASS', 'T1', 'T2', 'PROJ', 'CA', 'EXAM', 'TOTAL', 'GRADE', 'REMARK']];
-    const tableBody = scores.map(s => [
+    const tableBody = sortedScores.map(s => [
         s.subject_name,
         s.ass || 0,
         s.t1 || 0,

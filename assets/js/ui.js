@@ -3730,14 +3730,27 @@ export const UI = {
                 document.getElementById('active-subject-name').textContent = activeSub.name + ' in ' + cls;
             }
 
+            // Find base class for arm-aware matching and fetch specialization
+            const baseClass = cls.split(' (')[0].split(/[A-Z]$/)[0].trim();
+            const assignments = await db.subject_assignments.where('class_name').anyOf([cls, baseClass]).toArray();
+            const currentAsgn = assignments.find(a => String(a.subject_id) === String(subId));
+            const subSpecialization = currentAsgn ? (currentAsgn.specialization || '').trim().toLowerCase() : '';
+
             // 1. Resilient student filtering (case-insensitive, trimmed)
-            const targetStudents = students.filter(s => 
+            let targetStudents = students.filter(s => 
                 s.class_name && String(s.class_name).trim().toLowerCase() === String(cls).trim().toLowerCase() &&
                 s.is_active !== false
             );
 
+            // Filter students based on track specialization (Science / Arts / Commercial)
+            if (subSpecialization && subSpecialization !== 'common subject' && subSpecialization !== 'general') {
+                targetStudents = targetStudents.filter(s => 
+                    (s.sub_class || '').trim().toLowerCase() === subSpecialization
+                );
+            }
+
             if (targetStudents.length === 0) {
-                gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">No students found in <strong>${cls}</strong>. Please check the Students module.</td></tr>`;
+                gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">No students matching track <strong>"${subSpecialization.toUpperCase()}"</strong> found in <strong>${cls}</strong>.</td></tr>`;
                 return;
             }
             
@@ -7465,6 +7478,11 @@ export const UI = {
                                                 <div style="margin-top: 0.5rem; font-size: 0.75rem; color: #059669; font-weight: 700; background: white; padding: 6px 16px; border-radius: 20px; display: inline-flex; align-items: center; gap: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                                                     <i data-lucide="check-circle-2" style="width: 14px;"></i> Recorded Successfully
                                                 </div>
+                                                ${e.is_unified ? `
+                                                    <button class="btn btn-primary btn-sm" onclick="UI.showUnifiedScorecard('${result.student_id}', '${e.id}')" style="height: 36px; padding: 0 1.5rem; border-radius: 10px; font-size: 0.8rem; font-weight: 800; margin-top: 1.25rem; display: flex; align-items: center; gap: 0.5rem; background: #2563eb; color: white; border: none; cursor: pointer; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); transition: all 0.2s;">
+                                                        <i data-lucide="eye" style="width: 14px; height: 14px;"></i> View Scorecard Breakdown
+                                                    </button>
+                                                ` : ''}
                                             </div>
                                         ` : `
                                             <div>
@@ -7514,11 +7532,6 @@ export const UI = {
                                                                 <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem;">
                                                                     <div style="font-size: 0.7rem; font-weight: 800; color: #10b981;">YOUR SCORE</div>
                                                                     <div style="font-weight: 800; color: #064e3b; font-size: 1.25rem;">${result.score.toFixed(1)} / ${(result.total_marks || result.total_questions).toFixed(1)}</div>
-                                                                    ${e.is_unified ? `
-                                                                        <button class="btn btn-secondary btn-sm" onclick="UI.showUnifiedScorecard('${result.student_id}', '${e.id}')" style="height: 28px; padding: 0 0.75rem; border-radius: 6px; font-size: 0.65rem; font-weight: 800; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.25rem; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; cursor: pointer;">
-                                                                            <i data-lucide="eye" style="width: 12px; height: 12px;"></i> View Scorecard
-                                                                        </button>
-                                                                    ` : ''}
                                                                 </div>
                                                             `;
                                                         }
@@ -9605,7 +9618,8 @@ export const UI = {
         // Build answer section based on question type
         let answerSectionHTML = '';
         
-        if (q.question_type === 'fill_in_blank') {
+        const isMCQ = !!(q.option_a && q.option_b);
+        if (!isMCQ) {
             // Fill-in-the-Blank Input
             const savedAnswer = this.userAnswers[q.id] || '';
             
@@ -10324,7 +10338,8 @@ export const UI = {
             let isCorrect = false;
             let correctText = '';
 
-            if (q.question_type === 'fill_in_blank') {
+            const isMCQ = !!(q.option_a && q.option_b);
+            if (!isMCQ) {
                 const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
                 const studentAns = (studentChoice || '').toLowerCase().trim();
                 isCorrect = targets.includes(studentAns);
@@ -10418,32 +10433,26 @@ export const UI = {
 
             const sectionDetails = [];
             for (const sec of sections) {
-                const secQuestions = questions.filter(q => q.section_id === sec.id);
-                if (secQuestions.length === 0) continue;
-
-                let secRawScore = 0;
-                secQuestions.forEach(q => {
-                    const studentChoice = studentAnswers[q.id];
-                    if (studentChoice) {
-                        if (q.question_type === 'fill_in_blank') {
-                            const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
-                            const studentAns = (studentChoice || '').toLowerCase().trim();
-                            if (targets.includes(studentAns)) secRawScore += (parseFloat(q.marks) || 1);
-                        } else {
-                            const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + examId))).split('').reverse().join('');
-                            if (choiceHash === q.answerHash) secRawScore += (parseFloat(q.marks) || 1);
-                        }
+                const sectionScoreId = `${result.student_id}_${sec.subject_id}_${exam.term}_${exam.session}`;
+                let scoreRecord = null;
+                try {
+                    scoreRecord = await db.scores.get(sectionScoreId);
+                    if (!scoreRecord) {
+                        const matches = await db.scores.where('[student_id+subject_id+term+session]')
+                            .equals([result.student_id, sec.subject_id, exam.term, exam.session]).toArray();
+                        if (matches.length > 0) scoreRecord = matches[0];
                     }
-                });
+                } catch(e) {
+                    // Fallback
+                    const matches = await db.scores.where('student_id').equals(result.student_id).toArray();
+                    scoreRecord = matches.find(s => s.subject_id === sec.subject_id && s.term === exam.term && s.session === exam.session);
+                }
 
-                const secMaxPossible = secQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+                const scaledScore = scoreRecord ? (parseFloat(scoreRecord[sec.score_field || 'exam']) || 0) : 0;
                 const targetMax = parseFloat(sec.target_mark) || 60;
-                const scaledScore = secMaxPossible > 0 ? (secRawScore / secMaxPossible) * targetMax : 0;
 
                 sectionDetails.push({
                     subjectName: subNameMap[sec.subject_id] || 'Subject',
-                    rawScore: secRawScore,
-                    maxPossible: secMaxPossible,
                     scaledScore: scaledScore,
                     targetMax: targetMax
                 });
@@ -10487,7 +10496,7 @@ export const UI = {
                                 <div>
                                     <div style="font-weight: 800; color: #1e293b; font-size: 0.9rem;">${sec.subjectName}</div>
                                     <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; margin-top: 0.1rem;">
-                                        Raw Score: ${sec.rawScore.toFixed(0)} / ${sec.maxPossible.toFixed(0)} correct
+                                        Final Recorded Score
                                     </div>
                                 </div>
                                 <div style="text-align: right;">
@@ -12512,7 +12521,14 @@ export const UI = {
             return;
         }
 
-        const scores = await db.scores.where('student_id').equals(studentId).toArray();
+        const rawScores = await db.scores.where('student_id').equals(studentId).toArray();
+        const allSubjects = await db.subjects.toArray();
+        const subjectMap = allSubjects.reduce((m, sub) => { m[sub.id] = sub.name; return m; }, {});
+
+        const scores = rawScores.map(s => ({
+            ...s,
+            subject_name: subjectMap[s.subject_id] || s.subject_name || s.subject_id || 'Unknown Subject'
+        })).sort((a, b) => a.subject_name.localeCompare(b.subject_name));
         
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in student-universe-bg" style="padding: 1rem; min-height: 100vh; overflow-x: hidden;">
@@ -12540,7 +12556,7 @@ export const UI = {
                                         <i data-lucide="book" style="width: 20px;"></i>
                                     </div>
                                     <div>
-                                        <h3 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 1rem;">${s.subject_id}</h3>
+                                        <h3 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 1rem;">${s.subject_name}</h3>
                                         <span class="badge" style="background: #f1f5f9; color: #1e293b; font-size: 0.65rem; margin-top: 2px;">Grade: ${s.grade || 'N/A'}</span>
                                     </div>
                                 </div>
