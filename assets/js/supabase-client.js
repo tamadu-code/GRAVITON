@@ -374,6 +374,25 @@ export async function syncFromCloud(forceAll = false) {
                                 }));
                             }
 
+                            // --- 1A2: Passage Text Preservation for cbt_questions & cbt_question_bank ---
+                            // Cloud may have null passage_text if it was synced before the whitelist fix.
+                            // Preserve local passage_text when cloud sends null.
+                            if (table === 'cbt_questions' || table === 'cbt_question_bank') {
+                                const passagePreserved = [];
+                                for (const cloudItem of processedData) {
+                                    if (!cloudItem.passage_text) {
+                                        try {
+                                            const localItem = await db[table].get(cloudItem.id);
+                                            if (localItem && localItem.passage_text) {
+                                                cloudItem.passage_text = localItem.passage_text;
+                                            }
+                                        } catch (e) {}
+                                    }
+                                    passagePreserved.push(cloudItem);
+                                }
+                                processedData = passagePreserved;
+                            }
+
                             // --- 1B: Answer Protection for cbt_results ---
                             if (table === 'cbt_results') {
                                 const finalResults = [];

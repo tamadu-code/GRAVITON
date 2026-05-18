@@ -9007,6 +9007,26 @@ export const UI = {
                 }
             }
 
+            // 2B. Passage Text Recovery — merge from ALL local sources in case cloud data lost passages
+            if (finalQuestions.length > 0) {
+                try {
+                    const qIds = finalQuestions.map(q => String(q.id));
+                    const localLegacy = await db.cbt_questions.where('id').anyOf(qIds).toArray();
+                    const localBank = await db.cbt_question_bank.where('id').anyOf(qIds).toArray();
+                    const passageMap = {};
+                    localLegacy.forEach(q => { if (q.passage_text) passageMap[q.id] = q.passage_text; });
+                    localBank.forEach(q => { if (q.passage_text) passageMap[q.id] = q.passage_text; });
+
+                    if (Object.keys(passageMap).length > 0) {
+                        console.log(`[CBT] Recovered ${Object.keys(passageMap).length} passage(s) from local sources.`);
+                        finalQuestions = finalQuestions.map(q => ({
+                            ...q,
+                            passage_text: q.passage_text || passageMap[q.id] || null
+                        }));
+                    }
+                } catch (e) { console.warn('[CBT] Passage recovery check:', e); }
+            }
+
             // 3. Normalization & Integrity
             const strip = (t) => (t || '').toString().replace(/[\(\[]\s*(?:Ans|Answer)\s*[:\s]+[\s\S]*?[\)\]]/gi, '').replace(/[\[\(]\s*$/, '').trim();
             const questions = finalQuestions.map(q => {
