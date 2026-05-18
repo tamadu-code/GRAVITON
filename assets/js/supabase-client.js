@@ -95,13 +95,13 @@ export async function syncToCloud() {
                     fee_structures: ['id', 'class_name', 'amount', 'term', 'session', 'category', 'updated_at'],
                     student_analytics: ['student_id', 'average', 'rank', 'fee_balance', 'attendance_rate', 'updated_at'],
                     cbt_exams: ['id', 'title', 'subject_id', 'class_name', 'teacher_id', 'mode', 'term', 'session', 'score_field', 'date', 'start_time', 'end_time', 'duration', 'question_limit', 'status', 'is_unified', 'updated_at'],
-                    cbt_questions: ['id', 'exam_id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'updated_at'],
+                    cbt_questions: ['id', 'exam_id', 'question_text', 'passage_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'updated_at'],
                     cbt_results: ['id', 'exam_id', 'student_id', 'score', 'total_questions', 'total_marks', 'answers', 'warnings', 'violations', 'started_at', 'status', 'updated_at'],
                     cbt_exam_sections: ['id', 'exam_id', 'subject_id', 'class_name', 'score_field', 'question_count', 'target_mark', 'specialization', 'updated_at'],
                     duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'updated_at'],
                     audit_logs: ['operation', 'table', 'record_id', 'timestamp', 'user_id'],
                     parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'updated_at'],
-                    cbt_question_bank: ['id', 'subject_id', 'class_name', 'question_text', 'topic_area', 'difficulty_level', 'updated_at'],
+                    cbt_question_bank: ['id', 'subject_id', 'class_name', 'question_text', 'passage_text', 'term', 'session', 'topic_area', 'difficulty_level', 'updated_at'],
                     cbt_options: ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'updated_at']
                 };
 
