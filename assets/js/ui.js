@@ -10466,6 +10466,26 @@ export const UI = {
 
             const studentAnswers = result.answers || {};
 
+            // Real-time Cloud Scores Sync fallback
+            if (navigator.onLine) {
+                const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                if (supabase) {
+                    try {
+                        const { data } = await supabase.from('scores')
+                            .select('*')
+                            .eq('student_id', result.student_id)
+                            .eq('term', exam.term)
+                            .eq('session', exam.session);
+                        if (data && data.length > 0) {
+                            await db.scores.bulkPut(data.map(s => ({ ...s, is_synced: 1 })));
+                            console.log(`[SCORE CARD] Real-time synchronised ${data.length} scores from cloud.`);
+                        }
+                    } catch (e) {
+                        console.warn('[SCORE CARD] Real-time cloud scores fetch failed:', e);
+                    }
+                }
+            }
+
             const sectionDetails = [];
             for (const sec of sections) {
                 const sectionScoreId = `${result.student_id}_${sec.subject_id}_${exam.term}_${exam.session}`;
@@ -10596,7 +10616,27 @@ export const UI = {
 
             if (exam.is_unified) {
                 console.log('[SCORE POST] Processing Unified Exam Sections...');
-                const sections = await db.cbt_exam_sections.where('exam_id').equals(exam.id).toArray();
+                let sections = await db.cbt_exam_sections.where('exam_id').equals(exam.id).toArray();
+                
+                // Cloud fallback: sections may not exist in local DB on student's device
+                if (sections.length === 0 && navigator.onLine) {
+                    const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
+                    if (supabase) {
+                        try {
+                            const { data } = await supabase.from('cbt_exam_sections').select('*').eq('exam_id', exam.id);
+                            if (data && data.length > 0) {
+                                sections = data;
+                                await db.cbt_exam_sections.bulkPut(data.map(s => ({ ...s, is_synced: 1 })));
+                                console.log(`[SCORE POST] Recovered ${data.length} sections from cloud.`);
+                            }
+                        } catch (e) { console.warn('[SCORE POST] Cloud section fetch failed:', e); }
+                    }
+                }
+
+                if (sections.length === 0) {
+                    console.warn('[SCORE POST] No sections found for unified exam. Cannot post scores.');
+                    return;
+                }
                 
                 // Resolve student answers stateless-ly
                 const answersToUse = result.answers || this.userAnswers || {};
@@ -14681,7 +14721,7 @@ export const UI = {
 
         const refreshFromCloud = async () => {
             try {
-                await syncFromCloud(['cbt_results', 'exam_progress']);
+                await syncFromCloud(['cbt_results', 'exam_progress', 'scores']);
                 const [results, progress] = await Promise.all([
                     db.cbt_results.where('exam_id').equals(examId).toArray(),
                     db.exam_progress.where('exam_id').equals(examId).toArray()
