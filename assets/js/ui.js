@@ -7411,10 +7411,12 @@ export const UI = {
                         <button class="btn" onclick="UI.hardSyncCBT()" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 12px; height: 44px; padding: 0 15px; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; backdrop-filter: blur(10px);">
                             <i data-lucide="refresh-cw" style="width: 18px;"></i> Deep Sync
                         </button>
-                        ${!isStudent ? `
+                        ${isAdmin ? `
                         <button id="btn-question-bank" class="btn" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); font-weight: 800; backdrop-filter: blur(10px);">
                             <i data-lucide="database"></i> Question Bank
                         </button>
+                        ` : ''}
+                        ${!isStudent ? `
                         <button id="btn-create-exam" class="btn btn-primary" style="background: white; color: #4338ca; border: none; font-weight: 800; box-shadow: var(--shadow-md);">
                             <i data-lucide="plus-square"></i> New Exam
                         </button>
@@ -8676,6 +8678,16 @@ export const UI = {
             if (sections.length > 0) {
                 startExamOnclick = `UI.validateAndStartUnifiedExam('${examId}')`;
                 
+                const validStreams = ['science', 'arts', 'commercial'];
+                const visibleSections = sections.filter(sec => {
+                    const spec = (sec.specialization || 'Common').toLowerCase().trim();
+                    if (spec === 'common') return true;
+                    if (validStreams.includes(studentStream)) {
+                        return spec === studentStream || spec === `${studentStream}-optional`;
+                    }
+                    return false;
+                });
+
                 subjectSelectionHtml = `
                     <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; margin-bottom: 2.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
                         <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem; font-family: 'Inter', sans-serif;">
@@ -8686,18 +8698,18 @@ export const UI = {
                         </p>
                         
                         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                            ${sections.map(sec => {
+                            ${visibleSections.map(sec => {
                                 const subName = subjectMap[sec.subject_id] || sec.subject_id;
                                 const spec = (sec.specialization || 'Common').toLowerCase().trim();
                                 
-                                let isCore = spec === 'common';
-                                let isStreamMatch = spec === studentStream;
-                                let isStreamOptional = spec === `${studentStream}-optional`;
+                                const isCore = spec === 'common';
+                                const isStreamMatch = spec === studentStream;
+                                const isStreamOptional = spec === `${studentStream}-optional`;
                                 
-                                // Default Checked Rules
-                                let isChecked = isCore || isStreamMatch || isStreamOptional;
-                                // Core subjects (Common) are locked
-                                let isDisabled = isCore;
+                                // Default Checked: Core/Stream Core and Stream Electives are checked by default
+                                const isChecked = isCore || isStreamMatch || isStreamOptional;
+                                // Locked (disabled): Core (Common) and Stream Core subjects are locked
+                                const isDisabled = isCore || isStreamMatch;
                                 
                                 let labelSuffix = '';
                                 
@@ -8707,8 +8719,6 @@ export const UI = {
                                     labelSuffix = ` <span style="font-size: 0.65rem; color: #2563eb; font-weight: 800; background: #eff6ff; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #bfdbfe;">CORE (${sec.specialization.toUpperCase()})</span>`;
                                 } else if (isStreamOptional) {
                                     labelSuffix = ` <span style="font-size: 0.65rem; color: #d97706; font-weight: 800; background: #fffbeb; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #fde68a;">ELECTIVE (OPTIONAL)</span>`;
-                                } else {
-                                    labelSuffix = ` <span style="font-size: 0.65rem; color: #4b5563; font-weight: 800; background: #f9fafb; padding: 2px 6px; border-radius: 4px; margin-left: 6px; border: 1px solid #e5e7eb;">ELECTIVE (${sec.specialization.toUpperCase()})</span>`;
                                 }
 
                                 return `
@@ -8899,9 +8909,14 @@ export const UI = {
                         // Fallback: Use student stream defaults
                         const student = await db.students.get(studentId);
                         const studentStream = (student ? (student.sub_class || '') : '').trim().toLowerCase();
+                        const validStreams = ['science', 'arts', 'commercial'];
                         sections = sections.filter(sec => {
                             const spec = (sec.specialization || 'Common').toLowerCase().trim();
-                            return spec === 'common' || spec === studentStream || spec === `${studentStream}-optional`;
+                            if (spec === 'common') return true;
+                            if (validStreams.includes(studentStream)) {
+                                return spec === studentStream || spec === `${studentStream}-optional`;
+                            }
+                            return false;
                         });
                         console.log(`[CBT] No sessionStorage selection. Fallback to student stream "${studentStream}" sections.`);
                     }
@@ -10184,7 +10199,7 @@ export const UI = {
                 }
             }
             
-            if (this.currentExam.score_field && this.currentExam.mode !== 'Practice') {
+            if ((this.currentExam.score_field || this.currentExam.is_unified) && this.currentExam.mode !== 'Practice') {
                 await this.postCBTToScoresheet(finalResult);
             }
 
@@ -10563,21 +10578,70 @@ export const UI = {
                 console.log('[SCORE POST] Processing Unified Exam Sections...');
                 const sections = await db.cbt_exam_sections.where('exam_id').equals(exam.id).toArray();
                 
+                // Resolve student answers stateless-ly
+                const answersToUse = result.answers || this.userAnswers || {};
+                const qIds = Object.keys(answersToUse);
+                
+                // Load questions from local DB question bank or questions table
+                let allQuestions = [];
+                if (qIds.length > 0) {
+                    const bankQuestions = await db.cbt_question_bank.where('id').anyOf(qIds).toArray();
+                    const standardQuestions = await db.cbt_questions.where('id').anyOf(qIds).toArray();
+                    
+                    // Fetch options for bank questions
+                    for (const q of bankQuestions) {
+                        const opts = await db.cbt_options.where('question_id').equals(q.id).toArray();
+                        q.option_a = (opts.find(o => o.option_label === 'A') || {}).option_text || '';
+                        q.option_b = (opts.find(o => o.option_label === 'B') || {}).option_text || '';
+                        q.option_c = (opts.find(o => o.option_label === 'C') || {}).option_text || '';
+                        q.option_d = (opts.find(o => o.option_label === 'D') || {}).option_text || '';
+                        q.option_e = (opts.find(o => o.option_label === 'E') || {}).option_text || '';
+                        q.correct_option = (opts.find(o => o.is_correct) || {}).option_label || 'A';
+                    }
+                    
+                    const qMap = {};
+                    bankQuestions.forEach(q => qMap[q.id] = q);
+                    standardQuestions.forEach(q => qMap[q.id] = q);
+                    allQuestions = qIds.map(id => qMap[id]).filter(Boolean);
+                }
+                
+                if (allQuestions.length === 0 && this.currentQuestions && this.currentQuestions.length > 0) {
+                    allQuestions = this.currentQuestions;
+                }
+
+                // Normalize questions
+                const questionsToUse = allQuestions.map(q => ({
+                    ...q,
+                    option_a: (q.option_a || '').toString().trim(),
+                    option_b: (q.option_b || '').toString().trim(),
+                    option_c: (q.option_c || '').toString().trim(),
+                    option_d: (q.option_d || '').toString().trim(),
+                    option_e: (q.option_e || '').toString().trim(),
+                    correct_option: (q.correct_option || 'A').toUpperCase(),
+                    marks: parseFloat(q.marks) || 1
+                }));
+
                 for (const sec of sections) {
-                    const secQuestions = this.currentQuestions.filter(q => q.section_id === sec.id);
+                    // Match utilizing subject_id since dynamic section_id isn't in database question bank records
+                    const secQuestions = questionsToUse.filter(q => q.subject_id === sec.subject_id);
                     if (secQuestions.length === 0) continue;
 
                     let secRawScore = 0;
                     secQuestions.forEach(q => {
-                        const studentChoice = this.userAnswers[q.id];
+                        const studentChoice = answersToUse[q.id];
                         if (studentChoice) {
-                             if (q.question_type === 'fill_in_blank') {
-                                 const target = (q.fill_answer || q.correct_option || '').toString().toLowerCase().trim();
-                                 if (target && studentChoice.toLowerCase().trim() === target) secRawScore += (parseFloat(q.marks) || 1);
-                             } else {
-                                 const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + this.currentExam.id))).split('').reverse().join('');
-                                 if (choiceHash === q.answerHash) secRawScore += (parseFloat(q.marks) || 1);
-                             }
+                            if (q.question_type === 'fill_in_blank') {
+                                const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+                                const studentAns = (studentChoice || '').toLowerCase().trim();
+                                if (targets.includes(studentAns)) secRawScore += (parseFloat(q.marks) || 1);
+                            } else {
+                                const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + exam.id))).split('').reverse().join('');
+                                const correctOptLetter = (q.correct_option || 'A').toUpperCase();
+                                const optMap = { 'A': q.option_a, 'B': q.option_b, 'C': q.option_c, 'D': q.option_d, 'E': q.option_e };
+                                const correctOptText = optMap[correctOptLetter] || '';
+                                const answerHash = btoa(unescape(encodeURIComponent(correctOptText + exam.id))).split('').reverse().join('');
+                                if (choiceHash === answerHash) secRawScore += (parseFloat(q.marks) || 1);
+                            }
                         }
                     });
 
@@ -10602,10 +10666,29 @@ export const UI = {
                     }
 
                     // Update specific field
-                    scoreRecord[sec.score_field || 'exam'] = parseFloat(scaledScore.toFixed(1));
+                    const scoreField = sec.score_field || 'exam';
+                    scoreRecord[scoreField] = parseFloat(scaledScore.toFixed(1));
+                    
+                    // Recalculate CA and Total so it updates the gradebook in real time
+                    const assignment = scoreRecord.assignment === undefined || scoreRecord.assignment === null ? null : parseFloat(scoreRecord.assignment);
+                    const test1 = scoreRecord.test1 === undefined || scoreRecord.test1 === null ? null : parseFloat(scoreRecord.test1);
+                    const test2 = scoreRecord.test2 === undefined || scoreRecord.test2 === null ? null : parseFloat(scoreRecord.test2);
+                    const project = scoreRecord.project === undefined || scoreRecord.project === null ? null : parseFloat(scoreRecord.project);
+                    const examVal = scoreRecord.exam === undefined || scoreRecord.exam === null ? null : parseFloat(scoreRecord.exam);
+                    
+                    const hasAny = ![assignment, test1, test2, project, examVal].every(v => v === null);
+                    if (hasAny) {
+                        scoreRecord.ca = (assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0);
+                        scoreRecord.total = (scoreRecord.ca || 0) + (examVal || 0);
+                        scoreRecord.grade = ScoringEngine.getGrade(scoreRecord.total);
+                        scoreRecord.remark = ScoringEngine.getRemark(scoreRecord.total);
+                    }
+
+                    scoreRecord.updated_at = new Date().toISOString();
                     await db.scores.put(prepareForSync(scoreRecord));
-                    console.log(`[SCORE POST] Unified Success: ${sec.subject_id} (${sec.score_field}) = ${scaledScore.toFixed(1)}`);
+                    console.log(`[SCORE POST] Unified Success: ${sec.subject_id} (${scoreField}) = ${scaledScore.toFixed(1)}, total = ${scoreRecord.total}`);
                 }
+                this.debouncedSync();
                 return; // Finished processing unified sections
             }
 
@@ -10679,36 +10762,57 @@ export const UI = {
     parseBulkQuestions(text) {
         if (!text) return [];
 
-        // 1. Split text into raw question blocks
-        // We'll try to find question numbering: e.g., "1.", "2)", "A 43."
-        // We look for patterns like: (new line or start) followed by optional letters/spaces, a number, and a dot or paren, followed by space.
+        // 1. Find all question markers
         const numberRegex = /(?:\n|^)\s*(?:[A-Za-z]\s+)?(\d+)[\.\)]\s+/g;
         let matches = [];
         let m;
-        
         while ((m = numberRegex.exec(text)) !== null) {
-            matches.push({ index: m.index, markerLength: m[0].length, number: m[1] });
+            matches.push({ index: m.index, markerLength: m[0].length, number: m[1], type: 'question' });
         }
 
+        // 2. Find all passage markers
+        const passageRegex = /(?:\n|^)\s*(?:PASSAGE|READ THE PASSAGE|\[PASSAGE\])(?:\s+\d+)?\s*:?\s*/gi;
+        let pm;
+        let passageMatches = [];
+        while ((pm = passageRegex.exec(text)) !== null) {
+            passageMatches.push({ index: pm.index, markerLength: pm[0].length, type: 'passage' });
+        }
+
+        // 3. Combine and sort all markers by position
+        const allMarkers = [...matches, ...passageMatches].sort((a, b) => a.index - b.index);
+
         let blocks = [];
-        if (matches.length > 1) {
-            // Split by numbers
-            for (let i = 0; i < matches.length; i++) {
-                const start = matches[i].index;
-                const end = (i + 1 < matches.length) ? matches[i + 1].index : text.length;
-                blocks.push(text.substring(start, end).trim());
+        if (allMarkers.length > 0) {
+            for (let i = 0; i < allMarkers.length; i++) {
+                const current = allMarkers[i];
+                const start = current.index + current.markerLength;
+                const end = (i + 1 < allMarkers.length) ? allMarkers[i + 1].index : text.length;
+                const blockContent = text.substring(start, end).trim();
+                
+                blocks.push({
+                    type: current.type,
+                    content: blockContent
+                });
             }
         } else {
             // Fallback: split by empty double lines
-            blocks = text.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+            const rawBlocks = text.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+            blocks = rawBlocks.map(b => ({ type: 'question', content: b }));
         }
 
         const parsedQuestions = [];
+        let currentPassageText = null;
 
-        for (let block of blocks) {
+        for (let blockObj of blocks) {
+            if (blockObj.type === 'passage') {
+                currentPassageText = blockObj.content || null;
+                continue;
+            }
+
+            let block = blockObj.content;
             if (!block) continue;
 
-            // Remove any starting number prefix (like "1. ", "43) ", "A 43. ")
+            // Remove any starting number prefix (like "1. ", "43) ", "A 43. ") if it bled into the content
             block = block.replace(/^\s*(?:[A-Za-z]\s+)?\d+[\.\)]\s*/i, '').trim();
 
             // Extract Explicit Type if defined: [Type: MCQ] or [Type: Fill] or [Type: FITB]
@@ -10783,8 +10887,8 @@ export const UI = {
                     
                     for (let i = 0; i < foundOptions.length; i++) {
                         const start = foundOptions[i].index + foundOptions[i].length;
-                        const end = (i + 1 < foundOptions.length) ? foundOptions[i + 1].index : block.length;
-                        const optVal = block.substring(start, end).trim();
+                        const optValEnd = (i + 1 < foundOptions.length) ? foundOptions[i + 1].index : block.length;
+                        const optVal = block.substring(start, optValEnd).trim();
                         
                         switch (foundOptions[i].label) {
                             case 'A': optA = optVal; break;
@@ -10805,7 +10909,7 @@ export const UI = {
                     parsedQuestions.push({
                         type: 'fill',
                         question_text: questionText,
-                        passage_text: null,
+                        passage_text: currentPassageText,
                         option_a: '',
                         option_b: '',
                         option_c: '',
@@ -10828,7 +10932,7 @@ export const UI = {
                     parsedQuestions.push({
                         type: 'mcq',
                         question_text: questionText,
-                        passage_text: null,
+                        passage_text: currentPassageText,
                         option_a: optA,
                         option_b: optB,
                         option_c: optC,
@@ -10848,7 +10952,7 @@ export const UI = {
                 parsedQuestions.push({
                     type: 'fill',
                     question_text: block,
-                    passage_text: null,
+                    passage_text: currentPassageText,
                     option_a: '',
                     option_b: '',
                     option_c: '',
@@ -13835,6 +13939,12 @@ export const UI = {
     },
 
     async renderQuestionBank() {
+        const role = (this.currentUser.role || '').toLowerCase();
+        const isAdmin = role === 'admin' || role === 'principal';
+        if (!isAdmin) {
+            return Notifications.show('Access denied. Only Administrators are allowed to manage the global Question Bank.', 'error');
+        }
+
         let subjects = (await db.subjects.toArray());
         
         // Deduplicate subjects by name
@@ -14582,6 +14692,27 @@ export const UI = {
             return acc;
         }, {});
 
+        // Fetch subjects, sections, and scores for scoreboard breakdown
+        const sections = exam.is_unified ? await db.cbt_exam_sections.where('exam_id').equals(examId).toArray() : [];
+        const subjectsList = await db.subjects.toArray();
+        const subNameMap = subjectsList.reduce((acc, sub) => ({...acc, [sub.id]: sub.name}), {});
+
+        let studentScoresMap = {};
+        if (exam.is_unified) {
+            try {
+                const allScores = await db.scores.where('term').equals(exam.term).toArray();
+                const termSessionScores = allScores.filter(sc => sc.session === exam.session);
+                termSessionScores.forEach(sc => {
+                    if (!studentScoresMap[sc.student_id]) {
+                        studentScoresMap[sc.student_id] = {};
+                    }
+                    studentScoresMap[sc.student_id][sc.subject_id] = sc;
+                });
+            } catch (e) {
+                console.warn('[CBT] Failed to fetch scoreboard breakdown scores:', e);
+            }
+        }
+
         // Prioritize the latest record (by updated_at) to handle re-opens and ID mismatches
         const resultEntries = results.reduce((acc, r) => {
             const resolvedId = profileMap[r.student_id] || r.student_id;
@@ -14635,6 +14766,41 @@ export const UI = {
             const violations = r?.violations || [];
             const violationCount = violations.length;
 
+            let unifiedBreakdownHtml = '';
+            if (exam.is_unified && r) {
+                const studentId = s.student_id;
+                unifiedBreakdownHtml = `
+                    <div style="background: #f8fafc; padding: 0.85rem; border-radius: 14px; margin-top: 0.75rem; border: 1px solid #e2e8f0; box-shadow: inset 0 2px 4px rgba(0,0,0,0.01);">
+                        <div style="font-size: 0.65rem; font-weight: 800; color: #4338ca; letter-spacing: 0.05em; margin-bottom: 0.6rem; text-transform: uppercase; display: flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif;">
+                            <i data-lucide="bar-chart-2" style="width: 13px; height: 13px;"></i> Subject Scores Breakdown
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            ${sections.map(sec => {
+                                const subName = subNameMap[sec.subject_id] || sec.subject_id;
+                                const scoreRecord = studentScoresMap[studentId]?.[sec.subject_id];
+                                const scaledScore = scoreRecord ? (parseFloat(scoreRecord[sec.score_field || 'exam']) || 0) : null;
+                                const targetMax = parseFloat(sec.target_mark) || 60;
+                                
+                                let scoreStr = `<span style="color: #94a3b8; font-weight: 700; font-size: 0.75rem;">—</span>`;
+                                if (scaledScore !== null) {
+                                    scoreStr = `<span style="font-weight: 850; color: #1e293b; font-size: 0.85rem;">${scaledScore.toFixed(1)}</span> <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 700;">/ ${targetMax.toFixed(0)}</span>`;
+                                }
+                                
+                                return `
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; padding: 0.35rem 0; border-bottom: 1px dashed #e2e8f0;">
+                                        <span style="font-weight: 700; color: #475569;">${subName}</span>
+                                        <div style="display: flex; align-items: center; gap: 4px;">${scoreStr}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                        <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); UI.showUnifiedScorecard('${studentId}', '${examId}')" style="width: 100%; border-radius: 10px; font-weight: 850; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; height: 36px; font-size: 0.72rem; display: flex; align-items: center; justify-content: center; gap: 0.4rem; margin-top: 0.75rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 4px rgba(37,99,235,0.05);" onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
+                            <i data-lucide="award" style="width: 13px; height: 13px;"></i> View Full Scorecard
+                        </button>
+                    </div>
+                `;
+            }
+
             return `
                 <div class="card cbt-participant-card" style="border-radius: 20px; border: 1px solid #e2e8f0; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); background: white;">
                     <div onclick="event.preventDefault(); event.stopPropagation(); const details = this.nextElementSibling; if(!details) return; const isExp = details.style.maxHeight !== '0px' && details.style.maxHeight !== ''; details.style.maxHeight = isExp ? '0px' : '800px'; const chevron = this.querySelector('.chevron-icon'); if(chevron) chevron.style.transform = isExp ? 'rotate(0deg)' : 'rotate(180deg)';" style="display: flex; flex-direction: column; padding: 1.25rem; cursor: pointer; gap: 0.75rem;">
@@ -14671,6 +14837,8 @@ export const UI = {
                                         <div style="font-weight: 700; color: #1e293b; font-size: 0.8rem;">${status}</div>
                                     </div>
                                 </div>
+
+                                ${unifiedBreakdownHtml}
 
                                 ${violationCount > 0 ? `
                                     <button type="button" onclick="UI.showViolationLog('${s.student_id}', '${examId}')" style="width: 100%; background: #fef2f2; color: #ef4444; border: 1px solid #fecdd3; padding: 0.6rem; border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.4rem; font-size: 0.75rem;">
@@ -14814,12 +14982,50 @@ export const UI = {
 
             const allProgress = await db.exam_progress.where('exam_id').equals(examId).toArray();
             const progress = allProgress.find(p => possibleIds.includes(p.student_id));
-            let rawQuestions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
-            
-            const answers = progress ? progress.current_answers : (result ? result.answers : {});
-            
             const exam = await db.cbt_exams.get(examId);
             const limit = parseInt(exam.question_limit) || 0;
+            const answers = progress ? progress.current_answers : (result ? result.answers : {});
+
+            let rawQuestions = [];
+            if (result && result.question_ids && result.question_ids.length > 0) {
+                const qIds = result.question_ids.map(id => String(id));
+                const bankQuestions = await db.cbt_question_bank.where('id').anyOf(qIds).toArray();
+                const standardQuestions = await db.cbt_questions.where('id').anyOf(qIds).toArray();
+                
+                // Fetch options for bank questions if missing
+                for (const q of bankQuestions) {
+                    const opts = await db.cbt_options.where('question_id').equals(q.id).toArray();
+                    q.option_a = q.option_a || (opts.find(o => o.option_label === 'A') || {}).option_text || '';
+                    q.option_b = q.option_b || (opts.find(o => o.option_label === 'B') || {}).option_text || '';
+                    q.option_c = q.option_c || (opts.find(o => o.option_label === 'C') || {}).option_text || '';
+                    q.option_d = q.option_d || (opts.find(o => o.option_label === 'D') || {}).option_text || '';
+                    q.option_e = q.option_e || (opts.find(o => o.option_label === 'E') || {}).option_text || '';
+                    q.correct_option = q.correct_option || (opts.find(o => o.is_correct) || {}).option_label || 'A';
+                }
+                
+                const qMap = {};
+                bankQuestions.forEach(q => qMap[q.id] = q);
+                standardQuestions.forEach(q => qMap[q.id] = q);
+                rawQuestions = qIds.map(id => qMap[id]).filter(Boolean);
+            }
+
+            if (rawQuestions.length === 0) {
+                rawQuestions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+                if (rawQuestions.length === 0 && exam && exam.is_unified) {
+                    const sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
+                    const subIds = sections.map(s => s.subject_id);
+                    rawQuestions = await db.cbt_question_bank.where('subject_id').anyOf(subIds).toArray();
+                    for (const q of rawQuestions) {
+                        const opts = await db.cbt_options.where('question_id').equals(q.id).toArray();
+                        q.option_a = (opts.find(o => o.option_label === 'A') || {}).option_text || '';
+                        q.option_b = (opts.find(o => o.option_label === 'B') || {}).option_text || '';
+                        q.option_c = (opts.find(o => o.option_label === 'C') || {}).option_text || '';
+                        q.option_d = (opts.find(o => o.option_label === 'D') || {}).option_text || '';
+                        q.option_e = (opts.find(o => o.option_label === 'E') || {}).option_text || '';
+                        q.correct_option = (opts.find(o => o.is_correct) || {}).option_label || 'A';
+                    }
+                }
+            }
 
             // *** Normalise options — must match student-side pipeline exactly ***
             rawQuestions = rawQuestions.filter(q => q && typeof q === 'object').map(q => ({
@@ -14861,7 +15067,9 @@ export const UI = {
             };
 
             let studentQuestions = seededShuffle([...validQuestions], seed);
-            if (limit > 0) studentQuestions = studentQuestions.slice(0, limit);
+            if (limit > 0 && !(result && result.question_ids && result.question_ids.length > 0)) {
+                studentQuestions = studentQuestions.slice(0, limit);
+            }
 
             // Calculate score based on SHUFFLED questions and HASHED answers
             let score = 0;
@@ -14952,31 +15160,11 @@ export const UI = {
         if (!confirm('CRITICAL: Are you sure you want to FORCE SUBMIT ALL active participants? This will end the exam for everyone currently taking it.')) return;
 
         try {
-            const [activeResults, rawQuestions, exam, profiles] = await Promise.all([
+            const [activeResults, exam, profiles] = await Promise.all([
                 db.cbt_results.where('exam_id').equals(examId).and(r => r.status === 'In Progress').toArray(),
-                db.cbt_questions.where('exam_id').equals(examId).toArray(),
                 db.cbt_exams.get(examId),
                 db.profiles.toArray()
             ]);
-
-            // *** Normalise options — must match student-side pipeline exactly ***
-            const questions = rawQuestions.filter(q => q && typeof q === 'object').map(q => ({
-                ...q,
-                option_a: (q.option_a || '').toString().trim(),
-                option_b: (q.option_b || '').toString().trim(),
-                option_c: (q.option_c || '').toString().trim(),
-                option_d: (q.option_d || '').toString().trim(),
-                option_e: (q.option_e || '').toString().trim(),
-                correct_option: (q.correct_option || 'A').toUpperCase(),
-                marks: parseFloat(q.marks) || 1
-            }));
-
-            // *** Filter broken questions (< 2 valid options) — must match student-side ***
-            const validQuestions = questions.filter(q => {
-                const optCount = [q.option_a, q.option_b, q.option_c, q.option_d, q.option_e]
-                    .filter(o => o && o.trim().length > 0).length;
-                return optCount >= 2;
-            });
 
             for (const r of activeResults) {
                 // Find associated profile to ensure we get the right progress ID
@@ -14986,6 +15174,66 @@ export const UI = {
                 const allProgress = await db.exam_progress.where('exam_id').equals(examId).toArray();
                 const progress = allProgress.find(p => possibleIds.includes(p.student_id));
                 const answers = progress ? progress.current_answers : (r.answers || {});
+
+                let rawQuestions = [];
+                if (r.question_ids && r.question_ids.length > 0) {
+                    const qIds = r.question_ids.map(id => String(id));
+                    const bankQuestions = await db.cbt_question_bank.where('id').anyOf(qIds).toArray();
+                    const standardQuestions = await db.cbt_questions.where('id').anyOf(qIds).toArray();
+                    
+                    // Fetch options for bank questions if missing
+                    for (const q of bankQuestions) {
+                        const opts = await db.cbt_options.where('question_id').equals(q.id).toArray();
+                        q.option_a = q.option_a || (opts.find(o => o.option_label === 'A') || {}).option_text || '';
+                        q.option_b = q.option_b || (opts.find(o => o.option_label === 'B') || {}).option_text || '';
+                        q.option_c = q.option_c || (opts.find(o => o.option_label === 'C') || {}).option_text || '';
+                        q.option_d = q.option_d || (opts.find(o => o.option_label === 'D') || {}).option_text || '';
+                        q.option_e = q.option_e || (opts.find(o => o.option_label === 'E') || {}).option_text || '';
+                        q.correct_option = q.correct_option || (opts.find(o => o.is_correct) || {}).option_label || 'A';
+                    }
+                    
+                    const qMap = {};
+                    bankQuestions.forEach(q => qMap[q.id] = q);
+                    standardQuestions.forEach(q => qMap[q.id] = q);
+                    rawQuestions = qIds.map(id => qMap[id]).filter(Boolean);
+                }
+
+                if (rawQuestions.length === 0) {
+                    rawQuestions = await db.cbt_questions.where('exam_id').equals(examId).toArray();
+                    if (rawQuestions.length === 0 && exam && exam.is_unified) {
+                        const sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
+                        const subIds = sections.map(s => s.subject_id);
+                        rawQuestions = await db.cbt_question_bank.where('subject_id').anyOf(subIds).toArray();
+                        for (const q of rawQuestions) {
+                            const opts = await db.cbt_options.where('question_id').equals(q.id).toArray();
+                            q.option_a = (opts.find(o => o.option_label === 'A') || {}).option_text || '';
+                            q.option_b = (opts.find(o => o.option_label === 'B') || {}).option_text || '';
+                            q.option_c = (opts.find(o => o.option_label === 'C') || {}).option_text || '';
+                            q.option_d = (opts.find(o => o.option_label === 'D') || {}).option_text || '';
+                            q.option_e = (opts.find(o => o.option_label === 'E') || {}).option_text || '';
+                            q.correct_option = (opts.find(o => o.is_correct) || {}).option_label || 'A';
+                        }
+                    }
+                }
+
+                // *** Normalise options — must match student-side pipeline exactly ***
+                rawQuestions = rawQuestions.filter(q => q && typeof q === 'object').map(q => ({
+                    ...q,
+                    option_a: (q.option_a || '').toString().trim(),
+                    option_b: (q.option_b || '').toString().trim(),
+                    option_c: (q.option_c || '').toString().trim(),
+                    option_d: (q.option_d || '').toString().trim(),
+                    option_e: (q.option_e || '').toString().trim(),
+                    correct_option: (q.correct_option || 'A').toUpperCase(),
+                    marks: parseFloat(q.marks) || 1
+                }));
+
+                // *** Filter broken questions (< 2 valid options) — must match student-side ***
+                const validQuestions = rawQuestions.filter(q => {
+                    const optCount = [q.option_a, q.option_b, q.option_c, q.option_d, q.option_e]
+                        .filter(o => o && o.trim().length > 0).length;
+                    return optCount >= 2;
+                });
 
                 // Replicate student-side shuffled question set for accurate scoring
                 const limit = parseInt(exam.question_limit) || 0;
@@ -15009,7 +15257,9 @@ export const UI = {
                 };
 
                 let studentQuestions = seededShuffle([...validQuestions], seed);
-                if (limit > 0) studentQuestions = studentQuestions.slice(0, limit);
+                if (limit > 0 && !(r.question_ids && r.question_ids.length > 0)) {
+                    studentQuestions = studentQuestions.slice(0, limit);
+                }
 
                 let score = 0;
                 studentQuestions.forEach(q => {
