@@ -5078,35 +5078,54 @@ body.window-blurred.exam-mode .cbt-exam-container {
    DUTY ROSTER — Print & Responsive Styles
    ============================================= */
 @media print {
-    body * {
-        visibility: hidden;
+    /* Hide layout elements entirely */
+    .sidebar, .top-bar, .notification-container, .sidebar-footer, 
+    .roster-config-panel, .no-print {
+        display: none !important;
     }
-    #roster-display, #roster-display * {
-        visibility: visible;
-    }
-    #roster-display {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        margin: 0;
-        padding: 0 !important;
-        border: none !important;
-        box-shadow: none !important;
-    }
-    .roster-print-header { display: block !important; }
-    .roster-signature-block { display: block !important; }
-    .no-print { display: none !important; }
     
-    .data-table { border: 1px solid #000 !important; width: 100% !important; }
+    /* Strip margins/padding from all structural containers */
+    body, .app-container, .main-content, .content-area, .view-container {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        background: white !important;
+        overflow: visible !important;
+        height: auto !important;
+    }
+    
+    /* Remove card styling from the print area */
+    #roster-display {
+        box-shadow: none !important;
+        border: none !important;
+        border-radius: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+    }
+
+    .roster-print-header, .roster-signature-block { 
+        display: block !important; 
+    }
+    
+    /* Force high-contrast B&W table */
+    .data-table { 
+        border: 1px solid #000 !important; 
+        width: 100% !important; 
+        border-collapse: collapse !important; 
+    }
     .data-table th, .data-table td {
         border: 1px solid #000 !important;
         color: #000 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
-    .data-table thead tr { background: #1e293b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .data-table thead th { color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .data-table thead tr { 
+        background: #f1f5f9 !important; /* Light gray for print */
+    }
+    .data-table thead th { 
+        color: #000 !important; 
+    }
 }
 
 @media (max-width: 768px) {
