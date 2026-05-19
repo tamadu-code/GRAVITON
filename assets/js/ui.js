@@ -14447,9 +14447,9 @@ export const UI = {
         for (const s of settingsToSave) {
             const existing = await db.settings.where('key').equals(s.key).first();
             if (existing) {
-                await db.settings.update(existing.id, { value: s.value });
+                await db.settings.update(existing.id, prepareForSync(s));
             } else {
-                await db.settings.add(s);
+                await db.settings.add(prepareForSync({ id: `SET_${s.key.toUpperCase()}`, ...s }));
             }
         }
         if (fullTimeStaff.length < staffPerWeek) return Notifications.show(`Need at least ${staffPerWeek} full-time staff. Only ${fullTimeStaff.length} available.`, 'error');
