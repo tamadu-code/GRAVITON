@@ -14081,6 +14081,87 @@ export const UI = {
         }
     },
 
+    async printDutyRoster() {
+        Notifications.show('Generating secure PDF preview...', 'info');
+        
+        const sourceElement = document.getElementById('roster-display');
+        if (!sourceElement) return Notifications.show('Roster not found', 'error');
+
+        const wrapper = document.createElement('div');
+        // Force the wrapper to have a wide desktop width so it renders as a grid rather than mobile cards
+        wrapper.style.width = '1000px';
+        wrapper.style.backgroundColor = 'white';
+        wrapper.style.color = 'black';
+        wrapper.style.padding = '40px';
+        wrapper.style.boxSizing = 'border-box';
+        
+        const tempContainer = document.createElement('div');
+        tempContainer.innerHTML = sourceElement.innerHTML;
+        
+        // Remove Action column elements
+        const actionHeaders = tempContainer.querySelectorAll('th.no-print');
+        actionHeaders.forEach(el => el.remove());
+        const actionCells = tempContainer.querySelectorAll('td.no-print');
+        actionCells.forEach(el => el.remove());
+
+        // Make sure signature block is visible
+        const sigBlock = tempContainer.querySelector('.roster-signature-block');
+        if (sigBlock) sigBlock.style.display = 'block';
+
+        // Apply strict table borders for the PDF engine
+        const table = tempContainer.querySelector('.data-table');
+        if (table) {
+            table.style.border = '1px solid #000';
+            table.style.borderCollapse = 'collapse';
+            table.style.width = '100%';
+            
+            const thead = table.querySelector('thead tr');
+            if (thead) {
+                thead.style.background = '#f1f5f9';
+                thead.querySelectorAll('th').forEach(th => {
+                    th.style.color = '#000';
+                    th.style.border = '1px solid #000';
+                    th.style.padding = '0.75rem';
+                });
+            }
+            
+            table.querySelectorAll('tr').forEach(tr => {
+                tr.style.display = 'table-row';
+            });
+            table.querySelectorAll('td').forEach(td => {
+                td.style.border = '1px solid #000';
+                td.style.color = '#000';
+                td.style.padding = '0.75rem';
+                td.style.display = 'table-cell';
+            });
+        }
+        
+        wrapper.appendChild(tempContainer);
+        document.body.appendChild(wrapper);
+        wrapper.style.position = 'absolute';
+        wrapper.style.left = '-9999px';
+        wrapper.style.top = '0';
+
+        const opt = {
+            margin: 10,
+            filename: `Staff_Duty_Roster.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, windowWidth: 1000 },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        try {
+            const pdfBlob = await html2pdf().set(opt).from(wrapper).output('blob');
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            PDFRenderer.previewPDF(blobUrl, opt.filename);
+        } catch (error) {
+            console.error(error);
+            Notifications.show('Failed to generate PDF', 'error');
+        } finally {
+            document.body.removeChild(wrapper);
+        }
+    },
+
     async renderRoster() {
         const roster = await db.duty_assignments.toArray();
         const allStaff = await db.profiles.toArray();
@@ -14132,7 +14213,7 @@ export const UI = {
                             <button id="btn-generate-roster" style="background: #4f46e5; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 800; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
                                 <i data-lucide="zap" style="width: 16px;"></i> Generate Roster
                             </button>
-                            <button onclick="window.print()" style="background: rgba(79,70,229,0.1); color: #4f46e5; border: 1px solid rgba(79,70,229,0.2); padding: 0.75rem 1.25rem; border-radius: 12px; font-weight: 800; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                            <button onclick="UI.printDutyRoster()" style="background: rgba(79,70,229,0.1); color: #4f46e5; border: 1px solid rgba(79,70,229,0.2); padding: 0.75rem 1.25rem; border-radius: 12px; font-weight: 800; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
                                 <i data-lucide="printer" style="width: 16px;"></i> Print
                             </button>
                         </div>
