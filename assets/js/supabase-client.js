@@ -181,15 +181,32 @@ export async function syncToCloud() {
                                 });
                                 const retry = await client.from(table).upsert(sanitizedData);
                                 error = retry.error;
-                            } else if (error.message.includes('specialization') || error.code === 'PGRST204') {
-                                console.warn(`[Sync Self-Heal] Cloud schema mismatch for 'specialization' column in ${table}. Retrying without 'specialization'...`);
-                                const sanitizedData = dataToSync.map(item => {
-                                    const cleaned = { ...item };
-                                    delete cleaned.specialization;
-                                    return cleaned;
-                                });
-                                const retry = await client.from(table).upsert(sanitizedData);
-                                error = retry.error;
+                            } else if (error.code === 'PGRST204' || error.message.toLowerCase().includes('column') || error.message.toLowerCase().includes('does not exist')) {
+                                let healError = error;
+                                let healedData = [...dataToSync];
+                                let attempts = 0;
+                                while (healError && (healError.code === 'PGRST204' || healError.message.toLowerCase().includes('column') || healError.message.toLowerCase().includes('does not exist')) && attempts < 10) {
+                                    attempts++;
+                                    let missingCol = null;
+                                    const colMatch = healError.message.match(/column\s+["']?([a-zA-Z0-9_]+)["']?/i);
+                                    if (colMatch) {
+                                        missingCol = colMatch[1];
+                                    }
+                                    if (missingCol) {
+                                        console.warn(`[Sync Self-Heal] Column "${missingCol}" not found in cloud table ${table}. Stripping and retrying (Attempt ${attempts})...`);
+                                        healedData = healedData.map(item => {
+                                            const cleaned = { ...item };
+                                            delete cleaned[missingCol];
+                                            return cleaned;
+                                        });
+                                        const retry = await client.from(table).upsert(healedData);
+                                        healError = retry.error;
+                                    } else {
+                                        console.error(`[Sync Self-Heal] Unable to parse missing column name from error:`, healError.message);
+                                        break;
+                                    }
+                                }
+                                error = healError;
                             } else {
                                 console.error(`Sync error for ${table}:`, error, "Data:", chunk);
                             }
@@ -585,7 +602,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v24.0 (BUILD v228) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v24.0 (BUILD v229) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);
