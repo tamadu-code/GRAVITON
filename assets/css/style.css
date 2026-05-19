@@ -5085,6 +5085,14 @@ body.window-blurred.exam-mode .cbt-exam-container {
     text-align: left;
 }
 
+.roster-print-area .data-table {
+    border-collapse: collapse;
+}
+.roster-print-area .data-table th,
+.roster-print-area .data-table td {
+    border: 1px solid #e2e8f0;
+}
+
 /* =============================================
    DUTY ROSTER — Print & Responsive Styles
    ============================================= */
@@ -5148,13 +5156,23 @@ body.window-blurred.exam-mode .cbt-exam-container {
         margin-bottom: 0.75rem !important; padding: 0.75rem !important;
     }
     .roster-print-area .data-table td {
-        display: flex !important; justify-content: space-between !important; align-items: center !important;
-        padding: 0.4rem 0 !important; border: none !important;
+        display: flex !important; justify-content: space-between !important; align-items: flex-start !important;
+        padding: 0.6rem 0 !important; border-bottom: 1px dashed #cbd5e1 !important; border-top: none !important; border-left: none !important; border-right: none !important;
+    }
+    .roster-print-area .data-table td:last-child {
+        border-bottom: none !important;
+    }
+    .roster-print-area .data-table td .td-val {
+        text-align: right;
+        flex: 1;
+        display: flex;
+        justify-content: flex-end;
     }
     .roster-print-area .data-table td::before {
         content: attr(data-label);
         font-weight: 800; font-size: 0.7rem; color: #94a3b8;
         text-transform: uppercase; letter-spacing: 0.05em;
         margin-right: 1rem; white-space: nowrap;
+        padding-top: 0.1rem;
     }
 }

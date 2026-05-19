@@ -66,17 +66,23 @@ export const UI = {
                             white-space: nowrap;
                             overflow: hidden;
                             text-overflow: ellipsis;
+                        .pdf-preview-header {
+                            flex-direction: column !important;
+                            padding: 1rem !important;
+                            gap: 1rem !important;
+                            align-items: stretch !important;
+                        }
+                        .pdf-preview-header > div:first-child {
+                            justify-content: center;
+                        }
+                        .pdf-preview-header > div:last-child {
+                            width: 100%;
+                            justify-content: stretch;
                         }
                         .pdf-preview-btn {
-                            height: 38px;
-                            padding: 0 0.75rem;
-                            font-size: 0.75rem;
-                        }
-                        .pdf-preview-btn span {
-                            display: none !important; /* Hide button text on mobile */
-                        }
-                        .pdf-preview-btn i {
-                            margin: 0 !important;
+                            flex: 1;
+                            justify-content: center;
+                            padding: 0.75rem !important;
                         }
                         .pdf-preview-content {
                             padding: 0.5rem !important;
@@ -14216,16 +14222,20 @@ export const UI = {
                                     
                                     return `
                                         <tr style="background: ${colors.bg};">
-                                            <td style="font-weight: 800; color: ${colors.text}; padding: 0.85rem 1rem;" data-label="TERM WEEK">Week ${weekNum}</td>
-                                            <td style="color: ${colors.text}; padding: 0.85rem 1rem;" data-label="DATE RANGE">${start.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — ${end.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}${dateNote}</td>
-                                            <td style="padding: 0.85rem 1rem;" data-label="STATUS"><span style="background: ${colors.border}; color: ${colors.text}; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem;">${status}</span></td>
+                                            <td style="font-weight: 800; color: ${colors.text}; padding: 0.85rem 1rem;" data-label="TERM WEEK"><div class="td-val">Week ${weekNum}</div></td>
+                                            <td style="color: ${colors.text}; padding: 0.85rem 1rem;" data-label="DATE RANGE"><div class="td-val">${start.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — ${end.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}${dateNote}</div></td>
+                                            <td style="padding: 0.85rem 1rem;" data-label="STATUS"><div class="td-val"><span style="background: ${colors.border}; color: ${colors.text}; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem;">${status}</span></div></td>
                                             <td style="padding: 0.85rem 1rem;" data-label="STAFF ON DUTY">
-                                                ${staffNames.map(n => `<span style="background: #818cf8; color: white; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem; margin-right: 0.4rem; display: inline-block; margin-bottom: 0.25rem;">${n}</span>`).join('')}
+                                                <div class="td-val" style="display:flex; flex-wrap:wrap; gap:0.25rem; justify-content:flex-end;">
+                                                ${staffNames.map(n => `<span style="background: #818cf8; color: white; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem;">${n}</span>`).join('')}
+                                                </div>
                                             </td>
                                             <td style="text-align: right; padding: 0.85rem 1rem;" class="no-print">
-                                                <button class="btn btn-secondary btn-sm" onclick="UI.deleteRosterWeek('${w.week_start}')" style="background: none; color: #94a3b8; padding: 0.2rem 0.4rem;">
-                                                    <i data-lucide="trash-2" style="width: 14px;"></i>
-                                                </button>
+                                                <div class="td-val" style="display:flex; justify-content:flex-end;">
+                                                    <button class="btn btn-secondary btn-sm" onclick="UI.deleteRosterWeek('${w.week_start}')" style="background: none; color: #94a3b8; padding: 0.2rem 0.4rem;">
+                                                        <i data-lucide="trash-2" style="width: 14px;"></i>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     `;
