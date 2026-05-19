@@ -14167,23 +14167,10 @@ export const UI = {
 
         // Add Write-up of important weeks
         const finalY = doc.lastAutoTable.finalY || 45;
-        const examWeek = getVal('rosterExamWeek', '6');
-        const breakWeek = getVal('rosterBreakWeek', '7');
-        const closingWeek = getVal('rosterClosingWeek', '14');
-        const principalSignature = getVal('principalSignature', null);
-
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text("KEY TERM MILESTONES:", 12, finalY + 12);
-        
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        doc.text(`• Mid-Term Exams: Week ${examWeek}`, 15, finalY + 18);
-        doc.text(`• Mid-Term Break: Week ${breakWeek} & ${parseInt(breakWeek) + 1}`, 15, finalY + 23);
-        doc.text(`• Closing Week: Week ${closingWeek}`, 15, finalY + 28);
+                const principalSignature = getVal('principalSignature', null);
 
         // Add Signature Block (Center Aligned)
-        const sigY = finalY + 48;
+        const sigY = finalY + 25;
         if (principalSignature) {
             try {
                 doc.addImage(principalSignature, 'PNG', 105 - 17.5, sigY - 14, 35, 12);
@@ -14196,6 +14183,9 @@ export const UI = {
         doc.setFont('helvetica', 'bold');
         doc.text("__________________________", 105, sigY, { align: 'center' });
         doc.text("Principal's Signature", 105, sigY + 6, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text(`(${getVal('principalName', 'Mr. Lartey Sampson')})`, 105, sigY + 11, { align: 'center' });
 
         try {
             this.showPDFPreview(doc, `Duty_Roster_${term.replace(/\s+/g, '_')}.pdf`);
@@ -14388,24 +14378,13 @@ export const UI = {
                         </table>
                     </div>
 
-                    <!-- Key Term Milestones Write-up -->
-                    <div class="roster-key-dates" style="margin-top: 1.5rem; padding: 1rem 1.5rem; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
-                        <h4 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.5rem;">
-                            <i data-lucide="info" style="width: 16px; color: #4f46e5;"></i> Key Term Milestones
-                        </h4>
-                        <div style="display: flex; gap: 2.5rem; font-size: 0.8rem; color: #475569; font-weight: 600; flex-wrap: wrap;">
-                            <div><strong style="color: #1e293b;">Mid-Term Exams:</strong> Week ${rosterExamWeek}</div>
-                            <div><strong style="color: #1e293b;">Mid-Term Break:</strong> Week ${rosterBreakWeek} & ${rosterBreakWeek + 1}</div>
-                            <div><strong style="color: #1e293b;">Closing Week:</strong> Week ${rosterClosingWeek}</div>
-                        </div>
-                    </div>
-
                     <!-- Print-Only Signature Block -->
                     <div class="roster-signature-block" style="display: none; margin-top: 3.5rem; padding-top: 1rem; text-align: center;">
                         <div style="display: inline-block; text-align: center; width: 250px; position: relative;">
                             ${principalSignature ? `<img src="${principalSignature}" style="height: 50px; display: block; margin: 0 auto 0.5rem; object-fit: contain;" alt="Principal Signature">` : '<div style="height: 50px;"></div>'}
                             <div style="border-top: 1.5px solid #000; width: 100%; margin: 0 auto;"></div>
-                            <p style="font-size: 0.8rem; margin-top: 0.4rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #1e293b;">Principal's Signature</p>
+                            <p style="font-size: 0.8rem; margin-top: 0.4rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #1e293b; margin-bottom: 0.2rem;">Principal's Signature</p>
+                            <p style="font-size: 0.75rem; font-weight: 600; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 0.05em;">(${getVal('principalName', 'Mr. Lartey Sampson')})</p>
                         </div>
                     </div>
                 </div>
@@ -14493,7 +14472,7 @@ export const UI = {
 
             if (w < startWeek) {
                 newRoster.push(prepareForSync({
-                    id: crypto.randomUUID(), staff_id: 'NONE', duty_type: status,
+                    id: crypto.randomUUID(), staff_id: null, duty_type: status,
                     week_start: weekStart.toISOString().split('T')[0],
                     week_end: weekEnd.toISOString().split('T')[0],
                     week_number: w

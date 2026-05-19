@@ -78,7 +78,7 @@ export async function syncToCloud() {
                 
                 // Table-level field whitelists
                 const whitelist = {
-                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'updated_at'],
+                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'employment_type', 'updated_at'],
                     students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'passport_url', 'updated_at'],
                     classes: ['id', 'name', 'level', 'updated_at'],
                     subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
@@ -129,6 +129,12 @@ export async function syncToCloud() {
                             } else {
                                 sanitized.role = 'Student'; // Default to safest
                             }
+                        }
+
+                        // Sanitize duty_assignments 'NONE' staff_id to null
+                        if (table === 'duty_assignments' && sanitized.staff_id === 'NONE') {
+                            sanitized.staff_id = null;
+                            db.duty_assignments.update(item.id, { staff_id: null }).catch(e => {});
                         }
 
                         return sanitized;
