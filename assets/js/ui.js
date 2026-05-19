@@ -7829,15 +7829,7 @@ export const UI = {
                                 </div>
                             </div>
 
-                            <!-- Set Marks Tool -->
-                            <div style="background: #f1f5f9; padding: 1rem; border-radius: 12px; margin-bottom: 1.5rem; display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
-                                <div style="font-size: 0.8rem; font-weight: 700; color: #475569; white-space: nowrap;">SET MARKS:</div>
-                                <div style="display: flex; gap: 0.5rem; flex: 1; min-width: 160px;">
-                                    <input type="number" id="bulk-marks-input" class="cbt-input" style="height: 36px; padding: 0 10px; flex: 1; min-width: 0; box-sizing: border-box;" placeholder="e.g. 1.5" step="any">
-                                    <button class="btn btn-sm" onclick="UI.applyBulkMarks()" style="background: #4338ca; color: white; border: none; border-radius: 8px; padding: 0 1rem; font-weight: 700; cursor: pointer; height: 36px; white-space: nowrap; flex-shrink: 0;">Apply to All</button>
-                                </div>
-                                <div id="exam-total-badge" style="background: #e0e7ff; color: #4338ca; padding: 6px 12px; border-radius: 8px; font-weight: 900; font-size: 0.75rem; white-space: nowrap;">TOTAL: 0</div>
-                            </div>
+                            <!-- Set Marks Tool Removed -->
 
                             <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:2rem; flex-wrap:wrap;">
                                 <button class="btn btn-secondary" style="background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe;" onclick="UI.showImportFromBankModal()"><i data-lucide="database"></i> Import from Bank</button>
@@ -7869,7 +7861,9 @@ export const UI = {
 
                             <div class="cbt-form-group">
                                 <label>Exam Type</label>
-                                <select id="exam-title" class="cbt-input">
+                                <select id="exam-title" class="cbt-input" onchange="UI.handleCBTExamTypeChange(this.value)">
+                                    <option value="Assignment" ${exam.title === 'Assignment' ? 'selected' : ''}>Assignment</option>
+                                    <option value="Project" ${exam.title === 'Project' ? 'selected' : ''}>Project</option>
                                     <option value="Test 1" ${exam.title === 'Test 1' ? 'selected' : ''}>Test 1</option>
                                     <option value="Test 2" ${exam.title === 'Test 2' ? 'selected' : ''}>Test 2</option>
                                     <option value="Exam" ${exam.title === 'Exam' ? 'selected' : ''}>Final Exam</option>
@@ -7992,7 +7986,7 @@ export const UI = {
                                         <option value="2025/2026" ${exam.session === '2025/2026' ? 'selected' : ''}>2025/2026</option>
                                     </select>
                                 </div>
-                                <div class="cbt-form-group">
+                                <div class="cbt-form-group" id="cbt-target-field-group" style="display: ${exam.is_unified ? 'none' : 'block'};">
                                     <label>Target Field</label>
                                     <select id="exam-score-field" class="cbt-input">
                                         <option value="test1" ${exam.score_field === 'test1' ? 'selected' : ''}>Test 1</option>
@@ -8066,7 +8060,7 @@ export const UI = {
             classSelect.dispatchEvent(new Event('change'));
         }
 
-
+        this.handleCBTExamTypeChange(exam.title || document.getElementById('exam-title').value);
         this.refreshQuestionPreview();
     },
 
@@ -8353,15 +8347,35 @@ export const UI = {
         const isUnified = document.getElementById('exam-is-unified').checked;
         const standardSettings = document.getElementById('cbt-standard-settings');
         const unifiedSettings = document.getElementById('cbt-unified-settings');
+        const targetFieldGroup = document.getElementById('cbt-target-field-group');
         
         if (standardSettings) standardSettings.style.display = isUnified ? 'none' : 'block';
         if (unifiedSettings) unifiedSettings.style.display = isUnified ? 'block' : 'none';
+        if (targetFieldGroup) targetFieldGroup.style.display = isUnified ? 'none' : 'block';
         
         if (isUnified && (!this.cbtSections || this.cbtSections.length === 0)) {
             this.addCBTSection();
         }
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    handleCBTExamTypeChange(type) {
+        const targetMarkInput = document.getElementById('exam-target-mark');
+        if (!targetMarkInput) return;
+        
+        if (['Assignment', 'Test 1', 'Test 2', 'Project'].includes(type)) {
+            targetMarkInput.value = 10;
+            targetMarkInput.readOnly = true;
+            targetMarkInput.style.backgroundColor = '#f1f5f9';
+        } else if (['Exam', 'Unified Mock'].includes(type)) {
+            targetMarkInput.value = 60;
+            targetMarkInput.readOnly = true;
+            targetMarkInput.style.backgroundColor = '#f1f5f9';
+        } else {
+            targetMarkInput.readOnly = false;
+            targetMarkInput.style.backgroundColor = '';
+        }
     },
 
     async addCBTSection() {
@@ -8746,7 +8760,21 @@ export const UI = {
                         </p>
                         
                         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                            ${visibleSections.map(sec => {
+                            ${
+                                Array.from(visibleSections.reduce((map, sec) => {
+                                    if (!map.has(sec.subject_id)) {
+                                        map.set(sec.subject_id, {
+                                            subject_id: sec.subject_id,
+                                            specialization: sec.specialization,
+                                            question_count: 0,
+                                            target_mark: 0
+                                        });
+                                    }
+                                    const group = map.get(sec.subject_id);
+                                    group.question_count += parseInt(sec.question_count) || 0;
+                                    group.target_mark += parseFloat(sec.target_mark) || 0;
+                                    return map;
+                                }, new Map()).values()).map(sec => {
                                 const subName = subjectMap[sec.subject_id] || sec.subject_id;
                                 const spec = (sec.specialization || 'Common').toLowerCase().trim();
                                 
@@ -8772,7 +8800,7 @@ export const UI = {
                                 return `
                                     <label class="cbt-sub-selection-row" style="display: flex; align-items: center; justify-content: space-between; background: white; padding: 0.85rem 1.25rem; border-radius: 12px; border: 1px solid #e2e8f0; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; transition: all 0.2s ease; margin-bottom: 0;">
                                         <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                            <input type="checkbox" class="unified-subject-cb" data-subject-id="${sec.subject_id}" data-question-count="${parseInt(sec.question_count) || 0}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} onchange="UI.updateUnifiedQuestionCount()" style="width: 20px; height: 20px; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; accent-color: #4338ca;">
+                                            <input type="checkbox" class="unified-subject-cb" data-subject-id="${sec.subject_id}" data-question-count="${sec.question_count}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} onchange="UI.updateUnifiedQuestionCount()" style="width: 20px; height: 20px; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; accent-color: #4338ca;">
                                             <span style="font-weight: 750; color: ${isDisabled ? '#64748b' : '#1e293b'}; font-size: 0.95rem;">${subName}${labelSuffix}</span>
                                         </div>
                                         <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-align: right;">
@@ -8780,7 +8808,8 @@ export const UI = {
                                         </div>
                                     </label>
                                 `;
-                            }).join('')}
+                            }).join('')
+                            }
                         </div>
                     </div>
                 `;
