@@ -216,17 +216,6 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
 
     // --- QR Code Generation ---
     let qrDataURL = null;
-    try {
-        const qrData = JSON.stringify({
-            id: student.student_id,
-            s: schoolInfo.session,
-            t: schoolInfo.term,
-            v: 'G-V24'
-        });
-        qrDataURL = await QRCode.toDataURL(qrData, { margin: 1, width: 100 });
-    } catch (e) {
-        console.warn('QR Generation failed:', e);
-    }
 
     // --- Passport Photo Image Loading ---
     let passportImg = null;
@@ -478,6 +467,34 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     const footerY = pageHeight - 20;
     doc.setDrawColor(37, 99, 235);
     // --- QR Code Security Section ---
+    let gpaCgpaDetails = "";
+    if (gSystem === 'Positional Ranking') {
+        gpaCgpaDetails = `POSITION: ${schoolInfo.position || 'N/A'} / ${schoolInfo.specializationSize || schoolInfo.classSize || '0'}`;
+    } else if (gSystem === 'Point System (5.0 CGPA)') {
+        gpaCgpaDetails = `GPA: ${termGpa} / 5.00\nCGPA: ${cgpa} / 5.00`;
+    } else {
+        gpaCgpaDetails = `OVERALL GRADE: ${ScoringEngine.getGrade(parseFloat(avg))}`;
+    }
+
+    const qrLines = [
+        `NAME: ${student.name.toUpperCase()} SEX: ${student.gender || 'N/A'} TOTAL MARKS: ${scores.reduce((a, b) => a + (b.total || 0), 0)}`,
+        `CLASS: ${displayClass} SESSION: ${scores[0]?.session || '2025/2026'} ${gpaCgpaDetails.split('\n')[0]}`,
+    ];
+    
+    if (gSystem === 'Point System (5.0 CGPA)') {
+        qrLines.push(gpaCgpaDetails.split('\n')[1]);
+    }
+    
+    qrLines.push(`TERM: ${scores[0]?.term || 'N/A'} AVERAGE: ${avg}%`);
+    qrLines.push(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'} PASS/FAIL: ${parseFloat(avg) >= 40 ? 'PASS' : 'FAIL'} NEXT BEGINS: ${schoolInfo.termStart || '13th April, 2026'}`);
+
+    const qrPayload = qrLines.join('\n');
+    try {
+        qrDataURL = await QRCode.toDataURL(qrPayload, { margin: 1, width: 150 });
+    } catch (e) {
+        console.warn('Dynamic QR Generation failed:', e);
+    }
+
     doc.setDrawColor(theme.r, theme.g, theme.b);
     doc.rect(12, footerY - 5, 18, 18); // QR Box
     
