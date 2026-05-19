@@ -14185,14 +14185,14 @@ export const UI = {
                     </div>
 
                     <div class="table-container" style="margin-top: 0;">
-                        <table class="data-table" style="font-size: 0.85rem;">
+                        <table class="data-table" style="font-size: 0.85rem; width: 100%;">
                             <thead>
-                                <tr style="background: #1e293b;">
-                                    <th style="color: white; font-weight: 800; padding: 0.85rem 1rem;">TERM WEEK</th>
-                                    <th style="color: white; font-weight: 800; padding: 0.85rem 1rem;">DATE RANGE</th>
-                                    <th style="color: white; font-weight: 800; padding: 0.85rem 1rem;">STATUS</th>
-                                    <th style="color: white; font-weight: 800; padding: 0.85rem 1rem;">STAFF ON DUTY</th>
-                                    <th style="color: white; font-weight: 800; padding: 0.85rem 1rem; text-align: right;" class="no-print">ACTION</th>
+                                <tr class="roster-header-row">
+                                    <th>TERM WEEK</th>
+                                    <th>DATE RANGE</th>
+                                    <th>STATUS</th>
+                                    <th>STAFF ON DUTY</th>
+                                    <th style="text-align: right;" class="no-print">ACTION</th>
                                 </tr>
                             </thead>
                             <tbody>

@@ -5074,6 +5074,17 @@ body.window-blurred.exam-mode .cbt-exam-container {
     100% { left: 100%; }
 }
 
+.roster-header-row {
+    background: #1e293b;
+}
+
+.roster-header-row th {
+    color: white;
+    font-weight: 800;
+    padding: 0.85rem 1rem;
+    text-align: left;
+}
+
 /* =============================================
    DUTY ROSTER — Print & Responsive Styles
    ============================================= */
