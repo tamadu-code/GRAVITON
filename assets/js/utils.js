@@ -249,24 +249,24 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     // --- Header Section ---
     if (schoolInfo.logo) {
         try {
-            doc.addImage(schoolInfo.logo, 'PNG', 10, 10, 25, 25);
+            doc.addImage(schoolInfo.logo, 'PNG', 5, 5, 30, 30);
         } catch (e) {
             console.warn('Failed to add logo to PDF:', e);
             doc.setDrawColor(theme.r, theme.g, theme.b);
-            doc.rect(10, 10, 25, 25);
+            doc.rect(5, 5, 30, 30);
         }
     } else {
         doc.setDrawColor(theme.r, theme.g, theme.b);
-        doc.rect(10, 10, 25, 25);
+        doc.rect(5, 5, 30, 30);
         doc.setFontSize(8);
-        doc.text("LOGO", 22.5, 23, { align: 'center' });
+        doc.text("LOGO", 20, 21, { align: 'center' });
     }
     
     // --- Passport Photo Rendering (Header Section) ---
-    const passportX = pageWidth - 30;
-    const passportY = 10;
-    const passportW = 20;
-    const passportH = 25;
+    const passportW = 24;
+    const passportH = 30;
+    const passportX = pageWidth - 5 - passportW; // 181
+    const passportY = 5;
 
     const renderPlaceholderSilhouette = () => {
         // Light gray background inside the frame
