@@ -323,9 +323,14 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     
     // Row 1
     doc.setTextColor(0, 0, 0);
-    doc.text(`NAME: ${student.name.toUpperCase()}`, leftX, y);
-    doc.line(23, y + 1, 80, y + 1); // Underline name
-    doc.text(`SEX: ${student.gender || 'N/A'}`, midX, y);
+    const nameStr = `NAME: ${student.name.toUpperCase()}`;
+    doc.text(nameStr, leftX, y);
+    const nameWidth = doc.getTextWidth(nameStr);
+    doc.line(23, y + 1, leftX + nameWidth, y + 1); // Underline name
+    
+    // Dynamic SEX position: push it past the name with a minimum gap
+    const sexX = Math.max(midX, leftX + nameWidth + 5);
+    doc.text(`SEX: ${student.gender || 'N/A'}`, sexX, y);
     doc.text(`TOTAL MARKS: ${scores.reduce((a, b) => a + (b.total || 0), 0)}`, rightX, y);
     
     y += 7;
@@ -363,18 +368,26 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     const sortedScores = [...scores].sort((a, b) => (a.subject_name || '').localeCompare(b.subject_name || ''));
     
     const tableHead = [['SUBJECTS', 'ASS', 'T1', 'T2', 'PROJ', 'CA', 'EXAM', 'TOTAL', 'GRADE', 'REMARK']];
-    const tableBody = sortedScores.map(s => [
-        s.subject_name,
-        s.ass || 0,
-        s.t1 || 0,
-        s.t2 || 0,
-        s.proj || 0,
-        (s.ass || 0) + (s.t1 || 0) + (s.t2 || 0) + (s.proj || 0),
-        s.exam || 0,
-        s.total,
-        s.grade,
-        s.remark || ScoringEngine.getRemark(s.total)
-    ]);
+    const tableBody = sortedScores.map(s => {
+        const ass = s.assignment || s.ass || 0;
+        const t1 = s.test1 || s.t1 || 0;
+        const t2 = s.test2 || s.t2 || 0;
+        const proj = s.project || s.proj || 0;
+        const ca = (parseFloat(ass) || 0) + (parseFloat(t1) || 0) + (parseFloat(t2) || 0) + (parseFloat(proj) || 0);
+        const exam = s.exam || 0;
+        return [
+            s.subject_name,
+            ass,
+            t1,
+            t2,
+            proj,
+            ca,
+            exam,
+            s.total,
+            s.grade || ScoringEngine.getGrade(s.total),
+            s.remark || ScoringEngine.getRemark(s.total)
+        ];
+    });
     
     doc.autoTable({
         startY: y + 5,
@@ -428,6 +441,15 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.setFontSize(7);
     doc.setFont('helvetica', 'italic');
     doc.text("Rating Scale: 5-Excellent, 4-Very Good, 3-Good, 2-Fair, 1-Needs Imp.", pageWidth / 2, currentY, { align: 'center' });
+    
+    currentY += 4;
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text("Punctuality: Based on daily attendance sign-in times | Participation: Frequency of class engagement | Compliance: Adherence to school rules", pageWidth / 2, currentY, { align: 'center' });
+    currentY += 3;
+    doc.text("Honesty/Self-Control: Behavioural compliance record | Neatness/Creativity/Courage: Teacher-seeded performance indicators", pageWidth / 2, currentY, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
     
     currentY += 10;
     

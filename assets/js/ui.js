@@ -2793,8 +2793,8 @@ export const UI = {
         const avgScore = scores.length > 0 ? Math.round(scores.reduce((acc, s) => acc + (s.total || 0), 0) / scores.length) : 0;
         
         // Get global settings for the student profile context
-        const session = (await db.settings.get('currentSession'))?.value || (await db.settings.get('current_session'))?.value || '2025/2026';
-        const term = (await db.settings.get('currentTerm'))?.value || (await db.settings.get('current_term'))?.value || '1st Term';
+        const session = (await db.settings.where('key').equals('currentSession').first())?.value || '2025/2026';
+        const term = (await db.settings.where('key').equals('currentTerm').first())?.value || '1st Term';
 
         detailView.innerHTML = `
             <div style="padding: 1.5rem;">
@@ -4406,7 +4406,7 @@ export const UI = {
                                                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem;">
                                                     <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">${s.type} • ${s.credits} Credits</div>
                                                     <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
-                                                        ${subAssignments.map(a => `<span style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; font-size: 0.6rem; padding: 0.1rem 0.3rem; font-weight: 700;">${a.class_name}</span>`).join('')}
+                                                        ${[...subAssignments].sort((a, b) => (a.class_name || '').localeCompare(b.class_name || '', undefined, { numeric: true })).map(a => `<span style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; font-size: 0.6rem; padding: 0.1rem 0.3rem; font-weight: 700;">${a.class_name}</span>`).join('')}
                                                     </div>
                                                 </div>
                                             </div>
@@ -4725,7 +4725,12 @@ export const UI = {
                     await db.subjects.update(id, prepareForSync({ name, type, credits, updated_at: new Date().toISOString() }));
                     
                     // Replace assignments: Use safeDelete to ensure cloud removal
+                    // First, build a map of old teacher_ids so we can preserve them
                     const oldAssignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
+                    const teacherMap = {};
+                    for (const asgn of oldAssignments) {
+                        teacherMap[asgn.class_name] = asgn.teacher_id;
+                    }
                     for (const asgn of oldAssignments) {
                         await this.safeDelete('subject_assignments', asgn.id, null);
                     }
@@ -4733,12 +4738,14 @@ export const UI = {
                     for (const row of rows) {
                         const className = row.querySelector('.asgn-cls').value;
                         const specialization = row.querySelector('.asgn-spec').value || null;
+                        // Preserve the teacher_id from the previous assignment for this class
+                        const preservedTeacherId = teacherMap[className] || null;
                         await db.subject_assignments.add(prepareForSync({
                             id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
                             subject_id: id,
                             class_name: className,
                             specialization: specialization,
-                            teacher_id: null
+                            teacher_id: preservedTeacherId
                         }));
                     }
 
