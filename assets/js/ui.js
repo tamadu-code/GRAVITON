@@ -14068,7 +14068,8 @@ export const UI = {
     async renderRoster() {
         const roster = await db.duty_assignments.toArray();
         const allStaff = await db.profiles.toArray();
-        const staff = allStaff.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive' && p.full_name && p.full_name !== 'Unnamed Staff');
+        // Exclude Admin from duty roster pool
+        const staff = allStaff.filter(p => p.role === 'Teacher' && p.status !== 'Terminated' && p.status !== 'Inactive' && p.full_name && p.full_name !== 'Unnamed Staff');
         const fullTimeStaff = staff.filter(s => (s.employment_type || 'Full-Time') === 'Full-Time');
 
         const settings = await db.settings.toArray();
@@ -14282,6 +14283,10 @@ export const UI = {
             return 'Active Duty';
         };
 
+        // Use the first teacher's UUID as a dummy valid UUID for break weeks
+        // This avoids Supabase foreign key constraint violations while still keeping the row
+        const dummyUUID = fullTimeStaff[0].id;
+
         for (let w = 1; w <= totalWeeks; w++) {
             const weekStart = new Date(startDate);
             weekStart.setDate(startDate.getDate() + (w - 1) * 7);
@@ -14291,9 +14296,9 @@ export const UI = {
             const status = getWeekStatus(w);
 
             if (status === 'Mid-Term Break') {
-                // Record break week with no staff
+                // Record break week using the dummy UUID to satisfy DB constraints
                 newRoster.push(prepareForSync({
-                    id: crypto.randomUUID(), staff_id: 'BREAK', duty_type: status,
+                    id: crypto.randomUUID(), staff_id: dummyUUID, duty_type: status,
                     week_start: weekStart.toISOString().split('T')[0],
                     week_end: weekEnd.toISOString().split('T')[0],
                     week_number: w
