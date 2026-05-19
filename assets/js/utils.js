@@ -641,37 +641,72 @@ export async function generateMastersheet(className, students, subjects, scores,
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('landscape');
     
+    // Fetch School Info
+    const db = (await import('./db.js')).default;
+    const schoolLogo = await db.settings.get('schoolLogo');
+    const schoolName = await db.settings.get('schoolName');
+    const schoolProfile = await db.settings.get('schoolProfile');
+    
+    const sName = schoolName ? schoolName.value : "GRAVITON ACADEMY";
+    const sProfile = schoolProfile ? schoolProfile.value : "Excellence and Character";
+    
     // Header
+    let startY = 15;
+    if (schoolLogo && schoolLogo.value) {
+        try {
+            doc.addImage(schoolLogo.value, 'PNG', 135, 5, 25, 25);
+            startY = 35;
+        } catch (e) { console.warn("Mastersheet Logo error", e); }
+    }
+    
     doc.setFontSize(18);
-    doc.text('ACADEMIC MASTERSHEET', 148, 15, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.text(sName, 148, startY, { align: 'center' });
     doc.setFontSize(10);
-    doc.text(`${className} | ${term} | ${session}`, 148, 22, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text(sProfile, 148, startY + 6, { align: 'center' });
+    
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`ACADEMIC MASTERSHEET: ${className} | ${term} | ${session}`, 148, startY + 14, { align: 'center' });
     
     // Matrix Construction
-    const head = ['Student Name', ...subjects.map(s => s.name.substring(0, 5)), 'Total', 'Avg', 'Rank'];
-    const body = students.map(student => {
+    const head = ['Student Name', ...subjects.map(s => s.name.substring(0, 4)), 'Total', 'Avg', 'Rank'];
+    
+    let bodyData = students.map(student => {
         const studentScores = subjects.map(subject => {
             const score = scores.find(s => s.student_id === student.student_id && s.subject_id === subject.id);
-            return score ? score.total : '-';
+            return score && score.total != null ? parseFloat(score.total) : '-';
         });
         
         const total = studentScores.reduce((acc, s) => acc + (s === '-' ? 0 : s), 0);
         const avg = subjects.length > 0 ? (total / subjects.length).toFixed(1) : 0;
         
-        // Find rank for this student in this term/session (already calculated in scores)
-        const firstScore = scores.find(s => s.student_id === student.student_id);
-        const rank = firstScore ? firstScore.rank : '-';
-        
-        return [student.name, ...studentScores, total, avg, rank];
+        return { name: student.name, scores: studentScores, total, avg };
+    });
+    
+    // Fix Numerical Ranking Sort (Descending)
+    bodyData.sort((a, b) => b.total - a.total);
+    
+    let currentRank = 1;
+    const body = bodyData.map((row, index) => {
+        if (index > 0 && bodyData[index - 1].total > row.total) {
+            currentRank = index + 1;
+        }
+        return [row.name, ...row.scores, row.total, row.avg, currentRank];
     });
     
     doc.autoTable({
-        startY: 30,
+        startY: startY + 20,
         head: [head],
         body: body,
         theme: 'grid',
-        styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillColor: [30, 41, 59], textColor: 255 }
+        styles: { fontSize: 7, cellPadding: 1.5, halign: 'center' },
+        columnStyles: {
+            0: { halign: 'left', cellWidth: 35 } // Ensure name column doesn't wrap awkwardly
+        },
+        headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: 'center', fontSize: 6 }
     });
     
     return doc; // Return for preview

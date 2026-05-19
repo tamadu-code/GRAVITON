@@ -2175,7 +2175,7 @@ export const UI = {
 
             const idsToUpdate = currentIds.split(',');
             for (const id of idsToUpdate) {
-                await db.subjects.update(id, { name: newName, credits: newCredits, type: newType, updated_at: new Date().toISOString() });
+                await db.subjects.update(id, { name: newName, credits: newCredits, type: newType, updated_at: new Date().toISOString(), is_synced: 0 });
             }
 
             // Update assignments
@@ -2188,7 +2188,8 @@ export const UI = {
                     operation: 'DELETE',
                     table: 'subject_assignments',
                     record_id: asgn.id,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    is_synced: 0
                 });
             }
             
@@ -2540,23 +2541,19 @@ export const UI = {
                     
                     try {
                         const email = `${s.student_id.toLowerCase()}@student.school`;
-                        const { data: authData, error: authError } = await registerUser(email, s.student_id, s.name, 'Student');
-                        
-                        // If user already exists, authData might be empty or restricted
-                        // We still try to upsert the profile to link them
                         const client = window.getSupabase ? window.getSupabase() : null;
-                        if (client && (authData?.user || s.id)) {
-                            await client.from('profiles').upsert({
-                                id: authData?.user?.id || s.id || s.student_id,
-                                full_name: s.name,
-                                role: 'Student',
-                                assigned_id: s.student_id,
-                                email: email
+                        if (client) {
+                            const { data, error } = await client.functions.invoke('admin-repair-auth', {
+                                body: {
+                                    email: email,
+                                    password: s.student_id,
+                                    full_name: s.name,
+                                    role: 'Student'
+                                }
                             });
+                            if (error) throw error;
+                            if (data && data.error) throw new Error(data.error);
                         }
-                        
-                        // Small delay to prevent rate limiting (Supabase default is 3/min, we should be careful)
-                        await new Promise(resolve => setTimeout(resolve, 500)); 
                     } catch (err) {
                         console.warn(`Failed to repair ${s.student_id}:`, err);
                     }
@@ -3014,36 +3011,20 @@ export const UI = {
                 
                 try {
                     const studentEmail = `${student.student_id.toLowerCase()}@student.school`;
-                    let { data: authData, error: authError } = await registerUser(studentEmail, student.student_id, student.name, 'Student');
-                    
                     const client = window.getSupabase ? window.getSupabase() : null;
+                    if (!client) throw new Error("Cloud sync engine not connected");
 
-                    if (authError) {
-                        throw authError;
-                    }
-                    
-                    // Force update profile in Supabase to ensure everything is linked
-                    if (client) {
-                        const profileToLink = {
-                            full_name: student.name,
-                            role: 'Student',
-                            assigned_id: student.student_id,
+                    const { data, error } = await client.functions.invoke('admin-repair-auth', {
+                        body: {
                             email: studentEmail,
-                            updated_at: new Date().toISOString()
-                        };
-
-                        if (authData?.user?.id) {
-                            profileToLink.id = authData.user.id;
-                        } else {
-                            const { data: existingProfile } = await client.from('profiles').select('id').eq('email', studentEmail).maybeSingle();
-                            if (existingProfile) {
-                                profileToLink.id = existingProfile.id;
-                            }
+                            password: student.student_id,
+                            full_name: student.name,
+                            role: 'Student'
                         }
+                    });
 
-                        const { error: pError } = await client.from('profiles').upsert(profileToLink, { onConflict: 'email' });
-                        if (pError) console.warn('Profile sync warning during repair:', pError);
-                    }
+                    if (error) throw error;
+                    if (data && data.error) throw new Error(data.error);
 
                     Notifications.show(`Auth repaired for ${student.name}. Password is: ${student.student_id}`, 'success');
                 } catch (err) {
@@ -4079,6 +4060,7 @@ export const UI = {
             const subId = subjectFilter.value;
             const term = termFilter.value;
             const session = sessionFilter.value;
+            const className = classFilter.value;
 
             if (!subId) return Notifications.show('Select a course first', 'error');
 
@@ -4112,6 +4094,7 @@ export const UI = {
                         id: standardId,
                         student_id: studentId,
                         subject_id: subId,
+                        class_name: className,
                         term, session,
                         assignment, test1, test2, project, ca, exam, total,
                         updated_at: new Date().toISOString()
@@ -6104,12 +6087,7 @@ export const UI = {
             const closureDate = document.getElementById('report-closure').value;
             const nextTermDate = document.getElementById('report-next-term').value;
 
-            // NEW: Persist these to global settings
-            await db.settings.put({ id: 'termClosure', key: 'termClosure', value: closureDate });
-            await db.settings.put({ id: 'nextTermBegins', key: 'nextTermBegins', value: nextTermDate });
-            await db.settings.put({ id: 'currentSession', key: 'currentSession', value: session });
-            await db.settings.put({ id: 'currentTerm', key: 'currentTerm', value: term });
-
+            // Removed global settings persist. Only use for local dashboard rendering.
             if (!className) return Notifications.show('Please select a Stream Target.', 'warning');
 
             // Sync simulation / Loading state
@@ -15699,19 +15677,25 @@ export const UI = {
         if (lines.length < 2) throw new Error('CSV is empty');
 
         const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-        const codeIdx = headers.indexOf('Code');
-        const dateIdx = headers.indexOf('Date');
-        const inIdx = headers.indexOf('In');
-        const outIdx = headers.indexOf('Out');
-        const statusIdx = headers.indexOf('Status');
+        const getIdx = (keywords) => headers.findIndex(h => {
+            const low = h.toLowerCase().trim();
+            return keywords.some(k => low === k || low.includes(k));
+        });
+
+        const codeIdx = getIdx(['code', 'enno', 'ac-no', 'pin', 'id no.']);
+        const dateIdx = getIdx(['date']);
+        const inIdx = getIdx(['in', 'clock in', 'sign in', 'time in', 'on duty', 'first in']);
+        const outIdx = getIdx(['out', 'clock out', 'sign out', 'time out', 'off duty', 'last out']);
+        const statusIdx = getIdx(['status', 'state', 'remark', 'exception']);
 
         if (codeIdx === -1 || dateIdx === -1) {
-            throw new Error('CSV missing required columns (Code, Date)');
+            throw new Error(`CSV missing required columns. Detected headers: ${headers.join(', ')}`);
         }
 
         const students = await db.students.toArray();
         const studentMap = students.reduce((acc, s) => {
-            if (s.attendance_code) acc[s.attendance_code] = s.student_id;
+            if (s.attendance_code) acc[s.attendance_code.toString()] = s.student_id;
+            if (s.legacy_student_id) acc[s.legacy_student_id.toString()] = s.student_id;
             return acc;
         }, {});
 
@@ -15720,21 +15704,27 @@ export const UI = {
 
         for (let i = 1; i < lines.length; i++) {
             const cols = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
-            if (cols.length < headers.length) continue;
+            if (cols.length <= Math.max(codeIdx, dateIdx)) continue;
 
             const code = cols[codeIdx];
             const date = cols[dateIdx];
-            const studentId = studentMap[code];
+            const studentId = studentMap[code] || studentMap[parseInt(code, 10)];
 
             if (!studentId || !date) continue;
+
+            const signInTime = inIdx !== -1 ? (cols[inIdx] || null) : null;
+            const signOutTime = outIdx !== -1 ? (cols[outIdx] || null) : null;
+            const rawStatus = statusIdx !== -1 ? (cols[statusIdx] || '').toLowerCase() : '';
+            
+            const isAbsent = !signInTime && !signOutTime && !rawStatus.includes('present') && !rawStatus.includes('late');
 
             records.push({
                 student_id: studentId,
                 date: date,
-                sign_in: cols[inIdx] || null,
-                sign_out: cols[outIdx] || null,
-                is_late: (cols[statusIdx] || '').toLowerCase().includes('late'),
-                status: 'Present'
+                sign_in: signInTime,
+                sign_out: signOutTime,
+                is_late: rawStatus.includes('late') || rawStatus.includes('delay'),
+                status: isAbsent ? 'Absent' : 'Present'
             });
             uniqueDates.add(date);
         }

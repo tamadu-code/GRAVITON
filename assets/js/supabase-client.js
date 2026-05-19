@@ -139,15 +139,20 @@ export async function syncToCloud() {
                         const ids = dataToSync.map(d => d.id).filter(Boolean);
                         if (ids.length > 0) {
                             try {
-                                const { data: cloudStates } = await client.from(table).select('id, updated_at').in('id', ids);
+                                const selectFields = table === 'scores' ? 'id, updated_at, total' : 'id, updated_at';
+                                const { data: cloudStates } = await client.from(table).select(selectFields).in('id', ids);
                                 if (cloudStates && cloudStates.length > 0) {
                                     dataToSync = dataToSync.filter(local => {
                                         const remote = cloudStates.find(c => c.id === local.id);
                                         if (!remote) return true;
-                                        // Only push if local is actually NEWER
+                                        // Only push if local is actually NEWER, or if cloud score record is empty
                                         const isNewer = new Date(local.updated_at || 0) > new Date(remote.updated_at || 0);
-                                        if (!isNewer) console.log(`[Sync] Skipping push for ${table} ${local.id} - Cloud has newer data.`);
-                                        return isNewer;
+                                        const isCloudEmpty = table === 'scores' && (remote.total === null || remote.total === undefined);
+                                        if (!isNewer && !isCloudEmpty) {
+                                            console.log(`[Sync] Skipping push for ${table} ${local.id} - Cloud has newer data.`);
+                                            return false;
+                                        }
+                                        return true;
                                     });
                                 }
                             } catch (e) { console.warn(`Cloud protection check failed for ${table}:`, e); }
@@ -605,7 +610,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v24.0 (BUILD v238) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v24.0 (BUILD v239) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);
