@@ -14087,78 +14087,84 @@ export const UI = {
         const sourceElement = document.getElementById('roster-display');
         if (!sourceElement) return Notifications.show('Roster not found', 'error');
 
-        const wrapper = document.createElement('div');
-        // Force the wrapper to have a wide desktop width so it renders as a grid rather than mobile cards
-        wrapper.style.width = '1000px';
-        wrapper.style.backgroundColor = 'white';
-        wrapper.style.color = 'black';
-        wrapper.style.padding = '40px';
-        wrapper.style.boxSizing = 'border-box';
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4');
         
-        const tempContainer = document.createElement('div');
-        tempContainer.innerHTML = sourceElement.innerHTML;
+        // Add School Header
+        const settings = await db.settings.toArray();
+        const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
+        const schoolName = getVal('schoolName', 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
+        const session = getVal('currentSession', '2025/2026');
+        const term = getVal('currentTerm', '3rd Term');
+
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text(schoolName.toUpperCase(), 105, 20, { align: 'center' });
         
-        // Remove Action column elements
-        const actionHeaders = tempContainer.querySelectorAll('th.no-print');
-        actionHeaders.forEach(el => el.remove());
-        const actionCells = tempContainer.querySelectorAll('td.no-print');
-        actionCells.forEach(el => el.remove());
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${session} Academic Session`, 105, 26, { align: 'center' });
 
-        // Make sure signature block is visible
-        const sigBlock = tempContainer.querySelector('.roster-signature-block');
-        if (sigBlock) sigBlock.style.display = 'block';
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(37, 99, 235); // Blue color for title
+        doc.text(`${term.toUpperCase()} — STAFF DUTY ROSTER`, 105, 34, { align: 'center' });
+        doc.setTextColor(0, 0, 0); // Reset to black
 
-        // Apply strict table borders for the PDF engine
-        const table = tempContainer.querySelector('.data-table');
-        if (table) {
-            table.style.border = '1px solid #000';
-            table.style.borderCollapse = 'collapse';
-            table.style.width = '100%';
+        // Clone table and clean up for autoTable
+        const tableClone = sourceElement.querySelector('.data-table').cloneNode(true);
+        const trs = tableClone.querySelectorAll('tr');
+        trs.forEach(tr => {
+            const noPrints = tr.querySelectorAll('.no-print');
+            noPrints.forEach(el => el.remove());
             
-            const thead = table.querySelector('thead tr');
-            if (thead) {
-                thead.style.background = '#f1f5f9';
-                thead.querySelectorAll('th').forEach(th => {
-                    th.style.color = '#000';
-                    th.style.border = '1px solid #000';
-                    th.style.padding = '0.75rem';
-                });
+            // Add breaks between staff names so they appear on new lines in autoTable
+            const staffTds = tr.querySelectorAll('td:nth-child(4)'); // 4th column is staff on duty
+            staffTds.forEach(td => {
+                const spans = td.querySelectorAll('span');
+                if(spans.length > 1) {
+                    let staffText = '';
+                    spans.forEach((s, idx) => {
+                        // ignore the wrapper td-val
+                        if (s.classList.contains('td-val')) return;
+                        staffText += s.innerText + (idx < spans.length - 1 ? '<br>' : '');
+                    });
+                    if (staffText) td.innerHTML = staffText;
+                }
+            });
+        });
+
+        // Generate Table
+        doc.autoTable({
+            html: tableClone,
+            startY: 42,
+            theme: 'grid',
+            headStyles: { fillColor: [241, 245, 249], textColor: 0, fontStyle: 'bold', lineWidth: 0.2, lineColor: 0 },
+            bodyStyles: { textColor: 0, lineWidth: 0.2, lineColor: 0 },
+            styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, valign: 'middle' },
+            columnStyles: {
+                0: { fontStyle: 'bold' },
+                2: { fontStyle: 'bold', textColor: [21, 128, 61] } // green text for Active Duty
             }
-            
-            table.querySelectorAll('tr').forEach(tr => {
-                tr.style.display = 'table-row';
-            });
-            table.querySelectorAll('td').forEach(td => {
-                td.style.border = '1px solid #000';
-                td.style.color = '#000';
-                td.style.padding = '0.75rem';
-                td.style.display = 'table-cell';
-            });
-        }
-        
-        wrapper.appendChild(tempContainer);
-        document.body.appendChild(wrapper);
-        wrapper.style.position = 'absolute';
-        wrapper.style.left = '-9999px';
-        wrapper.style.top = '0';
+        });
 
-        const opt = {
-            margin: 10,
-            filename: `Staff_Duty_Roster.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, windowWidth: 1000 },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
+        // Add Signature Block
+        const finalY = doc.lastAutoTable.finalY || 45;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text("__________________________", 50, finalY + 40, { align: 'center' });
+        doc.text("Principal's Signature", 50, finalY + 46, { align: 'center' });
+
+        doc.text("__________________________", 160, finalY + 40, { align: 'center' });
+        doc.text("Administrator's Signature", 160, finalY + 46, { align: 'center' });
 
         try {
-            const pdfBlob = await html2pdf().set(opt).from(wrapper).output('blob');
+            const pdfBlob = doc.output('blob');
             const blobUrl = URL.createObjectURL(pdfBlob);
-            PDFRenderer.previewPDF(blobUrl, opt.filename);
+            PDFRenderer.previewPDF(blobUrl, `Duty_Roster_${term.replace(/\s+/g, '_')}.pdf`);
         } catch (error) {
             console.error(error);
             Notifications.show('Failed to generate PDF', 'error');
-        } finally {
-            document.body.removeChild(wrapper);
         }
     },
 
