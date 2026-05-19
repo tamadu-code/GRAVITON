@@ -150,7 +150,7 @@ h1, h2, h3, .logo {
     padding: 1rem 0.75rem;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.15rem;
     overflow-y: auto;
     scrollbar-width: none;
 }
