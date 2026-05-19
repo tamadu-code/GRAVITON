@@ -14207,21 +14207,25 @@ export const UI = {
 
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     ${classes.length === 0 ? '<div class="col-span-full text-center p-12 bg-white rounded-3xl">No classes found. Please set up classes first.</div>' : classes.map(cls => {
-                        const classSubjects = assignments.filter(a => a.class_name === cls.name);
+                        const classAssignments = assignments.filter(a => a.class_name === cls.name);
                         return `
                             <div class="card shadow-sm h-100" style="background: white; border-radius: 1.5rem; display: flex; flex-direction: column;">
                                 <div class="card-header" style="padding: 1.5rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border-radius: 1.5rem 1.5rem 0 0;">
                                     <h3 class="font-bold text-slate-800">${cls.name}</h3>
-                                    <span class="badge" style="background: #4f46e5; color: white;">${classSubjects.length} Subjects</span>
+                                    <span class="badge" style="background: #4f46e5; color: white;">${classAssignments.length} Subjects</span>
                                 </div>
                                 <div class="card-body" style="padding: 1.5rem; flex: 1;">
                                     <ul style="list-style: none; padding: 0; margin: 0;">
-                                        ${classSubjects.length === 0 ? '<li class="text-slate-400 text-sm italic">No subjects assigned yet.</li>' : classSubjects.map(a => `
+                                        ${classAssignments.length === 0 ? '<li class="text-slate-400 text-sm italic">No subjects assigned yet.</li>' : classAssignments.map(a => {
+                                            const sub = subjects.find(s => s.id === a.subject_id);
+                                            const subName = sub ? sub.name : a.subject_id;
+                                            return `
                                             <li style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #f8fafc;">
-                                                <span class="text-sm font-medium text-slate-700">${a.subject_id}</span>
+                                                <span class="text-sm font-medium text-slate-700">${subName}</span>
                                                 <span class="text-xs text-slate-400">${a.specialization || 'General'}</span>
                                             </li>
-                                        `).join('')}
+                                            `;
+                                        }).join('')}
                                     </ul>
                                 </div>
                                 <div class="card-footer" style="padding: 1rem; border-top: 1px solid #f1f5f9;">
