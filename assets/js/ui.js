@@ -14094,22 +14094,45 @@ export const UI = {
         const settings = await db.settings.toArray();
         const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
         const schoolName = getVal('schoolName', 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
+        const schoolLogo = getVal('schoolLogo', null);
         const session = getVal('currentSession', '2025/2026');
         const term = getVal('currentTerm', '3rd Term');
 
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text(schoolName.toUpperCase(), 105, 20, { align: 'center' });
-        
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`${session} Academic Session`, 105, 26, { align: 'center' });
+        if (schoolLogo) {
+            try {
+                doc.addImage(schoolLogo, 'PNG', 12, 12, 22, 22);
+            } catch (e) {
+                console.error("Failed to add logo to PDF:", e);
+            }
+            
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text(schoolName.toUpperCase(), 38, 18);
+            
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`${session} Academic Session`, 38, 24);
 
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(37, 99, 235); // Blue color for title
-        doc.text(`${term.toUpperCase()} — STAFF DUTY ROSTER`, 105, 34, { align: 'center' });
-        doc.setTextColor(0, 0, 0); // Reset to black
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(37, 99, 235); // Blue color for title
+            doc.text(`${term.toUpperCase()} — STAFF DUTY ROSTER`, 38, 31);
+            doc.setTextColor(0, 0, 0); // Reset to black
+        } else {
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text(schoolName.toUpperCase(), 105, 18, { align: 'center' });
+            
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`${session} Academic Session`, 105, 24, { align: 'center' });
+
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(37, 99, 235); // Blue color for title
+            doc.text(`${term.toUpperCase()} — STAFF DUTY ROSTER`, 105, 31, { align: 'center' });
+            doc.setTextColor(0, 0, 0); // Reset to black
+        }
 
         // Clone table and clean up for autoTable
         const tableClone = sourceElement.querySelector('.data-table').cloneNode(true);
@@ -14268,11 +14291,13 @@ export const UI = {
                 <!-- Roster Display (Print-Optimized) -->
                 <div id="roster-display" class="roster-print-area" style="background: white; border-radius: 20px; padding: 2rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -3px rgba(0,0,0,0.05);">
                     <!-- Print Header -->
-                    <div class="roster-print-header" style="text-align: center; margin-bottom: 1.5rem;">
-                        ${schoolLogo ? `<img src="${schoolLogo}" style="width: 60px; height: 60px; object-fit: contain; margin: 0 auto 0.5rem; display: block;" alt="Logo">` : ''}
-                        <h2 style="font-weight: 900; font-size: 1.4rem; color: #1e293b; text-transform: uppercase; letter-spacing: 0.02em;">${schoolName}</h2>
-                        <p style="color: #64748b; font-size: 0.9rem; font-weight: 600;">${currentSession} Academic Session</p>
-                        <h3 style="font-weight: 800; font-size: 1.1rem; color: #4f46e5; margin-top: 0.5rem; text-transform: uppercase;">${currentTerm} — Staff Duty Roster</h3>
+                    <div class="roster-print-header" style="display: flex; align-items: center; justify-content: ${schoolLogo ? 'flex-start' : 'center'}; gap: 1.5rem; margin-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 1.5rem;">
+                        ${schoolLogo ? `<img src="${schoolLogo}" style="width: 70px; height: 70px; object-fit: contain; flex-shrink: 0;" alt="Logo">` : ''}
+                        <div style="text-align: ${schoolLogo ? 'left' : 'center'};">
+                            <h2 style="font-weight: 900; font-size: 1.4rem; color: #1e293b; text-transform: uppercase; letter-spacing: 0.02em; margin: 0;">${schoolName}</h2>
+                            <p style="color: #64748b; font-size: 0.9rem; font-weight: 600; margin: 0.25rem 0;">${currentSession} Academic Session</p>
+                            <h3 style="font-weight: 800; font-size: 1.1rem; color: #4f46e5; margin: 0.25rem 0 0 0; text-transform: uppercase;">${currentTerm} — Staff Duty Roster</h3>
+                        </div>
                     </div>
 
                     <div class="table-container" style="margin-top: 0;">
