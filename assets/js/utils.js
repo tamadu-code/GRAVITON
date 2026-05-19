@@ -1,3 +1,5 @@
+import db from './db.js';
+
 /**
  * Graviton CMS - Utility Module
  * Logic for Scoring, PDF Reports, and Excel Imports
@@ -124,6 +126,82 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     const doc = existingDoc || new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
+    
+    // Fetch all student scores and subjects to compute GPA/CGPA if needed
+    const [allScores, loadedSubjects] = await Promise.all([
+        db.scores.where('student_id').equals(student.student_id).toArray(),
+        db.subjects.toArray()
+    ]);
+
+    const getGradePoint = (total) => {
+        const s = parseFloat(total) || 0;
+        if (s >= 75) return 5.0; // A1
+        if (s >= 70) return 4.0; // B2
+        if (s >= 65) return 4.0; // B3
+        if (s >= 60) return 3.0; // C4
+        if (s >= 55) return 3.0; // C5
+        if (s >= 50) return 3.0; // C6
+        if (s >= 45) return 2.0; // D7
+        if (s >= 40) return 1.0; // E8
+        return 0.0; // F9
+    };
+
+    const subjectMap = new Map(loadedSubjects.map(sub => [sub.id, parseFloat(sub.credits) || 1]));
+    const getSubjectCredits = (subId) => subjectMap.get(subId) || 1;
+
+    // GPA (Current Term)
+    let currentQP = 0;
+    let currentCredits = 0;
+    for (const sc of scores) {
+        const gp = getGradePoint(sc.total);
+        const credits = getSubjectCredits(sc.subject_id);
+        currentQP += gp * credits;
+        currentCredits += credits;
+    }
+    const termGpa = currentCredits > 0 ? (currentQP / currentCredits).toFixed(2) : '0.00';
+
+    // CGPA (Past and Present Terms)
+    const getSessionYear = (sess) => {
+        if (!sess) return 0;
+        const parts = sess.split('/');
+        return parseInt(parts[0]) || 0;
+    };
+    const getTermVal = (t) => {
+        if (!t) return 0;
+        const norm = t.toLowerCase();
+        if (norm.includes('first')) return 1;
+        if (norm.includes('second')) return 2;
+        if (norm.includes('third')) return 3;
+        return 0;
+    };
+
+    const currentSessYear = getSessionYear(schoolInfo.session);
+    const currentTermVal = getTermVal(schoolInfo.term);
+
+    const relevantScores = allScores.filter(s => {
+        const sYear = getSessionYear(s.session);
+        if (sYear < currentSessYear) return true;
+        if (sYear === currentSessYear) {
+            return getTermVal(s.term) <= currentTermVal;
+        }
+        return false;
+    });
+
+    let cumulativeQP = 0;
+    let cumulativeCredits = 0;
+    const processedKeys = new Set();
+
+    for (const s of relevantScores) {
+        const key = `${s.subject_id}_${s.term}_${s.session}`;
+        if (processedKeys.has(key)) continue;
+        processedKeys.add(key);
+
+        const gp = getGradePoint(s.total);
+        const credits = getSubjectCredits(s.subject_id);
+        cumulativeQP += gp * credits;
+        cumulativeCredits += credits;
+    }
+    const cgpa = cumulativeCredits > 0 ? (cumulativeQP / cumulativeCredits).toFixed(2) : '0.00';
     
     // Helper: Hex to RGB
     const hexToRgb = (hex) => {
@@ -274,8 +352,8 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     if (gSystem === 'Positional Ranking') {
         doc.text(`POSITION: ${schoolInfo.position || 'N/A'} / ${schoolInfo.specializationSize || schoolInfo.classSize || '0'}`, rightX, y);
     } else if (gSystem === 'Point System (5.0 CGPA)') {
-        const gpa = (parseFloat(avg) / 20).toFixed(2); // Simple conversion for demo
-        doc.text(`GPA: ${gpa} / 5.00`, rightX, y);
+        doc.text(`GPA: ${termGpa} / 5.00`, rightX, y);
+        doc.text(`CGPA: ${cgpa} / 5.00`, rightX, y + 4);
     } else {
         doc.text(`OVERALL GRADE: ${ScoringEngine.getGrade(parseFloat(avg))}`, rightX, y);
     }
