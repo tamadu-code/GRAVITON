@@ -14165,15 +14165,37 @@ export const UI = {
             }
         });
 
-        // Add Signature Block
+        // Add Write-up of important weeks
         const finalY = doc.lastAutoTable.finalY || 45;
+        const examWeek = getVal('rosterExamWeek', '6');
+        const breakWeek = getVal('rosterBreakWeek', '7');
+        const closingWeek = getVal('rosterClosingWeek', '14');
+        const principalSignature = getVal('principalSignature', null);
+
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
-        doc.text("__________________________", 50, finalY + 40, { align: 'center' });
-        doc.text("Principal's Signature", 50, finalY + 46, { align: 'center' });
+        doc.text("KEY TERM MILESTONES:", 12, finalY + 12);
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text(`• Mid-Term Exams: Week ${examWeek}`, 15, finalY + 18);
+        doc.text(`• Mid-Term Break: Week ${breakWeek} & ${parseInt(breakWeek) + 1}`, 15, finalY + 23);
+        doc.text(`• Closing Week: Week ${closingWeek}`, 15, finalY + 28);
 
-        doc.text("__________________________", 160, finalY + 40, { align: 'center' });
-        doc.text("Administrator's Signature", 160, finalY + 46, { align: 'center' });
+        // Add Signature Block (Center Aligned)
+        const sigY = finalY + 48;
+        if (principalSignature) {
+            try {
+                doc.addImage(principalSignature, 'PNG', 105 - 17.5, sigY - 14, 35, 12);
+            } catch (e) {
+                console.error("Failed to add principal signature:", e);
+            }
+        }
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text("__________________________", 105, sigY, { align: 'center' });
+        doc.text("Principal's Signature", 105, sigY + 6, { align: 'center' });
 
         try {
             this.showPDFPreview(doc, `Duty_Roster_${term.replace(/\s+/g, '_')}.pdf`);
@@ -14196,6 +14218,17 @@ export const UI = {
         const schoolLogo = getVal('schoolLogo', null);
         const currentSession = getVal('currentSession', '2025/2026');
         const currentTerm = getVal('currentTerm', '1st Term');
+        const rosterStartDate = getVal('rosterStartDate', '');
+        const rosterWeeks = parseInt(getVal('rosterWeeks', '14'));
+        const rosterStaffPerWeek = parseInt(getVal('rosterStaffPerWeek', '2'));
+        const rosterMaxTurns = parseInt(getVal('rosterMaxTurns', '2'));
+        const rosterBreakWeek = parseInt(getVal('rosterBreakWeek', '7'));
+        const rosterExamWeek = parseInt(getVal('rosterExamWeek', '6'));
+        const rosterRevisionWeek = parseInt(getVal('rosterRevisionWeek', '12'));
+        const rosterTerminalWeek = parseInt(getVal('rosterTerminalWeek', '13'));
+        const rosterClosingWeek = parseInt(getVal('rosterClosingWeek', '14'));
+        const rosterStartWeek = parseInt(getVal('rosterStartWeek', '1'));
+        const principalSignature = getVal('principalSignature', null);
 
         // Sort roster by week_start for display
         roster.sort((a, b) => new Date(a.week_start) - new Date(b.week_start));
@@ -14243,41 +14276,45 @@ export const UI = {
                     <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
                         <div style="flex: 1; min-width: 180px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Term Start Date</label>
-                            <input type="date" id="roster-start-date" class="input" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;" onclick="this.showPicker()">
+                            <input type="date" id="roster-start-date" class="input" value="${rosterStartDate}" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;" onclick="this.showPicker()">
                         </div>
                         <div style="flex: 0.5; min-width: 100px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Weeks in Term</label>
-                            <input type="number" id="roster-weeks" class="input" value="14" min="4" max="20" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                            <input type="number" id="roster-weeks" class="input" value="${rosterWeeks}" min="4" max="20" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
                         </div>
                         <div style="flex: 0.5; min-width: 100px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Staff Per Week</label>
-                            <input type="number" id="roster-staff-per-week" class="input" value="2" min="1" max="5" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                            <input type="number" id="roster-staff-per-week" class="input" value="${rosterStaffPerWeek}" min="1" max="5" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
                         </div>
                         <div style="flex: 0.5; min-width: 100px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Turns Per Term</label>
-                            <input type="number" id="roster-max-turns" class="input" value="2" min="1" max="5" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                            <input type="number" id="roster-max-turns" class="input" value="${rosterMaxTurns}" min="1" max="5" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                        </div>
+                        <div style="flex: 0.5; min-width: 100px;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Duty Begins Wk</label>
+                            <input type="number" id="roster-start-week" class="input" value="${rosterStartWeek}" min="1" max="20" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
                         </div>
                     </div>
                     <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem;">
                         <div style="flex: 1; min-width: 100px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Mid-Term Break Wk</label>
-                            <input type="number" id="roster-break-week" class="input" value="7" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                            <input type="number" id="roster-break-week" class="input" value="${rosterBreakWeek}" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
                         </div>
                         <div style="flex: 1; min-width: 100px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Mid-Term Exams Wk</label>
-                            <input type="number" id="roster-exam-week" class="input" value="6" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                            <input type="number" id="roster-exam-week" class="input" value="${rosterExamWeek}" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
                         </div>
                         <div style="flex: 1; min-width: 100px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Revision Wk</label>
-                            <input type="number" id="roster-revision-week" class="input" value="12" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                            <input type="number" id="roster-revision-week" class="input" value="${rosterRevisionWeek}" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
                         </div>
                         <div style="flex: 1; min-width: 100px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Terminal Exams Wk</label>
-                            <input type="number" id="roster-terminal-week" class="input" value="13" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                            <input type="number" id="roster-terminal-week" class="input" value="${rosterTerminalWeek}" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
                         </div>
                         <div style="flex: 1; min-width: 100px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Closing Wk</label>
-                            <input type="number" id="roster-closing-week" class="input" value="14" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                            <input type="number" id="roster-closing-week" class="input" value="${rosterClosingWeek}" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
                         </div>
                     </div>
                 </div>
@@ -14319,7 +14356,7 @@ export const UI = {
                                     if (weekNum === breakWeekConfig) dateNote = ' <span style="color:#ef4444;font-size:0.75rem;font-weight:700;white-space:nowrap;">(Break on Fri)</span>';
                                     if (weekNum === breakWeekConfig + 1) dateNote = ' <span style="color:#ef4444;font-size:0.75rem;font-weight:700;white-space:nowrap;">(Break on Mon)</span>';
 
-                                    const staffNames = w.staffIds.map(sid => {
+                                    const staffNames = w.staffIds.filter(sid => sid && sid !== 'NONE').map(sid => {
                                         const s = staff.find(st => st.id === sid);
                                         return s ? s.full_name : 'Unknown';
                                     });
@@ -14331,7 +14368,10 @@ export const UI = {
                                             <td style="padding: 0.85rem 1rem;" data-label="STATUS"><div class="td-val"><span style="background: ${colors.border}; color: ${colors.text}; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem;">${status}</span></div></td>
                                             <td style="padding: 0.85rem 1rem;" data-label="STAFF ON DUTY">
                                                 <div class="td-val" style="display:flex; flex-wrap:wrap; gap:0.25rem; justify-content:flex-end;">
-                                                ${staffNames.map(n => `<span style="background: #818cf8; color: white; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem;">${n}</span>`).join('')}
+                                                ${staffNames.length === 0
+                                                    ? `<span style="background: #f1f5f9; color: #64748b; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem; font-style: italic;">No Duty Assigned</span>`
+                                                    : staffNames.map(n => `<span style="background: #818cf8; color: white; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem;">${n}</span>`).join('')
+                                                }
                                                 </div>
                                             </td>
                                             <td style="text-align: right; padding: 0.85rem 1rem;" class="no-print">
@@ -14348,17 +14388,24 @@ export const UI = {
                         </table>
                     </div>
 
+                    <!-- Key Term Milestones Write-up -->
+                    <div class="roster-key-dates" style="margin-top: 1.5rem; padding: 1rem 1.5rem; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+                        <h4 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="info" style="width: 16px; color: #4f46e5;"></i> Key Term Milestones
+                        </h4>
+                        <div style="display: flex; gap: 2.5rem; font-size: 0.8rem; color: #475569; font-weight: 600; flex-wrap: wrap;">
+                            <div><strong style="color: #1e293b;">Mid-Term Exams:</strong> Week ${rosterExamWeek}</div>
+                            <div><strong style="color: #1e293b;">Mid-Term Break:</strong> Week ${rosterBreakWeek} & ${rosterBreakWeek + 1}</div>
+                            <div><strong style="color: #1e293b;">Closing Week:</strong> Week ${rosterClosingWeek}</div>
+                        </div>
+                    </div>
+
                     <!-- Print-Only Signature Block -->
-                    <div class="roster-signature-block" style="display: none; margin-top: 3rem; padding-top: 1rem;">
-                        <div style="display: flex; justify-content: space-between;">
-                            <div style="text-align: center; flex: 1;">
-                                <div style="border-top: 1px solid #000; width: 200px; margin: 0 auto;"></div>
-                                <p style="font-size: 0.8rem; margin-top: 0.25rem; font-weight: 700;">Principal's Signature</p>
-                            </div>
-                            <div style="text-align: center; flex: 1;">
-                                <div style="border-top: 1px solid #000; width: 200px; margin: 0 auto;"></div>
-                                <p style="font-size: 0.8rem; margin-top: 0.25rem; font-weight: 700;">Date</p>
-                            </div>
+                    <div class="roster-signature-block" style="display: none; margin-top: 3.5rem; padding-top: 1rem; text-align: center;">
+                        <div style="display: inline-block; text-align: center; width: 250px; position: relative;">
+                            ${principalSignature ? `<img src="${principalSignature}" style="height: 50px; display: block; margin: 0 auto 0.5rem; object-fit: contain;" alt="Principal Signature">` : '<div style="height: 50px;"></div>'}
+                            <div style="border-top: 1.5px solid #000; width: 100%; margin: 0 auto;"></div>
+                            <p style="font-size: 0.8rem; margin-top: 0.4rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #1e293b;">Principal's Signature</p>
                         </div>
                     </div>
                 </div>
@@ -14379,12 +14426,37 @@ export const UI = {
         const revisionWeek = parseInt(document.getElementById('roster-revision-week').value) || 12;
         const terminalWeek = parseInt(document.getElementById('roster-terminal-week').value) || 13;
         const closingWeek = parseInt(document.getElementById('roster-closing-week').value) || 14;
+        const breakWeek = parseInt(document.getElementById('roster-break-week').value) || 7;
+        const startWeek = parseInt(document.getElementById('roster-start-week').value) || 1;
 
         if (!startDateStr) return Notifications.show('Please set a Term Start Date.', 'warning');
+
+        // Save settings to db for persistence
+        const settingsToSave = [
+            { key: 'rosterStartDate', value: startDateStr },
+            { key: 'rosterWeeks', value: totalWeeks.toString() },
+            { key: 'rosterStaffPerWeek', value: staffPerWeek.toString() },
+            { key: 'rosterMaxTurns', value: maxTurns.toString() },
+            { key: 'rosterBreakWeek', value: breakWeek.toString() },
+            { key: 'rosterExamWeek', value: examWeek.toString() },
+            { key: 'rosterRevisionWeek', value: revisionWeek.toString() },
+            { key: 'rosterTerminalWeek', value: terminalWeek.toString() },
+            { key: 'rosterClosingWeek', value: closingWeek.toString() },
+            { key: 'rosterStartWeek', value: startWeek.toString() }
+        ];
+        for (const s of settingsToSave) {
+            const existing = await db.settings.where('key').equals(s.key).first();
+            if (existing) {
+                await db.settings.update(existing.id, { value: s.value });
+            } else {
+                await db.settings.add(s);
+            }
+        }
         if (fullTimeStaff.length < staffPerWeek) return Notifications.show(`Need at least ${staffPerWeek} full-time staff. Only ${fullTimeStaff.length} available.`, 'error');
 
-        // All weeks require staff assignment now
-        const totalSlotsNeeded = totalWeeks * staffPerWeek;
+        // Calculate slots needed based on active weeks
+        const activeWeeks = totalWeeks - startWeek + 1;
+        const totalSlotsNeeded = Math.max(0, activeWeeks) * staffPerWeek;
         const maxAvailableSlots = fullTimeStaff.length * maxTurns;
 
         if (totalSlotsNeeded > maxAvailableSlots) {
@@ -14418,6 +14490,16 @@ export const UI = {
             weekEnd.setDate(weekStart.getDate() + 4); // Mon-Fri
 
             const status = getWeekStatus(w);
+
+            if (w < startWeek) {
+                newRoster.push(prepareForSync({
+                    id: crypto.randomUUID(), staff_id: 'NONE', duty_type: status,
+                    week_start: weekStart.toISOString().split('T')[0],
+                    week_end: weekEnd.toISOString().split('T')[0],
+                    week_number: w
+                }));
+                continue;
+            }
 
             // Pick staff for this week with anti-repetition
             const weekStaff = [];
