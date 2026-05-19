@@ -13548,12 +13548,11 @@ export const UI = {
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
-        // Dynamic fee breakdown updater
         const amountInput = document.getElementById('payment-amount');
         if (amountInput) {
             amountInput.addEventListener('input', () => {
                 const val = parseFloat(amountInput.value) || 0;
-                const total = val + ${maintenanceFee};
+                const total = val + maintenanceFee;
                 document.getElementById('bd-school-fee').textContent = '₦' + val.toLocaleString();
                 document.getElementById('bd-total').textContent = '₦' + total.toLocaleString();
                 document.getElementById('bd-btn-total').textContent = total.toLocaleString();
