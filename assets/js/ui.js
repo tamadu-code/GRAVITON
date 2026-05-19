@@ -14159,9 +14159,7 @@ export const UI = {
         doc.text("Administrator's Signature", 160, finalY + 46, { align: 'center' });
 
         try {
-            const pdfBlob = doc.output('blob');
-            const blobUrl = URL.createObjectURL(pdfBlob);
-            PDFRenderer.previewPDF(blobUrl, `Duty_Roster_${term.replace(/\s+/g, '_')}.pdf`);
+            this.showPDFPreview(doc, `Duty_Roster_${term.replace(/\s+/g, '_')}.pdf`);
         } catch (error) {
             console.error(error);
             Notifications.show('Failed to generate PDF', 'error');
