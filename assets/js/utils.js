@@ -316,7 +316,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     
     // Report Title Box
     doc.setFillColor(theme.r, theme.g, theme.b);
-    doc.rect(30, 33, pageWidth - 60, 6, 'F');
+    doc.rect(45, 33, pageWidth - 90, 6, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
