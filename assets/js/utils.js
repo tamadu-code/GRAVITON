@@ -895,13 +895,14 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
                 columnStyles: {
                     0: { cellWidth: 10, halign: 'center' },
                     1: { cellWidth: 75 },
-                    2: { cellWidth: 18, halign: 'center' },
-                    3: { cellWidth: 18, halign: 'center' },
-                    4: { cellWidth: 18, halign: 'center' },
-                    5: { cellWidth: 18, halign: 'center' },
-                    6: { cellWidth: 18, halign: 'center' },
-                    7: { cellWidth: 18, halign: 'center' }
-                }
+                    2: { cellWidth: 16, halign: 'center' },
+                    3: { cellWidth: 16, halign: 'center' },
+                    4: { cellWidth: 16, halign: 'center' },
+                    5: { cellWidth: 16, halign: 'center' },
+                    6: { cellWidth: 16, halign: 'center' },
+                    7: { cellWidth: 16, halign: 'center' }
+                },
+                margin: { left: 12, right: 12 }
             });
             
             // Footer
