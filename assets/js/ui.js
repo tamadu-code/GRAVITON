@@ -138,12 +138,6 @@ export const UI = {
                         <iframe src="${blobUrl}#toolbar=0" style="width: 100%; height: 100%; border: none;"></iframe>
                     </div>
                 </div>
-
-                <!-- Floating Info (Bottom Left) -->
-                <div class="pdf-preview-footer" style="position: fixed; bottom: 30px; left: 30px; background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(8px); padding: 0.75rem 1.25rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 0.75rem; color: #94a3b8; font-size: 0.75rem; pointer-events: none; z-index: 10;">
-                    <i data-lucide="info" style="width: 14px; color: #3b82f6;"></i>
-                    <span>Scroll within the document to review all pages. All signatures are automatically embedded.</span>
-                </div>
             </div>
         `;
         
