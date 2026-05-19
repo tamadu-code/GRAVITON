@@ -184,45 +184,24 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         doc.text("LOGO", 22.5, 23, { align: 'center' });
     }
     
-    // School Name & Details
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.setTextColor(theme.r * 0.5, theme.g * 0.5, theme.b * 0.5); // Darker version of theme
-    doc.text(schoolInfo.name.toUpperCase(), pageWidth / 2 + 10, 15, { align: 'center' });
-    
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(0, 0, 0);
-    doc.text(schoolInfo.address.toUpperCase(), pageWidth / 2 + 10, 20, { align: 'center' });
-    doc.text(`Tel: ${schoolInfo.phone} | Email: ${schoolInfo.email}`, pageWidth / 2 + 10, 23.5, { align: 'center' });
-    
-    doc.setFont('helvetica', 'bolditalic');
-    doc.setTextColor(theme.r, theme.g, theme.b);
-    doc.text(`Motto: ${schoolInfo.motto}`, pageWidth / 2 + 10, 27, { align: 'center' });
-    
-    // Report Title Box
-    doc.setFillColor(theme.r, theme.g, theme.b);
-    doc.rect(40, 32, pageWidth - 80, 7, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text("SCHOOL REPORT CARD", pageWidth / 2, 37, { align: 'center' });
-    
-    // --- Student Info Grid ---
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(9);
-    let y = 48;
-    const leftX = 12;
-    const midX = 85;
-    const rightX = 135;
-    
-    const avg = scores.length > 0 ? (scores.reduce((a, b) => a + (b.total || 0), 0) / scores.length).toFixed(2) : 0;
-    
-    // --- Passport Photo Rendering ---
-    const passportX = pageWidth - 32; // x = 178
-    const passportY = 42;
+    // --- Passport Photo Rendering (Header Section) ---
+    const passportX = pageWidth - 30;
+    const passportY = 10;
     const passportW = 20;
-    const passportH = 22;
+    const passportH = 25;
+
+    const renderPlaceholderSilhouette = () => {
+        // Light gray background inside the frame
+        doc.setFillColor(241, 245, 249);
+        doc.rect(passportX, passportY, passportW, passportH, 'F');
+        
+        // Head (circle)
+        doc.setFillColor(148, 163, 184); // slate-400
+        doc.ellipse(passportX + passportW / 2, passportY + passportH / 3 + 0.5, 3.5, 4.0, 'F');
+        
+        // Torso (shoulder arc)
+        doc.ellipse(passportX + passportW / 2, passportY + passportH - 2, 7.5, 5.0, 'F');
+    };
 
     if (passportImg) {
         try {
@@ -240,19 +219,40 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.setLineWidth(0.5);
     doc.rect(passportX, passportY, passportW, passportH);
 
-    function renderPlaceholderSilhouette() {
-        // Light gray background inside the frame
-        doc.setFillColor(241, 245, 249);
-        doc.rect(passportX, passportY, passportW, passportH, 'F');
-        
-        // Head (circle)
-        doc.setFillColor(148, 163, 184); // slate-400
-        doc.ellipse(passportX + passportW / 2, passportY + passportH / 3 + 0.5, 3.5, 3.5, 'F');
-        
-        // Torso (shoulder arc)
-        doc.ellipse(passportX + passportW / 2, passportY + passportH - 2, 7.5, 4.5, 'F');
-    }
-
+    // School Name & Details (Balanced Centering)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(theme.r * 0.5, theme.g * 0.5, theme.b * 0.5); // Darker version of theme
+    doc.text(schoolInfo.name.toUpperCase(), pageWidth / 2, 15, { align: 'center' });
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(0, 0, 0);
+    doc.text(schoolInfo.address.toUpperCase(), pageWidth / 2, 20, { align: 'center' });
+    doc.text(`Tel: ${schoolInfo.phone} | Email: ${schoolInfo.email}`, pageWidth / 2, 23.5, { align: 'center' });
+    
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setTextColor(theme.r, theme.g, theme.b);
+    doc.text(`Motto: ${schoolInfo.motto}`, pageWidth / 2, 27, { align: 'center' });
+    
+    // Report Title Box
+    doc.setFillColor(theme.r, theme.g, theme.b);
+    doc.rect(30, 38, pageWidth - 60, 7, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text("SCHOOL REPORT CARD", pageWidth / 2, 43, { align: 'center' });
+    
+    // --- Student Info Grid ---
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    let y = 52;
+    const leftX = 12;
+    const midX = 85;
+    const rightX = 145;
+    
+    const avg = scores.length > 0 ? (scores.reduce((a, b) => a + (b.total || 0), 0) / scores.length).toFixed(2) : 0;
+    
     // Row 1
     doc.setTextColor(0, 0, 0);
     doc.text(`NAME: ${student.name.toUpperCase()}`, leftX, y);
