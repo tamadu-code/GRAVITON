@@ -665,33 +665,43 @@ export async function generateMastersheet(className, students, subjects, scores,
     
     // Fetch School Info
     const db = (await import('./db.js')).default;
-    const schoolLogo = await db.settings.get('schoolLogo');
-    const schoolName = await db.settings.get('schoolName');
-    const schoolProfile = await db.settings.get('schoolProfile');
+    const settings = await db.settings.toArray();
+    const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
     
-    const sName = schoolName ? schoolName.value : "GRAVITON ACADEMY";
-    const sProfile = schoolProfile ? schoolProfile.value : "Excellence and Character";
+    const sName = getVal('schoolName', 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
+    const sAddress = getVal('schoolAddress', '123 Education Street, Academic City');
+    const sPhone = getVal('schoolPhone', '08035461711, 08037316183, 08058134229');
+    const sMotto = getVal('schoolMotto', 'Knowledge is Power');
+    const logoBase64 = getVal('schoolLogo', null);
     
     // Header
-    let startY = 15;
-    if (schoolLogo && schoolLogo.value) {
+    let startY = 12;
+    if (logoBase64) {
         try {
-            doc.addImage(schoolLogo.value, 'PNG', 135, 5, 25, 25);
-            startY = 35;
+            doc.addImage(logoBase64, 'PNG', 12, 5, 25, 25);
         } catch (e) { console.warn("Mastersheet Logo error", e); }
     }
     
-    doc.setFontSize(18);
+    doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text(sName, 148, startY, { align: 'center' });
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 116, 139);
-    doc.text(sProfile, 148, startY + 6, { align: 'center' });
+    doc.text(sName.toUpperCase(), 148, startY, { align: 'center' });
     
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    doc.text(sAddress.toUpperCase(), 148, startY + 5, { align: 'center' });
+    doc.text(`Tel: ${sPhone}`, 148, startY + 9, { align: 'center' });
+    
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setTextColor(37, 99, 235); // theme color
+    doc.text(`Motto: ${sMotto}`, 148, startY + 13, { align: 'center' });
+    
+    // Matrix Title
     doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(`ACADEMIC MASTERSHEET: ${className} | ${term} | ${session}`, 148, startY + 14, { align: 'center' });
+    doc.text(`ACADEMIC MASTERSHEET: ${className} | ${term} | ${session}`, 148, startY + 22, { align: 'center' });
     
     // Matrix Construction
     const head = ['Student Name', ...subjects.map(s => s.name.substring(0, 4)), 'Total', 'Avg', 'Rank'];
@@ -720,7 +730,7 @@ export async function generateMastersheet(className, students, subjects, scores,
     });
     
     doc.autoTable({
-        startY: startY + 20,
+        startY: startY + 28,
         head: [head],
         body: body,
         theme: 'grid',
