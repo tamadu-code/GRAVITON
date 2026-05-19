@@ -3740,7 +3740,50 @@ export const UI = {
                 return;
             }
             
-            // 2. Broad Score Retrieval
+            // 2. Auto-Pull CBT Scores into Ledger
+            try {
+                const exams = await db.cbt_exams.where('subject_id').equals(subId).toArray();
+                const relevantExams = exams.filter(e => 
+                    String(e.term).toLowerCase().trim() === String(term).toLowerCase().trim() && 
+                    String(e.session).toLowerCase().trim() === String(session).toLowerCase().trim() &&
+                    e.score_field && e.status === 'Completed'
+                );
+
+                if (relevantExams.length > 0) {
+                    const cbtResults = await db.cbt_results.toArray();
+                    for (const exam of relevantExams) {
+                        const examResults = cbtResults.filter(r => String(r.exam_id) === String(exam.id) && (r.status === 'Completed' || r.status === 'Submitted'));
+                        for (const r of examResults) {
+                            const standardId = `${r.student_id}_${subId}_${term}_${session}`;
+                            let scoreRecord = await db.scores.get(standardId);
+                            
+                            if (!scoreRecord) {
+                                scoreRecord = {
+                                    id: standardId,
+                                    student_id: r.student_id,
+                                    subject_id: subId,
+                                    class_name: cls,
+                                    term: term,
+                                    session: session,
+                                    updated_at: new Date().toISOString()
+                                };
+                            }
+                            
+                            const parsedScore = parseFloat(r.score);
+                            if (!isNaN(parsedScore) && scoreRecord[exam.score_field] !== parsedScore) {
+                                scoreRecord[exam.score_field] = parsedScore;
+                                scoreRecord.updated_at = new Date().toISOString();
+                                // We inject it locally to immediately reflect, and mark it for sync if changed
+                                await db.scores.put({ ...scoreRecord, is_synced: 0 });
+                            }
+                        }
+                    }
+                }
+            } catch (cbtErr) {
+                console.warn('[CBT Pull] Failed to auto-pull CBT scores:', cbtErr);
+            }
+
+            // 3. Broad Score Retrieval
             let rawScores = await db.scores.toArray();
             
             // 3. Resilient Multi-Level Filtering
@@ -4067,6 +4110,9 @@ export const UI = {
             const session = sessionFilter.value;
             const className = classFilter.value;
 
+            console.log(`[Grade Commit] Starting commit for ${className} | Sub: ${subId} | Term: ${term} | Sess: ${session}`);
+            console.log(`[Grade Commit] Found ${rows.length} desktop rows to process.`);
+
             if (!subId) return Notifications.show('Select a course first', 'error');
 
             Notifications.show('Committing grades to ledger...', 'info');
@@ -4111,6 +4157,8 @@ export const UI = {
                 }
             }
 
+            console.log(`[Grade Commit] Processed ${entries.length} students with active scores.`);
+
             // Calculate Rankings (Only for students with actual scores)
             entries.sort((a, b) => b.total - a.total);
             let currentRank = 1;
@@ -4120,11 +4168,16 @@ export const UI = {
                 entries[i].grade = ScoringEngine.getGrade(entries[i].total);
                 entries[i].remark = ScoringEngine.getRemark(entries[i].total);
                 
+                console.log(`[Grade Commit] Saving ${entries[i].student_id}: Total ${entries[i].total}, Rank ${entries[i].rank}`);
                 await db.scores.put(prepareForSync(entries[i]));
             }
 
             try {
-                await this.debouncedSync();
+                if (window.UI && typeof window.UI.debouncedSync === 'function') {
+                    await window.UI.debouncedSync();
+                } else if (typeof debouncedSync === 'function') {
+                    await debouncedSync();
+                }
                 Notifications.show('Grades committed and synced to cloud!', 'success');
             } catch (e) {
                 Notifications.show('Grades saved locally. Sync will complete when online.', 'info');

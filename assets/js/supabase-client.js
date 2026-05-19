@@ -108,6 +108,7 @@ export async function syncToCloud() {
                 const CHUNK_SIZE = 50;
                 for (let i = 0; i < unsynced.length; i += CHUNK_SIZE) {
                     const chunk = unsynced.slice(i, i + CHUNK_SIZE);
+                    const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
                     
                     // Filter logic for Question Bank questions (exclude from cloud sync)
                     let dataToSync = chunk.map(item => {
@@ -263,7 +264,6 @@ export async function syncToCloud() {
                     }
 
                     // Mark as synced locally
-                    const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
                     for (const item of chunk) {
                         if (item[pk]) {
                             try {
