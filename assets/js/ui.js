@@ -15718,12 +15718,25 @@ export const UI = {
             
             const isAbsent = !signInTime && !signOutTime && !rawStatus.includes('present') && !rawStatus.includes('late');
 
+            let isLate = rawStatus.includes('late') || rawStatus.includes('delay');
+            if (!isLate && signInTime) {
+                const match = signInTime.match(/(\d{1,2}):(\d{2})/);
+                if (match) {
+                    const hrs = parseInt(match[1], 10);
+                    const mins = parseInt(match[2], 10);
+                    // Any sign in strictly after 8:00 is late
+                    if (hrs > 8 || (hrs === 8 && mins > 0)) {
+                        isLate = true;
+                    }
+                }
+            }
+
             records.push({
                 student_id: studentId,
                 date: date,
                 sign_in: signInTime,
                 sign_out: signOutTime,
-                is_late: rawStatus.includes('late') || rawStatus.includes('delay'),
+                is_late: isLate,
                 status: isAbsent ? 'Absent' : 'Present'
             });
             uniqueDates.add(date);
