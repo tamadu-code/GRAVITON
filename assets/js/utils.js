@@ -802,13 +802,23 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
     for (const subject of subjectsArray) {
         const subjectName = typeof subject === 'string' ? subject : (subject.name || 'Unspecified Subject');
         const teacherName = subject.teacherName || '________________________________________';
-        const totalPages = Math.ceil(students.length / pageSize);
+        const track = subject.track || '';
+
+        let targetStudents = students;
+        if (track && track !== 'common subject' && track !== 'general') {
+            targetStudents = students.filter(s => {
+                const studentTrack = (s.sub_class || '').trim().toLowerCase();
+                return studentTrack === track || studentTrack === 'general';
+            });
+        }
+        
+        const totalPages = Math.ceil(targetStudents.length / pageSize) || 1;
         
         for (let p = 0; p < totalPages; p++) {
             if (!firstPage) doc.addPage();
             firstPage = false;
             
-            const pageStudents = students.slice(p * pageSize, (p + 1) * pageSize);
+            const pageStudents = targetStudents.slice(p * pageSize, (p + 1) * pageSize);
             
             // --- Header Section (Optical Centering) ---
             if (schoolInfo.logo) {

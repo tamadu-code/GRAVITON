@@ -3730,9 +3730,10 @@ export const UI = {
 
             // Filter students based on track specialization (Science / Arts / Commercial)
             if (subSpecialization && subSpecialization !== 'common subject' && subSpecialization !== 'general') {
-                targetStudents = targetStudents.filter(s => 
-                    (s.sub_class || '').trim().toLowerCase() === subSpecialization
-                );
+                targetStudents = targetStudents.filter(s => {
+                    const studentTrack = (s.sub_class || '').trim().toLowerCase();
+                    return studentTrack === subSpecialization || studentTrack === 'general';
+                });
             }
 
             if (targetStudents.length === 0) {
@@ -4206,12 +4207,13 @@ export const UI = {
 
             if (classSubjects.length === 0) return Notifications.show('No subjects assigned to this stream', 'error');
 
-            // Enrich subjects with teacher names
+            // Enrich subjects with teacher names and specialization tracks
             const enrichedSubjects = classSubjects.map(subj => {
                 const assign = classAssignments.find(a => a.subject_id === subj.id);
                 const teacher = assign ? profiles.find(p => p.id === assign.teacher_id) : null;
                 return {
                     ...subj,
+                    track: assign && assign.specialization ? assign.specialization.trim().toLowerCase() : '',
                     teacherName: teacher ? teacher.full_name : '________________________________'
                 };
             });
