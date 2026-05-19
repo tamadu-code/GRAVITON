@@ -8637,6 +8637,21 @@ export const UI = {
         // NEW ATTEMPT: Show instructions first
         this.renderCBTInstructions(examId);
     },
+
+    updateUnifiedQuestionCount() {
+        const checkboxes = document.querySelectorAll('.unified-subject-cb');
+        let total = 0;
+        checkboxes.forEach(cb => {
+            if (cb.checked) {
+                total += parseInt(cb.getAttribute('data-question-count')) || 0;
+            }
+        });
+        const countEl = document.getElementById('unified-question-count');
+        if (countEl) {
+            countEl.textContent = `${total} Items`;
+        }
+    },
+
     validateAndStartUnifiedExam(examId) {
         const checkboxes = document.querySelectorAll('.unified-subject-cb');
         const selectedSubjectIds = [];
@@ -8673,7 +8688,6 @@ export const UI = {
 
             limit = sections.reduce((sum, s) => sum + (parseInt(s.question_count) || 0), 0);
             displaySubject = "Unified Composite Exam";
-            questionsCount = limit; // In unified, we assume the bank has enough
 
             if (sections.length > 0) {
                 startExamOnclick = `UI.validateAndStartUnifiedExam('${examId}')`;
@@ -8687,6 +8701,10 @@ export const UI = {
                     }
                     return false;
                 });
+
+                // Question count should be based on visible (stream-filtered) sections only
+                questionsCount = visibleSections.reduce((sum, s) => sum + (parseInt(s.question_count) || 0), 0);
+                limit = questionsCount;
 
                 subjectSelectionHtml = `
                     <div style="background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; margin-bottom: 2.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
@@ -8724,7 +8742,7 @@ export const UI = {
                                 return `
                                     <label class="cbt-sub-selection-row" style="display: flex; align-items: center; justify-content: space-between; background: white; padding: 0.85rem 1.25rem; border-radius: 12px; border: 1px solid #e2e8f0; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; transition: all 0.2s ease; margin-bottom: 0;">
                                         <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                            <input type="checkbox" class="unified-subject-cb" data-subject-id="${sec.subject_id}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} style="width: 20px; height: 20px; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; accent-color: #4338ca;">
+                                            <input type="checkbox" class="unified-subject-cb" data-subject-id="${sec.subject_id}" data-question-count="${parseInt(sec.question_count) || 0}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} onchange="UI.updateUnifiedQuestionCount()" style="width: 20px; height: 20px; cursor: ${isDisabled ? 'not-allowed' : 'pointer'}; accent-color: #4338ca;">
                                             <span style="font-weight: 750; color: ${isDisabled ? '#64748b' : '#1e293b'}; font-size: 0.95rem;">${subName}${labelSuffix}</span>
                                         </div>
                                         <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-align: right;">
@@ -8765,7 +8783,7 @@ export const UI = {
                         </div>
                         <div style="background: #f8fafc; padding: 1.5rem; border-radius: 20px; border: 1px solid #f1f5f9; text-align: center;">
                             <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.1em; margin-bottom: 0.5rem;">QUESTIONS</div>
-                            <div style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${Math.min(limit, questionsCount)} Items</div>
+                            <div id="unified-question-count" style="font-size: 1.1rem; font-weight: 900; color: #1e293b;">${Math.min(limit, questionsCount)} Items</div>
                         </div>
                     </div>
 
@@ -10477,6 +10495,28 @@ export const UI = {
 
             const studentAnswers = result.answers || {};
 
+            // Filter sections to only show subjects the student actually took
+            // Cross-reference answered question IDs with question bank to find which subjects were answered
+            const answeredQIds = Object.keys(studentAnswers);
+            let answeredSubjectIds = new Set();
+            if (answeredQIds.length > 0) {
+                const answeredBankQ = await db.cbt_question_bank.where('id').anyOf(answeredQIds).toArray();
+                const answeredStdQ = await db.cbt_questions.where('id').anyOf(answeredQIds).toArray();
+                [...answeredBankQ, ...answeredStdQ].forEach(q => {
+                    if (q.subject_id) answeredSubjectIds.add(q.subject_id);
+                });
+            }
+            // If we couldn't resolve subjects from DB, also check this.currentQuestions
+            if (answeredSubjectIds.size === 0 && this.currentQuestions && this.currentQuestions.length > 0) {
+                this.currentQuestions.forEach(q => {
+                    if (q.subject_id) answeredSubjectIds.add(q.subject_id);
+                });
+            }
+            // Only show sections the student actually answered (if we have subject data)
+            const filteredSections = answeredSubjectIds.size > 0 
+                ? sections.filter(sec => answeredSubjectIds.has(sec.subject_id))
+                : sections;
+
             // Real-time Cloud Scores Sync fallback
             if (navigator.onLine) {
                 const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
@@ -10512,7 +10552,7 @@ export const UI = {
             const uuidStudentId = profile?.id || result.student_id;
 
             const sectionDetails = [];
-            for (const sec of sections) {
+            for (const sec of filteredSections) {
                 const sectionScoreId = `${standardStudentId}_${sec.subject_id}_${exam.term}_${exam.session}`;
                 const altSectionScoreId = `${uuidStudentId}_${sec.subject_id}_${exam.term}_${exam.session}`;
                 let scoreRecord = null;
@@ -10677,9 +10717,16 @@ export const UI = {
                 const answersToUse = result.answers || this.userAnswers || {};
                 const qIds = Object.keys(answersToUse);
                 
-                // Load questions from local DB question bank or questions table
+                // PRIORITY: Use live session questions first (fully hydrated with options from the actual exam)
+                // DB lookups are only used as fallback for admin re-scoring when currentQuestions is unavailable
                 let allQuestions = [];
-                if (qIds.length > 0) {
+                
+                if (this.currentQuestions && this.currentQuestions.length > 0 && 
+                    this.currentExam && this.currentExam.id === exam.id) {
+                    allQuestions = this.currentQuestions;
+                    console.log(`[SCORE POST] Using ${allQuestions.length} live session questions (hydrated).`);
+                } else if (qIds.length > 0) {
+                    // Fallback: load from DB (for admin re-scoring or background processing)
                     const bankQuestions = await db.cbt_question_bank.where('id').anyOf(qIds).toArray();
                     const standardQuestions = await db.cbt_questions.where('id').anyOf(qIds).toArray();
                     
@@ -10698,10 +10745,7 @@ export const UI = {
                     bankQuestions.forEach(q => qMap[q.id] = q);
                     standardQuestions.forEach(q => qMap[q.id] = q);
                     allQuestions = qIds.map(id => qMap[id]).filter(Boolean);
-                }
-                
-                if (allQuestions.length === 0 && this.currentQuestions && this.currentQuestions.length > 0) {
-                    allQuestions = this.currentQuestions;
+                    console.log(`[SCORE POST] Using ${allQuestions.length} DB-loaded questions (fallback).`);
                 }
 
                 // Normalize questions
