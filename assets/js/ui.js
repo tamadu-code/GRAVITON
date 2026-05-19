@@ -229,6 +229,18 @@ export const UI = {
                             await client.from('subject_assignments').delete().eq('class_name', classDetails.name);
                         }
                     }
+                    
+                    if (table === 'students') {
+                        console.log(`[SafeDelete] Cleaning up cloud children for student: ${id}`);
+                        await client.from('attendance').delete().eq('student_id', id);
+                        await client.from('attendance_records').delete().eq('student_id', id);
+                        await client.from('scores').delete().eq('student_id', id);
+                        await client.from('payments').delete().eq('student_id', id);
+                        await client.from('cbt_results').delete().eq('student_id', id);
+                        await client.from('parent_links').delete().eq('student_id', id);
+                        await client.from('student_analytics').delete().eq('student_id', id);
+                        await client.from('profiles').delete().eq('assigned_id', id);
+                    }
 
                     const { error: delError } = await client.from(table).delete().eq(pk, id);
                     if (delError) {
@@ -236,13 +248,6 @@ export const UI = {
                         // Record stays in audit_logs for retry on next sync
                     } else {
                         console.log(`[SafeDelete] Cloud delete OK: ${table}/${id}`);
-                    }
-                    
-                    if (table === 'students') {
-                        await client.from('attendance').delete().eq('student_id', id);
-                        await client.from('attendance_records').delete().eq('student_id', id);
-                        await client.from('scores').delete().eq('student_id', id);
-                        await client.from('payments').delete().eq('student_id', id);
                     }
                 }
             }
