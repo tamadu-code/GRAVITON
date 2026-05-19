@@ -7008,12 +7008,21 @@ export const UI = {
                                 <option value="Principal" ${staff.role === 'Principal' ? 'selected' : ''}>Principal</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label>Employment Type</label>
+                            <select id="edit-staff-employment-type" class="input" style="width: 100%;">
+                                <option value="Full-Time" ${staff.employment_type === 'Full-Time' || !staff.employment_type ? 'selected' : ''}>Full-Time</option>
+                                <option value="Part-Time" ${staff.employment_type === 'Part-Time' ? 'selected' : ''}>Part-Time</option>
+                                <option value="Contract" ${staff.employment_type === 'Contract' ? 'selected' : ''}>Contract</option>
+                            </select>
+                        </div>
                     </div>
                 `;
                 this.showModal('Update Staff Records', modalHtml, async () => {
                     const name = document.getElementById('edit-staff-name').value;
                     const email = document.getElementById('edit-staff-email').value.trim();
                     const role = document.getElementById('edit-staff-role').value;
+                    const empType = document.getElementById('edit-staff-employment-type').value;
                     
                     if (!email) return Notifications.show('Email is required for staff login.', 'warning');
                     
@@ -7021,6 +7030,7 @@ export const UI = {
                         full_name: name, 
                         email: email,
                         role: role, 
+                        employment_type: empType,
                         updated_at: new Date().toISOString() 
                     });
                     Notifications.show('Staff records updated', 'success');
