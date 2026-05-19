@@ -902,7 +902,7 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
             doc.text(teacherName.toUpperCase(), 75, metaY + 10);
             
             // --- Main Score Table ---
-            const head = [['S/N', 'STUDENT NAME', 'ASS', 'T1', 'T2', 'PRJ', 'EXAM', 'TOTAL']];
+            const head = [['S/N', 'STUDENT NAME', 'ASS\n(10)', 'T1\n(10)', 'T2\n(10)', 'PRJ\n(10)', 'EXAM\n(60)', 'TOTAL\n(100)']];
             const body = pageStudents.map((s, idx) => [
                 (p * pageSize) + idx + 1,
                 s.name.toUpperCase(),
@@ -922,17 +922,17 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
                 head: head,
                 body: body,
                 theme: 'grid',
-                styles: { fontSize: 8, cellPadding: 1.5, minCellHeight: 7 },
+                styles: { fontSize: 8, cellPadding: 1.5, minCellHeight: 8 },
                 headStyles: { fillColor: [241, 245, 249], textColor: 0, halign: 'center', fontStyle: 'bold', lineWidth: 0.1 },
                 columnStyles: {
                     0: { cellWidth: 10, halign: 'center' },
-                    1: { cellWidth: 75 },
-                    2: { cellWidth: 16, halign: 'center' },
-                    3: { cellWidth: 16, halign: 'center' },
-                    4: { cellWidth: 16, halign: 'center' },
-                    5: { cellWidth: 16, halign: 'center' },
-                    6: { cellWidth: 16, halign: 'center' },
-                    7: { cellWidth: 16, halign: 'center' }
+                    1: { cellWidth: 70 },
+                    2: { cellWidth: 15, halign: 'center' },
+                    3: { cellWidth: 15, halign: 'center' },
+                    4: { cellWidth: 15, halign: 'center' },
+                    5: { cellWidth: 15, halign: 'center' },
+                    6: { cellWidth: 15, halign: 'center' },
+                    7: { cellWidth: 15, halign: 'center' }
                 },
                 margin: { left: 12, right: 12 }
             });
