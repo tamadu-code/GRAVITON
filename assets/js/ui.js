@@ -14192,18 +14192,25 @@ export const UI = {
                                     const start = new Date(w.week_start);
                                     const end = new Date(w.week_end);
                                     const weekNum = w.week_number || '—';
+                                    
+                                    // Mid-Term Break Date Annotations
+                                    const breakWeekConfig = parseInt(document.getElementById('roster-break-week')?.value) || 7;
+                                    let dateNote = '';
+                                    if (weekNum === breakWeekConfig) dateNote = ' <span style="color:#ef4444;font-size:0.75rem;font-weight:700;white-space:nowrap;">(Break on Fri)</span>';
+                                    if (weekNum === breakWeekConfig + 1) dateNote = ' <span style="color:#ef4444;font-size:0.75rem;font-weight:700;white-space:nowrap;">(Break on Mon)</span>';
+
                                     const staffNames = w.staffIds.map(sid => {
                                         const s = staff.find(st => st.id === sid);
                                         return s ? s.full_name : 'Unknown';
                                     });
-                                    const isBreak = status === 'Mid-Term Break';
+                                    
                                     return `
                                         <tr style="background: ${colors.bg};">
                                             <td style="font-weight: 800; color: ${colors.text}; padding: 0.85rem 1rem;" data-label="TERM WEEK">Week ${weekNum}</td>
-                                            <td style="color: ${colors.text}; padding: 0.85rem 1rem;" data-label="DATE RANGE">${start.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — ${end.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}</td>
+                                            <td style="color: ${colors.text}; padding: 0.85rem 1rem;" data-label="DATE RANGE">${start.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — ${end.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}${dateNote}</td>
                                             <td style="padding: 0.85rem 1rem;" data-label="STATUS"><span style="background: ${colors.border}; color: ${colors.text}; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem;">${status}</span></td>
                                             <td style="padding: 0.85rem 1rem;" data-label="STAFF ON DUTY">
-                                                ${isBreak ? '<span style="color: #991b1b; font-style: italic; font-weight: 600;">— No Duty —</span>' : staffNames.map(n => `<span style="background: #818cf8; color: white; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem; margin-right: 0.4rem; display: inline-block; margin-bottom: 0.25rem;">${n}</span>`).join('')}
+                                                ${staffNames.map(n => `<span style="background: #818cf8; color: white; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem; margin-right: 0.4rem; display: inline-block; margin-bottom: 0.25rem;">${n}</span>`).join('')}
                                             </td>
                                             <td style="text-align: right; padding: 0.85rem 1rem;" class="no-print">
                                                 <button class="btn btn-secondary btn-sm" onclick="UI.deleteRosterWeek('${w.week_start}')" style="background: none; color: #94a3b8; padding: 0.2rem 0.4rem;">
@@ -14244,7 +14251,6 @@ export const UI = {
         const totalWeeks = parseInt(document.getElementById('roster-weeks').value) || 14;
         const staffPerWeek = parseInt(document.getElementById('roster-staff-per-week').value) || 2;
         const maxTurns = parseInt(document.getElementById('roster-max-turns').value) || 2;
-        const breakWeek = parseInt(document.getElementById('roster-break-week').value) || 7;
         const examWeek = parseInt(document.getElementById('roster-exam-week').value) || 6;
         const revisionWeek = parseInt(document.getElementById('roster-revision-week').value) || 12;
         const terminalWeek = parseInt(document.getElementById('roster-terminal-week').value) || 13;
@@ -14253,9 +14259,8 @@ export const UI = {
         if (!startDateStr) return Notifications.show('Please set a Term Start Date.', 'warning');
         if (fullTimeStaff.length < staffPerWeek) return Notifications.show(`Need at least ${staffPerWeek} full-time staff. Only ${fullTimeStaff.length} available.`, 'error');
 
-        // Calculate active weeks (exclude break)
-        const activeWeeks = totalWeeks - 1; // break week excluded
-        const totalSlotsNeeded = activeWeeks * staffPerWeek;
+        // All weeks require staff assignment now
+        const totalSlotsNeeded = totalWeeks * staffPerWeek;
         const maxAvailableSlots = fullTimeStaff.length * maxTurns;
 
         if (totalSlotsNeeded > maxAvailableSlots) {
@@ -14275,17 +14280,12 @@ export const UI = {
         let poolIndex = 0;
 
         const getWeekStatus = (weekNum) => {
-            if (weekNum === breakWeek) return 'Mid-Term Break';
             if (weekNum === examWeek) return 'Mid-Term Exams';
             if (weekNum === revisionWeek) return 'Revision';
             if (weekNum === terminalWeek) return 'Terminal Exams';
             if (weekNum === closingWeek) return 'Closing';
             return 'Active Duty';
         };
-
-        // Use the first teacher's UUID as a dummy valid UUID for break weeks
-        // This avoids Supabase foreign key constraint violations while still keeping the row
-        const dummyUUID = fullTimeStaff[0].id;
 
         for (let w = 1; w <= totalWeeks; w++) {
             const weekStart = new Date(startDate);
@@ -14294,17 +14294,6 @@ export const UI = {
             weekEnd.setDate(weekStart.getDate() + 4); // Mon-Fri
 
             const status = getWeekStatus(w);
-
-            if (status === 'Mid-Term Break') {
-                // Record break week using the dummy UUID to satisfy DB constraints
-                newRoster.push(prepareForSync({
-                    id: crypto.randomUUID(), staff_id: dummyUUID, duty_type: status,
-                    week_start: weekStart.toISOString().split('T')[0],
-                    week_end: weekEnd.toISOString().split('T')[0],
-                    week_number: w
-                }));
-                continue;
-            }
 
             // Pick staff for this week with anti-repetition
             const weekStaff = [];

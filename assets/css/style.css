@@ -5078,21 +5078,27 @@ body.window-blurred.exam-mode .cbt-exam-container {
    DUTY ROSTER — Print & Responsive Styles
    ============================================= */
 @media print {
-    body { overflow: visible !important; }
-    .app-container { display: block !important; }
-    .sidebar, .top-bar, .no-print, .roster-config-panel,
-    .notification-container, .sidebar-footer { display: none !important; }
-    .content-area { overflow: visible !important; padding: 0 !important; }
-    .main-content { overflow: visible !important; }
-    .roster-print-area {
+    body * {
+        visibility: hidden;
+    }
+    #roster-display, #roster-display * {
+        visibility: visible;
+    }
+    #roster-display {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0 !important;
         border: none !important;
         box-shadow: none !important;
-        border-radius: 0 !important;
-        padding: 10mm !important;
     }
     .roster-print-header { display: block !important; }
     .roster-signature-block { display: block !important; }
-    .data-table { border: 1px solid #000 !important; }
+    .no-print { display: none !important; }
+    
+    .data-table { border: 1px solid #000 !important; width: 100% !important; }
     .data-table th, .data-table td {
         border: 1px solid #000 !important;
         color: #000 !important;
@@ -5105,14 +5111,14 @@ body.window-blurred.exam-mode .cbt-exam-container {
 
 @media (max-width: 768px) {
     .roster-config-panel { padding: 1rem !important; }
-    .roster-print-area .data-table thead { display: none; }
+    .roster-print-area .data-table thead { display: none !important; }
     .roster-print-area .data-table tr {
-        display: flex; flex-direction: column;
-        border: 1px solid #e2e8f0; border-radius: 12px;
-        margin-bottom: 0.75rem; padding: 0.75rem;
+        display: flex !important; flex-direction: column !important;
+        border: 1px solid #e2e8f0 !important; border-radius: 12px !important;
+        margin-bottom: 0.75rem !important; padding: 0.75rem !important;
     }
     .roster-print-area .data-table td {
-        display: flex; justify-content: space-between; align-items: center;
+        display: flex !important; justify-content: space-between !important; align-items: center !important;
         padding: 0.4rem 0 !important; border: none !important;
     }
     .roster-print-area .data-table td::before {
