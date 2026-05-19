@@ -4,10 +4,10 @@
 
 import { UI } from './ui.js';
 import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, registerUser, resetPassword, startSyncLoop, syncToCloud, syncFromCloud } from './supabase-client.js';
-import db from './db.js';
+import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 
-console.log('--- GRAVITON CORE v24.0 (BUILD v225) - INITIALIZING ---');
+console.log('--- GRAVITON CORE v24.0 (BUILD v226) - INITIALIZING ---');
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -381,6 +381,61 @@ async function loadAuthenticatedApp(authUser) {
         } catch (e) { console.warn('Self-heal deferred:', e); }
     }
     await repairCBTData();
+
+    // ─── One-Time Migration: Resolve UUID to Student ID in Scores & Results ───
+    async function resolveUUIDStudentIds() {
+        try {
+            const profiles = await db.profiles.toArray();
+            const profileMap = profiles.reduce((acc, p) => {
+                if (p.assigned_id) acc[p.id] = p.assigned_id;
+                return acc;
+            }, {});
+
+            let repairedCount = 0;
+
+            // 1. Repair db.scores
+            const allScores = await db.scores.toArray();
+            for (const s of allScores) {
+                const standardId = profileMap[s.student_id];
+                if (standardId) {
+                    console.log(`[Self-Heal] Mapping score student_id: ${s.student_id} -> ${standardId}`);
+                    const newId = s.id.replace(s.student_id, standardId);
+                    await db.scores.delete(s.id);
+                    await db.scores.put(prepareForSync({
+                        ...s,
+                        id: newId,
+                        student_id: standardId
+                    }));
+                    repairedCount++;
+                }
+            }
+
+            // 2. Repair db.cbt_results
+            const allResults = await db.cbt_results.toArray();
+            for (const r of allResults) {
+                const standardId = profileMap[r.student_id];
+                if (standardId) {
+                    console.log(`[Self-Heal] Mapping cbt_results student_id: ${r.student_id} -> ${standardId}`);
+                    await db.cbt_results.delete(r.id);
+                    await db.cbt_results.put(prepareForSync({
+                        ...r,
+                        student_id: standardId
+                    }));
+                    repairedCount++;
+                }
+            }
+
+            if (repairedCount > 0) {
+                console.log(`[Self-Heal] Repaired ${repairedCount} legacy UUID records.`);
+                if (typeof syncToCloud === 'function') {
+                    syncToCloud();
+                }
+            }
+        } catch (e) {
+            console.warn('[Self-Heal] Legacy UUID repair deferred:', e);
+        }
+    }
+    await resolveUUIDStudentIds();
 
     // ─── One-Time Migration: Backfill class_name on Question Bank ───
     async function patchBankClassNames() {

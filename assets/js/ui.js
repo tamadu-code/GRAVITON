@@ -10453,7 +10453,18 @@ export const UI = {
 
     async showUnifiedScorecard(studentId, examId) {
         try {
-            const result = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            let result = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
+            if (!result) {
+                // Alternate ID lookup mapping UUID <-> Student ID mismatch
+                const profiles = await db.profiles.toArray();
+                const profile = profiles.find(p => p.assigned_id === studentId || p.id === studentId);
+                if (profile) {
+                    const alternateId = profile.assigned_id === studentId ? profile.id : profile.assigned_id;
+                    if (alternateId) {
+                        result = await db.cbt_results.where('[student_id+exam_id]').equals([alternateId, examId]).first();
+                    }
+                }
+            }
             if (!result) return Notifications.show('Result details not found.', 'error');
 
             const exam = await db.cbt_exams.get(examId);
@@ -10471,9 +10482,18 @@ export const UI = {
                 const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (supabase) {
                     try {
+                        const profiles = await db.profiles.toArray();
+                        const profile = profiles.find(p => p.assigned_id === result.student_id || p.id === result.student_id);
+                        const targetIds = [result.student_id];
+                        if (profile) {
+                            if (profile.assigned_id) targetIds.push(profile.assigned_id);
+                            if (profile.id) targetIds.push(profile.id);
+                        }
+                        const uniqueTargetIds = [...new Set(targetIds)];
+
                         const { data } = await supabase.from('scores')
                             .select('*')
-                            .eq('student_id', result.student_id)
+                            .in('student_id', uniqueTargetIds)
                             .eq('term', exam.term)
                             .eq('session', exam.session);
                         if (data && data.length > 0) {
@@ -10486,20 +10506,34 @@ export const UI = {
                 }
             }
 
+            const profiles = await db.profiles.toArray();
+            const profile = profiles.find(p => p.assigned_id === result.student_id || p.id === result.student_id);
+            const standardStudentId = profile?.assigned_id || result.student_id;
+            const uuidStudentId = profile?.id || result.student_id;
+
             const sectionDetails = [];
             for (const sec of sections) {
-                const sectionScoreId = `${result.student_id}_${sec.subject_id}_${exam.term}_${exam.session}`;
+                const sectionScoreId = `${standardStudentId}_${sec.subject_id}_${exam.term}_${exam.session}`;
+                const altSectionScoreId = `${uuidStudentId}_${sec.subject_id}_${exam.term}_${exam.session}`;
                 let scoreRecord = null;
                 try {
                     scoreRecord = await db.scores.get(sectionScoreId);
                     if (!scoreRecord) {
+                        scoreRecord = await db.scores.get(altSectionScoreId);
+                    }
+                    if (!scoreRecord) {
                         const matches = await db.scores.where('[student_id+subject_id+term+session]')
-                            .equals([result.student_id, sec.subject_id, exam.term, exam.session]).toArray();
+                            .equals([standardStudentId, sec.subject_id, exam.term, exam.session]).toArray();
                         if (matches.length > 0) scoreRecord = matches[0];
+                        else {
+                            const altMatches = await db.scores.where('[student_id+subject_id+term+session]')
+                                .equals([uuidStudentId, sec.subject_id, exam.term, exam.session]).toArray();
+                            if (altMatches.length > 0) scoreRecord = altMatches[0];
+                        }
                     }
                 } catch(e) {
                     // Fallback
-                    const matches = await db.scores.where('student_id').equals(result.student_id).toArray();
+                    const matches = await db.scores.where('student_id').anyOf([standardStudentId, uuidStudentId]).toArray();
                     scoreRecord = matches.find(s => s.subject_id === sec.subject_id && s.term === exam.term && s.session === exam.session);
                 }
 
@@ -10569,7 +10603,6 @@ export const UI = {
                             <span style="font-size: 0.9rem; color: #94a3b8;">/ ${sectionDetails.reduce((sum, s) => sum + s.targetMax, 0).toFixed(0)}</span>
                         </span>
                     </div>
-
                     <button onclick="document.getElementById('unified-scorecard-modal').remove()" style="width: 100%; margin-top: 1.5rem; height: 48px; border-radius: 12px; border: none; background: #4338ca; color: white; font-weight: 800; font-size: 0.9rem; cursor: pointer; transition: opacity 0.2s;">Close Scorecard</button>
                 </div>
             `;
@@ -10602,6 +10635,8 @@ export const UI = {
                 }
             }
             
+            const finalStudentId = student?.student_id || student?.assigned_id || result.student_id;
+
             if (!exam) {
                 console.warn(`[SCORE POST] Missing exam context for (${result.exam_id}). Cannot post to scoresheet.`);
                 return;
@@ -10710,13 +10745,13 @@ export const UI = {
                     const targetMax = parseFloat(sec.target_mark) || 60;
                     const scaledScore = secMaxPossible > 0 ? (secRawScore / secMaxPossible) * targetMax : 0;
                     
-                    const sectionScoreId = `${result.student_id}_${sec.subject_id}_${exam.term}_${exam.session}`;
+                    const sectionScoreId = `${finalStudentId}_${sec.subject_id}_${exam.term}_${exam.session}`;
                     let scoreRecord = await db.scores.get(sectionScoreId);
                     
                     if (!scoreRecord) {
                         scoreRecord = {
                             id: sectionScoreId,
-                            student_id: result.student_id,
+                            student_id: finalStudentId,
                             subject_id: sec.subject_id,
                             term: exam.term,
                             session: exam.session,
@@ -10753,19 +10788,19 @@ export const UI = {
             }
 
             // Deterministic Standard ID: studentId_subjectId_term_session
-            const standardId = `${result.student_id}_${exam.subject_id}_${exam.term}_${exam.session}`;
+            const standardId = `${finalStudentId}_${exam.subject_id}_${exam.term}_${exam.session}`;
 
             // Robust Lookup: Find any record matching these criteria (even with different ID format)
             let existingScores = [];
             try {
                 existingScores = await db.scores
                     .where('[student_id+subject_id+term+session]')
-                    .equals([result.student_id, exam.subject_id, exam.term, exam.session])
+                    .equals([finalStudentId, exam.subject_id, exam.term, exam.session])
                     .toArray();
             } catch (e) {
                 // Fallback for older database versions without the composite index
                 existingScores = await db.scores
-                    .where('student_id').equals(result.student_id)
+                    .where('student_id').equals(finalStudentId)
                     .and(s => s.subject_id === exam.subject_id && s.term === exam.term && s.session === exam.session)
                     .toArray();
             }
@@ -10799,7 +10834,7 @@ export const UI = {
             const finalScore = prepareForSync({
                 ...scoreData,
                 id: standardId, // Enforce standard ID format
-                student_id: result.student_id,
+                student_id: finalStudentId,
                 subject_id: exam.subject_id,
                 term: exam.term,
                 session: exam.session,
@@ -10810,7 +10845,6 @@ export const UI = {
             await db.scores.put(finalScore);
             console.log(`[SCORE POST] Successfully ${scoreData.id ? 'updated' : 'created'} record: ${standardId} with score ${scoreValue}`);
 
-            
             // Fire cloud sync (debouncedSync is fire-and-forget, not a Promise)
             this.debouncedSync();
             console.log('[SCORE POST] Cloud sync triggered.');
@@ -14763,10 +14797,11 @@ export const UI = {
                 const allScores = await db.scores.where('term').equals(exam.term).toArray();
                 const termSessionScores = allScores.filter(sc => sc.session === exam.session);
                 termSessionScores.forEach(sc => {
-                    if (!studentScoresMap[sc.student_id]) {
-                        studentScoresMap[sc.student_id] = {};
+                    const resolvedId = profileMap[sc.student_id] || sc.student_id;
+                    if (!studentScoresMap[resolvedId]) {
+                        studentScoresMap[resolvedId] = {};
                     }
-                    studentScoresMap[sc.student_id][sc.subject_id] = sc;
+                    studentScoresMap[resolvedId][sc.subject_id] = sc;
                 });
             } catch (e) {
                 console.warn('[CBT] Failed to fetch scoreboard breakdown scores:', e);
