@@ -709,16 +709,37 @@ export const UI = {
             // Ensure assignedClasses is a flat array of strings and non-empty to prevent Dexie errors
             const validClasses = Array.isArray(assignedClasses) ? assignedClasses.filter(c => typeof c === 'string' && c.trim() !== '') : [];
             if (validClasses.length > 0) {
-                myStudents = await db.students.where('class_name').anyOf(validClasses).filter(s => s.is_active !== false).toArray();
+                const studentsInClasses = await db.students.where('class_name').anyOf(validClasses).filter(s => s.is_active !== false).toArray();
+                myStudents = studentsInClasses.filter(student => {
+                    const studentClass = (student.class_name || '').trim().toLowerCase();
+                    const studentTrack = (student.sub_class || '').trim().toLowerCase();
+                    
+                    return assignments.some(a => {
+                        const asgnClass = (a.class_name || '').trim().toLowerCase();
+                        if (studentClass !== asgnClass) return false;
+                        
+                        const subSpecialization = (a.specialization || '').trim().toLowerCase();
+                        if (!subSpecialization || subSpecialization === 'common' || subSpecialization === 'common subject' || subSpecialization === 'general') {
+                            return true;
+                        }
+                        if (studentTrack === subSpecialization || studentTrack === 'general') {
+                            return true;
+                        }
+                        if (subSpecialization === `${studentTrack}-optional`) {
+                            return true;
+                        }
+                        return false;
+                    });
+                });
             } else {
                 myStudents = [];
             }
         }
         
-        const sessionSetting = await db.settings.get('currentSession') || await db.settings.get('current_session');
-        const termSetting = await db.settings.get('currentTerm') || await db.settings.get('current_term');
-        const session = sessionSetting?.value || '2025/2026';
-        const term = termSetting?.value || '1st Term';
+        const settingsList = await db.settings.toArray();
+        const getSetting = (key) => settingsList.find(s => s.key === key || s.id === key || s.id === `SET_${key.toUpperCase()}`)?.value;
+        const session = getSetting('currentSession') || getSetting('current_session') || '2025/2026';
+        const term = getSetting('currentTerm') || getSetting('current_term') || '1st Term';
         
         // Active Learners: Students with at least one score this term
         // Optimization: Fetch only keys and filter by student IDs
@@ -1436,8 +1457,35 @@ export const UI = {
                 ...assignments.map(a => a.class_name),
                 ...formAssignments.map(f => f.class_name)
             ]);
+            const formClasses = new Set(formAssignments.map(f => f.class_name));
+            
             streams = streams.filter(s => assignedClassNames.has(s.name));
-            activeStudents = activeStudents.filter(s => assignedClassNames.has(s.class_name));
+            activeStudents = activeStudents.filter(student => {
+                if (!assignedClassNames.has(student.class_name)) return false;
+                
+                const studentClass = (student.class_name || '').trim().toLowerCase();
+                const studentTrack = (student.sub_class || '').trim().toLowerCase();
+                
+                // Form master can see everyone in their form class
+                if (formClasses.has(student.class_name)) return true;
+                
+                return assignments.some(a => {
+                    const asgnClass = (a.class_name || '').trim().toLowerCase();
+                    if (studentClass !== asgnClass) return false;
+                    
+                    const subSpecialization = (a.specialization || '').trim().toLowerCase();
+                    if (!subSpecialization || subSpecialization === 'common' || subSpecialization === 'common subject' || subSpecialization === 'general') {
+                        return true;
+                    }
+                    if (studentTrack === subSpecialization || studentTrack === 'general') {
+                        return true;
+                    }
+                    if (subSpecialization === `${studentTrack}-optional`) {
+                        return true;
+                    }
+                    return false;
+                });
+            });
         }
         
         const getEnrollment = (className) => activeStudents.filter(s => s.class_name === className).length;
@@ -2270,14 +2318,33 @@ export const UI = {
         // --- Teacher Specific Filtering ---
         if (isTeacher) {
             const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
-            const assignedClasses = [...new Set(assignments.map(a => a.class_name))];
-            
-            // Also include form teacher classes
             const formAssignments = await db.form_teachers.where('teacher_id').equals(teacherId).toArray();
-            formAssignments.forEach(fa => assignedClasses.push(fa.class_name));
+            const formClasses = new Set(formAssignments.map(f => f.class_name));
             
-            const teacherClasses = [...new Set(assignedClasses)];
-            students = students.filter(s => teacherClasses.includes(s.class_name));
+            students = students.filter(student => {
+                const studentClass = (student.class_name || '').trim().toLowerCase();
+                const studentTrack = (student.sub_class || '').trim().toLowerCase();
+                
+                // Form master can see everyone in their form class
+                if (formClasses.has(student.class_name)) return true;
+                
+                return assignments.some(a => {
+                    const asgnClass = (a.class_name || '').trim().toLowerCase();
+                    if (studentClass !== asgnClass) return false;
+                    
+                    const subSpecialization = (a.specialization || '').trim().toLowerCase();
+                    if (!subSpecialization || subSpecialization === 'common' || subSpecialization === 'common subject' || subSpecialization === 'general') {
+                        return true;
+                    }
+                    if (studentTrack === subSpecialization || studentTrack === 'general') {
+                        return true;
+                    }
+                    if (subSpecialization === `${studentTrack}-optional`) {
+                        return true;
+                    }
+                    return false;
+                });
+            });
         }
 
         // Default: Only show active students
