@@ -299,32 +299,33 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
 
     // School Name & Details (Balanced Centering)
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
+    doc.setFontSize(14.5);
     doc.setTextColor(theme.r * 0.5, theme.g * 0.5, theme.b * 0.5); // Darker version of theme
     doc.text(schoolInfo.name.toUpperCase(), pageWidth / 2, 15, { align: 'center' });
     
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(8.5);
     doc.setTextColor(0, 0, 0);
     doc.text(schoolInfo.address.toUpperCase(), pageWidth / 2, 20, { align: 'center' });
     doc.text(`Tel: ${schoolInfo.phone} | Email: ${schoolInfo.email}`, pageWidth / 2, 23.5, { align: 'center' });
     
     doc.setFont('helvetica', 'bolditalic');
+    doc.setFontSize(8.5);
     doc.setTextColor(theme.r, theme.g, theme.b);
     doc.text(`Motto: ${schoolInfo.motto}`, pageWidth / 2, 27, { align: 'center' });
     
     // Report Title Box
     doc.setFillColor(theme.r, theme.g, theme.b);
-    doc.rect(30, 38, pageWidth - 60, 7, 'F');
+    doc.rect(30, 33, pageWidth - 60, 6, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text("SCHOOL REPORT CARD", pageWidth / 2, 43, { align: 'center' });
+    doc.text("SCHOOL REPORT CARD", pageWidth / 2, 37.2, { align: 'center' });
     
     // --- Student Info Grid ---
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(9);
-    let y = 52;
+    let y = 46;
     const leftX = 12;
     const midX = 85;
     const rightX = 145;
