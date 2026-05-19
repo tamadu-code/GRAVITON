@@ -13327,98 +13327,108 @@ export const UI = {
         const students = await db.students.toArray();
         const studentMap = students.reduce((acc, s) => ({...acc, [s.student_id]: s.name}), {});
         
+        const totalRevenue = payments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+        const todayIntake = payments.filter(p => p.date === new Date().toISOString().split('T')[0]).reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+        
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="background: #f8fafc; min-height: 100vh; padding: 2rem;">
-                <div class="view-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; background: white; padding: 1.5rem; border-radius: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 1rem;">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 2rem; border-radius: 28px; box-shadow: 0 10px 25px -5px rgba(15,23,42,0.3); flex-wrap: wrap; gap: 1rem; color: white;">
                     <div>
-                        <h1 style="font-size: 2rem; font-weight: 900; color: #1e293b; margin: 0;">Financial Operations</h1>
-                        <p style="color: #64748b; margin-top: 0.5rem; font-weight: 500;">Accounts & Revenue Management Portal</p>
+                        <h1 style="font-size: 2.25rem; font-weight: 950; margin: 0; display: flex; align-items: center; gap: 0.75rem;"><i data-lucide="wallet" style="width: 28px; color: #4ade80;"></i> Financial Operations</h1>
+                        <p style="color: #94a3b8; margin-top: 0.5rem; font-weight: 600;">Accounts & Revenue Management Portal</p>
                     </div>
                     <div style="display: flex; gap: 1rem;">
-                        <button class="btn" onclick="UI.showFinanceSettingsModal()" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 14px; height: 44px; width: 44px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Finance Settings">
+                        <button class="btn" onclick="UI.showFinanceSettingsModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; height: 48px; width: 48px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Finance Settings">
                             <i data-lucide="settings" style="width: 20px;"></i>
                         </button>
-                        <button class="btn" onclick="UI.renderFeeStructures()" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 14px; height: 44px; padding: 0 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
+                        <button class="btn" onclick="UI.renderFeeStructures()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; height: 48px; padding: 0 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
                             <i data-lucide="layers" style="width: 18px;"></i> Fee Config
                         </button>
-                        <button class="btn btn-primary" onclick="UI.showManualPaymentModal()" style="background: #1e293b; border: none; border-radius: 14px; height: 44px; padding: 0 1.5rem; font-weight: 800; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(30, 41, 59, 0.3); white-space: nowrap;">
+                        <button class="btn btn-primary" onclick="UI.showManualPaymentModal()" style="background: #4ade80; color: #064e3b; border: none; border-radius: 16px; height: 48px; padding: 0 1.5rem; font-weight: 900; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 10px 15px -3px rgba(74, 222, 128, 0.4); white-space: nowrap;">
                             <i data-lucide="plus-circle"></i> Record Payment
                         </button>
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                    <div class="stat-card" style="background: white; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
-                        <div style="background: #dcfce7; color: #16a34a; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
+                    <div class="stat-card" style="background: white; padding: 2rem; border-radius: 28px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); position: relative; overflow: hidden;">
+                        <div style="position: absolute; top: 0; right: 0; width: 100px; height: 100px; background: linear-gradient(135deg, #dcfce7, transparent); border-bottom-left-radius: 100px; opacity: 0.5;"></div>
+                        <div style="background: #dcfce7; color: #16a34a; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">
                             <i data-lucide="trending-up"></i>
                         </div>
-                        <div style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Total Revenue</div>
-                        <div style="font-size: 1.75rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;">₦${payments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0).toLocaleString()}</div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Total Revenue</div>
+                        <div style="font-size: 2rem; font-weight: 950; color: #1e293b; margin-top: 0.25rem;">₦${totalRevenue.toLocaleString()}</div>
                     </div>
-                    <div class="stat-card" style="background: white; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
-                        <div style="background: #e0e7ff; color: #4338ca; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                    <div class="stat-card" style="background: white; padding: 2rem; border-radius: 28px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); position: relative; overflow: hidden;">
+                        <div style="position: absolute; top: 0; right: 0; width: 100px; height: 100px; background: linear-gradient(135deg, #e0e7ff, transparent); border-bottom-left-radius: 100px; opacity: 0.5;"></div>
+                        <div style="background: #e0e7ff; color: #4338ca; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">
                             <i data-lucide="users"></i>
                         </div>
-                        <div style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Total Payees</div>
-                        <div style="font-size: 1.75rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;">${new Set(payments.map(p => p.student_id)).size}</div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Total Payees</div>
+                        <div style="font-size: 2rem; font-weight: 950; color: #1e293b; margin-top: 0.25rem;">${new Set(payments.map(p => p.student_id)).size}</div>
                     </div>
-                    <div class="stat-card" style="background: white; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
-                        <div style="background: #fef3c7; color: #d97706; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                    <div class="stat-card" style="background: white; padding: 2rem; border-radius: 28px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); position: relative; overflow: hidden;">
+                        <div style="position: absolute; top: 0; right: 0; width: 100px; height: 100px; background: linear-gradient(135deg, #fef3c7, transparent); border-bottom-left-radius: 100px; opacity: 0.5;"></div>
+                        <div style="background: #fef3c7; color: #d97706; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1.25rem;">
                             <i data-lucide="clock"></i>
                         </div>
-                        <div style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Pending</div>
-                        <div style="font-size: 1.75rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;">${payments.filter(p => p.status !== 'success').length}</div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Pending Txns</div>
+                        <div style="font-size: 2rem; font-weight: 950; color: #1e293b; margin-top: 0.25rem;">${payments.filter(p => p.status !== 'success').length}</div>
                     </div>
-                    <div class="stat-card" style="background: #1e293b; padding: 2rem; border-radius: 24px; color: white; box-shadow: 0 10px 15px -3px rgba(30, 41, 59, 0.3);">
-                        <div style="background: rgba(255,255,255,0.1); color: white; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                    <div class="stat-card" style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 2rem; border-radius: 28px; color: white; box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4); position: relative; overflow: hidden;">
+                        <div style="position: absolute; top: 0; right: 0; width: 120px; height: 120px; background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%);"></div>
+                        <div style="background: rgba(255,255,255,0.2); color: white; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 1.25rem; backdrop-filter: blur(4px);">
                             <i data-lucide="zap"></i>
                         </div>
-                        <div style="font-size: 0.75rem; font-weight: 800; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.05em;">Today's Intake</div>
-                        <div style="font-size: 1.75rem; font-weight: 900; margin-top: 0.25rem;">₦${payments.filter(p => p.date === new Date().toISOString().split('T')[0]).reduce((a, b) => a + (parseFloat(b.amount) || 0), 0).toLocaleString()}</div>
+                        <div style="font-size: 0.75rem; font-weight: 800; color: rgba(255,255,255,0.8); text-transform: uppercase; letter-spacing: 0.05em;">Today's Intake</div>
+                        <div style="font-size: 2rem; font-weight: 950; margin-top: 0.25rem;">₦${todayIntake.toLocaleString()}</div>
                     </div>
                 </div>
 
-                <div class="card" style="background: white; border-radius: 24px; padding: 0; overflow: hidden; border: 1px solid #f1f5f9;">
-                    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
-                        <h3 style="font-weight: 800; color: #1e293b; margin: 0;">Payment Ledger</h3>
-                        <div style="position: relative; flex: 1; min-width: 180px; max-width: 300px;">
-                            <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 16px; color: #94a3b8;"></i>
-                            <input type="text" placeholder="Search references..." style="padding-left: 2.75rem; border-radius: 12px; border: 1px solid #e2e8f0; height: 40px; width: 100%; font-size: 0.85rem; box-sizing: border-box;">
+                <div class="card" style="background: white; border-radius: 28px; padding: 0; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                    <div style="padding: 1.5rem 2rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; background: #f8fafc;">
+                        <h3 style="font-weight: 900; color: #1e293b; margin: 0; font-size: 1.25rem;">Payment Ledger</h3>
+                        <div style="position: relative; flex: 1; min-width: 200px; max-width: 350px;">
+                            <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 18px; color: #94a3b8;"></i>
+                            <input type="text" placeholder="Search references or students..." style="padding-left: 3rem; border-radius: 14px; border: 1px solid #cbd5e1; height: 44px; width: 100%; font-size: 0.9rem; font-weight: 600; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); transition: all 0.2s;">
                         </div>
                     </div>
-                    <div class="table-container">
+                    <div class="table-container" style="max-height: 600px; overflow-y: auto;">
                         <table class="data-table">
                             <thead>
-                                <tr style="background: #f8fafc;">
-                                    <th style="padding: 1.25rem 2rem;">TRANSACTION DATE</th>
-                                    <th>STUDENT NAME</th>
-                                    <th>REFERENCE</th>
-                                    <th>AMOUNT</th>
-                                    <th>STATUS</th>
-                                    <th style="text-align: right; padding-right: 2rem;">ACTIONS</th>
+                                <tr style="background: white;">
+                                    <th style="padding: 1.25rem 2rem; color: #64748b; font-weight: 800; font-size: 0.75rem;">TRANSACTION DATE</th>
+                                    <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">STUDENT INFO</th>
+                                    <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">CATEGORY & REF</th>
+                                    <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">AMOUNT</th>
+                                    <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">STATUS</th>
+                                    <th style="text-align: right; padding-right: 2rem; color: #64748b; font-weight: 800; font-size: 0.75rem;">ACTIONS</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${payments.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding: 5rem;">No payment records found.</td></tr>' : payments.map(p => `
-                                    <tr>
+                                ${payments.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding: 5rem; color: #94a3b8; font-weight: 600;">No payment records found.</td></tr>' : payments.map(p => `
+                                    <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.2s;">
                                         <td style="padding: 1.25rem 2rem;">
-                                            <div style="font-weight: 700; color: #1e293b;">${new Date(p.date).toLocaleDateString()}</div>
-                                            <div style="font-size: 0.7rem; color: #94a3b8;">${new Date(p.date).toLocaleTimeString()}</div>
+                                            <div style="font-weight: 800; color: #1e293b;">${new Date(p.date).toLocaleDateString()}</div>
+                                            <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${new Date(p.date).toLocaleTimeString()}</div>
                                         </td>
                                         <td>
-                                            <div style="font-weight: 800; color: #4338ca;">${studentMap[p.student_id] || 'Unknown'}</div>
-                                            <div style="font-size: 0.7rem; color: #94a3b8;">#${p.student_id}</div>
+                                            <div style="font-weight: 800; color: #4338ca;">${studentMap[p.student_id] || 'Unknown Student'}</div>
+                                            <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${p.student_id}</div>
                                         </td>
-                                        <td><code style="background: #f1f5f9; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; color: #64748b;">${p.reference}</code></td>
-                                        <td><div style="font-weight: 900; color: #1e293b; font-size: 1.1rem;">₦${parseFloat(p.amount).toLocaleString()}</div></td>
                                         <td>
-                                            <span style="background: ${p.status === 'success' ? '#dcfce7; color: #16a34a' : '#fee2e2; color: #ef4444'}; padding: 0.5rem 1rem; border-radius: 10px; font-weight: 800; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.5rem;">
+                                            <div style="font-weight: 800; color: #1e293b; margin-bottom: 0.25rem;">${p.category || 'General Payment'}</div>
+                                            <code style="background: #f1f5f9; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; color: #64748b; font-weight: 700;">${p.reference}</code>
+                                        </td>
+                                        <td><div style="font-weight: 900; color: #1e293b; font-size: 1.15rem;">₦${parseFloat(p.amount).toLocaleString()}</div></td>
+                                        <td>
+                                            <span style="background: ${p.status === 'success' ? '#dcfce7; color: #16a34a' : '#fee2e2; color: #ef4444'}; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 0.7rem; display: inline-flex; align-items: center; gap: 0.4rem;">
                                                 <div style="width: 6px; height: 6px; border-radius: 50%; background: currentColor;"></div>
-                                                ${p.status === 'success' ? 'VERIFIED' : 'PENDING'}
+                                                ${(p.status || 'pending').toUpperCase()}
                                             </span>
                                         </td>
                                         <td style="text-align: right; padding-right: 2rem;">
-                                            <button class="btn" onclick="UI.printReceipt('${p.id}')" style="background: #f1f5f9; color: #4338ca; border: none; width: 40px; height: 40px; border-radius: 10px; padding: 0; display: inline-flex; align-items: center; justify-content: center;">
+                                            <button class="btn" onclick="UI.printReceipt('${p.id}')" style="background: #eff6ff; color: #3b82f6; border: none; width: 40px; height: 40px; border-radius: 10px; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s;" title="Print Receipt">
                                                 <i data-lucide="printer" style="width: 18px;"></i>
                                             </button>
                                         </td>
@@ -13437,82 +13447,94 @@ export const UI = {
         const studentId = this.currentUser.assigned_id;
         const analytics = await db.student_analytics.get(studentId) || { fee_balance: 0, fee_paid: 0 };
         const payments = await db.payments.where('student_id').equals(studentId).reverse().sortBy('date');
+        const settings = await db.settings.toArray();
+        const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
+        const maintenanceFee = parseFloat(getVal('paystack_maintenance_fee', '200'));
+        const pinPrice = parseFloat(getVal('result_pin_price', '1500'));
         
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1rem; min-height: 100vh; overflow-x: hidden;">
-                <header class="glass-header" style="margin-bottom: 2rem; padding: 1.5rem; border-radius: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
-                    <div>
-                        <h1 style="font-size: 2.25rem; font-weight: 900; color: #1e293b;">Fees & Payments</h1>
-                        <p style="color: #64748b; font-weight: 600;">Manage your tuition and view transaction history.</p>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size: 0.75rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Outstanding Balance</div>
-                        <div style="font-size: 2.5rem; font-weight: 950; color: ${analytics.fee_balance > 0 ? '#ef4444' : '#10b981'};">₦${analytics.fee_balance.toLocaleString()}</div>
+            <div class="view-container animate-fade-in" style="padding: 1rem; min-height: 100vh; background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 50%, #f0fdf4 100%);">
+                <header style="margin-bottom: 2rem; padding: 2rem; border-radius: 28px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white; box-shadow: 0 20px 40px -10px rgba(15,23,42,0.4);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+                        <div>
+                            <h1 style="font-size: 1.75rem; font-weight: 950; margin: 0;">Fees & Payments</h1>
+                            <p style="color: #94a3b8; font-weight: 600; margin-top: 0.5rem;">Manage your tuition and view transaction history.</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">Outstanding Balance</div>
+                            <div style="font-size: 2.25rem; font-weight: 950; color: ${analytics.fee_balance > 0 ? '#f87171' : '#4ade80'};">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
+                        </div>
                     </div>
                 </header>
 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
                     <!-- Pay Now Card -->
-                    <div style="display: flex; flex-direction: column; gap: 2rem;">
-                        <div class="card" style="padding: 2.5rem; border-radius: 32px; border: none; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); background: white;">
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        <div style="padding: 2rem; border-radius: 28px; background: white; box-shadow: 0 8px 30px -5px rgba(0,0,0,0.08); border: 1px solid #f1f5f9;">
                             <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
-                                <i data-lucide="credit-card" style="color: #4338ca;"></i> Tuition Payment
+                                <div style="width: 40px; height: 40px; background: #eef2ff; color: #4338ca; border-radius: 12px; display: flex; align-items: center; justify-content: center;"><i data-lucide="credit-card" style="width:20px;"></i></div>
+                                Tuition Payment
                             </h3>
-                            <p style="color: #64748b; font-size: 0.9rem; line-height: 1.6; margin-bottom: 2rem;">Pay your school fees securely using Paystack.</p>
                             
-                            <div class="form-group" style="margin-bottom: 1.5rem;">
-                                <label style="font-weight: 800; color: #475569; font-size: 0.75rem; text-transform: uppercase;">AMOUNT TO PAY (₦)</label>
-                                <input type="number" id="payment-amount" class="input w-100" value="${analytics.fee_balance}" style="height: 56px; border-radius: 16px; font-size: 1.25rem; font-weight: 800; padding: 0 1.5rem; border: 2px solid #e2e8f0;">
+                            <div class="form-group" style="margin-bottom: 1.25rem;">
+                                <label style="font-weight: 800; color: #475569; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">SCHOOL FEE AMOUNT (₦)</label>
+                                <input type="number" id="payment-amount" class="input w-100" value="${analytics.fee_balance || 0}" min="100" style="height: 56px; border-radius: 16px; font-size: 1.25rem; font-weight: 800; padding: 0 1.5rem; border: 2px solid #e2e8f0;">
                             </div>
 
-                            <button id="pay-now-btn" class="btn btn-primary w-100" style="height: 64px; border-radius: 18px; font-weight: 900; font-size: 1.1rem; background: #1e293b; display: flex; align-items: center; justify-content: center; gap: 0.75rem;">
-                                <i data-lucide="zap"></i> PAY TUITION
+                            <!-- Transparent Fee Breakdown -->
+                            <div id="fee-breakdown" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 1.25rem; margin-bottom: 1.5rem;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                                    <span style="font-weight: 700; color: #475569; font-size: 0.85rem;">School Fee</span>
+                                    <span id="bd-school-fee" style="font-weight: 800; color: #1e293b;">₦${(analytics.fee_balance || 0).toLocaleString()}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                                    <span style="font-weight: 700; color: #475569; font-size: 0.85rem;">Platform Maintenance</span>
+                                    <span style="font-weight: 800; color: #64748b;">₦${maintenanceFee.toLocaleString()}</span>
+                                </div>
+                                <div style="border-top: 2px dashed #e2e8f0; margin: 0.75rem 0;"></div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="font-weight: 900; color: #1e293b; font-size: 1rem;">Total Charge</span>
+                                    <span id="bd-total" style="font-weight: 950; color: #4338ca; font-size: 1.1rem;">₦${((analytics.fee_balance || 0) + maintenanceFee).toLocaleString()}</span>
+                                </div>
+                            </div>
+
+                            <button id="pay-now-btn" class="btn btn-primary w-100" style="height: 60px; border-radius: 18px; font-weight: 900; font-size: 1.05rem; background: linear-gradient(135deg, #4338ca 0%, #6366f1 100%); border: none; display: flex; align-items: center; justify-content: center; gap: 0.75rem; box-shadow: 0 10px 25px -5px rgba(67,56,202,0.4);">
+                                <i data-lucide="zap"></i> PAY ₦<span id="bd-btn-total">${((analytics.fee_balance || 0) + maintenanceFee).toLocaleString()}</span>
                             </button>
+                            <p style="text-align: center; margin-top: 0.75rem; font-size: 0.7rem; color: #94a3b8; font-weight: 600;">Secured by Paystack · Fees split to school subaccount</p>
                         </div>
 
-                        <div class="card" style="padding: 2.5rem; border-radius: 32px; border: none; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); background: #fdf2f2; border: 1px solid #fee2e2;">
+                        <div style="padding: 2rem; border-radius: 28px; background: linear-gradient(135deg, #fef2f2, #fff1f2); border: 1px solid #fecdd3; box-shadow: 0 4px 15px -5px rgba(239,68,68,0.1);">
                             <h3 style="font-weight: 900; color: #b91c1c; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem;">
-                                <i data-lucide="key" style="color: #ef4444;"></i> Result Checking Pin
+                                <div style="width: 40px; height: 40px; background: white; color: #ef4444; border-radius: 12px; display: flex; align-items: center; justify-content: center;"><i data-lucide="key" style="width:20px;"></i></div>
+                                Result Checking Pin
                             </h3>
-                            <p style="color: #991b1b; font-size: 0.85rem; line-height: 1.5; margin-bottom: 1.5rem; font-weight: 600;">Purchase an access pin to check your terminal results online.</p>
-                            
-                            <button id="buy-pin-btn" class="btn w-100" style="height: 56px; border-radius: 16px; font-weight: 900; background: white; color: #b91c1c; border: 2px solid #fecdd3; display: flex; align-items: center; justify-content: center; gap: 0.75rem;">
-                                <i data-lucide="shopping-cart"></i> BUY PIN (₦${(await db.settings.get('result_pin_price'))?.value || 1500})
+                            <p style="color: #991b1b; font-size: 0.85rem; line-height: 1.5; margin-bottom: 1.25rem; font-weight: 600;">Purchase an access pin to check your terminal results online.</p>
+                            <button id="buy-pin-btn" class="btn w-100" style="height: 52px; border-radius: 14px; font-weight: 900; background: white; color: #b91c1c; border: 2px solid #fecdd3; display: flex; align-items: center; justify-content: center; gap: 0.75rem;">
+                                <i data-lucide="shopping-cart"></i> BUY PIN (₦${(pinPrice + maintenanceFee).toLocaleString()})
                             </button>
                         </div>
                     </div>
 
                     <!-- History Card -->
-                    <div class="card" style="padding: 0; border-radius: 32px; border: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); background: white; overflow: hidden;">
-                        <div style="padding: 2rem; border-bottom: 1px solid #f1f5f9;">
+                    <div style="padding: 0; border-radius: 28px; background: white; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; overflow: hidden;">
+                        <div style="padding: 1.5rem 2rem; border-bottom: 1px solid #f1f5f9;">
                             <h3 style="font-weight: 900; color: #1e293b; margin: 0;">Transaction History</h3>
                         </div>
                         <div class="table-container" style="max-height: 500px; overflow-y: auto;">
                             <table class="data-table">
-                                <thead>
-                                    <tr style="background: #f8fafc;">
-                                        <th style="padding-left: 2rem;">DATE</th>
-                                        <th>REFERENCE</th>
-                                        <th>AMOUNT</th>
-                                        <th>STATUS</th>
-                                        <th style="text-align: right; padding-right: 2rem;">RECEIPT</th>
-                                    </tr>
-                                </thead>
+                                <thead><tr style="background: #f8fafc;">
+                                    <th style="padding-left: 2rem;">DATE</th><th>REFERENCE</th><th>AMOUNT</th><th>STATUS</th><th style="text-align: right; padding-right: 2rem;">RECEIPT</th>
+                                </tr></thead>
                                 <tbody>
                                     ${payments.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem; color: #94a3b8;">No payment history found.</td></tr>' : payments.map(p => `
                                         <tr>
-                                            <td style="padding-left: 2rem;">
-                                                <div style="font-weight: 700; color: #1e293b;">${new Date(p.date).toLocaleDateString()}</div>
-                                            </td>
+                                            <td style="padding-left: 2rem;"><div style="font-weight: 700; color: #1e293b;">${new Date(p.date).toLocaleDateString()}</div></td>
                                             <td><code style="font-size: 0.75rem; color: #64748b;">${p.reference}</code></td>
                                             <td><div style="font-weight: 800; color: #1e293b;">₦${parseFloat(p.amount).toLocaleString()}</div></td>
-                                            <td>
-                                                <span class="badge ${p.status === 'success' ? 'success' : 'warning'}" style="font-weight: 800;">${p.status.toUpperCase()}</span>
-                                            </td>
+                                            <td><span class="badge ${p.status === 'success' ? 'success' : 'warning'}" style="font-weight: 800;">${(p.status || 'pending').toUpperCase()}</span></td>
                                             <td style="text-align: right; padding-right: 2rem;">
-                                                <button class="btn btn-sm" onclick="UI.printReceipt('${p.id}')" style="background: #f1f5f9; color: #4338ca; border-radius: 8px;">
-                                                    <i data-lucide="file-text" style="width: 14px;"></i>
-                                                </button>
+                                                <button class="btn btn-sm" onclick="UI.printReceipt('${p.id}')" style="background: #f1f5f9; color: #4338ca; border-radius: 8px;"><i data-lucide="file-text" style="width: 14px;"></i></button>
                                             </td>
                                         </tr>
                                     `).join('')}
@@ -13525,6 +13547,18 @@ export const UI = {
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Dynamic fee breakdown updater
+        const amountInput = document.getElementById('payment-amount');
+        if (amountInput) {
+            amountInput.addEventListener('input', () => {
+                const val = parseFloat(amountInput.value) || 0;
+                const total = val + ${maintenanceFee};
+                document.getElementById('bd-school-fee').textContent = '₦' + val.toLocaleString();
+                document.getElementById('bd-total').textContent = '₦' + total.toLocaleString();
+                document.getElementById('bd-btn-total').textContent = total.toLocaleString();
+            });
+        }
 
         // Paystack Integration
         const payBtn = document.getElementById('pay-now-btn');
@@ -13539,32 +13573,40 @@ export const UI = {
         const buyPinBtn = document.getElementById('buy-pin-btn');
         if (buyPinBtn) {
             buyPinBtn.onclick = async () => {
-                const price = parseFloat((await db.settings.get('result_pin_price'))?.value || 1500);
-                this.initiatePaystackPayment(price, 'Result Pin');
+                this.initiatePaystackPayment(${pinPrice}, 'Result Pin');
             };
         }
     },
 
     async initiatePaystackPayment(amount, category = 'Tuition Payment') {
-        const paystackKey = (await db.settings.get('paystack_public_key'))?.value;
-        const subaccount = (await db.settings.get('paystack_subaccount'))?.value;
+        const settings = await db.settings.toArray();
+        const getVal = (key, fallback) => (settings.find(s => s.key === key)?.value) || fallback;
+        
+        const paystackKey = getVal('paystack_public_key', '');
+        const subaccount = getVal('paystack_subaccount', '');
+        const maintenanceFee = parseFloat(getVal('paystack_maintenance_fee', '200'));
         
         if (!paystackKey || paystackKey === 'pk_test_placeholder_key') {
             return Notifications.show('Paystack is not configured. Please contact administration.', 'error');
         }
 
+        const totalCharge = amount + maintenanceFee;
+
         const payData = {
             key: paystackKey,
             email: this.currentUser.email,
-            amount: amount * 100,
+            amount: Math.round(totalCharge * 100),
             currency: 'NGN',
             ref: 'PAY-' + Math.floor((Math.random() * 1000000000) + 1),
             metadata: {
                 student_id: this.currentUser.assigned_id,
                 category: category,
+                school_fee: amount,
+                maintenance_fee: maintenanceFee,
                 custom_fields: [
                     { display_name: "Student Name", variable_name: "student_name", value: this.currentUser.name },
-                    { display_name: "Category", variable_name: "payment_category", value: category }
+                    { display_name: "Category", variable_name: "payment_category", value: category },
+                    { display_name: "Maintenance Fee", variable_name: "maintenance_fee", value: `₦${maintenanceFee}` }
                 ]
             },
             callback: async (response) => {
@@ -13575,6 +13617,8 @@ export const UI = {
 
         if (subaccount && subaccount.startsWith('ACCT_')) {
             payData.subaccount = subaccount;
+            payData.transaction_charge = Math.round(maintenanceFee * 100);
+            payData.bearer = 'subaccount';
         }
 
         const handler = PaystackPop.setup(payData);
@@ -13738,19 +13782,19 @@ export const UI = {
                     </div>
 
                     <h4 style="font-weight: 950; color: #4338ca; margin-bottom: 1.25rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.75rem;">
-                        <i data-lucide="percent" style="width: 18px; color: #4338ca;"></i> Service Charge / Maintenance
+                        <i data-lucide="percent" style="width: 18px; color: #4338ca;"></i> Paystack Subaccount Split
                     </h4>
                     <div class="form-group" style="margin-bottom: 1.25rem;">
-                        <label style="font-weight: 800; color: white; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SETTLEMENT ACCOUNT ID (Optional)</label>
+                        <label style="font-weight: 800; color: white; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SETTLEMENT ACCOUNT ID (School's Paystack Subaccount)</label>
                         <input type="text" id="set-subaccount" class="cbt-input" value="${getVal('paystack_subaccount')}" placeholder="ACCT_..." style="height: 48px; border-radius: 10px; border: 2px solid #cbd5e1; width: 100%; padding: 0 1rem;">
                     </div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem;">
                         <div class="form-group">
-                            <label style="font-weight: 800; color: white; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">SERVICE CHARGE (%)</label>
-                            <input type="number" id="set-split-ratio" class="cbt-input" value="${getVal('paystack_split_ratio') || 20}" style="height: 48px; border-radius: 10px; border: 2px solid #cbd5e1; width: 100%; padding: 0 1rem;">
+                            <label style="font-weight: 800; color: white; font-size: 0.8rem; margin-bottom: 0.5rem; display: block;">PLATFORM MAINTENANCE FEE (₦)</label>
+                            <input type="number" id="set-maintenance-fee" class="cbt-input" value="${getVal('paystack_maintenance_fee') || 200}" style="height: 48px; border-radius: 10px; border: 2px solid #cbd5e1; width: 100%; padding: 0 1rem;">
                         </div>
                         <div style="font-size: 0.75rem; color: #475569; line-height: 1.5; display: flex; align-items: center; font-weight: 500;">
-                            Percentage routed to settlement account as a service fee.
+                            Flat fee charged per transaction. This fee goes directly to the main platform merchant account via the transaction_charge parameter.
                         </div>
                     </div>
                 </div>
@@ -13767,7 +13811,7 @@ export const UI = {
 
             if (isAdmin && document.getElementById('set-subaccount')) {
                 updates.push({ key: 'paystack_subaccount', value: document.getElementById('set-subaccount').value.trim() });
-                updates.push({ key: 'paystack_split_ratio', value: document.getElementById('set-split-ratio').value });
+                updates.push({ key: 'paystack_maintenance_fee', value: document.getElementById('set-maintenance-fee').value });
             }
 
             for (const item of updates) {
@@ -13825,7 +13869,11 @@ export const UI = {
         }
     },
 
-    showManualPaymentModal() {
+    async showManualPaymentModal() {
+        const settings = await db.settings.toArray();
+        const term = settings.find(s => s.key === 'currentTerm')?.value || 'FIRST TERM';
+        const session = settings.find(s => s.key === 'currentSession')?.value || '2025/2026';
+
         this.showModal('Record Manual Payment', `
             <div class="form-group">
                 <label class="form-label">Student ID</label>
@@ -13864,8 +13912,8 @@ export const UI = {
                 reference,
                 status: 'success',
                 date: new Date().toISOString(),
-                term: 'FIRST TERM',
-                session: '2025/2026'
+                term: term,
+                session: session
             }));
             
             // Trigger analytics update
