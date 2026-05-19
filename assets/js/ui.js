@@ -4218,6 +4218,8 @@ export const UI = {
                 };
             });
 
+            enrichedSubjects.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
             Notifications.show(`Generating bundle for ${enrichedSubjects.length} subjects...`, 'info');
             const doc = await generateBlankScoreSheet(className, classStudents, enrichedSubjects, term, currentSession, schoolInfo);
             if (doc) UI.showPDFPreview(doc, `Blank_Sheets_${className.replace(/\s+/g, '_')}.pdf`);
