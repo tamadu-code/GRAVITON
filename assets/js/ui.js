@@ -7335,7 +7335,17 @@ export const UI = {
                 const hasStarted = !start || start <= now;
                 const hasNotEnded = !end || end >= now;
                 
-                return isMyClass && isActive && hasStarted && hasNotEnded;
+                // Track/Stream Specialization filtering for standard (non-unified) exams
+                let matchesSpecialization = true;
+                if (!e.is_unified) {
+                    const examSpec = (e.specialization || 'Common').trim().toLowerCase();
+                    if (examSpec && examSpec !== 'common' && examSpec !== 'general') {
+                        const studentSpec = student && student.sub_class ? student.sub_class.trim().toLowerCase() : '';
+                        matchesSpecialization = (studentSpec === examSpec);
+                    }
+                }
+
+                return isMyClass && isActive && hasStarted && hasNotEnded && matchesSpecialization;
             });
 
             // [SYNC SHIELD] We no longer auto-sync inside renderCBT to prevent flickering.
@@ -7441,7 +7451,9 @@ export const UI = {
                                         </div>
                                         <div>
                                             <div style="font-weight: 800; color: #1e293b; font-size: 1.05rem;">
-                                                ${e.is_unified ? `<span style="color: #4338ca; background: #eef2ff; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; margin-right: 6px; border: 1px solid #c7d2fe;">UNIFIED</span>` : `${subMap[e.subject_id] || 'General'}: `}${e.title}
+                                                ${e.is_unified ? `<span style="color: #4338ca; background: #eef2ff; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; margin-right: 6px; border: 1px solid #c7d2fe;">UNIFIED</span>` : ''}
+                                                ${(!e.is_unified && e.specialization && e.specialization !== 'Common') ? `<span style="color: #0d9488; background: #f0fdfa; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; margin-right: 6px; border: 1px solid #99f6e4;">${e.specialization.toUpperCase()}</span>` : ''}
+                                                ${e.is_unified ? '' : `${subMap[e.subject_id] || 'General'}: `}${e.title}
                                             </div>
                                             <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">${e.class_name} | ${e.term} | ${e.session}</div>
                                         </div>
@@ -7700,7 +7712,7 @@ export const UI = {
         
         let exam = isEdit ? await db.cbt_exams.get(examId) : {
             title: '', subject_id: '', class_name: '', duration: 30, mode: 'Official Exam', term: '3rd Term', session: '2025/2026', score_field: 'test1', status: 'Draft',
-            start_time: '', end_time: '', is_unified: false
+            start_time: '', end_time: '', is_unified: false, specialization: 'Common'
         };
 
         this.cbtSections = isEdit ? await db.cbt_exam_sections.where('exam_id').equals(examId).toArray() : [];
@@ -7880,6 +7892,16 @@ export const UI = {
                                     <select id="exam-subject" class="cbt-input">
                                         <option value="">Select Subject</option>
                                         ${subjects.map(s => `<option value="${s.id}" ${exam.subject_id === s.id ? 'selected' : ''}>${s.displayName || s.name}</option>`).join('')}
+                                    </select>
+                                </div>
+
+                                <div class="cbt-form-group">
+                                    <label>Track Specialization</label>
+                                    <select id="exam-specialization" class="cbt-input">
+                                        <option value="Common" ${exam.specialization === 'Common' || !exam.specialization ? 'selected' : ''}>Common (Core)</option>
+                                        <option value="Science" ${exam.specialization === 'Science' ? 'selected' : ''}>Science</option>
+                                        <option value="Arts" ${exam.specialization === 'Arts' ? 'selected' : ''}>Arts</option>
+                                        <option value="Commercial" ${exam.specialization === 'Commercial' ? 'selected' : ''}>Commercial</option>
                                     </select>
                                 </div>
 
@@ -8217,6 +8239,7 @@ export const UI = {
                 teacher_id: this.currentUser.id,
                 duration: parseInt(document.getElementById('exam-duration').value) || 30,
                 question_limit: isUnified ? 0 : (parseInt(document.getElementById('exam-limit').value) || 0),
+                specialization: isUnified ? 'Common' : (document.getElementById('exam-specialization').value || 'Common'),
                 mode: document.getElementById('exam-mode').value,
                 term: document.getElementById('exam-term').value,
                 session: document.getElementById('exam-session').value,
