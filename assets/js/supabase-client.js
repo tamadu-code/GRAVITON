@@ -188,9 +188,12 @@ export async function syncToCloud() {
                                 while (healError && (healError.code === 'PGRST204' || healError.message.toLowerCase().includes('column') || healError.message.toLowerCase().includes('does not exist')) && attempts < 10) {
                                     attempts++;
                                     let missingCol = null;
-                                    const colMatch = healError.message.match(/column\s+["']?([a-zA-Z0-9_]+)["']?/i);
-                                    if (colMatch) {
-                                        missingCol = colMatch[1];
+                                    const colMatch = healError.message.match(/column\s+[^a-zA-Z0-9_]*([a-zA-Z0-9_]+)/i);
+                                    if (colMatch && colMatch[1]) {
+                                        const parsedCol = colMatch[1].toLowerCase();
+                                        if (parsedCol !== 'of' && parsedCol !== 'relation' && parsedCol !== 'in' && parsedCol !== 'table' && parsedCol !== 'schema') {
+                                            missingCol = colMatch[1];
+                                        }
                                     }
                                     if (missingCol) {
                                         console.warn(`[Sync Self-Heal] Column "${missingCol}" not found in cloud table ${table}. Stripping and retrying (Attempt ${attempts})...`);
