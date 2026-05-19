@@ -5073,3 +5073,52 @@ body.window-blurred.exam-mode .cbt-exam-container {
     0% { left: -100%; }
     100% { left: 100%; }
 }
+
+/* =============================================
+   DUTY ROSTER — Print & Responsive Styles
+   ============================================= */
+@media print {
+    body { overflow: visible !important; }
+    .app-container { display: block !important; }
+    .sidebar, .top-bar, .no-print, .roster-config-panel,
+    .notification-container, .sidebar-footer { display: none !important; }
+    .content-area { overflow: visible !important; padding: 0 !important; }
+    .main-content { overflow: visible !important; }
+    .roster-print-area {
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        padding: 10mm !important;
+    }
+    .roster-print-header { display: block !important; }
+    .roster-signature-block { display: block !important; }
+    .data-table { border: 1px solid #000 !important; }
+    .data-table th, .data-table td {
+        border: 1px solid #000 !important;
+        color: #000 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .data-table thead tr { background: #1e293b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .data-table thead th { color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+@media (max-width: 768px) {
+    .roster-config-panel { padding: 1rem !important; }
+    .roster-print-area .data-table thead { display: none; }
+    .roster-print-area .data-table tr {
+        display: flex; flex-direction: column;
+        border: 1px solid #e2e8f0; border-radius: 12px;
+        margin-bottom: 0.75rem; padding: 0.75rem;
+    }
+    .roster-print-area .data-table td {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.4rem 0 !important; border: none !important;
+    }
+    .roster-print-area .data-table td::before {
+        content: attr(data-label);
+        font-weight: 800; font-size: 0.7rem; color: #94a3b8;
+        text-transform: uppercase; letter-spacing: 0.05em;
+        margin-right: 1rem; white-space: nowrap;
+    }
+}

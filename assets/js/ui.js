@@ -14067,51 +14067,146 @@ export const UI = {
 
     async renderRoster() {
         const roster = await db.duty_assignments.toArray();
-        const staff = await db.profiles.where('role').equalsIgnoreCase('Teacher').toArray();
+        const allStaff = await db.profiles.toArray();
+        const staff = allStaff.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive' && p.full_name && p.full_name !== 'Unnamed Staff');
+        const fullTimeStaff = staff.filter(s => (s.employment_type || 'Full-Time') === 'Full-Time');
+
+        const settings = await db.settings.toArray();
+        const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
+        const schoolName = getVal('schoolName', 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
+        const schoolLogo = getVal('schoolLogo', null);
+        const currentSession = getVal('currentSession', '2025/2026');
+        const currentTerm = getVal('currentTerm', '1st Term');
+
+        // Sort roster by week_start for display
+        roster.sort((a, b) => new Date(a.week_start) - new Date(b.week_start));
+
+        // Group roster by week_start to display as weekly rows
+        const weekMap = {};
+        roster.forEach(r => {
+            const key = r.week_start;
+            if (!weekMap[key]) weekMap[key] = { ...r, staffIds: [], ids: [] };
+            weekMap[key].staffIds.push(r.staff_id);
+            weekMap[key].ids.push(r.id);
+        });
+        const weekRows = Object.values(weekMap);
+
+        const statusColors = {
+            'Active Duty': { bg: '#ecfdf5', text: '#065f46', border: '#a7f3d0' },
+            'Mid-Term Break': { bg: '#fef2f2', text: '#991b1b', border: '#fecaca' },
+            'Mid-Term Exams': { bg: '#fffbeb', text: '#92400e', border: '#fde68a' },
+            'Revision': { bg: '#eef2ff', text: '#3730a3', border: '#c7d2fe' },
+            'Terminal Exams': { bg: '#faf5ff', text: '#6b21a8', border: '#e9d5ff' },
+            'Closing': { bg: '#fff1f2', text: '#9f1239', border: '#fecdd3' }
+        };
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in">
-                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-                    <div>
-                        <h1 class="text-2xl font-bold text-slate-800">Staff Duty Roster</h1>
-                        <p class="text-slate-500">Weekly administrative and supervisory assignments</p>
+                <!-- Configuration Panel (hidden on print) -->
+                <div class="roster-config-panel no-print" style="background: white; border-radius: 20px; padding: 2rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -3px rgba(0,0,0,0.05); margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                        <div>
+                            <h2 style="font-weight: 900; font-size: 1.3rem; color: #1e293b; display: flex; align-items: center; gap: 0.75rem;">
+                                <i data-lucide="settings-2" style="width: 22px; color: #4f46e5;"></i> Roster Configuration
+                            </h2>
+                            <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.25rem;">${fullTimeStaff.length} full-time staff available for assignment</p>
+                        </div>
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                            <button id="btn-generate-roster" style="background: #4f46e5; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 12px; font-weight: 800; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="zap" style="width: 16px;"></i> Generate Roster
+                            </button>
+                            <button onclick="window.print()" style="background: rgba(79,70,229,0.1); color: #4f46e5; border: 1px solid rgba(79,70,229,0.2); padding: 0.75rem 1.25rem; border-radius: 12px; font-weight: 800; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="printer" style="width: 16px;"></i> Print
+                            </button>
+                        </div>
                     </div>
-                    <button class="btn btn-primary" onclick="UI.showRosterModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem;">
-                        <i data-lucide="calendar-plus"></i> Assign Duty
-                    </button>
+
+                    <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
+                        <div style="flex: 1; min-width: 180px;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Term Start Date</label>
+                            <input type="date" id="roster-start-date" class="input" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;" onclick="this.showPicker()">
+                        </div>
+                        <div style="flex: 0.5; min-width: 100px;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Weeks in Term</label>
+                            <input type="number" id="roster-weeks" class="input" value="14" min="4" max="20" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                        </div>
+                        <div style="flex: 0.5; min-width: 100px;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Staff Per Week</label>
+                            <input type="number" id="roster-staff-per-week" class="input" value="2" min="1" max="5" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                        </div>
+                        <div style="flex: 0.5; min-width: 100px;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Turns Per Term</label>
+                            <input type="number" id="roster-max-turns" class="input" value="2" min="1" max="5" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem;">
+                        <div style="flex: 1; min-width: 100px;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Mid-Term Break Wk</label>
+                            <input type="number" id="roster-break-week" class="input" value="7" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                        </div>
+                        <div style="flex: 1; min-width: 100px;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Mid-Term Exams Wk</label>
+                            <input type="number" id="roster-exam-week" class="input" value="6" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                        </div>
+                        <div style="flex: 1; min-width: 100px;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Revision Wk</label>
+                            <input type="number" id="roster-revision-week" class="input" value="12" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                        </div>
+                        <div style="flex: 1; min-width: 100px;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Terminal Exams Wk</label>
+                            <input type="number" id="roster-terminal-week" class="input" value="13" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                        </div>
+                        <div style="flex: 1; min-width: 100px;">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Closing Wk</label>
+                            <input type="number" id="roster-closing-week" class="input" value="14" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                        </div>
+                    </div>
                 </div>
 
-                <div class="card shadow-sm" style="background: white; border-radius: 1.5rem; overflow: hidden;">
-                    <div class="table-container">
-                        <table class="data-table">
+                <!-- Roster Display (Print-Optimized) -->
+                <div id="roster-display" class="roster-print-area" style="background: white; border-radius: 20px; padding: 2rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -3px rgba(0,0,0,0.05);">
+                    <!-- Print Header -->
+                    <div class="roster-print-header" style="text-align: center; margin-bottom: 1.5rem;">
+                        ${schoolLogo ? `<img src="${schoolLogo}" style="width: 60px; height: 60px; object-fit: contain; margin: 0 auto 0.5rem; display: block;" alt="Logo">` : ''}
+                        <h2 style="font-weight: 900; font-size: 1.4rem; color: #1e293b; text-transform: uppercase; letter-spacing: 0.02em;">${schoolName}</h2>
+                        <p style="color: #64748b; font-size: 0.9rem; font-weight: 600;">${currentSession} Academic Session</p>
+                        <h3 style="font-weight: 800; font-size: 1.1rem; color: #4f46e5; margin-top: 0.5rem; text-transform: uppercase;">${currentTerm} — Staff Duty Roster</h3>
+                    </div>
+
+                    <div class="table-container" style="margin-top: 0;">
+                        <table class="data-table" style="font-size: 0.85rem;">
                             <thead>
-                                <tr>
-                                    <th>STAFF MEMBER</th>
-                                    <th>DUTY TYPE</th>
-                                    <th>WEEK START</th>
-                                    <th>WEEK END</th>
-                                    <th style="text-align: right;">ACTION</th>
+                                <tr style="background: #1e293b;">
+                                    <th style="color: white; font-weight: 800; padding: 0.85rem 1rem;">TERM WEEK</th>
+                                    <th style="color: white; font-weight: 800; padding: 0.85rem 1rem;">DATE RANGE</th>
+                                    <th style="color: white; font-weight: 800; padding: 0.85rem 1rem;">STATUS</th>
+                                    <th style="color: white; font-weight: 800; padding: 0.85rem 1rem;">STAFF ON DUTY</th>
+                                    <th style="color: white; font-weight: 800; padding: 0.85rem 1rem; text-align: right;" class="no-print">ACTION</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${roster.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem;">No duty assignments scheduled.</td></tr>' : roster.map(r => {
-                                    const member = staff.find(s => s.id === r.staff_id);
+                                ${weekRows.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem; color: #94a3b8;"><i data-lucide="calendar-off" style="width: 40px; height: 40px; display: block; margin: 0 auto 1rem; opacity: 0.4;"></i>No roster generated yet. Configure parameters above and click Generate.</td></tr>' : weekRows.map(w => {
+                                    const status = w.duty_type || 'Active Duty';
+                                    const colors = statusColors[status] || statusColors['Active Duty'];
+                                    const start = new Date(w.week_start);
+                                    const end = new Date(w.week_end);
+                                    const weekNum = w.week_number || '—';
+                                    const staffNames = w.staffIds.map(sid => {
+                                        const s = staff.find(st => st.id === sid);
+                                        return s ? s.full_name : 'Unknown';
+                                    });
+                                    const isBreak = status === 'Mid-Term Break';
                                     return `
-                                        <tr>
-                                            <td>
-                                                <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                                    <div style="width: 32px; height: 32px; border-radius: 8px; background: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.7rem;">
-                                                        ${member ? member.full_name.charAt(0) : '?'}
-                                                    </div>
-                                                    <span class="font-medium">${member ? member.full_name : 'Unknown Staff'}</span>
-                                                </div>
+                                        <tr style="background: ${colors.bg};">
+                                            <td style="font-weight: 800; color: ${colors.text}; padding: 0.85rem 1rem;" data-label="TERM WEEK">Week ${weekNum}</td>
+                                            <td style="color: ${colors.text}; padding: 0.85rem 1rem;" data-label="DATE RANGE">${start.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — ${end.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'})}</td>
+                                            <td style="padding: 0.85rem 1rem;" data-label="STATUS"><span style="background: ${colors.border}; color: ${colors.text}; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem;">${status}</span></td>
+                                            <td style="padding: 0.85rem 1rem;" data-label="STAFF ON DUTY">
+                                                ${isBreak ? '<span style="color: #991b1b; font-style: italic; font-weight: 600;">— No Duty —</span>' : staffNames.map(n => `<span style="background: #818cf8; color: white; padding: 0.3rem 0.75rem; border-radius: 20px; font-weight: 700; font-size: 0.75rem; margin-right: 0.4rem; display: inline-block; margin-bottom: 0.25rem;">${n}</span>`).join('')}
                                             </td>
-                                            <td><span class="badge" style="background: #fef3c7; color: #d97706; font-weight: 700;">${r.duty_type}</span></td>
-                                            <td>${new Date(r.week_start).toLocaleDateString()}</td>
-                                            <td>${new Date(r.week_end).toLocaleDateString()}</td>
-                                            <td style="text-align: right;">
-                                                <button class="btn btn-secondary btn-sm" onclick="UI.deleteRosterEntry('${r.id}')" style="background: none; color: #94a3b8;">
-                                                    <i data-lucide="trash-2"></i>
+                                            <td style="text-align: right; padding: 0.85rem 1rem;" class="no-print">
+                                                <button class="btn btn-secondary btn-sm" onclick="UI.deleteRosterWeek('${w.week_start}')" style="background: none; color: #94a3b8; padding: 0.2rem 0.4rem;">
+                                                    <i data-lucide="trash-2" style="width: 14px;"></i>
                                                 </button>
                                             </td>
                                         </tr>
@@ -14120,60 +14215,147 @@ export const UI = {
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- Print-Only Signature Block -->
+                    <div class="roster-signature-block" style="display: none; margin-top: 3rem; padding-top: 1rem;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <div style="text-align: center; flex: 1;">
+                                <div style="border-top: 1px solid #000; width: 200px; margin: 0 auto;"></div>
+                                <p style="font-size: 0.8rem; margin-top: 0.25rem; font-weight: 700;">Principal's Signature</p>
+                            </div>
+                            <div style="text-align: center; flex: 1;">
+                                <div style="border-top: 1px solid #000; width: 200px; margin: 0 auto;"></div>
+                                <p style="font-size: 0.8rem; margin-top: 0.25rem; font-weight: 700;">Date</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Attach Generate button listener
+        document.getElementById('btn-generate-roster')?.addEventListener('click', () => this.generateRoster(fullTimeStaff));
     },
 
-    async showRosterModal() {
-        const staff = await db.profiles.where('role').equalsIgnoreCase('Teacher').toArray();
-        this.showModal('Assign Weekly Duty', `
-            <div class="form-group">
-                <label class="form-label">Staff Member</label>
-                <select id="duty-staff-id" class="form-control">
-                    ${staff.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('')}
-                </select>
-            </div>
-            <div class="form-group mt-3">
-                <label class="form-label">Duty Type</label>
-                <select id="duty-type" class="form-control">
-                    <option value="Teacher on Duty (TOD)">Teacher on Duty (TOD)</option>
-                    <option value="Assembly Supervisor">Assembly Supervisor</option>
-                    <option value="Gate Monitor">Gate Monitor</option>
-                    <option value="Lunch Supervisor">Lunch Supervisor</option>
-                </select>
-            </div>
-            <div class="grid grid-cols-2 gap-3 mt-3">
-                <div class="form-group">
-                    <label class="form-label">Week Start</label>
-                    <input type="date" id="duty-start" class="form-control">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Week End</label>
-                    <input type="date" id="duty-end" class="form-control">
-                </div>
-            </div>
-        `, async () => {
-            const staffId = document.getElementById('duty-staff-id').value;
-            const type = document.getElementById('duty-type').value;
-            const start = document.getElementById('duty-start').value;
-            const end = document.getElementById('duty-end').value;
+    async generateRoster(fullTimeStaff) {
+        const startDateStr = document.getElementById('roster-start-date').value;
+        const totalWeeks = parseInt(document.getElementById('roster-weeks').value) || 14;
+        const staffPerWeek = parseInt(document.getElementById('roster-staff-per-week').value) || 2;
+        const maxTurns = parseInt(document.getElementById('roster-max-turns').value) || 2;
+        const breakWeek = parseInt(document.getElementById('roster-break-week').value) || 7;
+        const examWeek = parseInt(document.getElementById('roster-exam-week').value) || 6;
+        const revisionWeek = parseInt(document.getElementById('roster-revision-week').value) || 12;
+        const terminalWeek = parseInt(document.getElementById('roster-terminal-week').value) || 13;
+        const closingWeek = parseInt(document.getElementById('roster-closing-week').value) || 14;
 
-            if (!staffId || !start || !end) return;
+        if (!startDateStr) return Notifications.show('Please set a Term Start Date.', 'warning');
+        if (fullTimeStaff.length < staffPerWeek) return Notifications.show(`Need at least ${staffPerWeek} full-time staff. Only ${fullTimeStaff.length} available.`, 'error');
 
-            await db.duty_assignments.add(prepareForSync({
-                id: crypto.randomUUID(),
-                staff_id: staffId,
-                duty_type: type,
-                week_start: start,
-                week_end: end
-            }));
+        // Calculate active weeks (exclude break)
+        const activeWeeks = totalWeeks - 1; // break week excluded
+        const totalSlotsNeeded = activeWeeks * staffPerWeek;
+        const maxAvailableSlots = fullTimeStaff.length * maxTurns;
 
-            document.getElementById('ui-modal').remove();
-            Notifications.show('Duty assigned successfully', 'success');
-            this.renderRoster();
-        }, 'Assign Duty', 'calendar-check');
+        if (totalSlotsNeeded > maxAvailableSlots) {
+            return Notifications.show(`Cannot fill ${totalSlotsNeeded} slots with ${fullTimeStaff.length} staff × ${maxTurns} turns (${maxAvailableSlots} max). Increase turns or reduce weeks/staff per week.`, 'error');
+        }
+
+        // Build turn pool and shuffle
+        let turnPool = [];
+        for (let t = 0; t < maxTurns; t++) {
+            fullTimeStaff.forEach(s => turnPool.push(s.id));
+        }
+        turnPool.sort(() => Math.random() - 0.5);
+
+        const startDate = new Date(startDateStr);
+        const newRoster = [];
+        const pastPairs = new Set();
+        let poolIndex = 0;
+
+        const getWeekStatus = (weekNum) => {
+            if (weekNum === breakWeek) return 'Mid-Term Break';
+            if (weekNum === examWeek) return 'Mid-Term Exams';
+            if (weekNum === revisionWeek) return 'Revision';
+            if (weekNum === terminalWeek) return 'Terminal Exams';
+            if (weekNum === closingWeek) return 'Closing';
+            return 'Active Duty';
+        };
+
+        for (let w = 1; w <= totalWeeks; w++) {
+            const weekStart = new Date(startDate);
+            weekStart.setDate(startDate.getDate() + (w - 1) * 7);
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 4); // Mon-Fri
+
+            const status = getWeekStatus(w);
+
+            if (status === 'Mid-Term Break') {
+                // Record break week with no staff
+                newRoster.push(prepareForSync({
+                    id: crypto.randomUUID(), staff_id: 'BREAK', duty_type: status,
+                    week_start: weekStart.toISOString().split('T')[0],
+                    week_end: weekEnd.toISOString().split('T')[0],
+                    week_number: w
+                }));
+                continue;
+            }
+
+            // Pick staff for this week with anti-repetition
+            const weekStaff = [];
+            for (let s = 0; s < staffPerWeek; s++) {
+                let picked = null;
+                // Try to find a non-repeated pairing
+                for (let attempt = 0; attempt < turnPool.length; attempt++) {
+                    const candidate = turnPool[poolIndex % turnPool.length];
+                    poolIndex++;
+                    if (weekStaff.includes(candidate)) continue;
+                    if (s > 0) {
+                        const pairKey = [weekStaff[0], candidate].sort().join('|');
+                        if (pastPairs.has(pairKey) && attempt < turnPool.length - 1) continue;
+                    }
+                    picked = candidate;
+                    break;
+                }
+                if (!picked) picked = turnPool[(poolIndex++) % turnPool.length];
+                weekStaff.push(picked);
+            }
+
+            // Track pairs
+            if (weekStaff.length >= 2) {
+                for (let i = 0; i < weekStaff.length; i++) {
+                    for (let j = i + 1; j < weekStaff.length; j++) {
+                        pastPairs.add([weekStaff[i], weekStaff[j]].sort().join('|'));
+                    }
+                }
+            }
+
+            weekStaff.forEach(sid => {
+                newRoster.push(prepareForSync({
+                    id: crypto.randomUUID(), staff_id: sid, duty_type: status,
+                    week_start: weekStart.toISOString().split('T')[0],
+                    week_end: weekEnd.toISOString().split('T')[0],
+                    week_number: w
+                }));
+            });
+        }
+
+        // Clear old and persist new
+        await db.duty_assignments.clear();
+        await db.duty_assignments.bulkAdd(newRoster);
+
+        Notifications.show(`Roster generated! ${totalWeeks} weeks, ${newRoster.length} assignments.`, 'success');
+        this.renderRoster();
+        this.debouncedSync();
+    },
+
+    async deleteRosterWeek(weekStart) {
+        if (!confirm('Remove all duty assignments for this week?')) return;
+        const entries = await db.duty_assignments.where('week_start').equals(weekStart).toArray();
+        await db.duty_assignments.bulkDelete(entries.map(e => e.id));
+        Notifications.show('Week assignments removed', 'success');
+        this.renderRoster();
+        this.debouncedSync();
     },
 
     async deleteRosterEntry(id) {
