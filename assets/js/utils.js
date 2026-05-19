@@ -387,6 +387,13 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.text(schoolInfo.principalComment || ScoringEngine.getPrincipalRemark(avg), 12, currentY + 10, { maxWidth: pageWidth - 25 });
     doc.text(`Name: ${schoolInfo.principalName || 'Mr. Lartey Sampson'}`, 12, currentY + 18);
     doc.text(`Sign: ____________________`, pageWidth - 60, currentY + 18);
+    if (schoolInfo.principalSignature) {
+        try {
+            doc.addImage(schoolInfo.principalSignature, 'PNG', pageWidth - 55, currentY + 11, 25, 7);
+        } catch (e) {
+            console.warn('Failed to add signature inside comment box:', e);
+        }
+    }
     
     // --- Footer ---
     const footerY = pageHeight - 20;
@@ -410,27 +417,6 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.text("Scan this code to verify the", 32, footerY + 2);
     doc.text("authenticity of this record", 32, footerY + 5);
     doc.text("against our central ledger.", 32, footerY + 8);
-    
-    // --- Footer Section (Signatures) ---
-    // Reuse footerY from above or adjust
-    
-    // Principal's Signature Area
-    doc.setFontSize(10);
-    doc.setTextColor(0, 0, 0);
-    doc.text("__________________________", 75, footerY - 5);
-    doc.setFont('helvetica', 'bold');
-    doc.text(schoolInfo.principalName.toUpperCase(), 75, footerY);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.text("School Principal", 75, footerY + 4);
-    
-    if (schoolInfo.principalSignature) {
-        try {
-            doc.addImage(schoolInfo.principalSignature, 'PNG', 75, footerY - 18, 30, 12);
-        } catch (e) {
-            console.warn('Failed to add signature to PDF:', e);
-        }
-    }
 
     doc.setFontSize(8);
     const dateStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
