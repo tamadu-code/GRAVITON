@@ -13572,7 +13572,7 @@ export const UI = {
         const buyPinBtn = document.getElementById('buy-pin-btn');
         if (buyPinBtn) {
             buyPinBtn.onclick = async () => {
-                this.initiatePaystackPayment(${pinPrice}, 'Result Pin');
+                this.initiatePaystackPayment(pinPrice, 'Result Pin');
             };
         }
     },
