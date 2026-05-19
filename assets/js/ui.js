@@ -3770,7 +3770,7 @@ export const UI = {
                 // Session Match (Resilient partial)
                 const dbSession = String(sc.session || '').toLowerCase().trim();
                 const filterSession = String(session).toLowerCase().trim();
-                const sesMatch = dbSession === filterSession || dbSession.includes(filterSession) || filterSession.includes(dbSession);
+                const sesMatch = dbSession === filterSession || (dbSession && filterSession && (dbSession.includes(filterSession) || filterSession.includes(dbSession)));
                 if (!sesMatch) return false;
 
                 // Term Match (Resilient partial)
@@ -3779,7 +3779,7 @@ export const UI = {
                 
                 // Normalizing 1st -> first, removing spaces
                 const normalize = (t) => String(t || '').toLowerCase().replace(/\s+/g, '').replace('1st', 'first').replace('2nd', 'second').replace('3rd', 'third');
-                const termMatch = normalize(dbTerm) === normalize(filterTerm) || normalize(dbTerm).includes(normalize(filterTerm)) || normalize(filterTerm).includes(normalize(dbTerm));
+                const termMatch = normalize(dbTerm) === normalize(filterTerm) || (normalize(dbTerm) && normalize(filterTerm) && (normalize(dbTerm).includes(normalize(filterTerm)) || normalize(filterTerm).includes(normalize(dbTerm))));
                 
                 return termMatch;
             });
@@ -7910,6 +7910,12 @@ export const UI = {
                                     <input type="number" id="exam-limit" class="cbt-input" value="${exam.question_limit || 0}">
                                     <p style="font-size:0.6rem; color:#64748b; margin-top:0.25rem;">Max questions to pull from bank for each student.</p>
                                 </div>
+
+                                <div class="cbt-form-group">
+                                    <label>Exam Worth (Target Mark)</label>
+                                    <input type="number" id="exam-target-mark" class="cbt-input" value="${exam.target_mark || 60}" min="1">
+                                    <p style="font-size:0.6rem; color:#64748b; margin-top:0.25rem;">Total mark this exam is worth (e.g. 60 for Exam, 10 for Test). Question limit or count will determine marks per question dynamically.</p>
+                                </div>
                             </div>
 
                             <!-- Unified Settings Section -->
@@ -8239,6 +8245,7 @@ export const UI = {
                 teacher_id: this.currentUser.id,
                 duration: parseInt(document.getElementById('exam-duration').value) || 30,
                 question_limit: isUnified ? 0 : (parseInt(document.getElementById('exam-limit').value) || 0),
+                target_mark: isUnified ? 0 : (parseFloat(document.getElementById('exam-target-mark').value) || 60),
                 specialization: isUnified ? 'Common' : (document.getElementById('exam-specialization').value || 'Common'),
                 mode: document.getElementById('exam-mode').value,
                 term: document.getElementById('exam-term').value,
@@ -10206,6 +10213,7 @@ export const UI = {
         let totalMarks = isExternal && existing ? (parseFloat(existing.total_marks) || 0) : this.currentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
 
         if (!isExternal) {
+            let rawScore = 0;
             this.currentQuestions.forEach(q => {
                 const studentChoice = this.userAnswers[q.id];
                 if (studentChoice) {
@@ -10214,17 +10222,26 @@ export const UI = {
                         const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
                         const studentAns = (studentChoice || '').toLowerCase().trim();
                         if (targets.includes(studentAns)) {
-                            score += (parseFloat(q.marks) || 1);
+                            rawScore += (parseFloat(q.marks) || 1);
                         }
                     } else {
                         // MCQ: hash-based comparison
                         const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + this.currentExam.id))).split('').reverse().join('');
                         if (choiceHash === q.answerHash) {
-                            score += (parseFloat(q.marks) || 1);
+                            rawScore += (parseFloat(q.marks) || 1);
                         }
                     }
                 }
             });
+
+            const rawTotal = this.currentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+            score = rawScore;
+            totalMarks = rawTotal;
+
+            if (this.currentExam && !this.currentExam.is_unified && this.currentExam.target_mark && this.currentExam.target_mark > 0) {
+                totalMarks = parseFloat(this.currentExam.target_mark);
+                score = rawTotal > 0 ? parseFloat(((rawScore / rawTotal) * totalMarks).toFixed(1)) : 0;
+            }
 
             const resultUpdate = {
                 score: score,
@@ -10872,17 +10889,20 @@ export const UI = {
                     .toArray();
             }
 
-            // Determine multiplier based on field
-            let multiplier = 100; // Default to percentage
-            const field = (exam.score_field || '').toLowerCase();
-            
-            if (!field) {
-                console.warn('[SCORE POST] ERROR: No score_field (e.g. test1, exam) defined for this exam. Cannot post to scoresheet.');
-                return;
-            }
+            // Determine multiplier based on target_mark or fallback to field guessing
+            let multiplier = parseFloat(exam.target_mark);
+            if (isNaN(multiplier) || multiplier <= 0) {
+                multiplier = 100; // Default to percentage
+                const field = (exam.score_field || '').toLowerCase();
+                
+                if (!field) {
+                    console.warn('[SCORE POST] ERROR: No score_field (e.g. test1, exam) defined for this exam. Cannot post to scoresheet.');
+                    return;
+                }
 
-            if (field === 'exam') multiplier = 60;
-            else if (field.includes('test') || field.includes('project') || field.includes('assignment')) multiplier = 10;
+                if (field === 'exam') multiplier = 60;
+                else if (field.includes('test') || field.includes('project') || field.includes('assignment')) multiplier = 10;
+            }
 
             const divisor = result.total_marks || result.total_questions;
             const scoreValue = divisor > 0 ? Math.round((result.score / divisor) * multiplier) : 0;
@@ -15234,7 +15254,7 @@ export const UI = {
             }
 
             // Calculate score based on SHUFFLED questions and HASHED answers
-            let score = 0;
+            let rawScore = 0;
             studentQuestions.forEach(q => {
                 const studentChoice = answers[q.id];
                 if (studentChoice) {
@@ -15242,12 +15262,19 @@ export const UI = {
                     const rawCorrectText = q[`option_${(q.correct_option || 'A').toLowerCase()}`] || '';
                     const correctHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join('');
                     if (choiceHash === correctHash) {
-                        score += (parseFloat(q.marks) || 1);
+                        rawScore += (parseFloat(q.marks) || 1);
                     }
                 }
             });
 
-            const totalMarks = studentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+            const rawTotal = studentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+            let score = rawScore;
+            let totalMarks = rawTotal;
+
+            if (exam && !exam.is_unified && exam.target_mark && exam.target_mark > 0) {
+                totalMarks = parseFloat(exam.target_mark);
+                score = rawTotal > 0 ? parseFloat(((rawScore / rawTotal) * totalMarks).toFixed(1)) : 0;
+            }
 
             const finalResultUpdate = {
                 status: 'Completed',
@@ -15423,7 +15450,7 @@ export const UI = {
                     studentQuestions = studentQuestions.slice(0, limit);
                 }
 
-                let score = 0;
+                let rawScore = 0;
                 studentQuestions.forEach(q => {
                     const studentChoice = answers[q.id];
                     if (studentChoice) {
@@ -15431,12 +15458,19 @@ export const UI = {
                         const rawCorrectText = q[`option_${(q.correct_option || 'A').toLowerCase()}`] || '';
                         const correctHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join('');
                         if (choiceHash === correctHash) {
-                            score += (parseFloat(q.marks) || 1);
+                            rawScore += (parseFloat(q.marks) || 1);
                         }
                     }
                 });
 
-                const totalMarks = studentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+                const rawTotal = studentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+                let score = rawScore;
+                let totalMarks = rawTotal;
+
+                if (exam && !exam.is_unified && exam.target_mark && exam.target_mark > 0) {
+                    totalMarks = parseFloat(exam.target_mark);
+                    score = rawTotal > 0 ? parseFloat(((rawScore / rawTotal) * totalMarks).toFixed(1)) : 0;
+                }
 
                 const finalResultUpdate = {
                     status: 'Completed',

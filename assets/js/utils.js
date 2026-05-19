@@ -150,6 +150,18 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         console.warn('QR Generation failed:', e);
     }
 
+    // --- Passport Photo Image Loading ---
+    let passportImg = null;
+    if (student && (student.passport_url || student.passport)) {
+        passportImg = await new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = student.passport_url || student.passport;
+        });
+    }
+
     // Helper: Draw Border
     doc.setDrawColor(theme.r, theme.g, theme.b);
     doc.setLineWidth(1.5);
@@ -202,11 +214,47 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     let y = 48;
     const leftX = 12;
     const midX = 85;
-    const rightX = 145;
+    const rightX = 135;
     
     const avg = scores.length > 0 ? (scores.reduce((a, b) => a + (b.total || 0), 0) / scores.length).toFixed(2) : 0;
     
+    // --- Passport Photo Rendering ---
+    const passportX = pageWidth - 32; // x = 178
+    const passportY = 42;
+    const passportW = 20;
+    const passportH = 22;
+
+    if (passportImg) {
+        try {
+            doc.addImage(passportImg, 'PNG', passportX, passportY, passportW, passportH);
+        } catch (e) {
+            console.warn('Failed to render loaded passport image in PDF:', e);
+            renderPlaceholderSilhouette();
+        }
+    } else {
+        renderPlaceholderSilhouette();
+    }
+
+    // Border Frame for passport photo
+    doc.setDrawColor(theme.r, theme.g, theme.b);
+    doc.setLineWidth(0.5);
+    doc.rect(passportX, passportY, passportW, passportH);
+
+    function renderPlaceholderSilhouette() {
+        // Light gray background inside the frame
+        doc.setFillColor(241, 245, 249);
+        doc.rect(passportX, passportY, passportW, passportH, 'F');
+        
+        // Head (circle)
+        doc.setFillColor(148, 163, 184); // slate-400
+        doc.ellipse(passportX + passportW / 2, passportY + passportH / 3 + 0.5, 3.5, 3.5, 'F');
+        
+        // Torso (shoulder arc)
+        doc.ellipse(passportX + passportW / 2, passportY + passportH - 2, 7.5, 4.5, 'F');
+    }
+
     // Row 1
+    doc.setTextColor(0, 0, 0);
     doc.text(`NAME: ${student.name.toUpperCase()}`, leftX, y);
     doc.line(23, y + 1, 80, y + 1); // Underline name
     doc.text(`SEX: ${student.gender || 'N/A'}`, midX, y);
