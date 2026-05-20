@@ -925,8 +925,8 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
                 styles: { fontSize: 8, cellPadding: 1.5, minCellHeight: 8, lineColor: [0, 0, 0], lineWidth: 0.2 },
                 headStyles: { fillColor: [241, 245, 249], textColor: 0, halign: 'center', fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.2 },
                 columnStyles: {
-                    0: { cellWidth: 10, halign: 'center' },
-                    1: { cellWidth: 70 },
+                    0: { cellWidth: 12, halign: 'center' },
+                    1: { cellWidth: 84 },
                     2: { cellWidth: 15, halign: 'center' },
                     3: { cellWidth: 15, halign: 'center' },
                     4: { cellWidth: 15, halign: 'center' },
