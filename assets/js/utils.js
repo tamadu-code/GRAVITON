@@ -734,11 +734,11 @@ export async function generateMastersheet(className, students, subjects, scores,
         head: [head],
         body: body,
         theme: 'grid',
-        styles: { fontSize: 7, cellPadding: 1.5, halign: 'center' },
+        styles: { fontSize: 7, cellPadding: 1.5, halign: 'center', lineColor: [0, 0, 0], lineWidth: 0.2 },
         columnStyles: {
             0: { halign: 'left', cellWidth: 35 } // Ensure name column doesn't wrap awkwardly
         },
-        headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: 'center', fontSize: 6 }
+        headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: 'center', fontSize: 6, lineColor: [0, 0, 0], lineWidth: 0.2 }
     });
     
     return doc; // Return for preview
@@ -922,8 +922,8 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
                 head: head,
                 body: body,
                 theme: 'grid',
-                styles: { fontSize: 8, cellPadding: 1.5, minCellHeight: 8 },
-                headStyles: { fillColor: [241, 245, 249], textColor: 0, halign: 'center', fontStyle: 'bold', lineWidth: 0.1 },
+                styles: { fontSize: 8, cellPadding: 1.5, minCellHeight: 8, lineColor: [0, 0, 0], lineWidth: 0.2 },
+                headStyles: { fillColor: [241, 245, 249], textColor: 0, halign: 'center', fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.2 },
                 columnStyles: {
                     0: { cellWidth: 10, halign: 'center' },
                     1: { cellWidth: 70 },
