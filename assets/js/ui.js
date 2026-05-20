@@ -1055,6 +1055,10 @@ export const UI = {
         const studentId = this.currentUser.assigned_id || '';
         const student = await db.students.get(studentId);
         
+        if (studentId) {
+            await this.refreshStudentFinancials(studentId);
+        }
+        
         // ─── Data Gathering ───
         const analytics = await db.student_analytics.get(studentId) || {
             average: 0, rank: 'N/A', fee_balance: 0, attendance_rate: 0
@@ -13558,6 +13562,9 @@ export const UI = {
 
     async renderStudentFeesPortal() {
         const studentId = this.currentUser.assigned_id;
+        if (studentId) {
+            await this.refreshStudentFinancials(studentId);
+        }
         const analytics = await db.student_analytics.get(studentId) || { fee_balance: 0, fee_paid: 0 };
         const payments = await db.payments.where('student_id').equals(studentId).reverse().sortBy('date');
         const settings = await db.settings.toArray();
@@ -13927,7 +13934,7 @@ export const UI = {
             }
 
             for (const item of updates) {
-                await db.settings.put({ id: item.key, key: item.key, value: item.value });
+                await db.settings.put(prepareForSync({ id: item.key, key: item.key, value: item.value }));
             }
 
             Notifications.show('Settings updated successfully!', 'success');
@@ -13967,14 +13974,29 @@ export const UI = {
             session: '2025/2026'
         }));
         
+        const classStudents = await db.students.where('class_name').equals(className).toArray();
+        for (const s of classStudents) {
+            await this.refreshStudentFinancials(s.student_id);
+        }
+        
         Notifications.show('Fee structure saved', 'success');
         this.renderFeeStructures();
+        this.debouncedSync();
     },
 
     async deleteFeeStructure(id) {
         if (confirm('Delete this fee structure?')) {
+            const structure = await db.fee_structures.get(id);
+            const className = structure ? structure.class_name : null;
+            
             const success = await this.safeDelete('fee_structures', id, 'Fee structure removed');
             if (success) {
+                if (className) {
+                    const classStudents = await db.students.where('class_name').equals(className).toArray();
+                    for (const s of classStudents) {
+                        await this.refreshStudentFinancials(s.student_id);
+                    }
+                }
                 this.renderFeeStructures();
                 this.debouncedSync();
             }
@@ -13986,33 +14008,77 @@ export const UI = {
         const term = settings.find(s => s.key === 'currentTerm')?.value || 'FIRST TERM';
         const session = settings.find(s => s.key === 'currentSession')?.value || '2025/2026';
 
-        this.showModal('Record Manual Payment', `
-            <div class="form-group">
-                <label class="form-label">Student ID</label>
-                <input type="text" id="pay-student-id" class="form-control" placeholder="NKQMS-2024-001">
+        // Load all classes, students, and fee structures
+        const [classes, students, structures] = await Promise.all([
+            db.classes.toArray(),
+            db.students.toArray(),
+            db.fee_structures.toArray()
+        ]);
+
+        classes.sort((a,b) => a.name.localeCompare(b.name));
+        students.sort((a,b) => a.name.localeCompare(b.name));
+
+        const contentHtml = `
+            <div style="display: flex; flex-direction: column; gap: 1.25rem; padding: 0.25rem; color: white;">
+                <div class="form-group">
+                    <label style="font-weight: 800; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;">Select Class</label>
+                    <select id="pay-class-select" style="height: 52px; border-radius: 12px; border: 2px solid #334155; width: 100%; padding: 0 1rem; font-weight: 700; background: #0f172a; color: white; transition: all 0.2s; outline: none; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
+                        <option value="">-- All Classes --</option>
+                        ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label style="font-weight: 800; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;">Select Student</label>
+                    <select id="pay-student-select" style="height: 52px; border-radius: 12px; border: 2px solid #334155; width: 100%; padding: 0 1rem; font-weight: 700; background: #0f172a; color: white; transition: all 0.2s; outline: none; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
+                        <option value="">-- Select Student --</option>
+                        ${students.map(s => `<option value="${s.student_id}" data-class="${s.class_name}">${s.name} (${s.student_id})</option>`).join('')}
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+                    <div class="form-group">
+                        <label style="font-weight: 800; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;">Amount (₦)</label>
+                        <input type="number" id="pay-amount" style="height: 52px; border-radius: 12px; border: 2px solid #334155; width: 100%; padding: 0 1rem; font-weight: 800; background: #0f172a; color: white; outline: none; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);" placeholder="e.g. 15000">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label style="font-weight: 800; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;">Category</label>
+                        <select id="pay-category" style="height: 52px; border-radius: 12px; border: 2px solid #334155; width: 100%; padding: 0 1rem; font-weight: 700; background: #0f172a; color: white; outline: none;">
+                            <option value="School Fees">School Fees</option>
+                            <option value="Bus">Bus</option>
+                            <option value="Uniform">Uniform</option>
+                            <option value="Books">Books</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="suggested-amount-info" style="display: none; background: #1e1b4b; color: #818cf8; padding: 1rem; border-radius: 16px; font-size: 0.8rem; font-weight: 700; align-items: center; gap: 0.75rem; border: 1px solid rgba(129, 140, 248, 0.2); box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <i data-lucide="info" style="width: 18px; color: #818cf8; flex-shrink: 0;"></i>
+                    <span id="suggested-tuition-val" style="line-height: 1.4;">Expected tuition for this class: ₦0</span>
+                </div>
             </div>
-            <div class="form-group mt-2">
-                <label class="form-label">Amount (₦)</label>
-                <input type="number" id="pay-amount" class="form-control">
-            </div>
-            <div class="form-group mt-2">
-                <label class="form-label">Category</label>
-                <select id="pay-category" class="form-control">
-                    <option value="School Fees">School Fees</option>
-                    <option value="Bus">Bus</option>
-                    <option value="Uniform">Uniform</option>
-                    <option value="Books">Books</option>
-                </select>
-            </div>
-        `, async () => {
-            const studentId = document.getElementById('pay-student-id').value;
+        `;
+
+        this.showModal('Record Manual Payment', contentHtml, async () => {
+            const studentId = document.getElementById('pay-student-select').value;
             const amount = document.getElementById('pay-amount').value;
             const category = document.getElementById('pay-category').value;
             
-            if (!studentId || !amount) return;
+            if (!studentId) {
+                Notifications.show('Please select a student!', 'warning');
+                throw new Error('No student selected');
+            }
+            if (!amount || parseFloat(amount) <= 0) {
+                Notifications.show('Please enter a valid amount!', 'warning');
+                throw new Error('Invalid amount');
+            }
             
             const student = await db.students.get(studentId);
-            if (!student) return Notifications.show('Student not found!', 'error');
+            if (!student) {
+                Notifications.show('Student not found!', 'error');
+                throw new Error('Student not found');
+            }
             
             const reference = 'MAN-' + Math.random().toString(36).substring(2, 10).toUpperCase();
             
@@ -14031,10 +14097,80 @@ export const UI = {
             // Trigger analytics update
             await this.refreshStudentFinancials(studentId);
             
-            document.getElementById('ui-modal').remove();
             Notifications.show('Payment recorded successfully', 'success');
             this.renderFinances();
         }, 'Record Payment', 'save');
+
+        // Dynamic setup for dropdown filters and suggestions
+        const classSelect = document.getElementById('pay-class-select');
+        const studentSelect = document.getElementById('pay-student-select');
+        const amountInput = document.getElementById('pay-amount');
+        const infoDiv = document.getElementById('suggested-amount-info');
+        const infoSpan = document.getElementById('suggested-tuition-val');
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        const updateStudents = (selectedClass) => {
+            const filtered = selectedClass 
+                ? students.filter(s => s.class_name === selectedClass)
+                : students;
+            
+            studentSelect.innerHTML = '<option value="">-- Select Student --</option>' + 
+                filtered.map(s => `<option value="${s.student_id}">${s.name} (${s.student_id}) [${s.class_name || 'No Class'}]</option>`).join('');
+        };
+
+        classSelect.addEventListener('change', () => {
+            updateStudents(classSelect.value);
+            infoDiv.style.display = 'none';
+        });
+
+        studentSelect.addEventListener('change', async () => {
+            const studentId = studentSelect.value;
+            if (!studentId) {
+                infoDiv.style.display = 'none';
+                return;
+            }
+
+            const student = students.find(s => s.student_id === studentId);
+            if (student) {
+                if (student.class_name && classSelect.value !== student.class_name) {
+                    classSelect.value = student.class_name;
+                    const currentSelected = studentSelect.value;
+                    updateStudents(student.class_name);
+                    studentSelect.value = currentSelected;
+                }
+
+                // Calculate fee metrics
+                const classStructures = structures.filter(f => f.class_name === student.class_name);
+                const totalExpected = classStructures.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+
+                if (totalExpected > 0) {
+                    const studentPayments = await db.payments.where('student_id').equals(studentId).toArray();
+                    const totalPaid = studentPayments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+                    const balance = Math.max(0, totalExpected - totalPaid);
+
+                    infoSpan.innerHTML = `
+                        Class: <span style="color: #4ade80;">${student.class_name}</span><br>
+                        Expected Fees: <span style="color: #60a5fa; font-weight: 800;">₦${totalExpected.toLocaleString()}</span> • 
+                        Outstanding Balance: <span style="${balance > 0 ? 'color: #f87171' : 'color: #34d399'}; font-weight: 800;">₦${balance.toLocaleString()}</span>
+                    `;
+                    infoDiv.style.display = 'flex';
+                    
+                    // Auto populate balance as suggested payment amount
+                    if (balance > 0) {
+                        amountInput.value = balance;
+                    } else {
+                        amountInput.value = '';
+                    }
+                } else {
+                    infoSpan.innerHTML = `Class: <span style="color: #4ade80;">${student.class_name}</span><br><span style="color: #94a3b8;">No fee structures configured.</span>`;
+                    infoDiv.style.display = 'flex';
+                    amountInput.value = '';
+                }
+            } else {
+                infoDiv.style.display = 'none';
+            }
+        });
     },
 
     async refreshStudentFinancials(studentId) {
