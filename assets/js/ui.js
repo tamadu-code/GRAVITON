@@ -5390,26 +5390,49 @@ export const UI = {
 
             // Stats Calculation - Count UNIQUE students only
             const uniqueSchoolMap = new Map();
+            
+            // Helper: Derive correct status from is_late boolean + sign_in time
+            const deriveStatus = (rec) => {
+                if (!rec || rec.status === 'Absent') return rec?.status || 'Absent';
+                // If record has is_late explicitly set, honour it
+                if (rec.is_late === true) return 'Late';
+                // If status was already correctly set to Late
+                if (rec.status === 'Late') return 'Late';
+                // Auto-derive from sign_in time: anything after 08:00 is late
+                const timeVal = rec.sign_in || rec.check_in || rec.in_time;
+                if (timeVal) {
+                    const match = String(timeVal).match(/(\d{1,2}):(\d{2})/);
+                    if (match) {
+                        const hrs = parseInt(match[1], 10);
+                        const mins = parseInt(match[2], 10);
+                        if (hrs > 8 || (hrs === 8 && mins > 0)) return 'Late';
+                    }
+                }
+                return rec.status || 'Present';
+            };
+
             records.filter(r => !r.is_subject_based).forEach(r => {
                 const existing = uniqueSchoolMap.get(r.student_id);
                 if (existing) {
                     // Smart Merge: Prioritize records that actually have time data
-                    const hasNewTime = r.sign_in || r.check_in || r.sign_out || r.check_out;
-                    const hasExistingTime = existing.sign_in || existing.check_in || existing.sign_out || existing.check_out;
-
-                    uniqueSchoolMap.set(r.student_id, {
+                    const merged = {
                         ...existing,
                         ...r,
                         // If the existing record has time and the new one doesn't, keep the existing time
                         sign_in: r.sign_in || existing.sign_in || r.check_in || existing.check_in || r.in_time || existing.in_time,
                         sign_out: r.sign_out || existing.sign_out || r.check_out || existing.check_out || r.out_time || existing.out_time || r.exit_time || existing.exit_time,
+                        is_late: r.is_late || existing.is_late,
                         // Preserve the best status found across any record for this student/day
                         status: (r.status === 'Present' || r.status === 'Late') ? r.status : existing.status,
-                        // Ensure we keep the most complete version of the record
                         _merged: true
-                    });
+                    };
+                    // Re-derive status from is_late / sign_in time
+                    merged.status = deriveStatus(merged);
+                    uniqueSchoolMap.set(r.student_id, merged);
                 } else {
-                    uniqueSchoolMap.set(r.student_id, r);
+                    const entry = { ...r };
+                    entry.status = deriveStatus(entry);
+                    uniqueSchoolMap.set(r.student_id, entry);
                 }
             });
 
@@ -5417,6 +5440,7 @@ export const UI = {
             const presentCount = uniqueArrived.filter(r => r.status === 'Present').length;
             const lateCount = uniqueArrived.filter(r => r.status === 'Late').length;
             
+            // Total Present = Early arrivals + Late arrivals (everyone who showed up)
             const totalArrived = presentCount + lateCount;
             
             // Check Environment: Term Status, Holidays, Weekends
@@ -5461,7 +5485,21 @@ export const UI = {
                 else if (isWeekend) { defaultStatus = 'Weekend'; statusLabel = 'Weekend'; }
                 else if (isClosedDay) { defaultStatus = 'Closed'; statusLabel = 'Closed'; }
 
-                const status = record ? record.status : defaultStatus;
+                // Derive status: check is_late boolean and sign_in time for records that may have status='Present' but are actually late
+                let status = record ? record.status : defaultStatus;
+                if (record && status === 'Present') {
+                    if (record.is_late === true) {
+                        status = 'Late';
+                    } else {
+                        const timeVal = record.sign_in || record.check_in || record.in_time;
+                        if (timeVal) {
+                            const tm = String(timeVal).match(/(\d{1,2}):(\d{2})/);
+                            if (tm && (parseInt(tm[1],10) > 8 || (parseInt(tm[1],10) === 8 && parseInt(tm[2],10) > 0))) {
+                                status = 'Late';
+                            }
+                        }
+                    }
+                }
                 const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : (['Holiday', 'Weekend', 'Closed'].includes(status) ? '#64748b' : '#ef4444'));
                 
                 const formatTime = (val) => {
@@ -5738,22 +5776,44 @@ export const UI = {
             const records = [...dailyRecords, ...detailedRecords];
             
             const uniqueSchoolMap = new Map();
+            
+            // Helper: Derive correct status from is_late boolean + sign_in time
+            const deriveStatus = (rec) => {
+                if (!rec || rec.status === 'Absent') return rec?.status || 'Absent';
+                if (rec.is_late === true) return 'Late';
+                if (rec.status === 'Late') return 'Late';
+                const timeVal = rec.sign_in || rec.check_in || rec.in_time;
+                if (timeVal) {
+                    const m = String(timeVal).match(/(\d{1,2}):(\d{2})/);
+                    if (m && (parseInt(m[1],10) > 8 || (parseInt(m[1],10) === 8 && parseInt(m[2],10) > 0))) return 'Late';
+                }
+                return rec.status || 'Present';
+            };
+
             records.filter(r => !r.is_subject_based).forEach(r => {
                 const existing = uniqueSchoolMap.get(r.student_id);
                 if (existing) {
-                    uniqueSchoolMap.set(r.student_id, { 
+                    const merged = { 
                         ...existing, 
                         ...r, 
+                        sign_in: r.sign_in || existing.sign_in || r.check_in || existing.check_in,
+                        sign_out: r.sign_out || existing.sign_out || r.check_out || existing.check_out,
+                        is_late: r.is_late || existing.is_late,
                         status: (r.status === 'Present' || r.status === 'Late') ? r.status : existing.status 
-                    });
+                    };
+                    merged.status = deriveStatus(merged);
+                    uniqueSchoolMap.set(r.student_id, merged);
                 } else {
-                    uniqueSchoolMap.set(r.student_id, r);
+                    const entry = { ...r };
+                    entry.status = deriveStatus(entry);
+                    uniqueSchoolMap.set(r.student_id, entry);
                 }
             });
 
             const uniqueArrived = Array.from(uniqueSchoolMap.values());
             const presentCount = uniqueArrived.filter(r => r.status === 'Present').length;
             const lateCount = uniqueArrived.filter(r => r.status === 'Late').length;
+            // Total Present = Early arrivals + Late arrivals
             const totalArrived = presentCount + lateCount;
 
             const turnout = students.length > 0 ? Math.round((totalArrived / students.length) * 100) : 0;
@@ -16560,7 +16620,7 @@ export const UI = {
                 sign_in: signInTime,
                 sign_out: signOutTime,
                 is_late: isLate,
-                status: isAbsent ? 'Absent' : 'Present'
+                status: isAbsent ? 'Absent' : (isLate ? 'Late' : 'Present')
             });
             uniqueDates.add(date);
         }
