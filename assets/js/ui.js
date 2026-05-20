@@ -156,9 +156,40 @@ export const UI = {
         const printBtn = document.getElementById('btn-final-print');
         if (printBtn) {
             printBtn.onclick = () => {
-                doc.save(filename);
-                document.getElementById('full-pdf-preview').remove();
-                Notifications.show('Document saved for printing!', 'success');
+                Notifications.show('Opening print dialog...', 'info');
+                try {
+                    doc.autoPrint({ variant: 'non-conform' });
+                    const printBlobUrl = doc.output('bloburl');
+                    
+                    const printIframe = document.createElement('iframe');
+                    printIframe.style.position = 'fixed';
+                    printIframe.style.right = '0';
+                    printIframe.style.bottom = '0';
+                    printIframe.style.width = '0';
+                    printIframe.style.height = '0';
+                    printIframe.style.border = 'none';
+                    printIframe.src = printBlobUrl;
+                    document.body.appendChild(printIframe);
+                    
+                    // Trigger print manually in case browser PDF plugin doesn't auto-print
+                    setTimeout(() => {
+                        try {
+                            printIframe.contentWindow.focus();
+                            printIframe.contentWindow.print();
+                        } catch (err) {
+                            console.log('Direct print handled by browser PDF plugin or fallback.');
+                        }
+                    }, 500);
+                    
+                    // Clean up iframe after print dialog opens
+                    setTimeout(() => {
+                        printIframe.remove();
+                    }, 20000);
+                } catch (e) {
+                    console.error('[Print Error]', e);
+                    doc.save(filename);
+                    Notifications.show('Direct printing not supported. PDF downloaded.', 'warning');
+                }
             };
         }
     },
