@@ -1394,9 +1394,9 @@ export const UI = {
                     { display_name: "Student ID", variable_name: "student_id", value: studentId }
                 ]
             },
-            callback: async (response) => {
+            callback: (response) => {
                 Notifications.show('Payment confirmed! Finalizing receipt...', 'success');
-                await this.processOnlinePayment(response);
+                this.processOnlinePayment(response);
             },
             onClose: () => {
                 Notifications.show('Payment cancelled.', 'warning');
