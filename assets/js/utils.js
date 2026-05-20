@@ -827,7 +827,7 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
     const pageHeight = doc.internal.pageSize.height;
     
     const subjectsArray = Array.isArray(subjects) ? subjects : [subjects];
-    const pageSize = 30; // More rows in Portrait
+    const pageSize = 24; // Fits perfectly on A4 portrait page without overflow
     
     let firstPage = true;
 

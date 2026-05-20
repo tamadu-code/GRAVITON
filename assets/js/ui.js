@@ -49,10 +49,13 @@ export const UI = {
                     .pdf-mobile-notice {
                         display: none;
                     }
+                    .pdf-preview-btn .btn-text-short {
+                        display: none;
+                    }
                     @media (max-width: 768px) {
                         .pdf-preview-header {
                             height: 60px;
-                            padding: 0 0.75rem;
+                            padding: 0 0.75rem !important;
                         }
                         .pdf-preview-icon {
                             display: none !important;
@@ -62,27 +65,26 @@ export const UI = {
                         }
                         .pdf-preview-subtitle {
                             font-size: 0.6rem !important;
-                            max-width: 150px;
+                            max-width: 120px;
                             white-space: nowrap;
                             overflow: hidden;
                             text-overflow: ellipsis;
-                        .pdf-preview-header {
-                            flex-direction: column !important;
-                            padding: 1rem !important;
-                            gap: 1rem !important;
-                            align-items: stretch !important;
                         }
-                        .pdf-preview-header > div:first-child {
+                        #btn-preview-cancel span,
+                        #btn-final-print span {
+                            display: none !important;
+                        }
+                        #btn-preview-cancel,
+                        #btn-final-print {
+                            padding: 0 !important;
+                            width: 44px !important;
                             justify-content: center;
                         }
-                        .pdf-preview-header > div:last-child {
-                            width: 100%;
-                            justify-content: stretch;
+                        .pdf-preview-btn .btn-text-long {
+                            display: none !important;
                         }
-                        .pdf-preview-btn {
-                            flex: 1;
-                            justify-content: center;
-                            padding: 0.75rem !important;
+                        .pdf-preview-btn .btn-text-short {
+                            display: inline !important;
                         }
                         .pdf-preview-content {
                             padding: 0.5rem !important;
@@ -109,6 +111,9 @@ export const UI = {
                     </div>
                     
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <button id="btn-preview-view-native" class="pdf-preview-btn" onclick="window.open('${blobUrl}', '_blank')" style="background: #3b82f6; color: white; border: none; box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);">
+                            <i data-lucide="external-link" style="width: 18px;"></i> <span class="btn-text-long">View Report</span><span class="btn-text-short">View</span>
+                        </button>
                         <button id="btn-preview-cancel" class="pdf-preview-btn" style="background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1);">
                             <i data-lucide="x" style="width: 18px;"></i> <span>Close Preview</span>
                         </button>
