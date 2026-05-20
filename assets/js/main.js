@@ -7,7 +7,7 @@ import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, 
 import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 
-console.log("--- GRAVITON CORE v25.1 (BUILD v269) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v25.2 (BUILD v270) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -304,7 +304,7 @@ async function loadAuthenticatedApp(authUser) {
 
     const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights'];
     const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances'];
-    const parentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'timetables', 'profile'];
+    const parentAllowed = ['dashboard'];
     const accountsAllowed = ['dashboard', 'finances', 'noticeboard'];
 
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -321,6 +321,13 @@ async function loadAuthenticatedApp(authUser) {
             item.style.display = 'flex';
         }
     });
+
+    // Hide section headers for non-admin roles
+    if (currentRole !== 'Admin') {
+        document.querySelectorAll('.nav-section-header').forEach(h => {
+            h.style.display = 'none';
+        });
+    }
 
     // Re-render icons
     if (typeof lucide !== 'undefined') lucide.createIcons();
