@@ -13621,7 +13621,6 @@ export const UI = {
                             <button id="pay-now-btn" class="btn btn-primary w-100" style="height: 60px; border-radius: 18px; font-weight: 900; font-size: 1.05rem; background: linear-gradient(135deg, #4338ca 0%, #6366f1 100%); border: none; display: flex; align-items: center; justify-content: center; gap: 0.75rem; box-shadow: 0 10px 25px -5px rgba(67,56,202,0.4);">
                                 <i data-lucide="zap"></i> PAY ₦<span id="bd-btn-total">${((analytics.fee_balance || 0) + maintenanceFee).toLocaleString()}</span>
                             </button>
-                            <p style="text-align: center; margin-top: 0.75rem; font-size: 0.7rem; color: #94a3b8; font-weight: 600;">Secured by Paystack · Fees split to school subaccount</p>
                         </div>
 
                         <div style="padding: 2rem; border-radius: 28px; background: linear-gradient(135deg, #fef2f2, #fff1f2); border: 1px solid #fecdd3; box-shadow: 0 4px 15px -5px rgba(239,68,68,0.1);">
@@ -13965,14 +13964,25 @@ export const UI = {
         
         if (!className || !amount) return Notifications.show('Please fill all fields', 'warning');
         
-        await db.fee_structures.add(prepareForSync({
-            id: crypto.randomUUID(),
-            class_name: className,
-            category: category,
-            amount: parseFloat(amount),
-            term: 'FIRST TERM',
-            session: '2025/2026'
-        }));
+        const existing = await db.fee_structures.where('class_name').equals(className).toArray();
+        const duplicate = existing.find(f => (f.category || 'School Fees').toLowerCase().trim() === category.toLowerCase().trim());
+
+        if (duplicate) {
+            await db.fee_structures.put(prepareForSync({
+                ...duplicate,
+                amount: parseFloat(amount),
+                updated_at: new Date().toISOString()
+            }));
+        } else {
+            await db.fee_structures.add(prepareForSync({
+                id: crypto.randomUUID(),
+                class_name: className,
+                category: category,
+                amount: parseFloat(amount),
+                term: 'FIRST TERM',
+                session: '2025/2026'
+            }));
+        }
         
         const classStudents = await db.students.where('class_name').equals(className).toArray();
         for (const s of classStudents) {
@@ -14173,19 +14183,52 @@ export const UI = {
         });
     },
 
+    async cleanDuplicateFeeStructures() {
+        try {
+            const structures = await db.fee_structures.toArray();
+            const seen = new Set();
+            for (const s of structures) {
+                if (!s.class_name) continue;
+                const key = `${s.class_name.toLowerCase().trim()}_${(s.category || 'School Fees').toLowerCase().trim()}`;
+                if (seen.has(key)) {
+                    console.log('[Cleanup] Removing duplicate fee structure:', s.id, key);
+                    await db.fee_structures.delete(s.id);
+                } else {
+                    seen.add(key);
+                }
+            }
+        } catch (e) {
+            console.error('[Cleanup] Failed to clean duplicate fee structures:', e);
+        }
+    },
+
     async refreshStudentFinancials(studentId) {
-        // Simple balance calculation logic
-        const payments = await db.payments.where('student_id').equals(studentId).toArray();
-        const totalPaid = payments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
-        
-        const student = await db.students.get(studentId);
-        const structures = await db.fee_structures.where('class_name').equals(student.class_name).toArray();
-        const totalExpected = structures.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
-        
-        const analytics = await db.student_analytics.get(studentId) || { id: studentId, student_id: studentId };
-        analytics.fee_balance = Math.max(0, totalExpected - totalPaid);
-        
-        await db.student_analytics.put(prepareForSync(analytics));
+        if (!studentId) return;
+        try {
+            // Self-healing: automatically clean duplicate fee structures first
+            await this.cleanDuplicateFeeStructures();
+
+            const student = await db.students.get(studentId);
+            if (!student) {
+                console.warn('[Financials] Student not found in local DB:', studentId);
+                return;
+            }
+
+            const payments = await db.payments.where('student_id').equals(studentId).toArray();
+            const totalPaid = payments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+            
+            const structures = student.class_name 
+                ? await db.fee_structures.where('class_name').equals(student.class_name).toArray()
+                : [];
+            const totalExpected = structures.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+            
+            const analytics = await db.student_analytics.get(studentId) || { id: studentId, student_id: studentId };
+            analytics.fee_balance = Math.max(0, totalExpected - totalPaid);
+            
+            await db.student_analytics.put(prepareForSync(analytics));
+        } catch (err) {
+            console.error('[Financials] Error refreshing financials for student:', studentId, err);
+        }
     },
 
     async renderParents() {
