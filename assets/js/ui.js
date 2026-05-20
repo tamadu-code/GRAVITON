@@ -14,6 +14,13 @@ export const UI = {
     lastOpenedBankCategory: null,
     lastBankScrollPos: 0,
     
+    getActiveStudentId() {
+        if (this.currentUser && this.currentUser.role === 'Parent') {
+            return localStorage.getItem('parent_active_student_id') || '';
+        }
+        return this.currentUser?.assigned_id || this.currentUser?.student_id || this.currentUser?.id || '';
+    },
+    
     showPDFPreview(doc, filename = 'document.pdf') {
         const blobUrl = doc.output('bloburl');
         const existing = document.getElementById('full-pdf-preview');
@@ -1305,6 +1312,12 @@ export const UI = {
     },
 
     async openResultPinModal() {
+        const settingsArray = await db.settings.toArray();
+        const settings = {};
+        settingsArray.forEach(s => settings[s.key] = s.value);
+        const currentTerm = settings.currentTerm || '1st Term';
+        const currentSession = settings.currentSession || '2025/2026';
+
         const modalHtml = `
             <div style="display: flex; flex-direction: column; gap: 1.5rem; text-align: center;">
                 <div style="width: 64px; height: 64px; background: #eef2ff; color: #4f46e5; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
@@ -1312,16 +1325,34 @@ export const UI = {
                 </div>
                 <div>
                     <h3 style="font-weight: 900; color: #1e293b;">Result Verification</h3>
-                    <p style="color: #64748b; font-size: 0.85rem;">Enter your scratch card PIN to unlock this term's report card.</p>
+                    <p style="color: #64748b; font-size: 0.85rem;">Enter your scratch card PIN to unlock your report card.</p>
                 </div>
                 <div>
                     <label style="text-align: left; display: block; font-weight: 800; color: #1e293b; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.5rem;">Card PIN Code</label>
                     <input type="text" id="result-pin-input" class="input" placeholder="e.g. 1234-5678-9012" style="width: 100%; text-align: center; font-size: 1.25rem; font-weight: 900; letter-spacing: 2px; height: 56px; border-radius: 16px;">
                 </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; text-align: left;">
+                    <div>
+                        <label style="display: block; font-weight: 800; color: #1e293b; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.5rem;">Select Term</label>
+                        <select id="pin-term-select" class="input" style="width: 100%; height: 44px; border-radius: 10px; border: 1px solid #cbd5e1; padding: 0 0.75rem; font-weight: 700; color: #334155; background: white;">
+                            <option value="1st Term" ${currentTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
+                            <option value="2nd Term" ${currentTerm === '2nd Term' ? 'selected' : ''}>2nd Term</option>
+                            <option value="3rd Term" ${currentTerm === '3rd Term' ? 'selected' : ''}>3rd Term</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: 800; color: #1e293b; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.5rem;">Select Session</label>
+                        <select id="pin-session-select" class="input" style="width: 100%; height: 44px; border-radius: 10px; border: 1px solid #cbd5e1; padding: 0 0.75rem; font-weight: 700; color: #334155; background: white;">
+                            <option value="2025/2026" ${currentSession === '2025/2026' ? 'selected' : ''}>2025/2026</option>
+                            <option value="2024/2025" ${currentSession === '2024/2025' ? 'selected' : ''}>2024/2025</option>
+                            <option value="2026/2027" ${currentSession === '2026/2027' ? 'selected' : ''}>2026/2027</option>
+                        </select>
+                    </div>
+                </div>
                 <div style="background: #fff8eb; border: 1px solid #fee2e2; padding: 1rem; border-radius: 12px; display: flex; gap: 0.75rem; align-items: center; text-align: left;">
                     <i data-lucide="alert-circle" style="color: #f59e0b; flex-shrink: 0;"></i>
                     <p style="font-size: 0.7rem; color: #92400e; margin: 0; line-height: 1.4;">
-                        Cards have a usage limit. Ensure you are viewing the correct Term/Session before activating.
+                        Cards have a usage limit. Ensure you select the correct Term/Session before unlocking, as the PIN will lock to your selection.
                     </p>
                 </div>
             </div>
@@ -1329,13 +1360,15 @@ export const UI = {
 
         this.showModal('Security Clearance', modalHtml, async () => {
             const pinCode = document.getElementById('result-pin-input').value.trim();
+            const term = document.getElementById('pin-term-select').value;
+            const session = document.getElementById('pin-session-select').value;
             if (!pinCode) throw new Error('Please enter a PIN');
             
-            await this.verifyResultPin(pinCode);
+            await this.verifyResultPin(pinCode, term, session);
         }, 'Unlock Report Card', 'key');
     },
 
-    async verifyResultPin(pinCode) {
+    async verifyResultPin(pinCode, selectedTerm, selectedSession) {
         Notifications.show('Verifying clearance...', 'info');
         
         try {
@@ -1345,7 +1378,7 @@ export const UI = {
                 return;
             }
 
-            if (pinRecord.status !== 'Active') {
+            if (pinRecord.status !== 'Active' && pinRecord.status !== 'UNASSIGNED') {
                 Notifications.show('This card has already been exhausted or deactivated.', 'error');
                 return;
             }
@@ -1355,7 +1388,7 @@ export const UI = {
                 return;
             }
 
-            const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
+            const studentId = this.getActiveStudentId();
             if (!studentId) {
                 Notifications.show('No assigned student ID found for this session.', 'error');
                 return;
@@ -1367,19 +1400,48 @@ export const UI = {
                 return;
             }
 
+            if (pinRecord.student_id && pinRecord.student_id !== studentId) {
+                Notifications.show('This PIN is registered to another student.', 'error');
+                return;
+            }
+
+            const targetTerm = pinRecord.term || selectedTerm;
+            const targetSession = pinRecord.session || selectedSession;
+
+            if (pinRecord.term && pinRecord.term !== selectedTerm) {
+                Notifications.show(`This PIN is locked to ${pinRecord.term} (${pinRecord.session}). Printing bound term.`, 'warning');
+            }
+
             const settingsArray = await db.settings.toArray();
             const settings = {};
             settingsArray.forEach(s => settings[s.key] = s.value);
-            const currentTerm = settings.currentTerm || '1st Term';
-            const currentSession = settings.currentSession || '2025/2026';
 
-            // Calculate classmate rankings on the fly to match the academic roster view
+            const normalizeTerm = (t) => String(t || '').toLowerCase().replace(/\s+/g, '').replace('1st', 'first').replace('2nd', 'second').replace('3rd', 'third');
+            const normalizeSession = (s) => String(s || '').toLowerCase().trim();
+
+            const targetTermNorm = normalizeTerm(targetTerm);
+            const targetSessionNorm = normalizeSession(targetSession);
+
             const classStudents = (await db.students.where('class_name').equals(student.class_name).toArray())
-                .filter(s => s.is_active === 1);
+                .filter(s => s.is_active !== false && s.is_active !== 0);
             
             const studentIds = classStudents.map(s => s.student_id);
-            const classScores = (await db.scores.where('session').equals(currentSession).toArray())
-                .filter(s => s.term === currentTerm && studentIds.includes(s.student_id));
+
+            const rawScores = await db.scores.toArray();
+            const classScores = rawScores.filter(sc => {
+                if (!studentIds.includes(sc.student_id)) return false;
+                
+                const dbSessionNorm = normalizeSession(sc.session);
+                const dbTermNorm = normalizeTerm(sc.term);
+
+                const sesMatch = dbSessionNorm === targetSessionNorm || 
+                    (dbSessionNorm && targetSessionNorm && (dbSessionNorm.includes(targetSessionNorm) || targetSessionNorm.includes(dbSessionNorm)));
+                
+                const termMatch = dbTermNorm === targetTermNorm || 
+                    (dbTermNorm && targetTermNorm && (dbTermNorm.includes(targetTermNorm) || targetTermNorm.includes(dbTermNorm)));
+
+                return sesMatch && termMatch;
+            });
             
             const studentStats = classStudents.map(s => {
                 const sScores = classScores.filter(sc => sc.student_id === s.student_id);
@@ -1433,7 +1495,6 @@ export const UI = {
 
             const rankedStudent = studentStats.find(s => s.student_id === student.student_id) || student;
 
-            // Gather and map student's subject scores
             const sScores = classScores.filter(sc => sc.student_id === student.student_id);
             const allSubjects = await db.subjects.toArray();
             const subjectMap = new Map(allSubjects.map(sub => [sub.id, sub.name]));
@@ -1441,13 +1502,20 @@ export const UI = {
                 score.subject_name = subjectMap.get(score.subject_id) || 'Unknown Subject';
             }
 
-            // Gather student attendance
-            const sAtt = await db.attendance_records
-                .where('[student_id+term+session]')
-                .equals([student.student_id, currentTerm, currentSession])
-                .toArray();
+            const studentAttendance = await db.attendance_records.where('student_id').equals(student.student_id).toArray();
+            const sAtt = studentAttendance.filter(att => {
+                const dbSessionNorm = normalizeSession(att.session);
+                const dbTermNorm = normalizeTerm(att.term);
 
-            // Resolve Form Teacher
+                const sesMatch = dbSessionNorm === targetSessionNorm || 
+                    (dbSessionNorm && targetSessionNorm && (dbSessionNorm.includes(targetSessionNorm) || targetSessionNorm.includes(dbSessionNorm)));
+                
+                const termMatch = dbTermNorm === targetTermNorm || 
+                    (dbTermNorm && targetTermNorm && (dbTermNorm.includes(targetTermNorm) || targetTermNorm.includes(dbTermNorm)));
+
+                return sesMatch && termMatch;
+            });
+
             const formTeacherEntry = await db.form_teachers.where('class_name').equals(student.class_name).first();
             let teacherName = 'Class Teacher';
             if (formTeacherEntry) {
@@ -1455,7 +1523,6 @@ export const UI = {
                 if (teacherProfile) teacherName = teacherProfile.full_name;
             }
 
-            // Build schoolInfo
             const schoolInfo = {
                 name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
                 address: settings.schoolAddress || '123 Education Street, Academic City',
@@ -1470,25 +1537,36 @@ export const UI = {
                 termEnd: settings.closureDate || '31st March, 2026',
                 termStart: settings.nextTermDate || '13th April, 2026',
                 teacherName: teacherName,
-                session: currentSession,
-                term: currentTerm,
+                session: targetSession,
+                term: targetTerm,
                 position: rankedStudent.rank || 'N/A',
                 specializationSize: rankedStudent.specializationSize || 1,
                 gradingSystem: settings.gradingSystem || 'Positional Ranking'
             };
 
-            // Success: Update PIN usage and sync
             Notifications.show('Security clearance granted!', 'success');
             
-            await db.pins.update(pinRecord.id, {
-                used_count: (pinRecord.used_count || 0) + 1,
+            const nextUsedCount = (pinRecord.used_count || 0) + 1;
+            const updatedStatus = nextUsedCount >= pinRecord.usage_limit ? 'EXHAUSTED' : 'Active';
+            
+            const pinUpdate = {
+                used_count: nextUsedCount,
                 student_id: studentId,
+                status: updatedStatus,
                 updated_at: new Date().toISOString(),
                 is_synced: 0
-            });
+            };
+
+            if (!pinRecord.term) {
+                pinUpdate.term = targetTerm;
+            }
+            if (!pinRecord.session) {
+                pinUpdate.session = targetSession;
+            }
+
+            await db.pins.update(pinRecord.id, pinUpdate);
             this.debouncedSync();
 
-            // Generate report PDF
             Notifications.show(`Generating report card for ${rankedStudent.name}...`, 'info');
             const doc = await generateReportCard(rankedStudent, sScores, schoolInfo, sAtt);
             if (doc) {
@@ -1567,35 +1645,210 @@ export const UI = {
     },
 
     async renderParentDashboard() {
+        const links = await db.parent_links.toArray();
+        const myLinks = links.filter(l => l.parent_id === this.currentUser.id);
+        const students = await db.students.toArray();
+        const myChildren = myLinks.map(l => {
+            const std = students.find(s => s.student_id === l.student_id);
+            return std ? { ...std, relationship: l.relationship } : null;
+        }).filter(Boolean);
+
+        if (myChildren.length === 0) {
+            this.contentArea.innerHTML = `
+                <div class="view-container animate-fade-in" style="display: flex; align-items: center; justify-content: center; min-height: 80vh; padding: 2rem;">
+                    <div class="card" style="max-width: 500px; text-align: center; padding: 3.5rem 2.5rem; border-radius: 32px; box-shadow: 0 20px 40px -15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; background: white;">
+                        <div style="background: rgba(99, 102, 241, 0.1); color: #6366f1; width: 80px; height: 80px; border-radius: 24px; display: flex; align-items: center; justify-content: center; margin: 0 auto 2rem;">
+                            <i data-lucide="help-circle" style="width: 40px; height: 40px;"></i>
+                        </div>
+                        <h2 style="font-weight: 900; font-size: 1.75rem; color: #1e293b; letter-spacing: -0.5px;">No Linked Scholars</h2>
+                        <p style="color: #64748b; line-height: 1.6; margin-top: 1rem; font-size: 0.95rem;">
+                            Your parent account is registered but hasn't been connected to any student records yet. Please contact the school administrator to link your child/children to this account.
+                        </p>
+                        <div style="margin-top: 2rem; padding: 1rem; background: #f8fafc; border-radius: 16px; border: 1px solid #e2e8f0; font-size: 0.8rem; font-weight: 700; color: #475569;">
+                            Parent User ID: <code style="color: #6366f1; font-family: monospace; font-size: 0.85rem;">${this.currentUser.id}</code>
+                        </div>
+                    </div>
+                </div>
+            `;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            return;
+        }
+
+        let activeStudentId = localStorage.getItem('parent_active_student_id');
+        if (!activeStudentId || !myChildren.some(c => c.student_id === activeStudentId)) {
+            activeStudentId = myChildren[0].student_id;
+            localStorage.setItem('parent_active_student_id', activeStudentId);
+        }
+
+        const activeChild = myChildren.find(c => c.student_id === activeStudentId);
+        const analytics = await db.student_analytics.get(activeStudentId) || {
+            average: 0, rank: 'N/A', fee_balance: 0, attendance_rate: 0
+        };
+
+        const initials = activeChild.name.split(' ').map(n => n.charAt(0)).slice(0, 2).join('').toUpperCase();
+
         this.contentArea.innerHTML = `
-            <div class="dashboard-grid">
-                <div class="grid mb-2">
-                    <div class="card stat-card primary-gradient" style="grid-column: span 4;">
-                        <div class="stat-icon"><i data-lucide="graduation-cap"></i></div>
-                        <div class="stat-info">
-                            <h3>Student Portal</h3>
-                            <p class="stat-value" style="font-size: 1.4rem;">Viewing records for ${this.currentUser.name}</p>
+            <div class="view-container animate-fade-in" style="padding: 1rem; min-height: 100vh; background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 50%, #f0fdf4 100%);">
+                <!-- Parent Dashboard Header -->
+                <header style="margin-bottom: 2rem; padding: 2rem; border-radius: 28px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white; box-shadow: 0 20px 40px -10px rgba(15,23,42,0.4); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem;">
+                    <div>
+                        <h1 style="font-size: 1.75rem; font-weight: 950; margin: 0; display: flex; align-items: center; gap: 0.75rem;">
+                            <i data-lucide="shield-check" style="color: #818cf8; width: 28px; height: 28px;"></i>
+                            Parent Portal
+                        </h1>
+                        <p style="color: #94a3b8; font-weight: 600; margin-top: 0.5rem;">Secure monitoring and fee payments for your linked scholars.</p>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.07); padding: 0.75rem 1.5rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 0.75rem;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 800; color: white;">
+                            P
+                        </div>
+                        <div style="text-align: left;">
+                            <div style="font-size: 0.8rem; font-weight: 800; color: white;">${this.currentUser.name}</div>
+                            <div style="font-size: 0.65rem; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Parent Account</div>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Active Child Selector & Child Profiles List -->
+                <div style="margin-bottom: 2rem;">
+                    <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem;">
+                        <i data-lucide="users" style="color: #4f46e5; width: 20px;"></i>
+                        Select Active Scholar
+                    </h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem;">
+                        ${myChildren.map(child => {
+                            const isActive = child.student_id === activeStudentId;
+                            const childInitials = child.name.split(' ').map(n => n.charAt(0)).slice(0, 2).join('').toUpperCase();
+                            return `
+                                <div class="card" onclick="UI.changeActiveChild('${child.student_id}')" style="cursor: pointer; padding: 1.5rem; border-radius: 24px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 2px solid ${isActive ? '#4f46e5' : '#f1f5f9'}; background: white; box-shadow: ${isActive ? '0 10px 25px -5px rgba(79,70,229,0.15)' : '0 4px 15px -5px rgba(0,0,0,0.03)'}; display: flex; align-items: center; gap: 1rem; position: relative; overflow: hidden;">
+                                    ${isActive ? `<div style="position: absolute; top: 0; right: 0; width: 40px; height: 40px; background: #4f46e5; display: flex; align-items: center; justify-content: center; border-bottom-left-radius: 20px;"><i data-lucide="check" style="color: white; width: 16px; height: 16px;"></i></div>` : ''}
+                                    <div style="width: 50px; height: 50px; border-radius: 16px; background: ${isActive ? 'linear-gradient(135deg, #6366f1 0%, #4338ca 100%)' : '#f1f5f9'}; color: ${isActive ? 'white' : '#475569'}; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1rem; box-shadow: ${isActive ? '0 8px 20px -5px rgba(99,102,241,0.4)' : 'none'}; flex-shrink: 0;">
+                                        ${childInitials}
+                                    </div>
+                                    <div style="min-width: 0;">
+                                        <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${child.name}</div>
+                                        <div style="font-size: 0.75rem; font-weight: 600; color: #64748b; margin-top: 2px;">Class: ${child.class_name} • ID: ${child.student_id}</div>
+                                        <span class="badge" style="background: #f8fafc; color: #6366f1; border: 1px solid #e2e8f0; font-size: 0.65rem; border-radius: 6px; padding: 2px 6px; margin-top: 6px; display: inline-block;">${child.relationship || 'Child'}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <!-- Active Scholar Summary (KPI Grid) -->
+                <div style="background: white; border-radius: 28px; padding: 2.25rem; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.04); margin-bottom: 2rem;">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem;">
+                        <div style="width: 44px; height: 44px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; border-radius: 14px; display: flex; align-items: center; justify-content: center;"><i data-lucide="activity" style="width:22px;"></i></div>
+                        <div>
+                            <h3 style="font-weight: 950; color: #1e293b; margin: 0; font-size: 1.25rem;">Active Child Dashboard</h3>
+                            <p style="color: #64748b; font-size: 0.85rem; margin-top: 2px; font-weight: 600;">Currently displaying records for <span style="color: #4f46e5; font-weight: 800;">${activeChild.name}</span></p>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem;">
+                        <!-- Average Marks -->
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem;">
+                            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="award"></i></div>
+                            <div>
+                                <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Academic Average</div>
+                                <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${(analytics.average || 0).toFixed(1)}%</div>
+                            </div>
+                        </div>
+
+                        <!-- Class Rank -->
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem;">
+                            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="trending-up"></i></div>
+                            <div>
+                                <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Class Ranking</div>
+                                <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${analytics.rank || 'N/A'}</div>
+                            </div>
+                        </div>
+
+                        <!-- Attendance -->
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem;">
+                            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="calendar"></i></div>
+                            <div>
+                                <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Attendance Rate</div>
+                                <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${(analytics.attendance_rate || 0).toFixed(1)}%</div>
+                            </div>
+                        </div>
+
+                        <!-- Fees Balance -->
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem;">
+                            <div style="width: 48px; height: 48px; border-radius: 12px; background: ${analytics.fee_balance > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${analytics.fee_balance > 0 ? '#ef4444' : '#10b981'}; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="credit-card"></i></div>
+                            <div>
+                                <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Tuition Balance</div>
+                                <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="grid main-dashboard-row">
-                    <div class="card quick-actions">
-                        <h3><i data-lucide="file-text"></i> Academic Records</h3>
-                        <div class="action-grid mt-2">
-                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'attendance\\']').click()">
-                                <div class="icon-wrapper bg-warning-light"><i data-lucide="calendar" class="text-warning"></i></div>
-                                <span>View Attendance</span>
-                            </button>
-                            <button class="action-btn" onclick="document.querySelector('.nav-item[data-view=\\'gradebook\\']').click()">
-                                <div class="icon-wrapper bg-success-light"><i data-lucide="bar-chart-2" class="text-success"></i></div>
-                                <span>View Grades</span>
-                            </button>
+                <!-- Academic Portals Quick Links -->
+                <div>
+                    <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem;">
+                        <i data-lucide="layout-dashboard" style="color: #4f46e5; width: 20px;"></i>
+                        Academic Quick Actions
+                    </h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem;">
+                        <!-- Tuition Fees & PIN Card -->
+                        <div class="card" onclick="UI.renderView('finances')" style="cursor: pointer; padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03); transition: all 0.2s ease; display: flex; flex-direction: column; gap: 1.5rem; justify-content: space-between;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div style="width: 52px; height: 52px; border-radius: 16px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="credit-card"></i></div>
+                                <div style="background: ${analytics.fee_balance > 0 ? '#fee2e2' : '#dcfce7'}; color: ${analytics.fee_balance > 0 ? '#ef4444' : '#15803d'}; font-weight: 800; font-size: 0.7rem; border-radius: 8px; padding: 4px 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    ${analytics.fee_balance > 0 ? 'Payment Required' : 'Cleared'}
+                                </div>
+                            </div>
+                            <div>
+                                <h4 style="font-weight: 900; font-size: 1.15rem; color: #1e293b; margin: 0;">Finances & Receipts</h4>
+                                <p style="color: #64748b; font-size: 0.85rem; margin-top: 0.5rem; line-height: 1.5; font-weight: 600;">Pay tuition balance online and purchase terminal result checking pins.</p>
+                            </div>
+                        </div>
+
+                        <!-- Academic Grades Card -->
+                        <div class="card" onclick="UI.renderView('gradebook')" style="cursor: pointer; padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03); transition: all 0.2s ease; display: flex; flex-direction: column; gap: 1.5rem; justify-content: space-between;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div style="width: 52px; height: 52px; border-radius: 16px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="bar-chart-2"></i></div>
+                            </div>
+                            <div>
+                                <h4 style="font-weight: 900; font-size: 1.15rem; color: #1e293b; margin: 0;">Grades & Report Cards</h4>
+                                <p style="color: #64748b; font-size: 0.85rem; margin-top: 0.5rem; line-height: 1.5; font-weight: 600;">View subject scores, print official report cards, and track learning progress.</p>
+                            </div>
+                        </div>
+
+                        <!-- Attendance History Card -->
+                        <div class="card" onclick="UI.renderView('attendance')" style="cursor: pointer; padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03); transition: all 0.2s ease; display: flex; flex-direction: column; gap: 1.5rem; justify-content: space-between;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div style="width: 52px; height: 52px; border-radius: 16px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="calendar"></i></div>
+                            </div>
+                            <div>
+                                <h4 style="font-weight: 900; font-size: 1.15rem; color: #1e293b; margin: 0;">Attendance Logs</h4>
+                                <p style="color: #64748b; font-size: 0.85rem; margin-top: 0.5rem; line-height: 1.5; font-weight: 600;">Monitor daily sign-in times, subject participation, and attendance metrics.</p>
+                            </div>
+                        </div>
+
+                        <!-- CBT Assessment Portal Card -->
+                        <div class="card" onclick="UI.renderView('cbt')" style="cursor: pointer; padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03); transition: all 0.2s ease; display: flex; flex-direction: column; gap: 1.5rem; justify-content: space-between;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div style="width: 52px; height: 52px; border-radius: 16px; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="play-circle"></i></div>
+                            </div>
+                            <div>
+                                <h4 style="font-weight: 900; font-size: 1.15rem; color: #1e293b; margin: 0;">CBT Exam Center</h4>
+                                <p style="color: #64748b; font-size: 0.85rem; margin-top: 0.5rem; line-height: 1.5; font-weight: 600;">Access online computer-based tests, reviews, and dynamic performance feedback.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    changeActiveChild(studentId) {
+        localStorage.setItem('parent_active_student_id', studentId);
+        Notifications.show('Switched active scholar successfully.', 'success');
+        this.renderParentDashboard();
     },
 
     /**
@@ -10228,8 +10481,7 @@ export const UI = {
      */
     resolveCBTStudentId() {
         if (!this.currentUser) return null;
-        // Priority: assigned_id (Student Record ID) > student_id (Legacy/Profile ID) > id (Auth ID)
-        return this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
+        return this.getActiveStudentId();
     },
 
     /**
@@ -13124,7 +13376,7 @@ export const UI = {
     },
 
     async renderStudentAttendanceView() {
-        const studentId = this.currentUser.assigned_id;
+        const studentId = this.getActiveStudentId();
         const attendance = await db.attendance_records.where('student_id').equals(studentId).toArray();
         
         this.contentArea.innerHTML = `
@@ -13162,7 +13414,7 @@ export const UI = {
     },
 
     async renderStudentGradesView() {
-        const studentId = this.currentUser.assigned_id;
+        const studentId = this.getActiveStudentId();
         const analytics = await db.student_analytics.get(studentId);
         const hasFeeBalance = analytics?.fee_balance > 0;
         
@@ -13425,7 +13677,7 @@ export const UI = {
     },
 
     async renderKeys() {
-        const students = await db.students.where('is_active').equals(1).toArray();
+        const students = (await db.students.toArray()).filter(s => s.is_active !== false && s.is_active !== 0);
         const classes = await db.classes.toArray();
         const classNames = [...new Set(students.map(s => s.class_name))].sort();
 
@@ -13896,7 +14148,7 @@ export const UI = {
     },
 
     async renderStudentFeesPortal() {
-        const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id || '';
+        const studentId = this.getActiveStudentId();
         if (studentId) {
             await this.refreshStudentFinancials(studentId);
         }
@@ -14036,6 +14288,10 @@ export const UI = {
     },
 
     async initiatePaystackPayment(amount, category = 'Tuition Payment') {
+        const studentId = this.getActiveStudentId();
+        const student = await db.students.get(studentId);
+        const studentName = student ? student.name : (this.currentUser.name || 'Unknown Student');
+
         const settings = await db.settings.toArray();
         const getVal = (key, fallback) => (settings.find(s => s.key === key)?.value) || fallback;
         
@@ -14056,12 +14312,12 @@ export const UI = {
             currency: 'NGN',
             ref: 'PAY-' + Math.floor((Math.random() * 1000000000) + 1),
             metadata: {
-                student_id: this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id || '',
+                student_id: studentId,
                 category: category,
                 school_fee: amount,
                 maintenance_fee: maintenanceFee,
                 custom_fields: [
-                    { display_name: "Student Name", variable_name: "student_name", value: this.currentUser.name },
+                    { display_name: "Student Name", variable_name: "student_name", value: studentName },
                     { display_name: "Category", variable_name: "payment_category", value: category },
                     { display_name: "Maintenance Fee", variable_name: "maintenance_fee", value: `₦${maintenanceFee}` }
                 ]
@@ -14086,7 +14342,7 @@ export const UI = {
     },
 
     async handlePaymentSuccess(response, amount, category = 'Tuition Payment') {
-        const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id || '';
+        const studentId = this.getActiveStudentId();
         
         try {
             // 1. Record the payment
@@ -14606,7 +14862,7 @@ export const UI = {
 
     async renderParents() {
         const links = await db.parent_links.toArray();
-        const profiles = await db.profiles.where('role').equalsIgnoreCase('Parent').toArray();
+        const profiles = (await db.profiles.toArray()).filter(p => (p.role || '').toLowerCase() === 'parent');
         const students = await db.students.toArray();
 
         // Calculate stats
@@ -14746,8 +15002,8 @@ export const UI = {
     },
 
     async showParentLinkModal() {
-        const parents = await db.profiles.where('role').equalsIgnoreCase('Parent').toArray();
-        const students = await db.students.where('is_active').equals(1).toArray();
+        const parents = (await db.profiles.toArray()).filter(p => (p.role || '').toLowerCase() === 'parent');
+        const students = (await db.students.toArray()).filter(s => s.is_active !== false && s.is_active !== 0);
 
         this.showModal('Create Parent-Student Link', `
             <div class="form-group" style="position: relative; margin-bottom: 1.25rem;">

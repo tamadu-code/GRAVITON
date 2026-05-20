@@ -512,7 +512,13 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
 
     const qrPayload = qrLines.join('\n');
     try {
-        qrDataURL = await QRCode.toDataURL(qrPayload, { margin: 1, width: 150 });
+        if (typeof QRCode !== 'undefined') {
+            qrDataURL = await QRCode.toDataURL(qrPayload, { margin: 1, width: 150 });
+        } else if (window.QRCode) {
+            qrDataURL = await window.QRCode.toDataURL(qrPayload, { margin: 1, width: 150 });
+        } else {
+            console.warn('QRCode library not found.');
+        }
     } catch (e) {
         console.warn('Dynamic QR Generation failed:', e);
     }

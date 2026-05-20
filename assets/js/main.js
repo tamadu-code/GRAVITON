@@ -304,7 +304,7 @@ async function loadAuthenticatedApp(authUser) {
 
     const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights'];
     const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances'];
-    const parentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
+    const parentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances'];
     const accountsAllowed = ['dashboard', 'finances', 'noticeboard'];
 
     document.querySelectorAll('.nav-item').forEach(item => {
