@@ -922,7 +922,7 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
                 head: head,
                 body: body,
                 theme: 'grid',
-                styles: { fontSize: 8, cellPadding: 1.5, minCellHeight: 8, lineColor: [0, 0, 0], lineWidth: 0.2 },
+                styles: { fontSize: 8, cellPadding: 1.2, minCellHeight: 7.5, lineColor: [0, 0, 0], lineWidth: 0.2 },
                 headStyles: { fillColor: [241, 245, 249], textColor: 0, halign: 'center', fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.2 },
                 columnStyles: {
                     0: { cellWidth: 12, halign: 'center' },
@@ -934,7 +934,7 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
                     6: { cellWidth: 15, halign: 'center' },
                     7: { cellWidth: 15, halign: 'center' }
                 },
-                margin: { left: 12, right: 12 }
+                margin: { left: 12, right: 12, bottom: 12 }
             });
             
             // Footer
