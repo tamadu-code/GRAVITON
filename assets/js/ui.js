@@ -13708,8 +13708,8 @@ export const UI = {
         const subaccount = getVal('paystack_subaccount', '');
         const maintenanceFee = parseFloat(getVal('paystack_maintenance_fee', '200'));
         
-        if (!paystackKey || paystackKey === 'pk_test_placeholder_key') {
-            return Notifications.show('Paystack is not configured. Please contact administration.', 'error');
+        if (!paystackKey || paystackKey === 'pk_test_placeholder_key' || paystackKey.includes('xxxx') || paystackKey.length < 15) {
+            return Notifications.show('Paystack public key is invalid or not configured. Please set a valid key in System Config.', 'error');
         }
 
         const totalCharge = amount + maintenanceFee;
