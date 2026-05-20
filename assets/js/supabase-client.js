@@ -482,7 +482,7 @@ export async function syncFromCloud(forceAll = false) {
 
                 // --- Deletion Reconciliation for Core Tables ---
                 // Ensures deletions (e.g. classes, subjects) are propagated to devices
-                const syncCleanTables = ['classes', 'subjects', 'students', 'cbt_exams', 'cbt_questions', 'subject_assignments'];
+                const syncCleanTables = ['classes', 'subjects', 'students', 'cbt_exams', 'cbt_questions', 'subject_assignments', 'fee_structures', 'payments', 'student_analytics'];
                 if (syncCleanTables.includes(table)) {
                     // ONLY reconcile records that are already synced (is_synced: 1)
                     // If is_synced is 0, it's a new local record that hasn't reached the cloud yet; don't delete it!

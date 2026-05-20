@@ -13561,12 +13561,16 @@ export const UI = {
     },
 
     async renderStudentFeesPortal() {
-        const studentId = this.currentUser.assigned_id;
+        const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id || '';
         if (studentId) {
             await this.refreshStudentFinancials(studentId);
         }
-        const analytics = await db.student_analytics.get(studentId) || { fee_balance: 0, fee_paid: 0 };
-        const payments = await db.payments.where('student_id').equals(studentId).reverse().sortBy('date');
+        const analytics = studentId 
+            ? (await db.student_analytics.get(studentId) || { fee_balance: 0, fee_paid: 0 })
+            : { fee_balance: 0, fee_paid: 0 };
+        const payments = studentId 
+            ? await db.payments.where('student_id').equals(studentId).reverse().sortBy('date')
+            : [];
         const settings = await db.settings.toArray();
         const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
         const maintenanceFee = parseFloat(getVal('paystack_maintenance_fee', '200'));
@@ -13717,7 +13721,7 @@ export const UI = {
             currency: 'NGN',
             ref: 'PAY-' + Math.floor((Math.random() * 1000000000) + 1),
             metadata: {
-                student_id: this.currentUser.assigned_id,
+                student_id: this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id || '',
                 category: category,
                 school_fee: amount,
                 maintenance_fee: maintenanceFee,
@@ -13744,7 +13748,7 @@ export const UI = {
     },
 
     async handlePaymentSuccess(response, amount, category = 'Tuition Payment') {
-        const studentId = this.currentUser.assigned_id;
+        const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id || '';
         
         try {
             // 1. Record the payment
@@ -13822,46 +13826,73 @@ export const UI = {
     },
 
     async renderFeeStructures() {
-        const structures = await db.fee_structures.toArray();
+        const [structures, classes] = await Promise.all([
+            db.fee_structures.toArray(),
+            db.classes.toArray()
+        ]);
+        classes.sort((a, b) => a.name.localeCompare(b.name));
+
         this.showModal('Fee Structures', `
-            <div style="max-height: 400px; overflow-y: auto;">
-                <table class="data-table" style="width: 100%;">
-                    <thead>
-                        <tr>
-                            <th>CLASS</th>
-                            <th>CATEGORY</th>
-                            <th>AMOUNT</th>
-                            <th>ACTION</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${structures.length === 0 ? '<tr><td colspan="4" style="text-align:center;">No structures defined.</td></tr>' : structures.map(s => `
-                            <tr>
-                                <td>${s.class_name}</td>
-                                <td>${s.category}</td>
-                                <td>₦${parseFloat(s.amount).toLocaleString()}</td>
-                                <td><button onclick="UI.deleteFeeStructure('${s.id}')" style="color:#ef4444; background:none; border:none;"><i data-lucide="trash-2" style="width:14px;"></i></button></td>
-                            </tr>
+            <div style="background: #0f172a; border-radius: 20px; padding: 1.5rem; color: #f8fafc; max-height: 350px; overflow-y: auto; margin-bottom: 1.5rem;">
+                <h4 style="margin-top: 0; margin-bottom: 1rem; font-size: 1rem; font-weight: 800; color: #94a3b8; display: flex; align-items: center; gap: 0.5rem;">
+                    <i data-lucide="list" style="width: 18px; height: 18px; color: #6366f1;"></i> Active Fee Configurations
+                </h4>
+                
+                ${structures.length === 0 ? `
+                    <div style="text-align: center; padding: 2.5rem 1rem; background: rgba(30, 41, 59, 0.5); border-radius: 16px; border: 1px dashed rgba(226, 232, 240, 0.1);">
+                        <i data-lucide="info" style="width: 36px; height: 36px; color: #64748b; margin-bottom: 0.5rem;"></i>
+                        <p style="color: #94a3b8; margin: 0; font-size: 0.85rem; font-weight: 600;">No fee structures defined yet.</p>
+                    </div>
+                ` : `
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        ${structures.map(s => `
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(226, 232, 240, 0.1); border-radius: 14px;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                    <div style="width: 36px; height: 36px; background: rgba(99, 102, 241, 0.15); color: #818cf8; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.8rem;">
+                                        ${s.class_name ? s.class_name.substring(0, 3).toUpperCase() : 'FEE'}
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 800; color: #f8fafc; font-size: 0.9rem;">${s.class_name}</div>
+                                        <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 600; margin-top: 0.1rem; text-transform: uppercase; letter-spacing: 0.05em;">${s.category || 'School Fees'}</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 1rem;">
+                                    <div style="font-size: 1rem; font-weight: 900; color: #34d399;">
+                                        ₦${parseFloat(s.amount).toLocaleString()}
+                                    </div>
+                                    <button onclick="UI.deleteFeeStructure('${s.id}')" style="width: 32px; height: 32px; background: rgba(239, 68, 68, 0.1); color: #f87171; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.25)'; this.style.color='#ef4444';" onmouseout="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.color='#f87171';">
+                                        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                                    </button>
+                                </div>
+                            </div>
                         `).join('')}
-                    </tbody>
-                </table>
+                    </div>
+                `}
             </div>
-            <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid #e2e8f0;">
-            <div class="grid grid-cols-2 gap-3">
-                <div class="form-group">
-                    <label class="form-label">Class</label>
-                    <input type="text" id="new-fee-class" class="form-control" placeholder="JSS 1">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Category</label>
-                    <input type="text" id="new-fee-cat" class="form-control" value="School Fees">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Amount (₦)</label>
-                    <input type="number" id="new-fee-amount" class="form-control" placeholder="50000">
-                </div>
-                <div class="form-group" style="display:flex; align-items:flex-end;">
-                    <button class="btn btn-primary w-100" onclick="UI.saveFeeStructure()">Add Fee</button>
+
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem;">
+                <h4 style="margin-top: 0; margin-bottom: 1rem; font-size: 0.95rem; font-weight: 900; color: #1e293b; display: flex; align-items: center; gap: 0.5rem;">
+                    <i data-lucide="plus-circle" style="width: 18px; height: 18px; color: #4f46e5;"></i> Define New Fee
+                </h4>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="form-group">
+                        <label class="form-label" style="font-weight: 800; font-size: 0.7rem; text-transform: uppercase; color: #475569; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Select Class</label>
+                        <select id="new-fee-class" class="form-control" style="height: 42px; border-radius: 10px; border: 2px solid #e2e8f0; font-weight: 700; color: #1e293b; background: white; width: 100%; padding: 0 0.5rem;">
+                            <option value="">-- Choose Class --</option>
+                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-weight: 800; font-size: 0.7rem; text-transform: uppercase; color: #475569; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Fee Category</label>
+                        <input type="text" id="new-fee-cat" class="form-control" value="School Fees" style="height: 42px; border-radius: 10px; border: 2px solid #e2e8f0; font-weight: 700; color: #1e293b; padding: 0 0.75rem; width: 100%;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-weight: 800; font-size: 0.7rem; text-transform: uppercase; color: #475569; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Amount (₦)</label>
+                        <input type="number" id="new-fee-amount" class="form-control" placeholder="50000" style="height: 42px; border-radius: 10px; border: 2px solid #e2e8f0; font-weight: 700; color: #1e293b; padding: 0 0.75rem; width: 100%;">
+                    </div>
+                    <div class="form-group" style="display:flex; align-items:flex-end;">
+                        <button class="btn btn-primary w-100" onclick="UI.saveFeeStructure()" style="height: 42px; border-radius: 10px; font-weight: 800; background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); border: none; box-shadow: 0 4px 10px rgba(79, 70, 229, 0.15); color: white;">Create Configuration</button>
+                    </div>
                 </div>
             </div>
         `, null, 'Close', 'check');
@@ -13964,8 +13995,9 @@ export const UI = {
         
         if (!className || !amount) return Notifications.show('Please fill all fields', 'warning');
         
-        const existing = await db.fee_structures.where('class_name').equals(className).toArray();
-        const duplicate = existing.find(f => (f.category || 'School Fees').toLowerCase().trim() === category.toLowerCase().trim());
+        const cleanClassName = className.trim().toLowerCase();
+        const allStructures = await db.fee_structures.toArray();
+        const duplicate = allStructures.find(f => (f.class_name || '').trim().toLowerCase() === cleanClassName && (f.category || 'School Fees').toLowerCase().trim() === category.toLowerCase().trim());
 
         if (duplicate) {
             await db.fee_structures.put(prepareForSync({
@@ -13984,7 +14016,8 @@ export const UI = {
             }));
         }
         
-        const classStudents = await db.students.where('class_name').equals(className).toArray();
+        const allStudents = await db.students.toArray();
+        const classStudents = allStudents.filter(s => (s.class_name || '').trim().toLowerCase() === cleanClassName);
         for (const s of classStudents) {
             await this.refreshStudentFinancials(s.student_id);
         }
@@ -14002,7 +14035,9 @@ export const UI = {
             const success = await this.safeDelete('fee_structures', id, 'Fee structure removed');
             if (success) {
                 if (className) {
-                    const classStudents = await db.students.where('class_name').equals(className).toArray();
+                    const cleanClassName = className.trim().toLowerCase();
+                    const allStudents = await db.students.toArray();
+                    const classStudents = allStudents.filter(s => (s.class_name || '').trim().toLowerCase() === cleanClassName);
                     for (const s of classStudents) {
                         await this.refreshStudentFinancials(s.student_id);
                     }
@@ -14217,9 +14252,9 @@ export const UI = {
             const payments = await db.payments.where('student_id').equals(studentId).toArray();
             const totalPaid = payments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
             
-            const structures = student.class_name 
-                ? await db.fee_structures.where('class_name').equals(student.class_name).toArray()
-                : [];
+            const studentClass = (student.class_name || '').trim().toLowerCase();
+            const allStructures = await db.fee_structures.toArray();
+            const structures = allStructures.filter(f => (f.class_name || '').trim().toLowerCase() === studentClass);
             const totalExpected = structures.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
             
             const analytics = await db.student_analytics.get(studentId) || { id: studentId, student_id: studentId };
