@@ -22,6 +22,16 @@ export const UI = {
     },
     
     showPDFPreview(doc, filename = 'document.pdf') {
+        const isMobile = window.innerWidth <= 768;
+        const role = (this.currentUser?.role || '').toLowerCase();
+        const isParentOrStudent = role === 'parent' || role === 'student';
+
+        if (isMobile && isParentOrStudent && filename.toLowerCase().startsWith('report_')) {
+            Notifications.show('Downloading report card PDF...', 'success');
+            doc.save(filename);
+            return;
+        }
+
         const blobUrl = doc.output('bloburl');
         const existing = document.getElementById('full-pdf-preview');
         if (existing) existing.remove();
@@ -396,9 +406,23 @@ export const UI = {
             const isStudent = role === 'student';
             const isParent = role === 'parent';
 
+            if (isParent) {
+                let tabName = 'overview';
+                if (viewName === 'gradebook' || viewName === 'academic') tabName = 'academic';
+                else if (viewName === 'attendance') tabName = 'attendance';
+                else if (viewName === 'timetables' || viewName === 'timetable') tabName = 'timetable';
+                else if (viewName === 'finances' || viewName === 'pins') tabName = 'finances';
+                else if (viewName === 'cbt') tabName = 'cbt';
+                else if (viewName === 'noticeboard') tabName = 'notices';
+                else if (viewName === 'profile') tabName = 'profile';
+
+                localStorage.setItem('parent_active_tab', tabName);
+                viewName = 'dashboard';
+            }
+
             const restrictedForTeachers = ['academic', 'bulkimport', 'staff', 'promotion', 'config', 'reports'];
             const allowedForStudents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins'];
-            const allowedForParents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins'];
+            const allowedForParents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins', 'timetables', 'profile'];
             
             let isRestricted = false;
             if (isTeacher && restrictedForTeachers.includes(viewName)) isRestricted = true;
@@ -1681,14 +1705,741 @@ export const UI = {
         }
 
         const activeChild = myChildren.find(c => c.student_id === activeStudentId);
+        if (activeStudentId) {
+            await this.refreshStudentFinancials(activeStudentId).catch(() => {});
+        }
         const analytics = await db.student_analytics.get(activeStudentId) || {
             average: 0, rank: 'N/A', fee_balance: 0, attendance_rate: 0
         };
 
-        const initials = activeChild.name.split(' ').map(n => n.charAt(0)).slice(0, 2).join('').toUpperCase();
+        const activeTab = localStorage.getItem('parent_active_tab') || 'overview';
+        const childInitials = activeChild.name.split(' ').map(n => n.charAt(0)).slice(0, 2).join('').toUpperCase();
+
+        const settings = await db.settings.toArray();
+        const getSettingVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
+        const currentTerm = getSettingVal('currentTerm', '1st Term');
+        const currentSession = getSettingVal('currentSession', '2025/2026');
+
+        const maintenanceFee = parseFloat(getSettingVal('paystack_maintenance_fee', '200'));
+        const pinPrice = parseFloat(getSettingVal('result_pin_price', '1500'));
+
+        let tabContentHtml = '';
+
+        if (activeTab === 'overview') {
+            // Today's schedule
+            const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const todayIndex = new Date().getDay();
+            const todayWeekday = todayIndex === 0 || todayIndex === 6 ? 'Monday' : daysOfWeek[todayIndex];
+            
+            const timetableEntries = await db.timetable.where('class_name').equals(activeChild.class_name).toArray();
+            const todayClasses = timetableEntries.filter(e => e.day_of_week === todayWeekday).sort((a,b) => a.period_number - b.period_number);
+
+            // Recent notices
+            let notices = await db.notices.toArray().catch(() => []);
+            const filteredNotices = notices.filter(n => {
+                if (n.target === 'All' || n.target === 'Students' || n.target === activeChild.class_name) return true;
+                return false;
+            }).sort((a,b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0)).slice(0, 3);
+
+            tabContentHtml = `
+                <!-- KPI Grid -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
+                        <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="award"></i></div>
+                        <div>
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Academic Average</div>
+                            <div style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">${(analytics.average || 0).toFixed(1)}%</div>
+                        </div>
+                    </div>
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
+                        <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="trending-up"></i></div>
+                        <div>
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Class Ranking</div>
+                            <div style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">${analytics.rank || 'N/A'}</div>
+                        </div>
+                    </div>
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
+                        <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="calendar"></i></div>
+                        <div>
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Attendance Rate</div>
+                            <div style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">${(analytics.attendance_rate || 0).toFixed(1)}%</div>
+                        </div>
+                    </div>
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
+                        <div style="width: 48px; height: 48px; border-radius: 14px; background: ${analytics.fee_balance > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${analytics.fee_balance > 0 ? '#ef4444' : '#10b981'}; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="credit-card"></i></div>
+                        <div>
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Tuition Balance</div>
+                            <div style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+                    <!-- Today's Classes -->
+                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
+                        <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                            <span style="display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="clock" style="color:#4f46e5;"></i> Today's Schedule</span>
+                            <span class="badge" style="background:#f1f5f9; color:#475569; font-size:0.7rem;">${todayWeekday}</span>
+                        </h3>
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                            ${todayClasses.length === 0 ? `
+                                <div style="text-align: center; padding: 3rem 0; opacity: 0.5;">
+                                    <i data-lucide="calendar-off" style="width: 32px; height: 32px; margin-bottom: 0.5rem;"></i>
+                                    <p style="font-weight: 600; font-size:0.85rem;">No classes scheduled for today.</p>
+                                </div>
+                            ` : todayClasses.map(c => `
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 1rem; border-radius: 16px; border: 1px solid #f1f5f9; background: #f8fafc; transition: all 0.2s;">
+                                    <div style="display: flex; align-items: center; gap: 1rem;">
+                                        <div style="width: 40px; height: 40px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.85rem;">
+                                            ${(c.subject_id || 'Sub').slice(0, 3).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <div style="font-weight: 800; color: #1e293b; font-size: 0.9rem;">${c.subject_id}</div>
+                                            <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">Period ${c.period_number}</div>
+                                        </div>
+                                    </div>
+                                    <span class="badge" style="background: white; border: 1px solid #e2e8f0; color: #4f46e5; font-size: 0.7rem; font-weight: 700;">Active</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Recent Bulletins -->
+                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="bell" style="color:#ef4444;"></i> Announcements
+                            </h3>
+                            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                                ${filteredNotices.length === 0 ? `
+                                    <div style="text-align: center; padding: 3rem 0; opacity: 0.5;">
+                                        <i data-lucide="bell-off" style="width: 32px; height: 32px; margin-bottom: 0.5rem;"></i>
+                                        <p style="font-weight: 600; font-size:0.85rem;">No recent announcements.</p>
+                                    </div>
+                                ` : filteredNotices.map(n => `
+                                    <div style="border-left: 3px solid ${n.category === 'Urgent' ? '#ef4444' : '#4f46e5'}; padding-left: 1rem;">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 4px;">
+                                            <span class="badge" style="font-size: 0.6rem; background: ${n.category === 'Urgent' ? '#fee2e2' : '#eef2ff'}; color: ${n.category === 'Urgent' ? '#ef4444' : '#4f46e5'}; font-weight: 800;">${n.category || 'General'}</span>
+                                            <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">${new Date(n.updated_at || 0).toLocaleDateString()}</span>
+                                        </div>
+                                        <div style="font-weight: 800; color: #1e293b; font-size: 0.9rem;">${n.title}</div>
+                                        <div style="font-size: 0.78rem; color: #64748b; margin-top: 2px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${n.content}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary w-100" onclick="UI.switchParentTab('notices')" style="margin-top: 1.5rem; border-radius: 12px; height: 44px; font-weight: 800;">
+                            View All Notices
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else if (activeTab === 'academic') {
+            if (analytics.fee_balance > 0) {
+                tabContentHtml = `
+                    <div class="card" style="text-align: center; padding: 4rem 2rem; border-radius: 28px; border: 1px dashed #fca5a5; background: #fff5f5; margin-top: 1rem; max-width: 500px; margin-left: auto; margin-right: auto;">
+                        <div style="background: #fee2e2; color: #ef4444; width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; transform: rotate(-10deg);">
+                            <i data-lucide="lock" style="width: 36px; height: 36px;"></i>
+                        </div>
+                        <h3 style="font-weight: 900; font-size: 1.5rem; color: #1e293b; letter-spacing: -0.5px;">Academic Results Locked</h3>
+                        <p style="color: #64748b; font-size: 0.9rem; margin-top: 1rem; line-height: 1.6; font-weight: 600;">
+                            Report cards and terminal grades are locked because <span style="color: #4f46e5; font-weight: 800;">${activeChild.name}</span> has an outstanding tuition balance of <strong>₦${analytics.fee_balance.toLocaleString()}</strong>.
+                        </p>
+                        <button class="btn btn-primary" onclick="UI.switchParentTab('finances')" style="margin-top: 2rem; border-radius: 14px; height: 50px; font-weight: 900; padding: 0 2rem; background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); border: none; box-shadow: 0 10px 25px -5px rgba(79,70,229,0.4);">
+                            <i data-lucide="credit-card"></i> Pay Fee Balance
+                        </button>
+                    </div>
+                `;
+            } else {
+                const selTerm = localStorage.getItem('parent_academic_term') || currentTerm;
+                const selSession = localStorage.getItem('parent_academic_session') || currentSession;
+
+                const rawScores = await db.scores.where('student_id').equals(activeStudentId).toArray();
+                const allSubjects = await db.subjects.toArray();
+                const subjectMap = allSubjects.reduce((m, sub) => { m[sub.id] = sub.name; return m; }, {});
+                
+                const termScores = rawScores.filter(s => s.term === selTerm && s.session === selSession)
+                    .map(s => ({
+                        ...s,
+                        subject_name: subjectMap[s.subject_id] || s.subject_name || s.subject_id || 'Unknown Subject'
+                    })).sort((a, b) => a.subject_name.localeCompare(b.subject_name));
+
+                tabContentHtml = `
+                    <header class="glass-header" style="margin-bottom: 2rem; padding: 2rem; border-radius: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; background: white; border: 1px solid #e2e8f0;">
+                        <div>
+                            <h2 style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin: 0;">Academic Transcript</h2>
+                            <p style="color: #64748b; font-size: 0.85rem; margin-top: 2px;">Grades and reports cards for ${activeChild.name}.</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="UI.openResultPinModal()" style="border-radius: 12px; height: 48px; font-weight: 800;">
+                            <i data-lucide="printer"></i> Print Report Card
+                        </button>
+                    </header>
+
+                    <!-- Filters -->
+                    <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 150px;">
+                            <label style="display: block; font-weight: 800; color: #475569; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;">Term</label>
+                            <select id="parent-academic-term" class="input" style="width: 100%; height: 48px; border-radius: 12px; border: 1px solid #cbd5e1; padding: 0 1rem; font-weight: 700; background: white; color: #334155;">
+                                <option value="1st Term" ${selTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
+                                <option value="2nd Term" ${selTerm === '2nd Term' ? 'selected' : ''}>2nd Term</option>
+                                <option value="3rd Term" ${selTerm === '3rd Term' ? 'selected' : ''}>3rd Term</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 150px;">
+                            <label style="display: block; font-weight: 800; color: #475569; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;">Academic Session</label>
+                            <select id="parent-academic-session" class="input" style="width: 100%; height: 48px; border-radius: 12px; border: 1px solid #cbd5e1; padding: 0 1rem; font-weight: 700; background: white; color: #334155;">
+                                <option value="2025/2026" ${selSession === '2025/2026' ? 'selected' : ''}>2025/2026</option>
+                                <option value="2024/2025" ${selSession === '2024/2025' ? 'selected' : ''}>2024/2025</option>
+                                <option value="2026/2027" ${selSession === '2026/2027' ? 'selected' : ''}>2026/2027</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${termScores.length === 0 ? `
+                            <div class="card" style="text-align: center; padding: 4rem; border-radius: 24px; background: white; border: 1px solid #e2e8f0;">
+                                <i data-lucide="info" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 1rem;"></i>
+                                <p style="color: #64748b; font-weight: 700;">No grade records found for ${selTerm} (${selSession}).</p>
+                            </div>
+                        ` : termScores.map(s => {
+                            const caScore = (parseFloat(s.assignment || 0) + parseFloat(s.test1 || 0) + parseFloat(s.test2 || 0) + parseFloat(s.project || 0));
+                            const examScore = parseFloat(s.exam || 0);
+                            const totalScore = caScore + examScore;
+                            const totalScorePct = Math.min(100, Math.max(0, totalScore));
+
+                            let gradeClass = 'score-grade-f';
+                            if (totalScorePct >= 75) gradeClass = 'score-grade-a';
+                            else if (totalScorePct >= 60) gradeClass = 'score-grade-b';
+                            else if (totalScorePct >= 50) gradeClass = 'score-grade-c';
+                            else if (totalScorePct >= 40) gradeClass = 'score-grade-d';
+
+                            return `
+                                <div class="card collapsable-section" style="border-radius: 24px; padding: 0; overflow: hidden; border: 1px solid #e2e8f0; transition: all 0.3s ease; background: white; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
+                                    <label for="toggle-grade-${s.id}" style="display: flex; justify-content: space-between; align-items: center; padding: 1.5rem; cursor: pointer; margin: 0; background: white; width: 100%; box-sizing: border-box;">
+                                        <div style="display: flex; align-items: center; gap: 1rem; min-width: 0; flex: 1;">
+                                            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                                <i data-lucide="book" style="width: 20px;"></i>
+                                            </div>
+                                            <div style="min-width: 0; flex: 1; padding-right: 1rem;">
+                                                <h3 style="font-weight: 800; color: #1e293b; margin: 0; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.subject_name}</h3>
+                                                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 4px;">
+                                                    <span class="badge" style="background: #f1f5f9; color: #1e293b; font-size: 0.65rem;">Grade: ${s.grade || 'N/A'}</span>
+                                                    <span class="badge" style="background: ${s.remark === 'PASS' || s.remark === 'Exceeded' || s.remark === 'Met' ? '#dcfce7' : '#fee2e2'}; color: ${s.remark === 'PASS' || s.remark === 'Exceeded' || s.remark === 'Met' ? '#15803d' : '#ef4444'}; font-size: 0.65rem; font-weight: 800;">${s.remark || 'N/A'}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 1rem; flex-shrink: 0;">
+                                            <div style="text-align: right;">
+                                                <div style="font-size: 1.25rem; font-weight: 900; color: #4f46e5;">${totalScore.toFixed(0)}</div>
+                                                <div style="font-size: 0.55rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Total</div>
+                                            </div>
+                                            <i data-lucide="chevron-down" class="collapse-icon" style="color: #94a3b8; transition: transform 0.3s ease;"></i>
+                                        </div>
+                                    </label>
+                                    <input type="checkbox" id="toggle-grade-${s.id}" class="collapse-toggle" style="display: none;">
+                                    <div class="collapse-content" style="padding: 0 1.5rem 1.5rem; background: #f8fafc;">
+                                        <div style="padding-top: 1.5rem; border-top: 1px solid #e2e8f0;">
+                                            <!-- Progress Visualizer -->
+                                            <div style="margin-bottom: 1.25rem;">
+                                                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 800; color: #475569;">
+                                                    <span>Performance Meter</span>
+                                                    <span>${totalScore.toFixed(1)} / 100</span>
+                                                </div>
+                                                <div class="score-progress-wrapper">
+                                                    <div class="score-progress-fill ${gradeClass}" style="width: ${totalScorePct}%"></div>
+                                                </div>
+                                            </div>
+
+                                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem;">
+                                                <div style="text-align: center; background: white; padding: 1rem; border-radius: 12px; border: 1px solid #f1f5f9;">
+                                                    <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Continuous Assessment</div>
+                                                    <div style="font-size: 1.1rem; font-weight: 850; color: #1e293b; margin-top: 4px;">${caScore.toFixed(1)}</div>
+                                                    <div style="font-size: 0.55rem; font-weight: 700; color: #cbd5e1; margin-top: 2px;">Ass: ${s.assignment || 0} | T1: ${s.test1 || 0} | T2: ${s.test2 || 0} | Prj: ${s.project || 0}</div>
+                                                </div>
+                                                <div style="text-align: center; background: white; padding: 1rem; border-radius: 12px; border: 1px solid #f1f5f9;">
+                                                    <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Exam Score</div>
+                                                    <div style="font-size: 1.1rem; font-weight: 850; color: #1e293b; margin-top: 4px;">${examScore.toFixed(1)}</div>
+                                                    <div style="font-size: 0.55rem; font-weight: 700; color: #cbd5e1; margin-top: 2px;">Max 60 Marks</div>
+                                                </div>
+                                                <div style="text-align: center; background: white; padding: 1rem; border-radius: 12px; border: 1px solid #f1f5f9;">
+                                                    <div style="font-size: 0.6rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Grade Letter</div>
+                                                    <div style="font-size: 1.1rem; font-weight: 900; color: #4f46e5; margin-top: 4px;">${s.grade || 'N/A'}</div>
+                                                    <div style="font-size: 0.55rem; font-weight: 700; color: #cbd5e1; margin-top: 2px;">Term Equivalent</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+        } else if (activeTab === 'attendance') {
+            const selectedMonthStr = localStorage.getItem('parent_attendance_month') || new Date().toISOString().slice(0, 7);
+            const [selYear, selMonth] = selectedMonthStr.split('-').map(Number);
+            
+            const allAttendance = await db.attendance_records.where('student_id').equals(activeStudentId).toArray();
+            const monthAttendance = allAttendance.filter(a => a.date && a.date.startsWith(selectedMonthStr));
+
+            // Compute Month Stats
+            const totalDaysRecorded = monthAttendance.length;
+            const presentDays = monthAttendance.filter(a => a.status === 'Present').length;
+            const absentDays = monthAttendance.filter(a => a.status === 'Absent').length;
+            const lateDays = monthAttendance.filter(a => a.status === 'Late' || a.is_late === 1 || a.is_late === true).length;
+            const activeRate = totalDaysRecorded > 0 ? ((presentDays + lateDays) / totalDaysRecorded) * 100 : 0;
+
+            // Generate Calendar Details
+            const monthDate = new Date(selYear, selMonth - 1, 1);
+            const monthName = monthDate.toLocaleString('default', { month: 'long' });
+            const totalMonthDays = new Date(selYear, selMonth, 0).getDate();
+            const startDayIndex = monthDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+
+            // Build Days Grid Array
+            const calendarDays = [];
+            for (let i = 0; i < startDayIndex; i++) {
+                calendarDays.push({ empty: true });
+            }
+            for (let dayNum = 1; dayNum <= totalMonthDays; dayNum++) {
+                const dayStr = `${selYear}-${String(selMonth).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                const record = monthAttendance.find(a => a.date === dayStr);
+                calendarDays.push({
+                    empty: false,
+                    dayNumber: dayNum,
+                    dateStr: dayStr,
+                    status: record ? record.status : 'None',
+                    record: record
+                });
+            }
+
+            const monthOptions = [
+                { value: '2026-05', label: 'May 2026' },
+                { value: '2026-04', label: 'April 2026' },
+                { value: '2026-03', label: 'March 2026' },
+                { value: '2026-02', label: 'February 2026' },
+                { value: '2026-01', label: 'January 2026' },
+                { value: '2025-12', label: 'December 2025' },
+                { value: '2025-11', label: 'November 2025' },
+                { value: '2025-10', label: 'October 2025' },
+                { value: '2025-09', label: 'September 2025' }
+            ];
+
+            tabContentHtml = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;"><i data-lucide="check-circle-2"></i></div>
+                        <div>
+                            <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Present Days</div>
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${presentDays} Days</div>
+                        </div>
+                    </div>
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(239, 68, 68, 0.1); color: #ef4444; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;"><i data-lucide="x-circle"></i></div>
+                        <div>
+                            <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Absent Days</div>
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${absentDays} Days</div>
+                        </div>
+                    </div>
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;"><i data-lucide="alarm-clock"></i></div>
+                        <div>
+                            <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Late Logins</div>
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${lateDays} Days</div>
+                        </div>
+                    </div>
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;"><i data-lucide="activity"></i></div>
+                        <div>
+                            <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Turnout Rate</div>
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${activeRate.toFixed(1)}%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                    <!-- Calendar Widget Card -->
+                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h3 style="font-weight: 900; color: #1e293b; margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="calendar-days" style="color: #4f46e5;"></i> ${monthName} ${selYear}
+                            </h3>
+                            <select id="parent-attendance-month" class="input" style="height: 36px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 0.5rem; font-size: 0.8rem; font-weight: 700; width: 140px; background: white;">
+                                ${monthOptions.map(o => `<option value="${o.value}" ${selectedMonthStr === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+                            </select>
+                        </div>
+                        
+                        <div class="attendance-calendar-header">
+                            <div class="attendance-calendar-header-day">Sun</div>
+                            <div class="attendance-calendar-header-day">Mon</div>
+                            <div class="attendance-calendar-header-day">Tue</div>
+                            <div class="attendance-calendar-header-day">Wed</div>
+                            <div class="attendance-calendar-header-day">Thu</div>
+                            <div class="attendance-calendar-header-day">Fri</div>
+                            <div class="attendance-calendar-header-day">Sat</div>
+                        </div>
+                        <div class="attendance-calendar-grid">
+                            ${calendarDays.map(d => {
+                                if (d.empty) {
+                                    return `<div class="attendance-calendar-day empty"></div>`;
+                                }
+                                let statusClass = '';
+                                if (d.status === 'Present') statusClass = 'present';
+                                else if (d.status === 'Absent') statusClass = 'absent';
+                                else if (d.status === 'Late') statusClass = 'late';
+                                return `<div class="attendance-calendar-day ${statusClass}">${d.dayNumber}</div>`;
+                            }).join('')}
+                        </div>
+
+                        <!-- Legends -->
+                        <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem; flex-wrap: wrap;">
+                            <div class="attendance-legend-item"><div class="attendance-legend-color" style="background: #dcfce7; border: 1px solid #bbf7d0;"></div> Present</div>
+                            <div class="attendance-legend-item"><div class="attendance-legend-color" style="background: #fee2e2; border: 1px solid #fecdd3;"></div> Absent</div>
+                            <div class="attendance-legend-item"><div class="attendance-legend-color" style="background: #fef3c7; border: 1px solid #fde68a;"></div> Late</div>
+                        </div>
+                    </div>
+
+                    <!-- Attendance Log Card -->
+                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem;">
+                                <i data-lucide="clipboard-list" style="color: #4f46e5;"></i> Detailed Attendance History
+                            </h3>
+                            <div class="table-container" style="max-height: 280px; overflow-y: auto;">
+                                <table class="data-table" style="width: 100%;">
+                                    <thead><tr style="background:#f8fafc;">
+                                        <th>Date</th><th>Status</th><th>Period/Subject</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        ${monthAttendance.length === 0 ? '<tr><td colspan="3" style="text-align:center; padding: 2rem; color: #94a3b8;">No records logged for this month.</td></tr>' : monthAttendance.map(a => `
+                                            <tr>
+                                                <td style="font-weight:700;">${new Date(a.date).toLocaleDateString()}</td>
+                                                <td><span class="badge ${a.status === 'Present' ? 'success' : a.status === 'Late' ? 'warning' : 'danger'}" style="font-weight:800;">${a.status}</span></td>
+                                                <td style="color:#64748b; font-size:0.8rem;">${a.subject_name || 'General School'} ${a.period_number ? `(Period ${a.period_number})` : ''}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (activeTab === 'timetable') {
+            const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+            const todayIndex = new Date().getDay();
+            const defaultDay = todayIndex === 0 || todayIndex === 6 ? 'Monday' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][todayIndex];
+            const selDay = localStorage.getItem('parent_timetable_day') || defaultDay;
+
+            const timetableEntries = await db.timetable.where('class_name').equals(activeChild.class_name).toArray();
+            const dayClasses = timetableEntries.filter(e => e.day_of_week === selDay).sort((a,b) => a.period_number - b.period_number);
+
+            tabContentHtml = `
+                <!-- Day Pills -->
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 2rem; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;">
+                    ${daysOfWeek.map(d => {
+                        const isActive = d === selDay;
+                        return `<button class="parent-timetable-day-btn btn" data-day="${d}" style="border-radius: 12px; height: 40px; padding: 0 1.25rem; font-weight: 800; background: ${isActive ? '#4f46e5' : 'white'}; color: ${isActive ? 'white' : '#475569'}; border: 1px solid ${isActive ? '#4f46e5' : '#e2e8f0'}; box-shadow: ${isActive ? '0 4px 12px rgba(79,70,229,0.2)' : 'none'}; white-space: nowrap;">${d}</button>`;
+                    }).join('')}
+                </div>
+
+                <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
+                    <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                        <span style="display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="calendar" style="color: #4f46e5;"></i> Timetable for ${selDay}</span>
+                        <span class="badge" style="background:#eef2ff; color:#4f46e5; font-size:0.75rem;">Class: ${activeChild.class_name}</span>
+                    </h3>
+
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${dayClasses.length === 0 ? `
+                            <div style="text-align: center; padding: 4rem; opacity: 0.5;">
+                                <i data-lucide="calendar-off" style="width: 48px; height: 48px; margin-bottom: 1rem; color: #94a3b8;"></i>
+                                <p style="font-weight: 700; font-size:0.95rem; color:#64748b;">No scheduled classes for ${selDay}.</p>
+                            </div>
+                        ` : dayClasses.map(c => `
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0; background: #f8fafc; transition: all 0.2s;">
+                                <div style="display: flex; align-items: center; gap: 1.25rem;">
+                                    <div style="width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1rem; box-shadow: 0 8px 16px -4px rgba(79,70,229,0.3);">
+                                        ${(c.subject_id || 'Sub').slice(0, 3).toUpperCase()}
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 900; color: #1e293b; font-size: 1.05rem;">${c.subject_id}</div>
+                                        <div style="font-size: 0.8rem; color: #64748b; font-weight: 600; margin-top: 2px;">Subject Lecturer / Teacher ID: ${c.teacher_id || 'Assigned Staff'}</div>
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span class="badge" style="background: rgba(79, 70, 229, 0.1); color: #4f46e5; font-size: 0.75rem; font-weight: 800; border-radius: 8px; padding: 4px 10px;">Period ${c.period_number}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        } else if (activeTab === 'finances') {
+            const payments = await db.payments.where('student_id').equals(activeStudentId).reverse().sortBy('date');
+
+            tabContentHtml = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+                    <!-- Pay Now Card -->
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03);">
+                            <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                                <div style="width: 40px; height: 40px; background: #eef2ff; color: #4338ca; border-radius: 12px; display: flex; align-items: center; justify-content: center;"><i data-lucide="credit-card" style="width:20px;"></i></div>
+                                Tuition Payment
+                            </h3>
+                            
+                            <div class="form-group" style="margin-bottom: 1.25rem;">
+                                <label style="font-weight: 800; color: #475569; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">SCHOOL FEE AMOUNT (₦)</label>
+                                <input type="number" id="payment-amount" class="input w-100" value="${analytics.fee_balance || 0}" min="100" style="height: 56px; border-radius: 16px; font-size: 1.25rem; font-weight: 800; padding: 0 1.5rem; border: 2px solid #e2e8f0;">
+                            </div>
+
+                            <!-- Transparent Fee Breakdown -->
+                            <div id="fee-breakdown" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 1.25rem; margin-bottom: 1.5rem;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                                    <span style="font-weight: 700; color: #475569; font-size: 0.85rem;">School Fee</span>
+                                    <span id="bd-school-fee" style="font-weight: 800; color: #1e293b;">₦${(analytics.fee_balance || 0).toLocaleString()}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                                    <span style="font-weight: 700; color: #475569; font-size: 0.85rem;">Platform Maintenance</span>
+                                    <span style="font-weight: 800; color: #64748b;">₦${maintenanceFee.toLocaleString()}</span>
+                                </div>
+                                <div style="border-top: 2px dashed #e2e8f0; margin: 0.75rem 0;"></div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="font-weight: 900; color: #1e293b; font-size: 1rem;">Total Charge</span>
+                                    <span id="bd-total" style="font-weight: 950; color: #4338ca; font-size: 1.1rem;">₦${((analytics.fee_balance || 0) + maintenanceFee).toLocaleString()}</span>
+                                </div>
+                            </div>
+
+                            <button id="pay-now-btn" class="btn btn-primary w-100" style="height: 60px; border-radius: 18px; font-weight: 900; font-size: 1.05rem; background: linear-gradient(135deg, #4338ca 0%, #6366f1 100%); border: none; display: flex; align-items: center; justify-content: center; gap: 0.75rem; box-shadow: 0 10px 25px -5px rgba(67,56,202,0.4);">
+                                <i data-lucide="zap"></i> PAY ₦<span id="bd-btn-total">${((analytics.fee_balance || 0) + maintenanceFee).toLocaleString()}</span>
+                            </button>
+                        </div>
+
+                        <div class="card" style="padding: 2rem; border-radius: 28px; background: linear-gradient(135deg, #fef2f2, #fff1f2); border: 1px solid #fecdd3; box-shadow: 0 4px 15px -5px rgba(239,68,68,0.1);">
+                            <h3 style="font-weight: 900; color: #b91c1c; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem;">
+                                <div style="width: 40px; height: 40px; background: white; color: #ef4444; border-radius: 12px; display: flex; align-items: center; justify-content: center;"><i data-lucide="key" style="width:20px;"></i></div>
+                                Result Checking Pin
+                            </h3>
+                            <p style="color: #991b1b; font-size: 0.85rem; line-height: 1.5; margin-bottom: 1.25rem; font-weight: 600;">Purchase an access pin to check your terminal results online.</p>
+                            <button id="buy-pin-btn" class="btn w-100" style="height: 52px; border-radius: 14px; font-weight: 900; background: white; color: #b91c1c; border: 2px solid #fecdd3; display: flex; align-items: center; justify-content: center; gap: 0.75rem;">
+                                <i data-lucide="shopping-cart"></i> BUY PIN (₦${(pinPrice + maintenanceFee).toLocaleString()})
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- History Card -->
+                    <div class="card" style="padding: 0; border-radius: 28px; background: white; border: 1px solid #e2e8f0; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
+                        <div style="padding: 1.5rem 2rem; border-bottom: 1px solid #f1f5f9; flex-shrink:0;">
+                            <h3 style="font-weight: 900; color: #1e293b; margin: 0;">Transaction History</h3>
+                        </div>
+                        <div class="table-container" style="flex:1; overflow-y: auto; max-height: 480px;">
+                            <table class="data-table" style="width: 100%;">
+                                <thead><tr style="background: #f8fafc;">
+                                    <th style="padding-left: 2rem;">DATE</th><th>REFERENCE</th><th>AMOUNT</th><th>STATUS</th><th style="text-align: right; padding-right: 2rem;">RECEIPT</th>
+                                </tr></thead>
+                                <tbody>
+                                    ${payments.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem; color: #94a3b8;">No payment history found.</td></tr>' : payments.map(p => `
+                                        <tr>
+                                            <td style="padding-left: 2rem;"><div style="font-weight: 700; color: #1e293b;">${new Date(p.date).toLocaleDateString()}</div></td>
+                                            <td><code style="font-size: 0.75rem; color: #64748b;">${p.reference}</code></td>
+                                            <td><div style="font-weight: 800; color: #1e293b;">₦${parseFloat(p.amount).toLocaleString()}</div></td>
+                                            <td><span class="badge ${p.status === 'success' ? 'success' : 'warning'}" style="font-weight: 800;">${(p.status || 'pending').toUpperCase()}</span></td>
+                                            <td style="text-align: right; padding-right: 2rem;">
+                                                <button class="btn btn-sm" onclick="UI.printReceipt('${p.id}')" style="background: #f1f5f9; color: #4338ca; border-radius: 8px;"><i data-lucide="file-text" style="width: 14px;"></i></button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (activeTab === 'cbt') {
+            const cbtResults = await db.cbt_results.where('student_id').equals(activeStudentId).toArray();
+            const cbtExams = await db.cbt_exams.toArray();
+            const subjects = await db.subjects.toArray();
+            const subMap = subjects.reduce((m, s) => { m[s.id] = s.name; return m; }, {});
+            
+            const completedExams = cbtResults.map(res => {
+                const exam = cbtExams.find(e => e.id === res.exam_id) || {};
+                return {
+                    title: exam.title || 'CBT Assessment',
+                    subject: subMap[exam.subject_id] || exam.subject_id || 'General',
+                    date: res.started_at ? new Date(res.started_at).toLocaleDateString() : 'N/A',
+                    score: res.score,
+                    total_questions: res.total_questions || 0,
+                    total_marks: res.total_marks || 0,
+                    warnings: res.warnings || 0,
+                    violations: res.violations || 0
+                };
+            });
+
+            const upcomingExams = cbtExams.filter(exam => 
+                exam.class_name === activeChild.class_name && 
+                exam.status === 'Active' && 
+                !cbtResults.some(r => r.exam_id === exam.id)
+            );
+
+            tabContentHtml = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+                    <!-- Upcoming Exams -->
+                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
+                        <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem;">
+                            <i data-lucide="play-circle" style="color: #8b5cf6;"></i> Pending CBT Exams
+                        </h3>
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                            ${upcomingExams.length === 0 ? `
+                                <div style="text-align: center; padding: 3rem 0; opacity: 0.5;">
+                                    <i data-lucide="smile" style="width: 36px; height: 36px; margin-bottom: 0.5rem; color:#94a3b8;"></i>
+                                    <p style="font-weight: 700; font-size:0.85rem; color:#64748b;">No pending CBT assessments.</p>
+                                </div>
+                            ` : upcomingExams.map(exam => `
+                                <div style="padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0; background: #f8fafc;">
+                                    <div style="font-weight: 900; color:#1e293b; font-size:1rem;">${exam.title}</div>
+                                    <div style="font-size:0.75rem; color:#64748b; font-weight:600; margin-top:2px;">Subject: ${subMap[exam.subject_id] || exam.subject_id} • Term: ${exam.term || 'N/A'}</div>
+                                    <div style="margin-top: 1rem; padding: 0.75rem; background: #fff8eb; border: 1px solid #fde68a; border-radius: 12px; font-size:0.7rem; color:#b45309; line-height:1.4;">
+                                        * Note: Exams must be taken by the student using their student login credentials.
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Completed Exams results -->
+                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
+                        <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem;">
+                            <i data-lucide="check-circle" style="color: #10b981;"></i> Completed Assessments
+                        </h3>
+                        <div class="table-container" style="max-height: 350px; overflow-y: auto;">
+                            <table class="data-table" style="width: 100%;">
+                                <thead><tr style="background:#f8fafc;">
+                                    <th>EXAM</th><th>SCORE</th><th>SECURITY</th>
+                                </tr></thead>
+                                <tbody>
+                                    ${completedExams.length === 0 ? '<tr><td colspan="3" style="text-align:center; padding: 2rem; color: #94a3b8;">No exam history logged.</td></tr>' : completedExams.map(e => `
+                                        <tr>
+                                            <td>
+                                                <div style="font-weight:800; color:#1e293b; font-size:0.85rem;">${e.title}</div>
+                                                <div style="font-size:0.65rem; color:#94a3b8; font-weight:600; margin-top:2px;">${e.date} • ${e.subject}</div>
+                                            </td>
+                                            <td>
+                                                <div style="font-weight:900; color:#4f46e5; font-size:1.1rem;">${e.score} <span style="font-size:0.75rem; color:#94a3b8; font-weight:600;">/ ${e.total_marks}</span></div>
+                                            </td>
+                                            <td>
+                                                ${e.violations > 0 ? `<span class="badge danger" style="font-weight:800; font-size:0.6rem;">${e.violations} Violations</span>` : `<span class="badge success" style="font-weight:800; font-size:0.6rem;">Secure</span>`}
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (activeTab === 'notices') {
+            let notices = await db.notices.toArray().catch(() => []);
+            const filteredNotices = notices.filter(n => {
+                if (n.target === 'All' || n.target === 'Students' || n.target === activeChild.class_name) return true;
+                return false;
+            }).sort((a,b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+
+            tabContentHtml = `
+                <!-- Category Filter pills -->
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 2rem; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;">
+                    <button class="notice-filter-btn btn active" data-category="all" style="border-radius: 12px; height: 38px; padding: 0 1.25rem; font-weight: 800; white-space: nowrap;">All Bulletins</button>
+                    <button class="notice-filter-btn btn" data-category="Urgent" style="border-radius: 12px; height: 38px; padding: 0 1.25rem; font-weight: 800; white-space: nowrap;">Urgent</button>
+                    <button class="notice-filter-btn btn" data-category="Academic" style="border-radius: 12px; height: 38px; padding: 0 1.25rem; font-weight: 800; white-space: nowrap;">Academic</button>
+                    <button class="notice-filter-btn btn" data-category="Financial" style="border-radius: 12px; height: 38px; padding: 0 1.25rem; font-weight: 800; white-space: nowrap;">Financial</button>
+                    <button class="notice-filter-btn btn" data-category="General" style="border-radius: 12px; height: 38px; padding: 0 1.25rem; font-weight: 800; white-space: nowrap;">General</button>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    ${filteredNotices.length === 0 ? `
+                        <div class="card" style="text-align: center; padding: 4rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
+                            <i data-lucide="bell-off" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 1rem;"></i>
+                            <p style="color: #64748b; font-weight: 700;">No school notices published yet.</p>
+                        </div>
+                    ` : filteredNotices.map(n => `
+                        <div class="parent-notice-card" data-category="${n.category}">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span class="badge" style="background: ${n.category === 'Urgent' ? '#fee2e2' : n.category === 'Academic' ? '#dcfce7' : n.category === 'Financial' ? '#fef3c7' : '#eef2ff'}; color: ${n.category === 'Urgent' ? '#ef4444' : n.category === 'Academic' ? '#15803d' : n.category === 'Financial' ? '#d97706' : '#4f46e5'}; font-weight: 800; font-size: 0.7rem; border-radius: 8px; padding: 4px 10px;">
+                                        ${n.category || 'General'}
+                                    </span>
+                                    <span style="font-size:0.75rem; color:#94a3b8; font-weight:600;">Published: ${new Date(n.updated_at || 0).toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                            <h4 style="margin: 0; font-size: 1.2rem; font-weight: 900; color: #1e293b; letter-spacing: -0.5px;">${n.title}</h4>
+                            <p style="color:#475569; font-size:0.95rem; line-height:1.6; margin: 1rem 0 1.5rem 0; white-space: pre-wrap;">${n.content}</p>
+                            
+                            <div style="display: flex; align-items: center; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid #f1f5f9;">
+                                <div style="width: 32px; height: 32px; border-radius: 50%; background: #eef2ff; color:#4f46e5; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:0.8rem;">
+                                    ${(n.author || 'S').charAt(0).toUpperCase()}
+                                </div>
+                                <div style="font-size: 0.85rem; font-weight: 800; color: #1e293b;">
+                                    ${n.author || 'School Administration'}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        } else if (activeTab === 'profile') {
+            tabContentHtml = `
+                <div class="card" style="padding: 2.5rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
+                    <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 2.5rem; flex-wrap: wrap;">
+                        <div style="width: 72px; height: 72px; border-radius: 24px; background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.5rem; box-shadow: 0 10px 25px -5px rgba(79,70,229,0.3);">
+                            ${childInitials}
+                        </div>
+                        <div>
+                            <h3 style="font-weight: 900; font-size: 1.5rem; color: #1e293b; margin: 0; letter-spacing: -0.5px;">${activeChild.name}</h3>
+                            <p style="color: #64748b; font-size: 0.85rem; margin-top: 4px; font-weight: 600;">Linked Scholar • Relationship: <span style="color: #4f46e5; font-weight: 800;">${activeChild.relationship || 'Child'}</span></p>
+                        </div>
+                    </div>
+
+                    <div class="parent-profile-info-grid">
+                        <div class="parent-profile-item">
+                            <div class="parent-profile-label">Student ID</div>
+                            <div class="parent-profile-value" style="font-family: monospace; font-size:1.05rem; color:#4f46e5;">${activeChild.student_id}</div>
+                        </div>
+                        <div class="parent-profile-item">
+                            <div class="parent-profile-label">Current Class</div>
+                            <div class="parent-profile-value">${activeChild.class_name || 'N/A'}</div>
+                        </div>
+                        <div class="parent-profile-item">
+                            <div class="parent-profile-label">Subclass / Stream</div>
+                            <div class="parent-profile-value">${activeChild.sub_class || 'General Stream'}</div>
+                        </div>
+                        <div class="parent-profile-item">
+                            <div class="parent-profile-label">Gender</div>
+                            <div class="parent-profile-value">${activeChild.gender || 'N/A'}</div>
+                        </div>
+                        <div class="parent-profile-item">
+                            <div class="parent-profile-label">Admission Year</div>
+                            <div class="parent-profile-value">${activeChild.admission_year || 'N/A'}</div>
+                        </div>
+                        <div class="parent-profile-item">
+                            <div class="parent-profile-label">Status</div>
+                            <div class="parent-profile-value"><span class="badge success" style="font-weight:800;">${activeChild.status || 'Active'}</span></div>
+                        </div>
+                        <div class="parent-profile-item" style="grid-column: span 2;">
+                            <div class="parent-profile-label">Contact / Residential Address</div>
+                            <div class="parent-profile-value">${activeChild.address || 'No registered address on file.'}</div>
+                        </div>
+                        <div class="parent-profile-item">
+                            <div class="parent-profile-label">Attendance Code</div>
+                            <div class="parent-profile-value" style="letter-spacing: 1px; font-weight: 800;">${activeChild.attendance_code || 'N/A'}</div>
+                        </div>
+                        <div class="parent-profile-item">
+                            <div class="parent-profile-label">Legacy Student ID</div>
+                            <div class="parent-profile-value">${activeChild.legacy_student_id || 'None'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
 
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in" style="padding: 1rem; min-height: 100vh; background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 50%, #f0fdf4 100%);">
+            <div class="parent-portal-container animate-fade-in" style="padding: 1rem; min-height: 100vh;">
                 <!-- Parent Dashboard Header -->
                 <header style="margin-bottom: 2rem; padding: 2rem; border-radius: 28px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white; box-shadow: 0 20px 40px -10px rgba(15,23,42,0.4); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem;">
                     <div>
@@ -1700,7 +2451,7 @@ export const UI = {
                     </div>
                     <div style="background: rgba(255,255,255,0.07); padding: 0.75rem 1.5rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 0.75rem;">
                         <div style="width: 32px; height: 32px; border-radius: 50%; background: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 800; color: white;">
-                            P
+                            ${(this.currentUser.name || 'P').charAt(0).toUpperCase()}
                         </div>
                         <div style="text-align: left;">
                             <div style="font-size: 0.8rem; font-weight: 800; color: white;">${this.currentUser.name}</div>
@@ -1709,24 +2460,24 @@ export const UI = {
                     </div>
                 </header>
 
-                <!-- Active Child Selector & Child Profiles List -->
+                <!-- Active Child Selector -->
                 <div style="margin-bottom: 2rem;">
                     <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem;">
                         <i data-lucide="users" style="color: #4f46e5; width: 20px;"></i>
-                        Select Active Scholar
+                        Select Scholar
                     </h3>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem;">
                         ${myChildren.map(child => {
                             const isActive = child.student_id === activeStudentId;
                             const childInitials = child.name.split(' ').map(n => n.charAt(0)).slice(0, 2).join('').toUpperCase();
                             return `
-                                <div class="card" onclick="UI.changeActiveChild('${child.student_id}')" style="cursor: pointer; padding: 1.5rem; border-radius: 24px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 2px solid ${isActive ? '#4f46e5' : '#f1f5f9'}; background: white; box-shadow: ${isActive ? '0 10px 25px -5px rgba(79,70,229,0.15)' : '0 4px 15px -5px rgba(0,0,0,0.03)'}; display: flex; align-items: center; gap: 1rem; position: relative; overflow: hidden;">
-                                    ${isActive ? `<div style="position: absolute; top: 0; right: 0; width: 40px; height: 40px; background: #4f46e5; display: flex; align-items: center; justify-content: center; border-bottom-left-radius: 20px;"><i data-lucide="check" style="color: white; width: 16px; height: 16px;"></i></div>` : ''}
-                                    <div style="width: 50px; height: 50px; border-radius: 16px; background: ${isActive ? 'linear-gradient(135deg, #6366f1 0%, #4338ca 100%)' : '#f1f5f9'}; color: ${isActive ? 'white' : '#475569'}; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1rem; box-shadow: ${isActive ? '0 8px 20px -5px rgba(99,102,241,0.4)' : 'none'}; flex-shrink: 0;">
+                                <div class="card" onclick="UI.changeActiveChild('${child.student_id}')" style="cursor: pointer; padding: 1.25rem 1.5rem; border-radius: 24px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 2px solid ${isActive ? '#4f46e5' : '#e2e8f0'}; background: white; box-shadow: ${isActive ? '0 10px 25px -5px rgba(79,70,229,0.1)' : '0 4px 15px -5px rgba(0,0,0,0.02)'}; display: flex; align-items: center; gap: 1rem; position: relative; overflow: hidden;">
+                                    ${isActive ? `<div style="position: absolute; top: 0; right: 0; width: 36px; height: 36px; background: #4f46e5; display: flex; align-items: center; justify-content: center; border-bottom-left-radius: 18px;"><i data-lucide="check" style="color: white; width: 14px; height: 14px;"></i></div>` : ''}
+                                    <div style="width: 48px; height: 48px; border-radius: 14px; background: ${isActive ? 'linear-gradient(135deg, #6366f1 0%, #4338ca 100%)' : '#f8fafc'}; color: ${isActive ? 'white' : '#475569'}; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.95rem; box-shadow: ${isActive ? '0 8px 16px -4px rgba(99,102,241,0.3)' : 'none'}; flex-shrink: 0; border: 1px solid ${isActive ? '#4f46e5' : '#e2e8f0'};">
                                         ${childInitials}
                                     </div>
-                                    <div style="min-width: 0;">
-                                        <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${child.name}</div>
+                                    <div style="min-width: 0; flex: 1;">
+                                        <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 20px;">${child.name}</div>
                                         <div style="font-size: 0.75rem; font-weight: 600; color: #64748b; margin-top: 2px;">Class: ${child.class_name} • ID: ${child.student_id}</div>
                                         <span class="badge" style="background: #f8fafc; color: #6366f1; border: 1px solid #e2e8f0; font-size: 0.65rem; border-radius: 6px; padding: 2px 6px; margin-top: 6px; display: inline-block;">${child.relationship || 'Child'}</span>
                                     </div>
@@ -1736,113 +2487,121 @@ export const UI = {
                     </div>
                 </div>
 
-                <!-- Active Scholar Summary (KPI Grid) -->
-                <div style="background: white; border-radius: 28px; padding: 2.25rem; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.04); margin-bottom: 2rem;">
-                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem;">
-                        <div style="width: 44px; height: 44px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; border-radius: 14px; display: flex; align-items: center; justify-content: center;"><i data-lucide="activity" style="width:22px;"></i></div>
-                        <div>
-                            <h3 style="font-weight: 950; color: #1e293b; margin: 0; font-size: 1.25rem;">Active Child Dashboard</h3>
-                            <p style="color: #64748b; font-size: 0.85rem; margin-top: 2px; font-weight: 600;">Currently displaying records for <span style="color: #4f46e5; font-weight: 800;">${activeChild.name}</span></p>
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem;">
-                        <!-- Average Marks -->
-                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem;">
-                            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="award"></i></div>
-                            <div>
-                                <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Academic Average</div>
-                                <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${(analytics.average || 0).toFixed(1)}%</div>
-                            </div>
-                        </div>
-
-                        <!-- Class Rank -->
-                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem;">
-                            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="trending-up"></i></div>
-                            <div>
-                                <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Class Ranking</div>
-                                <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${analytics.rank || 'N/A'}</div>
-                            </div>
-                        </div>
-
-                        <!-- Attendance -->
-                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem;">
-                            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="calendar"></i></div>
-                            <div>
-                                <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Attendance Rate</div>
-                                <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${(analytics.attendance_rate || 0).toFixed(1)}%</div>
-                            </div>
-                        </div>
-
-                        <!-- Fees Balance -->
-                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem;">
-                            <div style="width: 48px; height: 48px; border-radius: 12px; background: ${analytics.fee_balance > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${analytics.fee_balance > 0 ? '#ef4444' : '#10b981'}; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="credit-card"></i></div>
-                            <div>
-                                <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Tuition Balance</div>
-                                <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
-                            </div>
-                        </div>
-                    </div>
+                <!-- Tabbed navigation bar -->
+                <div class="parent-portal-tabs">
+                    <button class="parent-portal-tab-btn ${activeTab === 'overview' ? 'active' : ''}" data-tab="overview"><i data-lucide="layout-dashboard" style="width:18px;"></i> Overview</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'academic' ? 'active' : ''}" data-tab="academic"><i data-lucide="award" style="width:18px;"></i> Academic</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'attendance' ? 'active' : ''}" data-tab="attendance"><i data-lucide="calendar" style="width:18px;"></i> Attendance</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'timetable' ? 'active' : ''}" data-tab="timetable"><i data-lucide="clock" style="width:18px;"></i> Timetable</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'finances' ? 'active' : ''}" data-tab="finances"><i data-lucide="credit-card" style="width:18px;"></i> Finances</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'cbt' ? 'active' : ''}" data-tab="cbt"><i data-lucide="cpu" style="width:18px;"></i> CBT Exams</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'notices' ? 'active' : ''}" data-tab="notices"><i data-lucide="bell" style="width:18px;"></i> Notices</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'profile' ? 'active' : ''}" data-tab="profile"><i data-lucide="user" style="width:18px;"></i> Profile</button>
                 </div>
 
-                <!-- Academic Portals Quick Links -->
-                <div>
-                    <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem;">
-                        <i data-lucide="layout-dashboard" style="color: #4f46e5; width: 20px;"></i>
-                        Academic Quick Actions
-                    </h3>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem;">
-                        <!-- Tuition Fees & PIN Card -->
-                        <div class="card" onclick="UI.renderView('finances')" style="cursor: pointer; padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03); transition: all 0.2s ease; display: flex; flex-direction: column; gap: 1.5rem; justify-content: space-between;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                <div style="width: 52px; height: 52px; border-radius: 16px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="credit-card"></i></div>
-                                <div style="background: ${analytics.fee_balance > 0 ? '#fee2e2' : '#dcfce7'}; color: ${analytics.fee_balance > 0 ? '#ef4444' : '#15803d'}; font-weight: 800; font-size: 0.7rem; border-radius: 8px; padding: 4px 8px; text-transform: uppercase; letter-spacing: 0.5px;">
-                                    ${analytics.fee_balance > 0 ? 'Payment Required' : 'Cleared'}
-                                </div>
-                            </div>
-                            <div>
-                                <h4 style="font-weight: 900; font-size: 1.15rem; color: #1e293b; margin: 0;">Finances & Receipts</h4>
-                                <p style="color: #64748b; font-size: 0.85rem; margin-top: 0.5rem; line-height: 1.5; font-weight: 600;">Pay tuition balance online and purchase terminal result checking pins.</p>
-                            </div>
-                        </div>
-
-                        <!-- Academic Grades Card -->
-                        <div class="card" onclick="UI.renderView('gradebook')" style="cursor: pointer; padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03); transition: all 0.2s ease; display: flex; flex-direction: column; gap: 1.5rem; justify-content: space-between;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                <div style="width: 52px; height: 52px; border-radius: 16px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="bar-chart-2"></i></div>
-                            </div>
-                            <div>
-                                <h4 style="font-weight: 900; font-size: 1.15rem; color: #1e293b; margin: 0;">Grades & Report Cards</h4>
-                                <p style="color: #64748b; font-size: 0.85rem; margin-top: 0.5rem; line-height: 1.5; font-weight: 600;">View subject scores, print official report cards, and track learning progress.</p>
-                            </div>
-                        </div>
-
-                        <!-- Attendance History Card -->
-                        <div class="card" onclick="UI.renderView('attendance')" style="cursor: pointer; padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03); transition: all 0.2s ease; display: flex; flex-direction: column; gap: 1.5rem; justify-content: space-between;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                <div style="width: 52px; height: 52px; border-radius: 16px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="calendar"></i></div>
-                            </div>
-                            <div>
-                                <h4 style="font-weight: 900; font-size: 1.15rem; color: #1e293b; margin: 0;">Attendance Logs</h4>
-                                <p style="color: #64748b; font-size: 0.85rem; margin-top: 0.5rem; line-height: 1.5; font-weight: 600;">Monitor daily sign-in times, subject participation, and attendance metrics.</p>
-                            </div>
-                        </div>
-
-                        <!-- CBT Assessment Portal Card -->
-                        <div class="card" onclick="UI.renderView('cbt')" style="cursor: pointer; padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03); transition: all 0.2s ease; display: flex; flex-direction: column; gap: 1.5rem; justify-content: space-between;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                <div style="width: 52px; height: 52px; border-radius: 16px; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="play-circle"></i></div>
-                            </div>
-                            <div>
-                                <h4 style="font-weight: 900; font-size: 1.15rem; color: #1e293b; margin: 0;">CBT Exam Center</h4>
-                                <p style="color: #64748b; font-size: 0.85rem; margin-top: 0.5rem; line-height: 1.5; font-weight: 600;">Access online computer-based tests, reviews, and dynamic performance feedback.</p>
-                            </div>
-                        </div>
-                    </div>
+                <!-- Active tab panel -->
+                <div class="parent-portal-active-panel">
+                    ${tabContentHtml}
                 </div>
             </div>
         `;
+
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Bind events
+        // Tab buttons
+        document.querySelectorAll('.parent-portal-tab-btn').forEach(btn => {
+            btn.onclick = () => {
+                const tab = btn.getAttribute('data-tab');
+                UI.switchParentTab(tab);
+            };
+        });
+
+        // Academic term / session selectors
+        const termSel = document.getElementById('parent-academic-term');
+        if (termSel) {
+            termSel.onchange = () => {
+                localStorage.setItem('parent_academic_term', termSel.value);
+                UI.renderParentDashboard();
+            };
+        }
+        const sessionSel = document.getElementById('parent-academic-session');
+        if (sessionSel) {
+            sessionSel.onchange = () => {
+                localStorage.setItem('parent_academic_session', sessionSel.value);
+                UI.renderParentDashboard();
+            };
+        }
+
+        // Attendance Month Selector
+        const monthSel = document.getElementById('parent-attendance-month');
+        if (monthSel) {
+            monthSel.onchange = () => {
+                localStorage.setItem('parent_attendance_month', monthSel.value);
+                UI.renderParentDashboard();
+            };
+        }
+
+        // Timetable Day Selector
+        document.querySelectorAll('.parent-timetable-day-btn').forEach(btn => {
+            btn.onclick = () => {
+                const day = btn.getAttribute('data-day');
+                localStorage.setItem('parent_timetable_day', day);
+                UI.renderParentDashboard();
+            };
+        });
+
+        // Paystack Tuition Setup
+        const amountInput = document.getElementById('payment-amount');
+        if (amountInput) {
+            amountInput.addEventListener('input', () => {
+                const val = parseFloat(amountInput.value) || 0;
+                const total = val + maintenanceFee;
+                const elSchool = document.getElementById('bd-school-fee');
+                const elTotal = document.getElementById('bd-total');
+                const elBtnTotal = document.getElementById('bd-btn-total');
+                if (elSchool) elSchool.textContent = '₦' + val.toLocaleString();
+                if (elTotal) elTotal.textContent = '₦' + total.toLocaleString();
+                if (elBtnTotal) elBtnTotal.textContent = total.toLocaleString();
+            });
+        }
+        const payBtn = document.getElementById('pay-now-btn');
+        if (payBtn) {
+            payBtn.onclick = () => {
+                const amount = parseFloat(document.getElementById('payment-amount').value);
+                if (isNaN(amount) || amount <= 0) return Notifications.show('Please enter a valid amount.', 'warning');
+                this.initiatePaystackPayment(amount, 'Tuition Payment');
+            };
+        }
+        const buyPinBtn = document.getElementById('buy-pin-btn');
+        if (buyPinBtn) {
+            buyPinBtn.onclick = () => {
+                this.initiatePaystackPayment(pinPrice, 'Result Pin');
+            };
+        }
+
+        // Notices Category Filters
+        document.querySelectorAll('.notice-filter-btn').forEach(btn => {
+            btn.onclick = () => {
+                const cat = btn.getAttribute('data-category');
+                document.querySelectorAll('.notice-filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                document.querySelectorAll('.parent-notice-card').forEach(card => {
+                    const cardCat = card.getAttribute('data-category');
+                    if (cat === 'all' || cardCat === cat) {
+                        card.style.display = 'block';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            };
+        });
+    },
+
+    switchParentTab(tabName) {
+        localStorage.setItem('parent_active_tab', tabName);
+        this.renderParentDashboard();
     },
 
     changeActiveChild(studentId) {

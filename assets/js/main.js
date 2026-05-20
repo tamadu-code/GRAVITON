@@ -7,7 +7,7 @@ import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, 
 import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 
-console.log("--- GRAVITON CORE v24.0 (BUILD v266) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v25.0 (BUILD v268) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -304,7 +304,7 @@ async function loadAuthenticatedApp(authUser) {
 
     const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights'];
     const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances'];
-    const parentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances'];
+    const parentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'timetables', 'profile'];
     const accountsAllowed = ['dashboard', 'finances', 'noticeboard'];
 
     document.querySelectorAll('.nav-item').forEach(item => {

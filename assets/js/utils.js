@@ -219,13 +219,20 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
 
     // --- Passport Photo Image Loading ---
     let passportImg = null;
-    if (student && (student.passport_url || student.passport)) {
+    const passportSrc = student?.passport_url || student?.passport;
+    if (passportSrc && typeof passportSrc === 'string' && (passportSrc.startsWith('http') || passportSrc.startsWith('data:'))) {
         passportImg = await new Promise((resolve) => {
             const img = new Image();
             img.crossOrigin = 'anonymous';
-            img.onload = () => resolve(img);
+            img.onload = () => {
+                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    resolve(img);
+                } else {
+                    resolve(null);
+                }
+            };
             img.onerror = () => resolve(null);
-            img.src = student.passport_url || student.passport;
+            img.src = passportSrc;
         });
     }
 
