@@ -13731,9 +13731,12 @@ export const UI = {
                     { display_name: "Maintenance Fee", variable_name: "maintenance_fee", value: `₦${maintenanceFee}` }
                 ]
             },
-            callback: async (response) => {
+            callback: (response) => {
                 Notifications.show('Payment successful! Verifying...', 'success');
-                await this.handlePaymentSuccess(response, amount, category);
+                this.handlePaymentSuccess(response, amount, category);
+            },
+            onClose: () => {
+                Notifications.show('Payment window closed.', 'warning');
             }
         };
 
