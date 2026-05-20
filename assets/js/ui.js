@@ -14878,9 +14878,14 @@ export const UI = {
                         <h1 class="text-2xl font-bold text-slate-800">Parent Link Registry</h1>
                         <p class="text-slate-500">Connect parents to their children for portal access</p>
                     </div>
-                    <button class="btn btn-primary" onclick="UI.showParentLinkModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem; font-weight: 700; cursor: pointer;">
-                        <i data-lucide="link"></i> Create New Link
-                    </button>
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="UI.showAddParentModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem; font-weight: 700; cursor: pointer; background: #6366f1; color: white; border: none; box-shadow: 0 4px 14px rgba(99,102,241,0.4);">
+                            <i data-lucide="user-plus"></i> Add Parent
+                        </button>
+                        <button class="btn btn-secondary" onclick="UI.showParentLinkModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem; font-weight: 700; cursor: pointer; background: white; color: #4f46e5; border: 1px solid #e0e7ff;">
+                            <i data-lucide="link"></i> Link Existing
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Stats Overview Bar -->
@@ -15169,6 +15174,183 @@ export const UI = {
             });
             observer.observe(modalContainer.parentNode, { childList: true });
         }
+    },
+
+    async showAddParentModal() {
+        const students = (await db.students.toArray()).filter(s => s.is_active !== false && s.is_active !== 0);
+
+        const modalHtml = `
+            <div style="display: flex; flex-direction: column; gap: 1.25rem; max-height: 70vh; overflow-y: auto; padding-right: 0.5rem;">
+                <div style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 12px; padding: 1rem; font-size: 0.85rem; color: #1e40af; display: flex; align-items: center; gap: 0.75rem;">
+                    <i data-lucide="info" style="width: 18px; flex-shrink: 0;"></i>
+                    <span>A login account will be created automatically. Default password: <strong>Parent123!</strong></span>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PARENT FULL NAME *</label>
+                    <input type="text" id="parent-reg-name" class="input" placeholder="e.g. Mr. James Okonkwo" style="width: 100%; height: 50px;">
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+                    <div class="form-group">
+                        <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">LOGIN EMAIL (Optional)</label>
+                        <input type="email" id="parent-reg-email" class="input" placeholder="Leave blank to auto-generate" style="width: 100%;">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PHONE NUMBER</label>
+                        <input type="text" id="parent-reg-phone" class="input" placeholder="080XXXXXXXX" style="width: 100%;">
+                    </div>
+                </div>
+
+                <hr style="border: none; border-top: 1px dashed #e2e8f0; margin: 0.5rem 0;">
+                <div style="font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Optional: Link to Student</div>
+
+                <div class="form-group" style="position: relative;">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">SELECT CHILD / WARD</label>
+                    <input type="text" id="parent-reg-student-search" class="input" placeholder="Search student name or ID (optional)" style="width: 100%;">
+                    <input type="hidden" id="parent-reg-student-id">
+                    <div id="parent-reg-student-results" style="position: absolute; width: 100%; max-height: 200px; overflow-y: auto; background: white; border: 1px solid #cbd5e1; border-radius: 12px; z-index: 10000; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); margin-top: 4px; display: none;"></div>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">RELATIONSHIP</label>
+                    <select id="parent-reg-relationship" class="input" style="width: 100%;">
+                        <option value="Father">Father</option>
+                        <option value="Mother">Mother</option>
+                        <option value="Guardian">Guardian</option>
+                    </select>
+                </div>
+            </div>
+        `;
+
+        this.showModal('Register New Parent Account', modalHtml, async () => {
+            const name = document.getElementById('parent-reg-name').value.trim();
+            const email = document.getElementById('parent-reg-email').value.trim();
+            const phone = document.getElementById('parent-reg-phone')?.value.trim() || '';
+            const studentId = document.getElementById('parent-reg-student-id').value;
+            const relationship = document.getElementById('parent-reg-relationship').value;
+
+            if (!name) {
+                Notifications.show('Parent name is required.', 'error');
+                throw new Error('Validation failed');
+            }
+
+            // Auto-generate email if blank
+            let finalEmail = email;
+            if (!finalEmail) {
+                const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                const randomSuffix = Math.random().toString(36).substr(2, 4).toUpperCase();
+                finalEmail = `${cleanName}.${randomSuffix}@parent.school`;
+            }
+
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(finalEmail)) {
+                Notifications.show('Please enter a valid email address.', 'error');
+                throw new Error('Validation failed');
+            }
+
+            const DEFAULT_PASSWORD = 'Parent123!';
+
+            try {
+                // 1. Create Supabase auth account
+                Notifications.show('Creating parent login account...', 'info');
+                const { data: authData, error: authError } = await registerUser(finalEmail, DEFAULT_PASSWORD, name, 'Parent');
+
+                if (authError) {
+                    if (authError.message && authError.message.includes('already registered')) {
+                        Notifications.show('Email already has an account. Adding to local directory.', 'warning');
+                    } else {
+                        console.error('Parent auth creation error:', authError);
+                        Notifications.show(`Auth error: ${authError.message}. Creating local record only.`, 'warning');
+                    }
+                }
+
+                // 2. Create local profile record
+                const userId = authData?.user?.id || `PAR${Math.random().toString(36).substr(2, 7).toUpperCase()}`;
+                const assignedId = `PAR/${Math.floor(Math.random() * 9000) + 1000}`;
+
+                const newParent = prepareForSync({
+                    id: userId,
+                    full_name: name,
+                    email: finalEmail,
+                    role: 'Parent',
+                    phone: phone,
+                    status: 'Active',
+                    assigned_id: assignedId
+                });
+
+                await db.profiles.put(newParent);
+
+                // 3. Optionally link to student
+                if (studentId) {
+                    await db.parent_links.add(prepareForSync({
+                        id: crypto.randomUUID(),
+                        parent_id: userId,
+                        student_id: studentId,
+                        relationship: relationship
+                    }));
+                }
+
+                Notifications.show(`${name} registered successfully! Login: ${finalEmail} / ${DEFAULT_PASSWORD}`, 'success');
+                this.renderParents();
+                this.debouncedSync();
+            } catch (err) {
+                if (err.message !== 'Validation failed') {
+                    console.error('Parent registration error:', err);
+                    Notifications.show('Failed to create parent account.', 'error');
+                }
+                throw err;
+            }
+        }, 'Create Parent Account', 'user-plus');
+
+        // Student autocomplete logic
+        setTimeout(() => {
+            const sInput = document.getElementById('parent-reg-student-search');
+            const sHidden = document.getElementById('parent-reg-student-id');
+            const sDropdown = document.getElementById('parent-reg-student-results');
+            if (!sInput || !sDropdown) return;
+
+            const filterStudents = () => {
+                const query = sInput.value.toLowerCase().trim();
+                sDropdown.innerHTML = '';
+                const matches = students.filter(s =>
+                    s.name.toLowerCase().includes(query) ||
+                    s.student_id.toLowerCase().includes(query) ||
+                    (s.class_name || '').toLowerCase().includes(query)
+                ).slice(0, 20);
+
+                if (matches.length === 0) {
+                    sDropdown.innerHTML = '<div style="padding: 10px; color: #94a3b8; font-size: 0.85rem; text-align: center;">No matching students</div>';
+                } else {
+                    matches.forEach(s => {
+                        const opt = document.createElement('div');
+                        opt.style.cssText = 'padding: 10px 15px; cursor: pointer; font-size: 0.9rem; border-bottom: 1px solid #f1f5f9;';
+                        opt.innerHTML = `<div style="font-weight: 700; color: #1e293b;">${s.name}</div><div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">Class: ${s.class_name} | ID: ${s.student_id}</div>`;
+                        opt.addEventListener('click', () => {
+                            sInput.value = `${s.name} (${s.class_name})`;
+                            sHidden.value = s.student_id;
+                            sDropdown.style.display = 'none';
+                        });
+                        sDropdown.appendChild(opt);
+                    });
+                }
+                sDropdown.style.display = 'block';
+            };
+
+            sInput.addEventListener('focus', filterStudents);
+            sInput.addEventListener('input', () => {
+                sHidden.value = ''; // Clear selection when user types
+                filterStudents();
+            });
+
+            document.addEventListener('click', function handler(e) {
+                if (!sInput.contains(e.target) && !sDropdown.contains(e.target)) {
+                    sDropdown.style.display = 'none';
+                }
+                // Self-cleanup when modal is removed
+                if (!document.getElementById('parent-reg-student-search')) {
+                    document.removeEventListener('click', handler);
+                }
+            });
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }, 100);
     },
 
     async deleteParentLink(id) {
