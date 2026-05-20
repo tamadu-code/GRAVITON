@@ -16452,7 +16452,7 @@ export const UI = {
     async triggerBiometricHarvest() {
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.csv';
+        input.accept = '.csv, text/csv, text/plain, application/octet-stream, application/vnd.ms-excel';
         input.onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
