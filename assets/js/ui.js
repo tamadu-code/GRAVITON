@@ -1355,20 +1355,146 @@ export const UI = {
                 return;
             }
 
-            // Success: Open Report Card
+            const studentId = this.currentUser.assigned_id || this.currentUser.student_id || this.currentUser.id;
+            if (!studentId) {
+                Notifications.show('No assigned student ID found for this session.', 'error');
+                return;
+            }
+
+            const student = await db.students.get(studentId);
+            if (!student) {
+                Notifications.show('Student record not found.', 'error');
+                return;
+            }
+
+            const settingsArray = await db.settings.toArray();
+            const settings = {};
+            settingsArray.forEach(s => settings[s.key] = s.value);
+            const currentTerm = settings.currentTerm || '1st Term';
+            const currentSession = settings.currentSession || '2025/2026';
+
+            // Calculate classmate rankings on the fly to match the academic roster view
+            const classStudents = (await db.students.where('class_name').equals(student.class_name).toArray())
+                .filter(s => s.is_active === 1);
+            
+            const studentIds = classStudents.map(s => s.student_id);
+            const classScores = (await db.scores.where('session').equals(currentSession).toArray())
+                .filter(s => s.term === currentTerm && studentIds.includes(s.student_id));
+            
+            const studentStats = classStudents.map(s => {
+                const sScores = classScores.filter(sc => sc.student_id === s.student_id);
+                let totalScore = 0;
+                sScores.forEach(sc => { totalScore += Number(sc.total) || 0; });
+                const average = sScores.length > 0 ? (totalScore / sScores.length) : 0;
+                return {
+                    ...s,
+                    totalScore,
+                    average: Number(average.toFixed(2))
+                };
+            });
+
+            const isSenior = student.class_name.includes('SSS') || student.class_name.includes('SS ');
+            if (isSenior) {
+                const groups = {};
+                studentStats.forEach(s => {
+                    const spec = s.sub_class || 'General';
+                    if (!groups[spec]) groups[spec] = [];
+                    groups[spec].push(s);
+                });
+                Object.keys(groups).forEach(spec => {
+                    const members = groups[spec];
+                    members.sort((a, b) => b.average - a.average);
+                    members.forEach((s, idx) => {
+                        let rank = idx + 1;
+                        if (idx > 0 && s.average === members[idx-1].average) {
+                            s.rank = members[idx-1].rank;
+                            s.rankRaw = members[idx-1].rankRaw;
+                        } else {
+                            s.rank = ScoringEngine.getOrdinal(rank);
+                            s.rankRaw = rank;
+                        }
+                        s.specializationSize = members.length;
+                    });
+                });
+            } else {
+                studentStats.sort((a, b) => b.average - a.average);
+                studentStats.forEach((s, idx) => {
+                    let rank = idx + 1;
+                    if (idx > 0 && s.average === studentStats[idx-1].average) {
+                        s.rank = studentStats[idx-1].rank;
+                        s.rankRaw = studentStats[idx-1].rankRaw;
+                    } else {
+                        s.rank = ScoringEngine.getOrdinal(rank);
+                        s.rankRaw = rank;
+                    }
+                    s.specializationSize = studentStats.length;
+                });
+            }
+
+            const rankedStudent = studentStats.find(s => s.student_id === student.student_id) || student;
+
+            // Gather and map student's subject scores
+            const sScores = classScores.filter(sc => sc.student_id === student.student_id);
+            const allSubjects = await db.subjects.toArray();
+            const subjectMap = new Map(allSubjects.map(sub => [sub.id, sub.name]));
+            for (const score of sScores) {
+                score.subject_name = subjectMap.get(score.subject_id) || 'Unknown Subject';
+            }
+
+            // Gather student attendance
+            const sAtt = await db.attendance_records
+                .where('[student_id+term+session]')
+                .equals([student.student_id, currentTerm, currentSession])
+                .toArray();
+
+            // Resolve Form Teacher
+            const formTeacherEntry = await db.form_teachers.where('class_name').equals(student.class_name).first();
+            let teacherName = 'Class Teacher';
+            if (formTeacherEntry) {
+                const teacherProfile = await db.profiles.get(formTeacherEntry.teacher_id);
+                if (teacherProfile) teacherName = teacherProfile.full_name;
+            }
+
+            // Build schoolInfo
+            const schoolInfo = {
+                name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
+                address: settings.schoolAddress || '123 Education Street, Academic City',
+                phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
+                email: settings.schoolEmail || 'info@school.com',
+                motto: settings.schoolMotto || 'Knowledge is Power',
+                principalName: settings.principalName || 'Mr. Lartey Sampson',
+                principalSignature: settings.principalSignature || null,
+                logo: settings.schoolLogo || null,
+                themeColor: settings.themeColor || '#060495',
+                schoolManager: settings.schoolManager || 'TAMADU CODE',
+                termEnd: settings.closureDate || '31st March, 2026',
+                termStart: settings.nextTermDate || '13th April, 2026',
+                teacherName: teacherName,
+                session: currentSession,
+                term: currentTerm,
+                position: rankedStudent.rank || 'N/A',
+                specializationSize: rankedStudent.specializationSize || 1,
+                gradingSystem: settings.gradingSystem || 'Positional Ranking'
+            };
+
+            // Success: Update PIN usage and sync
             Notifications.show('Security clearance granted!', 'success');
             
-            // Update PIN usage
             await db.pins.update(pinRecord.id, {
                 used_count: (pinRecord.used_count || 0) + 1,
-                student_id: this.currentUser.assigned_id,
+                student_id: studentId,
                 updated_at: new Date().toISOString(),
                 is_synced: 0
             });
             this.debouncedSync();
 
-            // Generate and show report
-            await generateReportCard(this.currentUser.assigned_id, 'First', '2023/2024'); // Example hardcoded
+            // Generate report PDF
+            Notifications.show(`Generating report card for ${rankedStudent.name}...`, 'info');
+            const doc = await generateReportCard(rankedStudent, sScores, schoolInfo, sAtt);
+            if (doc) {
+                this.showPDFPreview(doc, `Report_${rankedStudent.name.replace(/\s+/g, '_')}.pdf`);
+                document.getElementById('ui-modal')?.remove();
+            }
         } catch (err) {
             console.error('PIN Verification Error:', err);
             Notifications.show('Verification failed. Try again later.', 'error');
@@ -13300,99 +13426,248 @@ export const UI = {
 
     async renderKeys() {
         const students = await db.students.where('is_active').equals(1).toArray();
-        
+        const classes = await db.classes.toArray();
+        const classNames = [...new Set(students.map(s => s.class_name))].sort();
+
+        // Calculate stats
+        const totalStudents = students.length;
+        const totalClasses = classNames.length;
+
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in">
-                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <!-- Modern View Header -->
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <div>
                         <h1 class="text-2xl font-bold text-slate-800">Student Access Keys</h1>
-                        <p class="text-slate-500">Manage student credentials and portal login information</p>
+                        <p class="text-slate-500">Manage student credentials, passwords, and portal login slips</p>
                     </div>
-                    <div style="display: flex; gap: 1rem;">
-                        <div class="search-box" style="position: relative;">
-                            <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 18px; color: #94a3b8;"></i>
-                            <input type="text" id="keys-search" class="form-control" placeholder="Search ID or Name..." style="padding-left: 3rem; border-radius: 12px; width: 300px;">
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <button class="btn btn-primary" id="btn-bulk-print-keys" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem; font-weight: 700;">
+                            <i data-lucide="printer"></i> Print Filtered Slips
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Overview Bar -->
+                <div class="kpi-visualization-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                    <div class="card stat-card" style="background: white; border-radius: 20px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 1rem; box-shadow: var(--shadow-sm);">
+                        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                            <i data-lucide="users"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Total Scholars</div>
+                            <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${totalStudents}</div>
+                        </div>
+                    </div>
+                    <div class="card stat-card" style="background: white; border-radius: 20px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 1rem; box-shadow: var(--shadow-sm);">
+                        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                            <i data-lucide="key-round"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Credentials Sync</div>
+                            <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">100% Active</div>
+                        </div>
+                    </div>
+                    <div class="card stat-card" style="background: white; border-radius: 20px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 1rem; box-shadow: var(--shadow-sm);">
+                        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                            <i data-lucide="school"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Active Streams</div>
+                            <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${totalClasses}</div>
                         </div>
                     </div>
                 </div>
 
-                <div class="card shadow-sm" style="background: white; border-radius: 1.5rem; overflow: hidden;">
-                    <div class="table-container">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>STUDENT</th>
-                                    <th>CLASS</th>
-                                    <th>USERNAME (ID)</th>
-                                    <th>PASSWORD</th>
-                                    <th style="text-align: right;">ACTIONS</th>
-                                </tr>
-                            </thead>
-                            <tbody id="keys-table-body">
-                                ${students.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem;">No active students found.</td></tr>' : students.map(s => `
-                                    <tr>
-                                        <td>
-                                            <div style="display: flex; align-items: center; gap: 1rem;">
-                                                <div style="width: 40px; height: 40px; border-radius: 12px; background: #eff6ff; color: #1d4ed8; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">
-                                                    ${s.name.charAt(0).toUpperCase()}
-                                                </div>
-                                                <div style="display: flex; flex-direction: column;">
-                                                    <span class="font-bold text-slate-800">${s.name}</span>
-                                                    <span class="text-xs text-slate-400">#${s.student_id}</span>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td><span class="badge" style="background: #f1f5f9; color: #475569;">${s.class_name}</span></td>
-                                        <td>
-                                            <div style="display: flex; align-items: center; gap: 0.5rem; font-family: monospace; color: #1e293b; background: #f8fafc; padding: 0.25rem 0.5rem; border-radius: 6px; width: fit-content;">
-                                                ${s.student_id}
-                                                <button onclick="navigator.clipboard.writeText('${s.student_id}'); Notifications.show('Copied Username!', 'info')" style="background: none; border: none; padding: 0; color: #94a3b8; cursor: pointer;">
-                                                    <i data-lucide="copy" style="width:14px; height:14px;"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div style="display: flex; align-items: center; gap: 0.5rem; font-family: monospace; color: #1e293b; background: #f8fafc; padding: 0.25rem 0.5rem; border-radius: 6px; width: fit-content;">
-                                                ${s.student_id}
-                                                <button onclick="navigator.clipboard.writeText('${s.student_id}'); Notifications.show('Copied Password!', 'info')" style="background: none; border: none; padding: 0; color: #94a3b8; cursor: pointer;">
-                                                    <i data-lucide="copy" style="width:14px; height:14px;"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td style="text-align: right;">
-                                            <button class="btn btn-secondary btn-sm" onclick="UI.printSingleCredential('${s.student_id}')" style="background: #f1f5f9; color: #475569;">
-                                                <i data-lucide="printer"></i>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
+                <!-- Modern Toolbar (Search & Filter) -->
+                <div style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap;">
+                    <div class="search-box" style="position: relative; flex: 1; min-width: 250px;">
+                        <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 18px; color: #94a3b8;"></i>
+                        <input type="text" id="keys-search" class="form-control" placeholder="Search student name or portal ID..." style="padding-left: 2.75rem; border-radius: 12px; width: 100%; border: 1px solid #cbd5e1; height: 44px; box-sizing: border-box;">
                     </div>
+                    <div style="display: flex; gap: 1rem; align-items: center; min-width: 200px;">
+                        <label for="keys-class-filter" style="font-size: 0.8rem; font-weight: 700; color: #64748b; white-space: nowrap; margin: 0;">Class Stream:</label>
+                        <select id="keys-class-filter" class="form-control" style="border-radius: 12px; border: 1px solid #cbd5e1; height: 44px; padding: 0 1rem; width: 100%;">
+                            <option value="">All Classes</option>
+                            ${classNames.map(c => `<option value="${c}">${c}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Student Grid Cards -->
+                <div id="keys-cards-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem;">
+                    ${students.length === 0 ? `
+                        <div style="grid-column: 1 / -1; text-align: center; padding: 4rem; background: white; border-radius: 24px; border: 1px solid #e2e8f0;">
+                            <i data-lucide="users" style="width: 48px; height: 48px; color: #cbd5e1; margin-bottom: 1rem;"></i>
+                            <p style="color: #64748b; font-weight: 600;">No active students found in the local database.</p>
+                        </div>
+                    ` : students.map(s => {
+                        const nameInitials = s.name ? s.name.split(' ').map(n => n.charAt(0)).slice(0, 2).join('').toUpperCase() : 'S';
+                        let hash = 0;
+                        for (let i = 0; i < s.name.length; i++) hash = s.name.charCodeAt(i) + ((hash << 5) - hash);
+                        const gradients = [
+                            'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                            'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
+                            'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                            'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)',
+                            'linear-gradient(135deg, #db2777 0%, #ec4899 100%)',
+                            'linear-gradient(135deg, #0891b2 0%, #06b6d4 100%)'
+                        ];
+                        const bgGradient = gradients[Math.abs(hash) % gradients.length];
+                        
+                        return `
+                            <div class="card student-key-card" data-student-id="${s.student_id}" data-class-name="${s.class_name}" data-name="${s.name.toLowerCase()}" style="background: white; border-radius: 20px; border: 1px solid #e2e8f0; padding: 1.5rem; transition: all 0.3s ease; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 1.25rem;">
+                                <!-- Header section -->
+                                <div style="display: flex; align-items: center; gap: 1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 1rem;">
+                                    <div style="width: 48px; height: 48px; border-radius: 14px; background: ${bgGradient}; color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                                        ${nameInitials}
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
+                                        <span style="font-weight: 800; color: #1e293b; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${s.name}">${s.name}</span>
+                                        <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600; margin-top: 1px;">#${s.student_id}</span>
+                                    </div>
+                                    <span class="badge" style="background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; font-weight: 700; border-radius: 8px; font-size: 0.7rem; padding: 4px 8px; flex-shrink: 0;">${s.class_name}</span>
+                                </div>
+
+                                <!-- Credentials Box -->
+                                <div style="display: flex; flex-direction: column; gap: 0.75rem; background: #f8fafc; padding: 1rem; border-radius: 14px; border: 1px solid #f1f5f9;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Username</span>
+                                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                            <span style="font-family: monospace; font-size: 0.8rem; font-weight: 700; color: #1e293b;">${s.student_id}</span>
+                                            <button class="btn-copy-credential" data-text="${s.student_id}" style="background: none; border: none; padding: 4px; color: #94a3b8; cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;">
+                                                <i data-lucide="copy" style="width:14px; height:14px;"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 0.5rem; margin-top: 0.25rem;">
+                                        <span style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Password</span>
+                                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                            <span class="password-field" style="font-family: monospace; font-size: 0.8rem; font-weight: 700; color: #1e293b;" data-password="${s.student_id}">••••••••</span>
+                                            <button class="btn-toggle-password" style="background: none; border: none; padding: 4px; color: #94a3b8; cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;">
+                                                <i data-lucide="eye" style="width:14px; height:14px;"></i>
+                                            </button>
+                                            <button class="btn-copy-credential" data-text="${s.student_id}" style="background: none; border: none; padding: 4px; color: #94a3b8; cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;">
+                                                <i data-lucide="copy" style="width:14px; height:14px;"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Action Footer -->
+                                <button class="btn btn-secondary" onclick="UI.printSingleCredential('${s.student_id}')" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 12px; height: 40px; font-weight: 700; font-size: 0.8rem; margin-top: auto; border: 1px solid #cbd5e1; background: white; color: #475569; cursor: pointer; transition: all 0.2s ease;">
+                                    <i data-lucide="printer" style="width: 16px;"></i> Print Access Slip
+                                </button>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
-        // Search logic
-        const searchInput = document.getElementById('keys-search');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                const term = e.target.value.toLowerCase();
-                const rows = document.querySelectorAll('#keys-table-body tr');
-                rows.forEach(row => {
-                    const text = row.textContent.toLowerCase();
-                    row.style.display = text.includes(term) ? '' : 'none';
-                });
+        // Search & Filter functionality
+        const applyFilters = () => {
+            const term = document.getElementById('keys-search').value.toLowerCase().trim();
+            const classFilter = document.getElementById('keys-class-filter').value;
+            const cards = document.querySelectorAll('.student-key-card');
+
+            cards.forEach(card => {
+                const cardStudentId = card.dataset.studentId.toLowerCase();
+                const cardName = card.dataset.name;
+                const cardClass = card.dataset.className;
+
+                const matchesSearch = cardStudentId.includes(term) || cardName.includes(term);
+                const matchesClass = !classFilter || cardClass === classFilter;
+
+                if (matchesSearch && matchesClass) {
+                    card.style.display = 'flex';
+                } else {
+                    card.style.display = 'none';
+                }
             });
-        }
+        };
+
+        document.getElementById('keys-search').addEventListener('input', applyFilters);
+        document.getElementById('keys-class-filter').addEventListener('change', applyFilters);
+
+        // Event listener for copy buttons
+        document.querySelectorAll('.btn-copy-credential').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const targetBtn = e.currentTarget;
+                const text = targetBtn.dataset.text;
+                navigator.clipboard.writeText(text);
+                Notifications.show('Copied to clipboard!', 'info');
+                
+                const originalHTML = targetBtn.innerHTML;
+                targetBtn.innerHTML = '<i data-lucide="check" style="width:14px; height:14px; color: #10b981;"></i>';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                
+                setTimeout(() => {
+                    targetBtn.innerHTML = originalHTML;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }, 2000);
+            });
+        });
+
+        // Event listener for password reveal buttons
+        document.querySelectorAll('.btn-toggle-password').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const targetBtn = e.currentTarget;
+                const card = targetBtn.closest('.student-key-card');
+                const pwdSpan = card.querySelector('.password-field');
+                const passwordVal = pwdSpan.dataset.password;
+                
+                const isMasked = pwdSpan.textContent === '••••••••';
+                if (isMasked) {
+                    pwdSpan.textContent = passwordVal;
+                    targetBtn.innerHTML = '<i data-lucide="eye-off" style="width:14px; height:14px;"></i>';
+                } else {
+                    pwdSpan.textContent = '••••••••';
+                    targetBtn.innerHTML = '<i data-lucide="eye" style="width:14px; height:14px;"></i>';
+                }
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            });
+        });
+
+        // Event listener for bulk printing visible credentials
+        document.getElementById('btn-bulk-print-keys').addEventListener('click', async () => {
+            const visibleCards = Array.from(document.querySelectorAll('.student-key-card'))
+                .filter(card => card.style.display !== 'none');
+            
+            if (visibleCards.length === 0) {
+                return Notifications.show('No students selected to print slips', 'error');
+            }
+
+            const visibleStudentIds = visibleCards.map(card => card.dataset.studentId);
+            const filteredStudents = [];
+            for (const id of visibleStudentIds) {
+                const s = await db.students.get(id);
+                if (s) filteredStudents.push(s);
+            }
+
+            if (filteredStudents.length === 0) return;
+
+            Notifications.show(`Generating login cards for ${filteredStudents.length} students...`, 'info');
+            const settingsArray = await db.settings.toArray();
+            const schoolInfo = {};
+            settingsArray.forEach(s => schoolInfo[s.key] = s.value);
+            
+            await generateCredentialsPDF(filteredStudents, schoolInfo);
+        });
     },
 
     async printSingleCredential(studentId) {
         const student = await db.students.get(studentId);
         if (!student) return;
         Notifications.show(`Generating login slip for ${student.name}...`, 'info');
-        await generateCredentialsPDF([student]);
+        const settingsArray = await db.settings.toArray();
+        const schoolInfo = {};
+        settingsArray.forEach(s => schoolInfo[s.key] = s.value);
+        await generateCredentialsPDF([student], schoolInfo);
     },
 
     async renderPins() {
@@ -14334,19 +14609,65 @@ export const UI = {
         const profiles = await db.profiles.where('role').equalsIgnoreCase('Parent').toArray();
         const students = await db.students.toArray();
 
+        // Calculate stats
+        const totalLinks = links.length;
+        const uniqueParents = [...new Set(links.map(l => l.parent_id))].length;
+        const uniqueStudents = [...new Set(links.map(l => l.student_id))].length;
+
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in">
-                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <!-- Header -->
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
                     <div>
                         <h1 class="text-2xl font-bold text-slate-800">Parent Link Registry</h1>
                         <p class="text-slate-500">Connect parents to their children for portal access</p>
                     </div>
-                    <button class="btn btn-primary" onclick="UI.showParentLinkModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem;">
+                    <button class="btn btn-primary" onclick="UI.showParentLinkModal()" style="display: flex; align-items: center; gap: 0.5rem; border-radius: 12px; height: 48px; padding: 0 1.5rem; font-weight: 700; cursor: pointer;">
                         <i data-lucide="link"></i> Create New Link
                     </button>
                 </div>
 
-                <div class="card shadow-sm" style="background: white; border-radius: 1.5rem; overflow: hidden;">
+                <!-- Stats Overview Bar -->
+                <div class="kpi-visualization-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                    <div class="card stat-card" style="background: white; border-radius: 20px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 1rem; box-shadow: var(--shadow-sm);">
+                        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                            <i data-lucide="network"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Total Connections</div>
+                            <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${totalLinks}</div>
+                        </div>
+                    </div>
+                    <div class="card stat-card" style="background: white; border-radius: 20px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 1rem; box-shadow: var(--shadow-sm);">
+                        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                            <i data-lucide="user-check"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Linked Parents</div>
+                            <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${uniqueParents}</div>
+                        </div>
+                    </div>
+                    <div class="card stat-card" style="background: white; border-radius: 20px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 1rem; box-shadow: var(--shadow-sm);">
+                        <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                            <i data-lucide="graduation-cap"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Linked Scholars</div>
+                            <div style="font-size: 1.5rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${uniqueStudents}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toolbar (Search Box) -->
+                <div style="background: white; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0; display: flex; align-items: center; margin-bottom: 2rem;">
+                    <div class="search-box" style="position: relative; width: 100%;">
+                        <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 18px; color: #94a3b8;"></i>
+                        <input type="text" id="parent-registry-search" class="form-control" placeholder="Search by parent name, ID, or student name..." style="padding-left: 2.75rem; border-radius: 12px; width: 100%; border: 1px solid #cbd5e1; height: 44px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <!-- Modern Table Container -->
+                <div class="card shadow-sm" style="background: white; border-radius: 20px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: var(--shadow-sm);">
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
@@ -14358,23 +14679,42 @@ export const UI = {
                                     <th style="text-align: right;">ACTION</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                ${links.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem;">No parent links established yet.</td></tr>' : links.map(link => {
+                            <tbody id="parent-links-table-body">
+                                ${links.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 4rem; color: #64748b;">No parent links established yet.</td></tr>' : links.map(link => {
                                     const parent = profiles.find(p => p.id === link.parent_id);
                                     const student = students.find(s => s.student_id === link.student_id);
+                                    const pName = parent ? parent.full_name : 'Unknown Parent';
+                                    const sName = student ? student.name : link.student_id;
+                                    
+                                    const initials = pName.split(' ').map(n => n.charAt(0)).slice(0,2).join('').toUpperCase();
+                                    
                                     return `
-                                        <tr>
-                                            <td class="font-bold text-slate-800">${parent ? parent.full_name : 'Unknown Parent'}</td>
+                                        <tr data-parent-name="${pName.toLowerCase()}" data-parent-id="${link.parent_id.toLowerCase()}" data-student-name="${sName.toLowerCase()}">
+                                            <td>
+                                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                                    <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.8rem;">
+                                                        ${initials}
+                                                    </div>
+                                                    <span class="font-bold text-slate-800" style="font-weight: 700;">${pName}</span>
+                                                </div>
+                                            </td>
                                             <td class="text-xs font-mono text-slate-400">${link.parent_id}</td>
                                             <td>
                                                 <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                                    <span class="badge" style="background: #eff6ff; color: #1d4ed8;">${student ? student.name : link.student_id}</span>
+                                                    <span class="badge" style="background: #eff6ff; color: #1d4ed8; font-weight: 700; border-radius: 8px; padding: 4px 8px; border: 1px solid rgba(29, 78, 216, 0.15); display: flex; align-items: center; gap: 0.25rem;">
+                                                        <i data-lucide="graduation-cap" style="width:12px; height:12px;"></i>
+                                                        ${sName} ${student ? `(${student.class_name})` : ''}
+                                                    </span>
                                                 </div>
                                             </td>
-                                            <td><span class="badge" style="background: #f1f5f9; color: #64748b;">${link.relationship}</span></td>
+                                            <td>
+                                                <span class="badge" style="background: #f1f5f9; color: #475569; font-weight: 700; border-radius: 8px; padding: 4px 8px;">
+                                                    ${link.relationship}
+                                                </span>
+                                            </td>
                                             <td style="text-align: right;">
-                                                <button class="btn btn-secondary btn-sm" onclick="UI.deleteParentLink('${link.id}')" style="background: #fee2e2; color: #ef4444; border: none;">
-                                                    <i data-lucide="trash-2"></i>
+                                                <button class="btn btn-secondary btn-sm" onclick="UI.deleteParentLink('${link.id}')" style="background: #fee2e2; color: #ef4444; border: none; width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;">
+                                                    <i data-lucide="trash-2" style="width:16px;"></i>
                                                 </button>
                                             </td>
                                         </tr>
@@ -14387,6 +14727,22 @@ export const UI = {
             </div>
         `;
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Search links functionality
+        const searchInput = document.getElementById('parent-registry-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase().trim();
+                const rows = document.querySelectorAll('#parent-links-table-body tr');
+                rows.forEach(row => {
+                    const pName = row.dataset.parentName || '';
+                    const pId = row.dataset.parentId || '';
+                    const sName = row.dataset.studentName || '';
+                    const match = pName.includes(term) || pId.includes(term) || sName.includes(term);
+                    row.style.display = match ? '' : 'none';
+                });
+            });
+        }
     },
 
     async showParentLinkModal() {
@@ -14394,21 +14750,23 @@ export const UI = {
         const students = await db.students.where('is_active').equals(1).toArray();
 
         this.showModal('Create Parent-Student Link', `
-            <div class="form-group">
-                <label class="form-label">Select Parent</label>
-                <select id="link-parent-id" class="form-control">
-                    ${parents.map(p => `<option value="${p.id}">${p.full_name} (${p.assigned_id || 'No ID'})</option>`).join('')}
-                </select>
+            <div class="form-group" style="position: relative; margin-bottom: 1.25rem;">
+                <label class="form-label" style="font-weight: 700; color: #475569; margin-bottom: 0.5rem; display: block;">Select Parent</label>
+                <input type="text" id="parent-search-input" class="form-control" placeholder="Search parent name or ID..." style="border-radius: 12px; height: 44px; width: 100%; border: 1px solid #cbd5e1; padding: 0 1rem; box-sizing: border-box;">
+                <input type="hidden" id="link-parent-id">
+                <div id="parent-autocomplete-results" class="autocomplete-dropdown-menu" style="position: absolute; width: 100%; max-height: 200px; overflow-y: auto; background: white; border: 1px solid #cbd5e1; border-radius: 12px; z-index: 10000; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); margin-top: 4px; display: none;"></div>
             </div>
-            <div class="form-group mt-3">
-                <label class="form-label">Select Student</label>
-                <select id="link-student-id" class="form-control">
-                    ${students.map(s => `<option value="${s.student_id}">${s.name} (${s.class_name})</option>`).join('')}
-                </select>
+
+            <div class="form-group" style="position: relative; margin-bottom: 1.25rem;">
+                <label class="form-label" style="font-weight: 700; color: #475569; margin-bottom: 0.5rem; display: block;">Select Student</label>
+                <input type="text" id="student-search-input" class="form-control" placeholder="Search student name or ID..." style="border-radius: 12px; height: 44px; width: 100%; border: 1px solid #cbd5e1; padding: 0 1rem; box-sizing: border-box;">
+                <input type="hidden" id="link-student-id">
+                <div id="student-autocomplete-results" class="autocomplete-dropdown-menu" style="position: absolute; width: 100%; max-height: 200px; overflow-y: auto; background: white; border: 1px solid #cbd5e1; border-radius: 12px; z-index: 10000; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); margin-top: 4px; display: none;"></div>
             </div>
-            <div class="form-group mt-3">
-                <label class="form-label">Relationship</label>
-                <select id="link-rel" class="form-control">
+
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label class="form-label" style="font-weight: 700; color: #475569; margin-bottom: 0.5rem; display: block;">Relationship</label>
+                <select id="link-rel" class="form-control" style="border-radius: 12px; border: 1px solid #cbd5e1; height: 44px; padding: 0 1rem; width: 100%;">
                     <option value="Father">Father</option>
                     <option value="Mother">Mother</option>
                     <option value="Guardian">Guardian</option>
@@ -14418,6 +14776,15 @@ export const UI = {
             const parentId = document.getElementById('link-parent-id').value;
             const studentId = document.getElementById('link-student-id').value;
             const rel = document.getElementById('link-rel').value;
+
+            if (!parentId) {
+                Notifications.show('Please select a valid parent.', 'error');
+                return;
+            }
+            if (!studentId) {
+                Notifications.show('Please select a valid student.', 'error');
+                return;
+            }
 
             await db.parent_links.add(prepareForSync({
                 id: crypto.randomUUID(),
@@ -14430,6 +14797,122 @@ export const UI = {
             Notifications.show('Link established successfully', 'success');
             this.renderParents();
         }, 'Establish Link', 'link');
+
+        // Autocomplete JS logic
+        const pSearchInput = document.getElementById('parent-search-input');
+        const pHiddenInput = document.getElementById('link-parent-id');
+        const pDropdown = document.getElementById('parent-autocomplete-results');
+
+        const filterParents = () => {
+            const query = pSearchInput.value.toLowerCase().trim();
+            pDropdown.innerHTML = '';
+            
+            const matches = parents.filter(p => 
+                p.full_name.toLowerCase().includes(query) || 
+                p.id.toLowerCase().includes(query) ||
+                (p.assigned_id || '').toLowerCase().includes(query)
+            );
+
+            if (matches.length === 0) {
+                pDropdown.innerHTML = '<div style="padding: 10px; color: #94a3b8; font-size: 0.85rem; text-align: center;">No matching parents</div>';
+            } else {
+                matches.forEach(p => {
+                    const option = document.createElement('div');
+                    option.className = 'autocomplete-option';
+                    option.style.padding = '10px 15px';
+                    option.style.cursor = 'pointer';
+                    option.style.fontSize = '0.9rem';
+                    option.style.borderBottom = '1px solid #f1f5f9';
+                    option.innerHTML = `
+                        <div style="font-weight: 700; color: #1e293b;">${p.full_name}</div>
+                        <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">ID: ${p.assigned_id || 'No ID'} (${p.id})</div>
+                    `;
+                    
+                    option.addEventListener('click', () => {
+                        pSearchInput.value = `${p.full_name} (${p.assigned_id || 'No ID'})`;
+                        pHiddenInput.value = p.id;
+                        pDropdown.style.display = 'none';
+                    });
+                    
+                    pDropdown.appendChild(option);
+                });
+            }
+            pDropdown.style.display = 'block';
+        };
+
+        pSearchInput.addEventListener('focus', filterParents);
+        pSearchInput.addEventListener('input', filterParents);
+
+        const sSearchInput = document.getElementById('student-search-input');
+        const sHiddenInput = document.getElementById('link-student-id');
+        const sDropdown = document.getElementById('student-autocomplete-results');
+
+        const filterStudents = () => {
+            const query = sSearchInput.value.toLowerCase().trim();
+            sDropdown.innerHTML = '';
+
+            const matches = students.filter(s => 
+                s.name.toLowerCase().includes(query) || 
+                s.student_id.toLowerCase().includes(query) ||
+                (s.class_name || '').toLowerCase().includes(query)
+            );
+
+            if (matches.length === 0) {
+                sDropdown.innerHTML = '<div style="padding: 10px; color: #94a3b8; font-size: 0.85rem; text-align: center;">No matching students</div>';
+            } else {
+                matches.forEach(s => {
+                    const option = document.createElement('div');
+                    option.className = 'autocomplete-option';
+                    option.style.padding = '10px 15px';
+                    option.style.cursor = 'pointer';
+                    option.style.fontSize = '0.9rem';
+                    option.style.borderBottom = '1px solid #f1f5f9';
+                    option.innerHTML = `
+                        <div style="font-weight: 700; color: #1e293b;">${s.name}</div>
+                        <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">Class: ${s.class_name} | ID: ${s.student_id}</div>
+                    `;
+                    
+                    option.addEventListener('click', () => {
+                        sSearchInput.value = `${s.name} (${s.class_name})`;
+                        sHiddenInput.value = s.student_id;
+                        sDropdown.style.display = 'none';
+                    });
+                    
+                    sDropdown.appendChild(option);
+                });
+            }
+            sDropdown.style.display = 'block';
+        };
+
+        sSearchInput.addEventListener('focus', filterStudents);
+        sSearchInput.addEventListener('input', filterStudents);
+
+        // Close dropdowns when clicking outside
+        const outsideClickListener = (e) => {
+            if (!pSearchInput.contains(e.target) && !pDropdown.contains(e.target)) {
+                pDropdown.style.display = 'none';
+            }
+            if (!sSearchInput.contains(e.target) && !sDropdown.contains(e.target)) {
+                sDropdown.style.display = 'none';
+            }
+        };
+        document.addEventListener('click', outsideClickListener);
+
+        // Clean up event listener when modal closes
+        const modalContainer = document.getElementById('ui-modal');
+        if (modalContainer) {
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    mutation.removedNodes.forEach((node) => {
+                        if (node === modalContainer) {
+                            document.removeEventListener('click', outsideClickListener);
+                            observer.disconnect();
+                        }
+                    });
+                });
+            });
+            observer.observe(modalContainer.parentNode, { childList: true });
+        }
     },
 
     async deleteParentLink(id) {

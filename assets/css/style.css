@@ -5176,3 +5176,63 @@ body.window-blurred.exam-mode .cbt-exam-container {
         padding-top: 0.1rem;
     }
 }
+
+/* =============================================
+   Student Access Keys & Parent Links Modernization Style
+   ============================================= */
+
+/* Autocomplete Dropdown List */
+.autocomplete-dropdown-menu {
+    border: 1px solid #cbd5e1 !important;
+    background: #ffffff !important;
+    border-radius: 12px !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.autocomplete-option {
+    padding: 10px 15px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background-color 0.2s ease, padding-left 0.2s ease;
+}
+
+.autocomplete-option:hover {
+    background-color: #f8fafc !important;
+    padding-left: 18px;
+}
+
+.autocomplete-option:last-child {
+    border-bottom: none;
+}
+
+/* Copy & Toggle Button Styling */
+.btn-copy-credential:hover, .btn-toggle-password:hover {
+    background-color: #e2e8f0 !important;
+    color: #4f46e5 !important;
+    transform: scale(1.1);
+}
+
+/* Glassmorphic grid and cards for Student Access Keys */
+.student-key-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.student-key-card:hover {
+    transform: translateY(-6px) scale(1.01) !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: 0 12px 20px -3px rgba(79, 70, 229, 0.08), 0 4px 6px -2px rgba(79, 70, 229, 0.05) !important;
+}
+
+/* Animations */
+.animate-fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
