@@ -1394,11 +1394,11 @@ export const UI = {
                     { display_name: "Student ID", variable_name: "student_id", value: studentId }
                 ]
             },
-            callback: (response) => {
+            callback: function(response) {
                 Notifications.show('Payment confirmed! Finalizing receipt...', 'success');
-                this.processOnlinePayment(response);
+                UI.processOnlinePayment(response);
             },
-            onClose: () => {
+            onClose: function() {
                 Notifications.show('Payment cancelled.', 'warning');
             }
         });
@@ -13731,11 +13731,11 @@ export const UI = {
                     { display_name: "Maintenance Fee", variable_name: "maintenance_fee", value: `₦${maintenanceFee}` }
                 ]
             },
-            callback: (response) => {
+            callback: function(response) {
                 Notifications.show('Payment successful! Verifying...', 'success');
-                this.handlePaymentSuccess(response, amount, category);
+                UI.handlePaymentSuccess(response, amount, category);
             },
-            onClose: () => {
+            onClose: function() {
                 Notifications.show('Payment window closed.', 'warning');
             }
         };
