@@ -55,36 +55,39 @@ export const UI = {
                     @media (max-width: 768px) {
                         .pdf-preview-header {
                             height: 60px;
-                            padding: 0 0.75rem !important;
+                            padding: 0 0.5rem !important;
+                        }
+                        .pdf-preview-header > div:first-child {
+                            gap: 0.4rem !important;
+                        }
+                        .pdf-preview-header > div:last-child {
+                            gap: 0.35rem !important;
                         }
                         .pdf-preview-icon {
                             display: none !important;
                         }
                         .pdf-preview-title {
-                            font-size: 0.9rem !important;
+                            font-size: 0.85rem !important;
                         }
                         .pdf-preview-subtitle {
-                            font-size: 0.6rem !important;
-                            max-width: 120px;
+                            font-size: 0.55rem !important;
+                            max-width: 90px;
                             white-space: nowrap;
                             overflow: hidden;
                             text-overflow: ellipsis;
                         }
-                        #btn-preview-cancel span,
-                        #btn-final-print span {
-                            display: none !important;
-                        }
-                        #btn-preview-cancel,
-                        #btn-final-print {
-                            padding: 0 !important;
-                            width: 44px !important;
-                            justify-content: center;
-                        }
-                        .pdf-preview-btn .btn-text-long {
-                            display: none !important;
-                        }
+                        .pdf-preview-btn span,
+                        .pdf-preview-btn .btn-text-long,
                         .pdf-preview-btn .btn-text-short {
-                            display: inline !important;
+                            display: none !important;
+                        }
+                        .pdf-preview-btn {
+                            padding: 0 !important;
+                            width: 36px !important;
+                            height: 36px !important;
+                            min-width: 36px !important;
+                            justify-content: center;
+                            border-radius: 8px !important;
                         }
                         .pdf-preview-content {
                             padding: 0.5rem !important;
@@ -132,11 +135,8 @@ export const UI = {
                         </div>
                         <div style="flex: 1; min-width: 0;">
                             <div style="font-weight: 800; color: #1e3a8a; font-size: 0.75rem;">Mobile Preview Support</div>
-                            <div style="color: #1e40af; font-size: 0.65rem; font-weight: 500; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">If the preview fails to load, tap to open the PDF directly.</div>
+                            <div style="color: #1e40af; font-size: 0.65rem; font-weight: 500; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">If the preview fails to load, use the View button at the top.</div>
                         </div>
-                        <button onclick="window.open('${blobUrl}', '_blank')" class="btn" style="background: #3b82f6; color: white; border: none; border-radius: 8px; height: 32px; padding: 0 0.75rem; font-size: 0.7rem; font-weight: 800; display: flex; align-items: center; gap: 0.25rem; white-space: nowrap; cursor: pointer;">
-                            <i data-lucide="external-link" style="width: 12px;"></i> View Native
-                        </button>
                     </div>
 
                     <div style="width: 100%; max-width: 1200px; flex: 1; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
