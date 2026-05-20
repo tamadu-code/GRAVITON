@@ -16268,37 +16268,59 @@ export const UI = {
 
         const codeIdx = getIdx(['code', 'enno', 'ac-no', 'pin', 'id no.']);
         const dateIdx = getIdx(['date']);
+        const nameIdx = getIdx(['name', 'student name', 'student', 'full name', 'full_name']);
         const inIdx = getIdx(['in', 'clock in', 'sign in', 'time in', 'on duty', 'first in']);
         const outIdx = getIdx(['out', 'clock out', 'sign out', 'time out', 'off duty', 'last out']);
         const statusIdx = getIdx(['status', 'state', 'remark', 'exception']);
 
-        if (codeIdx === -1 || dateIdx === -1) {
-            throw new Error(`CSV missing required columns. Detected headers: ${headers.join(', ')}`);
+        if (codeIdx === -1 && nameIdx === -1) {
+            throw new Error(`CSV missing identification column (Student ID/Code or Name). Detected headers: ${headers.join(', ')}`);
         }
 
         const students = await db.students.toArray();
         const studentMap = students.reduce((acc, s) => {
-            if (s.attendance_code) acc[s.attendance_code.toString()] = s.student_id;
-            if (s.legacy_student_id) acc[s.legacy_student_id.toString()] = s.student_id;
+            if (s.attendance_code) acc[s.attendance_code.toString().toLowerCase()] = s.student_id;
+            if (s.legacy_student_id) acc[s.legacy_student_id.toString().toLowerCase()] = s.student_id;
+            return acc;
+        }, {});
+
+        const nameMap = students.reduce((acc, s) => {
+            if (s.name) acc[s.name.toLowerCase().trim()] = s.student_id;
             return acc;
         }, {});
 
         const records = [];
         const uniqueDates = new Set();
+        const todayDate = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+        let warnedAboutDate = false;
 
         for (let i = 1; i < lines.length; i++) {
             const cols = lines[i].split(',').map(c => c.trim().replace(/"/g, ''));
-            if (cols.length <= Math.max(codeIdx, dateIdx)) continue;
+            if (cols.length === 0 || (cols.length === 1 && !cols[0])) continue;
 
-            const code = cols[codeIdx];
-            const date = cols[dateIdx];
-            const studentId = studentMap[code] || studentMap[parseInt(code, 10)];
+            let studentId = null;
+            if (codeIdx !== -1 && codeIdx < cols.length && cols[codeIdx]) {
+                const codeVal = cols[codeIdx].toLowerCase();
+                studentId = studentMap[codeVal] || studentMap[parseInt(codeVal, 10)];
+            }
+            if (!studentId && nameIdx !== -1 && nameIdx < cols.length && cols[nameIdx]) {
+                const nameVal = cols[nameIdx].toLowerCase().trim();
+                studentId = nameMap[nameVal];
+            }
 
-            if (!studentId || !date) continue;
+            if (!studentId) continue;
 
-            const signInTime = inIdx !== -1 ? (cols[inIdx] || null) : null;
-            const signOutTime = outIdx !== -1 ? (cols[outIdx] || null) : null;
-            const rawStatus = statusIdx !== -1 ? (cols[statusIdx] || '').toLowerCase() : '';
+            const date = (dateIdx !== -1 && dateIdx < cols.length && cols[dateIdx]) ? cols[dateIdx] : todayDate;
+            if (dateIdx === -1 && !warnedAboutDate) {
+                Notifications.show(`No date column found. Defaulting to today's date: ${todayDate}`, 'info');
+                warnedAboutDate = true;
+            }
+
+            if (!date) continue;
+
+            const signInTime = (inIdx !== -1 && inIdx < cols.length) ? (cols[inIdx] || null) : null;
+            const signOutTime = (outIdx !== -1 && outIdx < cols.length) ? (cols[outIdx] || null) : null;
+            const rawStatus = (statusIdx !== -1 && statusIdx < cols.length) ? (cols[statusIdx] || '').toLowerCase() : '';
             
             const isAbsent = !signInTime && !signOutTime && !rawStatus.includes('present') && !rawStatus.includes('late');
 
