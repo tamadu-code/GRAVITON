@@ -519,22 +519,35 @@ export const UI = {
         const navItems = document.querySelectorAll('.nav-item');
         const adminSectionHeaders = document.querySelectorAll('.nav-section-header');
         
-        // Modules strictly restricted to Admin only
-        // Requested Teacher Nav: dashboard, active students, classes, subjects, attendance, gradebook, cbt hub, notice board
+        // Modules allowed for teachers
         const teacherAllowedViews = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
+        
+        // Modules allowed for parents
+        const parentAllowedViews = ['dashboard'];
         
         navItems.forEach(item => {
             const view = item.dataset.view;
-            if (role !== 'admin' && !teacherAllowedViews.includes(view)) {
-                item.setAttribute('style', 'display: none !important');
+            if (role === 'parent') {
+                if (!parentAllowedViews.includes(view)) {
+                    item.setAttribute('style', 'display: none !important');
+                } else {
+                    item.style.display = 'flex';
+                }
+            } else if (role === 'teacher') {
+                if (!teacherAllowedViews.includes(view)) {
+                    item.setAttribute('style', 'display: none !important');
+                } else {
+                    item.style.display = 'flex';
+                }
             } else {
+                // Admin or other roles
                 item.style.display = 'flex';
             }
         });
 
         // Hide "ADMINISTRATION" section header if role is not admin
         adminSectionHeaders.forEach(header => {
-            if (role !== 'admin' && header.textContent.trim().toUpperCase().includes('ADMINISTRATION')) {
+            if (role !== 'admin') {
                 header.setAttribute('style', 'display: none !important');
             }
         });
@@ -2385,53 +2398,95 @@ export const UI = {
             `;
         } else if (activeTab === 'profile') {
             tabContentHtml = `
-                <div class="card" style="padding: 2.5rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
-                    <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 2.5rem; flex-wrap: wrap;">
-                        <div style="width: 72px; height: 72px; border-radius: 24px; background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.5rem; box-shadow: 0 10px 25px -5px rgba(79,70,229,0.3);">
-                            ${childInitials}
-                        </div>
-                        <div>
-                            <h3 style="font-weight: 900; font-size: 1.5rem; color: #1e293b; margin: 0; letter-spacing: -0.5px;">${activeChild.name}</h3>
-                            <p style="color: #64748b; font-size: 0.85rem; margin-top: 4px; font-weight: 600;">Linked Scholar • Relationship: <span style="color: #4f46e5; font-weight: 800;">${activeChild.relationship || 'Child'}</span></p>
+                <div class="card animate-fade-in" style="padding: 0; border-radius: 28px; background: white; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.04);">
+                    <!-- Profile Cover Banner -->
+                    <div style="height: 120px; background: linear-gradient(135deg, #4f46e5 0%, #818cf8 100%); position: relative;">
+                        <!-- Status Badge overlay -->
+                        <div style="position: absolute; top: 1.5rem; right: 1.5rem;">
+                            <span class="badge success" style="font-weight: 800; padding: 0.5rem 1rem; border-radius: 99px; background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; box-shadow: 0 4px 10px rgba(21,128,61,0.15); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                ${activeChild.status || 'Active'}
+                            </span>
                         </div>
                     </div>
 
-                    <div class="parent-profile-info-grid">
-                        <div class="parent-profile-item">
-                            <div class="parent-profile-label">Student ID</div>
-                            <div class="parent-profile-value" style="font-family: monospace; font-size:1.05rem; color:#4f46e5;">${activeChild.student_id}</div>
+                    <!-- Profile Header Details -->
+                    <div style="padding: 0 2.5rem 2.5rem 2.5rem; position: relative;">
+                        <!-- Large Avatar overlapping the banner -->
+                        <div style="display: flex; align-items: flex-end; gap: 1.5rem; margin-top: -45px; margin-bottom: 2.5rem; flex-wrap: wrap;">
+                            <div style="width: 90px; height: 90px; border-radius: 28px; background: white; padding: 6px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <div style="width: 100%; height: 100%; border-radius: 22px; background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.8rem; box-shadow: inset 0 2px 4px rgba(255,255,255,0.2);">
+                                    ${childInitials}
+                                </div>
+                            </div>
+                            <div style="padding-bottom: 5px;">
+                                <h3 style="font-weight: 950; font-size: 1.65rem; color: #1e293b; margin: 0; letter-spacing: -0.5px;">${activeChild.name}</h3>
+                                <p style="color: #64748b; font-size: 0.88rem; margin-top: 4px; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i data-lucide="shield-check" style="width: 16px; color: #818cf8;"></i>
+                                    Linked Scholar 
+                                    <span style="opacity: 0.4;">•</span> 
+                                    Relationship: <span style="color: #4f46e5; font-weight: 800;">${activeChild.relationship || 'Child'}</span>
+                                </p>
+                            </div>
                         </div>
-                        <div class="parent-profile-item">
-                            <div class="parent-profile-label">Current Class</div>
-                            <div class="parent-profile-value">${activeChild.class_name || 'N/A'}</div>
-                        </div>
-                        <div class="parent-profile-item">
-                            <div class="parent-profile-label">Subclass / Stream</div>
-                            <div class="parent-profile-value">${activeChild.sub_class || 'General Stream'}</div>
-                        </div>
-                        <div class="parent-profile-item">
-                            <div class="parent-profile-label">Gender</div>
-                            <div class="parent-profile-value">${activeChild.gender || 'N/A'}</div>
-                        </div>
-                        <div class="parent-profile-item">
-                            <div class="parent-profile-label">Admission Year</div>
-                            <div class="parent-profile-value">${activeChild.admission_year || 'N/A'}</div>
-                        </div>
-                        <div class="parent-profile-item">
-                            <div class="parent-profile-label">Status</div>
-                            <div class="parent-profile-value"><span class="badge success" style="font-weight:800;">${activeChild.status || 'Active'}</span></div>
-                        </div>
-                        <div class="parent-profile-item" style="grid-column: span 2;">
-                            <div class="parent-profile-label">Contact / Residential Address</div>
-                            <div class="parent-profile-value">${activeChild.address || 'No registered address on file.'}</div>
-                        </div>
-                        <div class="parent-profile-item">
-                            <div class="parent-profile-label">Attendance Code</div>
-                            <div class="parent-profile-value" style="letter-spacing: 1px; font-weight: 800;">${activeChild.attendance_code || 'N/A'}</div>
-                        </div>
-                        <div class="parent-profile-item">
-                            <div class="parent-profile-label">Legacy Student ID</div>
-                            <div class="parent-profile-value">${activeChild.legacy_student_id || 'None'}</div>
+
+                        <!-- Info Grid split into Academic & Personal Info -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2rem;">
+                            <!-- Column 1: Academic details -->
+                            <div style="background: #f8fafc; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9;">
+                                <h4 style="font-size: 0.95rem; font-weight: 800; color: #475569; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    <i data-lucide="graduation-cap" style="color: #4f46e5; width: 18px;"></i>
+                                    Academic Information
+                                </h4>
+                                <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #e2e8f0; padding-bottom: 0.75rem;">
+                                        <div style="font-size: 0.825rem; font-weight: 700; color: #64748b;">Student ID</div>
+                                        <div style="font-family: monospace; font-size: 0.95rem; font-weight: 800; color: #4f46e5; background: #eef2ff; padding: 2px 8px; border-radius: 6px;">${activeChild.student_id}</div>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #e2e8f0; padding-bottom: 0.75rem;">
+                                        <div style="font-size: 0.825rem; font-weight: 700; color: #64748b;">Current Class</div>
+                                        <div style="font-size: 0.9rem; font-weight: 800; color: #1e293b;">${activeChild.class_name || 'N/A'}</div>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #e2e8f0; padding-bottom: 0.75rem;">
+                                        <div style="font-size: 0.825rem; font-weight: 700; color: #64748b;">Subclass / Stream</div>
+                                        <div style="font-size: 0.9rem; font-weight: 800; color: #1e293b;">${activeChild.sub_class || 'General Stream'}</div>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #e2e8f0; padding-bottom: 0.75rem;">
+                                        <div style="font-size: 0.825rem; font-weight: 700; color: #64748b;">Admission Year</div>
+                                        <div style="font-size: 0.9rem; font-weight: 800; color: #1e293b;">${activeChild.admission_year || 'N/A'}</div>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.25rem;">
+                                        <div style="font-size: 0.825rem; font-weight: 700; color: #64748b;">Legacy Student ID</div>
+                                        <div style="font-size: 0.9rem; font-weight: 800; color: #64748b;">${activeChild.legacy_student_id || 'None'}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Column 2: Personal details -->
+                            <div style="background: #f8fafc; padding: 2rem; border-radius: 24px; border: 1px solid #f1f5f9; display: flex; flex-direction: column; justify-content: space-between;">
+                                <div>
+                                    <h4 style="font-size: 0.95rem; font-weight: 800; color: #475569; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                        <i data-lucide="user" style="color: #4f46e5; width: 18px;"></i>
+                                        Personal & Contact Info
+                                    </h4>
+                                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #e2e8f0; padding-bottom: 0.75rem;">
+                                            <div style="font-size: 0.825rem; font-weight: 700; color: #64748b;">Gender</div>
+                                            <div style="font-size: 0.9rem; font-weight: 800; color: #1e293b;">${activeChild.gender || 'N/A'}</div>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #e2e8f0; padding-bottom: 0.75rem;">
+                                            <div style="font-size: 0.825rem; font-weight: 700; color: #64748b;">Attendance Code</div>
+                                            <div style="font-family: monospace; font-size: 0.95rem; font-weight: 800; color: #10b981; background: #ecfdf5; padding: 2px 8px; border-radius: 6px; letter-spacing: 0.5px;">${activeChild.attendance_code || 'N/A'}</div>
+                                        </div>
+                                        <div style="display: flex; flex-direction: column; gap: 0.5rem; padding-bottom: 0.25rem;">
+                                            <div style="font-size: 0.825rem; font-weight: 700; color: #64748b;">Contact / Residential Address</div>
+                                            <div style="font-size: 0.9rem; font-weight: 700; color: #1e293b; line-height: 1.5; background: white; padding: 0.75rem 1rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+                                                <i data-lucide="map-pin" style="width:14px; color:#ef4444; display:inline-block; margin-right:4px; vertical-align:middle;"></i>
+                                                ${activeChild.address || 'No registered address on file.'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
