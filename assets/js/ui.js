@@ -2081,25 +2081,29 @@ export const UI = {
                             </select>
                         </div>
                         
-                        <div class="attendance-calendar-header">
-                            <div class="attendance-calendar-header-day">Sun</div>
-                            <div class="attendance-calendar-header-day">Mon</div>
-                            <div class="attendance-calendar-header-day">Tue</div>
-                            <div class="attendance-calendar-header-day">Wed</div>
-                            <div class="attendance-calendar-header-day">Thu</div>
-                            <div class="attendance-calendar-header-day">Fri</div>
-                            <div class="attendance-calendar-header-day">Sat</div>
+                        <div class="attendance-calendar-header" style="display: grid !important; grid-template-columns: repeat(7, 1fr) !important; gap: 4px !important; text-align: center !important; margin-bottom: 8px !important;">
+                            <div class="attendance-calendar-header-day" style="font-size: 0.75rem !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; padding: 4px 0 !important;">Sun</div>
+                            <div class="attendance-calendar-header-day" style="font-size: 0.75rem !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; padding: 4px 0 !important;">Mon</div>
+                            <div class="attendance-calendar-header-day" style="font-size: 0.75rem !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; padding: 4px 0 !important;">Tue</div>
+                            <div class="attendance-calendar-header-day" style="font-size: 0.75rem !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; padding: 4px 0 !important;">Wed</div>
+                            <div class="attendance-calendar-header-day" style="font-size: 0.75rem !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; padding: 4px 0 !important;">Thu</div>
+                            <div class="attendance-calendar-header-day" style="font-size: 0.75rem !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; padding: 4px 0 !important;">Fri</div>
+                            <div class="attendance-calendar-header-day" style="font-size: 0.75rem !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; padding: 4px 0 !important;">Sat</div>
                         </div>
-                        <div class="attendance-calendar-grid">
+                        <div class="attendance-calendar-grid" style="display: grid !important; grid-template-columns: repeat(7, 1fr) !important; gap: 6px !important;">
                             ${calendarDays.map(d => {
                                 if (d.empty) {
-                                    return `<div class="attendance-calendar-day empty"></div>`;
+                                    return `<div class="attendance-calendar-day empty" style="background: transparent !important; border: none !important; pointer-events: none !important; aspect-ratio: 1 !important;"></div>`;
                                 }
-                                let statusClass = '';
-                                if (d.status === 'Present') statusClass = 'present';
-                                else if (d.status === 'Absent') statusClass = 'absent';
-                                else if (d.status === 'Late') statusClass = 'late';
-                                return `<div class="attendance-calendar-day ${statusClass}">${d.dayNumber}</div>`;
+                                let statusStyles = 'background: #f8fafc !important; color: #475569 !important; border: 1px solid #f1f5f9 !important;';
+                                if (d.status === 'Present') {
+                                    statusStyles = 'background: #dcfce7 !important; color: #15803d !important; border: 1px solid #bbf7d0 !important;';
+                                } else if (d.status === 'Absent') {
+                                    statusStyles = 'background: #fee2e2 !important; color: #b91c1c !important; border: 1px solid #fecdd3 !important;';
+                                } else if (d.status === 'Late') {
+                                    statusStyles = 'background: #fef3c7 !important; color: #d97706 !important; border: 1px solid #fde68a !important;';
+                                }
+                                return `<div class="attendance-calendar-day" style="aspect-ratio: 1 !important; display: flex !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; border-radius: 12px !important; font-weight: 700 !important; font-size: 0.85rem !important; transition: all 0.2s ease !important; ${statusStyles}">${d.dayNumber}</div>`;
                             }).join('')}
                         </div>
 
