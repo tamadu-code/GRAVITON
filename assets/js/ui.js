@@ -2493,6 +2493,13 @@ export const UI = {
             `;
         }
 
+        const btnStyle = (tab) => {
+            const isActive = activeTab === tab;
+            return isActive 
+                ? `flex: 1 !important; min-width: 120px !important; padding: 0.85rem 1.25rem !important; border: none !important; border-radius: 18px !important; background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important; color: white !important; font-weight: 700 !important; font-size: 0.88rem !important; font-family: 'Outfit', sans-serif !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; gap: 0.6rem !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important; white-space: nowrap !important; box-shadow: 0 10px 20px -5px rgba(79, 70, 229, 0.3) !important; text-decoration: none !important; outline: none !important;`
+                : `flex: 1 !important; min-width: 120px !important; padding: 0.85rem 1.25rem !important; border: 1px solid rgba(226, 232, 240, 0.8) !important; border-radius: 18px !important; background: rgba(241, 245, 249, 0.6) !important; color: #475569 !important; font-weight: 700 !important; font-size: 0.88rem !important; font-family: 'Outfit', sans-serif !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: center !important; gap: 0.6rem !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important; white-space: nowrap !important; text-decoration: none !important; outline: none !important;`;
+        };
+
         this.contentArea.innerHTML = `
             <div class="parent-portal-container animate-fade-in" style="padding: 1rem; min-height: 100vh;">
                 <!-- Parent Dashboard Header -->
@@ -2543,15 +2550,15 @@ export const UI = {
                 </div>
 
                 <!-- Tabbed navigation bar -->
-                <div class="parent-portal-tabs">
-                    <button class="parent-portal-tab-btn ${activeTab === 'overview' ? 'active' : ''}" data-tab="overview"><i data-lucide="layout-dashboard" style="width:18px;"></i> Overview</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'academic' ? 'active' : ''}" data-tab="academic"><i data-lucide="award" style="width:18px;"></i> Academic</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'attendance' ? 'active' : ''}" data-tab="attendance"><i data-lucide="calendar" style="width:18px;"></i> Attendance</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'timetable' ? 'active' : ''}" data-tab="timetable"><i data-lucide="clock" style="width:18px;"></i> Timetable</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'finances' ? 'active' : ''}" data-tab="finances"><i data-lucide="credit-card" style="width:18px;"></i> Finances</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'cbt' ? 'active' : ''}" data-tab="cbt"><i data-lucide="cpu" style="width:18px;"></i> CBT Exams</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'notices' ? 'active' : ''}" data-tab="notices"><i data-lucide="bell" style="width:18px;"></i> Notices</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'profile' ? 'active' : ''}" data-tab="profile"><i data-lucide="user" style="width:18px;"></i> Profile</button>
+                <div class="parent-portal-tabs" style="background: rgba(255, 255, 255, 0.85) !important; backdrop-filter: blur(10px) !important; -webkit-backdrop-filter: blur(10px) !important; border: 1px solid rgba(226, 232, 240, 0.8) !important; border-radius: 24px !important; padding: 8px !important; display: flex !important; gap: 8px !important; margin-bottom: 2.5rem !important; overflow-x: auto !important; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.04) !important; scrollbar-width: none !important;">
+                    <button class="parent-portal-tab-btn ${activeTab === 'overview' ? 'active' : ''}" data-tab="overview" style="${btnStyle('overview')}"><i data-lucide="layout-dashboard" style="width:18px; ${activeTab === 'overview' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Overview</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'academic' ? 'active' : ''}" data-tab="academic" style="${btnStyle('academic')}"><i data-lucide="award" style="width:18px; ${activeTab === 'academic' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Academic</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'attendance' ? 'active' : ''}" data-tab="attendance" style="${btnStyle('attendance')}"><i data-lucide="calendar" style="width:18px; ${activeTab === 'attendance' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Attendance</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'timetable' ? 'active' : ''}" data-tab="timetable" style="${btnStyle('timetable')}"><i data-lucide="clock" style="width:18px; ${activeTab === 'timetable' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Timetable</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'finances' ? 'active' : ''}" data-tab="finances" style="${btnStyle('finances')}"><i data-lucide="credit-card" style="width:18px; ${activeTab === 'finances' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Finances</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'cbt' ? 'active' : ''}" data-tab="cbt" style="${btnStyle('cbt')}"><i data-lucide="cpu" style="width:18px; ${activeTab === 'cbt' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> CBT Exams</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'notices' ? 'active' : ''}" data-tab="notices" style="${btnStyle('notices')}"><i data-lucide="bell" style="width:18px; ${activeTab === 'notices' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Notices</button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'profile' ? 'active' : ''}" data-tab="profile" style="${btnStyle('profile')}"><i data-lucide="user" style="width:18px; ${activeTab === 'profile' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Profile</button>
                 </div>
 
                 <!-- Active tab panel -->
