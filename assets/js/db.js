@@ -27,7 +27,7 @@ db.version(32).stores({
     audit_logs: 'id, operation, table, record_id, timestamp, user_id, is_synced'
 });
 
-// Final consolidated schema for Graviton Core v25.5
+// Final consolidated schema for Graviton Core v25.6
 db.version(40).stores({
     // --- CORE IDENTITY & ACCESS ---
     profiles: 'id, full_name, role, assigned_id, email, status, updated_at, is_synced',

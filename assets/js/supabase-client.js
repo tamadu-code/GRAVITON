@@ -87,7 +87,7 @@ export async function syncToCloud() {
                     scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
                     attendance: ['id', 'student_id', 'date', 'status', 'sign_in', 'sign_out', 'is_late', 'updated_at'],
                     attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
-                    timetable: ['id', 'class_name', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
+                    timetable: ['id', 'class_name', 'sub_class', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
                     notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'updated_at'],
                     settings: ['id', 'key', 'value', 'updated_at'],
                     pins: ['id', 'pin_code', 'serial', 'status', 'student_id', 'term', 'session', 'used_count', 'usage_limit', 'updated_at'],
@@ -624,7 +624,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v25.5 (BUILD v273) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v25.6 (BUILD v274) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);

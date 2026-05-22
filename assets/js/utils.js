@@ -762,8 +762,19 @@ export async function generateMastersheet(className, students, subjects, scores,
  */
 export async function generatePaymentReceipt(payment, student, schoolInfo = {}) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('p', 'mm', [100, 150]); // Smaller receipt format
     
+    // Fetch fee structures from Dexie
+    let feeStructures = [];
+    try {
+        const clsName = (student.class_name || '').trim().toLowerCase();
+        if (clsName && payment.category && payment.category.toLowerCase().includes('school fees')) {
+            const allStructures = await db.fee_structures.toArray();
+            feeStructures = allStructures.filter(f => (f.class_name || '').trim().toLowerCase() === clsName);
+        }
+    } catch (e) {
+        console.error("Error fetching fee structures for receipt:", e);
+    }
+
     const themeColor = schoolInfo.themeColor || '#4f46e5';
     const hexToRgb = (hex) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -771,59 +782,148 @@ export async function generatePaymentReceipt(payment, student, schoolInfo = {}) 
     };
     const rgb = hexToRgb(themeColor);
 
+    // Calculate dynamic page height based on content
+    let breakdownHeight = 0;
+    if (feeStructures.length > 0) {
+        breakdownHeight = 10 + (feeStructures.length * 6) + 12; // title + items + subtotal
+    }
+    const hasLogo = !!schoolInfo.schoolLogo;
+    const pageHeight = 145 + breakdownHeight + (hasLogo ? 18 : 0);
+    
+    const doc = new jsPDF('p', 'mm', [100, pageHeight]); // Smaller receipt format with dynamic height
+    
     // Border
     doc.setDrawColor(rgb.r, rgb.g, rgb.b);
-    doc.rect(2, 2, 96, 146);
+    doc.rect(2, 2, 96, pageHeight - 4);
 
-    // Header
+    let y = 12;
+    // Logo
+    if (hasLogo) {
+        try {
+            doc.addImage(schoolInfo.schoolLogo, 'PNG', 42.5, y, 15, 15);
+            y += 18;
+        } catch (e) {
+            console.error("Failed to render school logo in receipt PDF:", e);
+        }
+    }
+
+    // Header Details
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
+    doc.setFontSize(11);
     doc.setTextColor(rgb.r, rgb.g, rgb.b);
-    doc.text(schoolInfo.name || "GRAVITON ACADEMY", 50, 15, { align: 'center' });
+    doc.text((schoolInfo.schoolName || schoolInfo.name || "GRAVITON ACADEMY").toUpperCase(), 50, y, { align: 'center' });
+    y += 5;
     
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text("Official Payment Receipt", 50, 20, { align: 'center' });
+    if (schoolInfo.schoolMotto) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`"${schoolInfo.schoolMotto}"`, 50, y, { align: 'center' });
+        y += 4.5;
+    }
     
-    doc.line(10, 25, 90, 25);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105);
+    
+    let contactLines = [];
+    if (schoolInfo.schoolAddress) contactLines.push(schoolInfo.schoolAddress);
+    let phoneEmail = [];
+    if (schoolInfo.schoolPhone) phoneEmail.push(`Tel: ${schoolInfo.schoolPhone}`);
+    if (schoolInfo.schoolEmail) phoneEmail.push(`Email: ${schoolInfo.schoolEmail}`);
+    if (phoneEmail.length > 0) contactLines.push(phoneEmail.join(" | "));
+
+    for (const line of contactLines) {
+        const splitLine = doc.splitTextToSize(line, 80);
+        for (const sl of splitLine) {
+            doc.text(sl, 50, y, { align: 'center' });
+            y += 3.5;
+        }
+    }
+    
+    y += 1.5;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(rgb.r, rgb.g, rgb.b);
+    doc.text("Official Payment Receipt", 50, y, { align: 'center' });
+    y += 3.5;
+    
+    doc.setDrawColor(226, 232, 240);
+    doc.line(10, y, 90, y);
+    y += 6;
 
     // Body
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
-    let y = 35;
+    
     const row = (label, value) => {
         doc.setFont('helvetica', 'bold');
         doc.text(label, 12, y);
         doc.setFont('helvetica', 'normal');
-        doc.text(String(value), 90, y, { align: 'right' });
-        y += 8;
+        doc.text(String(value), 88, y, { align: 'right' });
+        y += 6;
     };
 
-    row("Receipt Date:", new Date(payment.date).toLocaleDateString());
+    row("Receipt Date:", new Date(payment.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }));
     row("Reference:", payment.reference);
     row("Student ID:", student.student_id);
     row("Student Name:", student.name);
     row("Class:", student.class_name);
-    row("Payment Type:", payment.type || "School Fees");
+    row("Payment Type:", payment.category || "School Fees");
     
+    // Fee Breakdown Section
+    if (feeStructures.length > 0) {
+        y += 1;
+        doc.setDrawColor(226, 232, 240);
+        doc.line(10, y, 90, y);
+        y += 5.5;
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(rgb.r, rgb.g, rgb.b);
+        doc.text("Fee Breakdown", 12, y);
+        y += 5.5;
+
+        doc.setFontSize(7.5);
+        doc.setTextColor(71, 85, 105);
+
+        let configuredTotal = 0;
+        feeStructures.forEach(item => {
+            doc.setFont('helvetica', 'normal');
+            doc.text(item.category || "General Fees", 12, y);
+            doc.text(`₦${item.amount.toLocaleString()}`, 88, y, { align: 'right' });
+            configuredTotal += item.amount;
+            y += 5.5;
+        });
+
+        doc.setDrawColor(226, 232, 240);
+        doc.line(12, y, 88, y);
+        y += 5;
+
+        doc.setFont('helvetica', 'bold');
+        doc.text("Total Configured Fee:", 12, y);
+        doc.text(`₦${configuredTotal.toLocaleString()}`, 88, y, { align: 'right' });
+        y += 3.5;
+    }
+
     y += 5;
     doc.setFillColor(rgb.r, rgb.g, rgb.b);
     doc.rect(10, y, 80, 10, 'F');
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(11);
+    doc.setFontSize(10.5);
     doc.setFont('helvetica', 'bold');
-    doc.text(`AMOUNT: ₦${payment.amount.toLocaleString()}`, 50, y + 6.5, { align: 'center' });
+    doc.text(`AMOUNT PAID: ₦${payment.amount.toLocaleString()}`, 50, y + 6.5, { align: 'center' });
 
-    y += 20;
-    doc.setTextColor(15, 23, 42);
-    doc.setFontSize(8);
+    y += 18;
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(7.5);
     doc.setFont('helvetica', 'italic');
     doc.text("Thank you for your payment.", 50, y, { align: 'center' });
     
-    y += 10;
+    y += 8;
     doc.setFont('helvetica', 'normal');
     doc.text("Authorized Digital Signature", 50, y, { align: 'center' });
-    doc.line(35, y + 2, 65, y + 2);
+    doc.line(32, y + 1.5, 68, y + 1.5);
 
     doc.save(`Receipt_${payment.reference}.pdf`);
 }

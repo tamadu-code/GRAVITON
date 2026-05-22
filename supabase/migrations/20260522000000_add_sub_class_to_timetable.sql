@@ -1,0 +1,1 @@
+ALTER TABLE timetable ADD COLUMN IF NOT EXISTS sub_class TEXT;

@@ -1992,8 +1992,9 @@ export const UI = {
             const selectedMonthStr = localStorage.getItem('parent_attendance_month') || new Date().toISOString().slice(0, 7);
             const [selYear, selMonth] = selectedMonthStr.split('-').map(Number);
             
-            const allAttendance = await db.attendance_records.where('student_id').equals(activeStudentId).toArray();
+            const allAttendance = await db.attendance.where('student_id').equals(activeStudentId).toArray();
             const monthAttendance = allAttendance.filter(a => a.date && a.date.startsWith(selectedMonthStr));
+            monthAttendance.sort((a, b) => new Date(b.date) - new Date(a.date));
 
             // Compute Month Stats
             const totalDaysRecorded = monthAttendance.length;
@@ -2016,11 +2017,19 @@ export const UI = {
             for (let dayNum = 1; dayNum <= totalMonthDays; dayNum++) {
                 const dayStr = `${selYear}-${String(selMonth).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
                 const record = monthAttendance.find(a => a.date === dayStr);
+                let dayStatus = 'None';
+                if (record) {
+                    if (record.is_late || record.status === 'Late') {
+                        dayStatus = 'Late';
+                    } else {
+                        dayStatus = record.status;
+                    }
+                }
                 calendarDays.push({
                     empty: false,
                     dayNumber: dayNum,
                     dateStr: dayStr,
-                    status: record ? record.status : 'None',
+                    status: dayStatus,
                     record: record
                 });
             }
@@ -2133,16 +2142,52 @@ export const UI = {
                             <div class="table-container" style="max-height: 280px; overflow-y: auto;">
                                 <table class="data-table" style="width: 100%;">
                                     <thead><tr style="background:#f8fafc;">
-                                        <th>Date</th><th>Status</th><th>Period/Subject</th>
+                                        <th>Date</th><th>Status</th><th>Clock In</th><th>Clock Out</th><th>Remarks</th>
                                     </tr></thead>
                                     <tbody>
-                                        ${monthAttendance.length === 0 ? '<tr><td colspan="3" style="text-align:center; padding: 2rem; color: #94a3b8;">No records logged for this month.</td></tr>' : monthAttendance.map(a => `
+                                        ${monthAttendance.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: #94a3b8;">No records logged for this month.</td></tr>' : monthAttendance.map(a => {
+                                            const formatTime = (val) => {
+                                                if (!val) return '--:--';
+                                                const d = new Date(val);
+                                                if (!isNaN(d.getTime()) && String(val).includes('T')) {
+                                                    return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true});
+                                                }
+                                                if (typeof val === 'string' && val.includes(':')) {
+                                                    const parts = val.split(':');
+                                                    let h = parseInt(parts[0]);
+                                                    const m = parts[1];
+                                                    const ampm = h >= 12 ? 'PM' : 'AM';
+                                                    h = h % 12 || 12;
+                                                    return `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+                                                }
+                                                return '--:--';
+                                            };
+                                            
+                                            let remark = 'On Time';
+                                            let remarkBadge = 'success';
+                                            if (a.is_late || a.status === 'Late') {
+                                                remark = 'Late';
+                                                remarkBadge = 'warning';
+                                            } else if (a.status === 'Absent') {
+                                                remark = 'Absent';
+                                                remarkBadge = 'danger';
+                                            }
+                                            
+                                            let statusBadge = 'warning';
+                                            if (a.status === 'Present') statusBadge = 'success';
+                                            else if (a.status === 'Absent') statusBadge = 'danger';
+                                            else if (a.status === 'Late') statusBadge = 'warning';
+
+                                            return `
                                             <tr>
                                                 <td style="font-weight:700;">${new Date(a.date).toLocaleDateString()}</td>
-                                                <td><span class="badge ${a.status === 'Present' ? 'success' : a.status === 'Late' ? 'warning' : 'danger'}" style="font-weight:800;">${a.status}</span></td>
-                                                <td style="color:#64748b; font-size:0.8rem;">${a.subject_name || 'General School'} ${a.period_number ? `(Period ${a.period_number})` : ''}</td>
+                                                <td><span class="badge ${statusBadge}" style="font-weight:800;">${a.status}</span></td>
+                                                <td style="font-family: monospace; font-weight: 700; color: #475569;">${formatTime(a.sign_in || a.check_in || a.in_time)}</td>
+                                                <td style="font-family: monospace; font-weight: 700; color: #475569;">${formatTime(a.sign_out || a.check_out || a.out_time)}</td>
+                                                <td><span class="badge ${remarkBadge}">${remark}</span></td>
                                             </tr>
-                                        `).join('')}
+                                            `;
+                                        }).join('')}
                                     </tbody>
                                 </table>
                             </div>
@@ -6291,7 +6336,8 @@ export const UI = {
         const currentTerm = allSettings.find(s => s.key === 'currentTerm')?.value || '1st Term';
         const currentSession = allSettings.find(s => s.key === 'currentSession')?.value || '2025/2026';
         
-        const selectedDateObj = new Date(date);
+        const [sy, sm, sd] = date.split('-').map(Number);
+        const selectedDateObj = new Date(sy, sm - 1, sd);
         const isWeekend = selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6;
         const isClosedDay = holidays.includes(date);
         const isTermInactive = termStatus === 'Inactive';
@@ -6708,7 +6754,8 @@ export const UI = {
             const holidayStr = allSettings.find(s => s.key === 'holidays')?.value || '';
             const holidays = holidayStr.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
             
-            const selectedDateObj = new Date(date.replace(/-/g, '/'));
+            const [sy, sm, sd] = date.split('-').map(Number);
+            const selectedDateObj = new Date(sy, sm - 1, sd);
             const isWeekend = selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6; // 0=Sun, 6=Sat
             const isClosedDay = holidays.includes(date);
             const isTermInactive = termStatus === 'Inactive';
@@ -6907,16 +6954,16 @@ export const UI = {
             return match ? match.p : null;
         };
 
-        const suggestSubject = async () => {
+        const suggestSubject = async (autoDetectPeriod = false) => {
             if (currentTab !== 'subject') return;
             
             const dateVal = dateInput.value;
             const cls = classFilter.value;
             const periodSelect = document.getElementById('att-period');
             
-            // Auto-detect period if it's "Today"
+            // Auto-detect period if it's "Today" and autoDetectPeriod is true
             const isToday = dateVal === new Date().toISOString().split('T')[0];
-            if (isToday) {
+            if (isToday && autoDetectPeriod) {
                 const autoPeriod = getCurrentPeriodByTime();
                 if (autoPeriod !== null && autoPeriod > 0) {
                     periodSelect.value = autoPeriod;
@@ -6927,7 +6974,8 @@ export const UI = {
             if (!dateVal || !cls || !period) return;
 
             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            const dayOfWeek = dayNames[new Date(dateVal).getDay()];
+            const [y, m, d] = dateVal.split('-').map(Number);
+            const dayOfWeek = dayNames[new Date(y, m - 1, d).getDay()];
             
             // Handle Fixed Event Reminders (Soft Suggestions)
             if (dayOfWeek === 'Thursday' && period === '5') {
@@ -6956,12 +7004,12 @@ export const UI = {
 
         [classFilter, dateInput].forEach(el => el.addEventListener('change', () => {
             if (el === classFilter) updateSubjectFilter();
-            suggestSubject();
+            suggestSubject(true);
             refreshList();
         }));
 
         document.getElementById('att-period').addEventListener('change', () => {
-            suggestSubject();
+            suggestSubject(false);
             refreshList();
         });
 
@@ -6982,7 +7030,8 @@ export const UI = {
             const holidayStr = allSettings.find(s => s.key === 'holidays')?.value || '';
             const holidays = holidayStr.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
             
-            const selectedDateObj = new Date(date);
+            const [sy, sm, sd] = date.split('-').map(Number);
+            const selectedDateObj = new Date(sy, sm - 1, sd);
             const isWeekend = selectedDateObj.getDay() === 0 || selectedDateObj.getDay() === 6;
             const isClosedDay = holidays.includes(date);
             const isTermInactive = termStatus === 'Inactive';
@@ -13236,12 +13285,21 @@ export const UI = {
                 </header>
 
                 <div class="card" style="border-radius: 24px; padding: 2rem; margin-bottom: 2rem;">
-                    <div style="display: flex; gap: 1.5rem; align-items: center; margin-bottom: 2rem;">
-                        <div style="flex: 1;">
+                    <div style="display: flex; gap: 1.5rem; align-items: center; margin-bottom: 2rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 200px;">
                             <label style="font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Active Class Registry</label>
                             <select id="tt-class-select" class="input" style="width: 100%; height: 52px; border-radius: 12px; background: #f8fafc; font-weight: 700;">
                                 <option value="">Select a class to edit...</option>
                                 ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <label style="font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select Stream</label>
+                            <select id="tt-stream-select" class="input" style="width: 100%; height: 52px; border-radius: 12px; background: #f8fafc; font-weight: 700;">
+                                <option value="">General / All Streams</option>
+                                <option value="Science">Science</option>
+                                <option value="Arts">Arts</option>
+                                <option value="Commercial">Commercial</option>
                             </select>
                         </div>
                         <div style="display: flex; gap: 0.75rem; align-items: flex-end; padding-top: 1.5rem;">
@@ -13296,18 +13354,20 @@ export const UI = {
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
         // Register Event Listeners
-        this.initTimetableLogic();
+        this.initTimetableLogic(subjects);
     },
 
-    initTimetableLogic() {
+    initTimetableLogic(subjects) {
         const classSelect = document.getElementById('tt-class-select');
+        const streamSelect = document.getElementById('tt-stream-select');
         const gridContainer = document.getElementById('timetable-grid-container');
         const emptyState = document.getElementById('tt-empty-state');
         const saveBtn = document.getElementById('btn-save-timetable');
         const slots = document.querySelectorAll('.tt-slot-select');
 
-        classSelect.onchange = async () => {
+        const loadTimetable = async () => {
             const cls = classSelect.value;
+            const stream = streamSelect.value;
             if (!cls) {
                 gridContainer.style.display = 'none';
                 emptyState.style.display = 'block';
@@ -13318,7 +13378,15 @@ export const UI = {
 
             // Filter subjects for this class to only show what is assigned
             const assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
-            const classSubjectIds = new Set(assignments.map(a => a.subject_id));
+            
+            // Filter assignments based on selected stream/specialization
+            const classAssignments = stream ? assignments.filter(a => 
+                !a.specialization || 
+                a.specialization === 'Common Subject' || 
+                a.specialization.toLowerCase() === stream.toLowerCase()
+            ) : assignments;
+
+            const classSubjectIds = new Set(classAssignments.map(a => a.subject_id));
             const classSubjects = subjects.filter(s => classSubjectIds.has(s.id));
             
             // If no assignments, fallback to all (safeguard)
@@ -13331,27 +13399,36 @@ export const UI = {
                 s.value = "";
             });
 
-            // Load existing timetable for this class
+            // Load existing timetable for this class and stream
             const existing = await db.timetable.where('class_name').equals(cls).toArray();
-            existing.forEach(entry => {
+            const filteredExisting = existing.filter(entry => (entry.sub_class || '') === stream);
+            filteredExisting.forEach(entry => {
                 const select = document.querySelector(`.tt-slot-select[data-day="${entry.day_of_week}"][data-period="${entry.period_number}"]`);
                 if (select) select.value = entry.subject_id;
             });
         };
 
+        classSelect.onchange = loadTimetable;
+        streamSelect.onchange = loadTimetable;
+
         saveBtn.onclick = async () => {
             const cls = classSelect.value;
+            const stream = streamSelect.value;
             if (!cls) return Notifications.show('Please select a class first', 'error');
 
             Notifications.show('Compiling academic schedule...', 'info');
 
+            // Fetch assignments inside click handler to resolve ReferenceError
+            const assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
+
             const newEntries = [];
             slots.forEach(select => {
                 if (select.value) {
-                    const assignment = assignments.find(a => a.subject_id === select.value);
+                    const assignment = assignments.find(a => String(a.subject_id) === String(select.value));
                     newEntries.push(prepareForSync({
-                        id: `TT_${cls}_${select.dataset.day}_P${select.dataset.period}`,
+                        id: `TT_${cls}_${stream ? stream + '_' : ''}${select.dataset.day}_P${select.dataset.period}`,
                         class_name: cls,
+                        sub_class: stream || null,
                         day_of_week: select.dataset.day,
                         period_number: parseInt(select.dataset.period),
                         subject_id: select.value,
@@ -13361,13 +13438,16 @@ export const UI = {
                 }
             });
 
-            // Clean old entries for this class and save new ones
-            await db.timetable.where('class_name').equals(cls).delete();
+            // Clean old entries for this class and stream, then save new ones
+            const existing = await db.timetable.where('class_name').equals(cls).toArray();
+            const toDelete = existing.filter(entry => (entry.sub_class || '') === stream);
+            await db.timetable.bulkDelete(toDelete.map(d => d.id));
+
             if (newEntries.length > 0) {
                 await db.timetable.bulkAdd(newEntries);
             }
 
-            Notifications.show(`Timetable for ${cls} successfully deployed!`, 'success');
+            Notifications.show(`Timetable for ${cls} (${stream || 'General'}) successfully deployed!`, 'success');
             this.debouncedSync();
         };
     },
@@ -14257,13 +14337,31 @@ export const UI = {
 
     async renderStudentAttendanceView() {
         const studentId = this.getActiveStudentId();
-        const attendance = await db.attendance_records.where('student_id').equals(studentId).toArray();
+        const attendance = await db.attendance.where('student_id').equals(studentId).toArray();
+        attendance.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        const formatTime = (val) => {
+            if (!val) return '--:--';
+            const d = new Date(val);
+            if (!isNaN(d.getTime()) && String(val).includes('T')) {
+                return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true});
+            }
+            if (typeof val === 'string' && val.includes(':')) {
+                const parts = val.split(':');
+                let h = parseInt(parts[0]);
+                const m = parts[1];
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                h = h % 12 || 12;
+                return `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+            }
+            return '--:--';
+        };
         
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in student-universe-bg" style="padding: 1rem; min-height: 100vh; overflow-x: hidden;">
                 <header class="glass-header" style="margin-bottom: 2rem; padding: 2rem; border-radius: 24px;">
                     <h1 style="font-size: 2rem; font-weight: 900; color: #1e293b;">Participation Record</h1>
-                    <p style="color: #64748b;">Your official attendance history and engagement metrics.</p>
+                    <p style="color: #64748b;">Your official daily daily attendance sign-in and sign-out record.</p>
                 </header>
 
                 <div class="card" style="border-radius: 24px; padding: 2rem;">
@@ -14273,17 +14371,38 @@ export const UI = {
                                 <tr>
                                     <th>Date</th>
                                     <th>Status</th>
-                                    <th>Subject / Period</th>
+                                    <th>Clock In</th>
+                                    <th>Clock Out</th>
+                                    <th>Remarks</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${attendance.length === 0 ? '<tr><td colspan="3" style="text-align:center; padding:3rem;">No attendance records found.</td></tr>' : attendance.map(a => `
+                                ${attendance.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding:3rem;">No attendance records found.</td></tr>' : attendance.map(a => {
+                                    let remark = 'On Time';
+                                    let remarkBadge = 'success';
+                                    if (a.is_late || a.status === 'Late') {
+                                        remark = 'Late';
+                                        remarkBadge = 'warning';
+                                    } else if (a.status === 'Absent') {
+                                        remark = 'Absent';
+                                        remarkBadge = 'danger';
+                                    }
+                                    
+                                    let statusBadge = 'warning';
+                                    if (a.status === 'Present') statusBadge = 'success';
+                                    else if (a.status === 'Absent') statusBadge = 'danger';
+                                    else if (a.status === 'Late') statusBadge = 'warning';
+
+                                    return `
                                     <tr>
                                         <td style="font-weight: 700;">${new Date(a.date).toLocaleDateString()}</td>
-                                        <td><span class="badge ${a.status === 'Present' ? 'success' : 'warning'}">${a.status}</span></td>
-                                        <td style="color: #64748b; font-size: 0.85rem;">${a.subject_name || 'General School'} ${a.period_number ? `(Period ${a.period_number})` : ''}</td>
+                                        <td><span class="badge ${statusBadge}">${a.status}</span></td>
+                                        <td style="font-family: monospace; font-weight: 700; color: #475569;">${formatTime(a.sign_in)}</td>
+                                        <td style="font-family: monospace; font-weight: 700; color: #475569;">${formatTime(a.sign_out)}</td>
+                                        <td><span class="badge ${remarkBadge}">${remark}</span></td>
                                     </tr>
-                                `).join('')}
+                                `;
+                                }).join('')}
                             </tbody>
                         </table>
                     </div>
