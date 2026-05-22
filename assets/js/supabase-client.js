@@ -500,11 +500,27 @@ export async function syncFromCloud(forceAll = false) {
                         const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
                         const localIds = localItems.map(item => item[pk]);
                         
-                        // Check which of these IDs still exist in the cloud
-                        const { data: cloudIds } = await client.from(table).select(pk).in(pk, localIds);
+                        // Check which of these IDs still exist in the cloud, in chunks to prevent 414 URL limits
+                        const cloudIdSet = new Set();
+                        const CHUNK_SIZE = 100;
+                        let querySuccess = true;
                         
-                        if (cloudIds) {
-                            const cloudIdSet = new Set(cloudIds.map(c => String(c[pk])));
+                        for (let i = 0; i < localIds.length; i += CHUNK_SIZE) {
+                            const chunk = localIds.slice(i, i + CHUNK_SIZE);
+                            const { data: cloudIds, error } = await client.from(table).select(pk).in(pk, chunk);
+                            
+                            if (error) {
+                                console.warn(`[Sync Cleanup] Chunk fetch failed for ${table}:`, error.message);
+                                querySuccess = false;
+                                break; // Abort sync cleanup for this table to prevent accidental local deletion
+                            }
+                            
+                            if (cloudIds) {
+                                cloudIds.forEach(c => cloudIdSet.add(String(c[pk])));
+                            }
+                        }
+                        
+                        if (querySuccess) {
                             const staleIds = localIds.filter(id => !cloudIdSet.has(String(id)));
                             
                             if (staleIds.length > 0) {
@@ -624,7 +640,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v25.6 (BUILD v274) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v25.7 (BUILD v275) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);

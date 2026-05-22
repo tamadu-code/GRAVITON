@@ -8434,11 +8434,71 @@ export const UI = {
                         throw authError;
                     }
                     
-                    // Sync profile to Supabase
+                    const newId = authData?.user?.id;
+                    const oldId = staff.id;
                     const client = window.getSupabase ? window.getSupabase() : null;
+
+                    if (newId && newId !== oldId) {
+                        console.log(`[Staff Migration] UUID Change detected: ${oldId} -> ${newId}. Migrating all related records...`);
+                        
+                        // 1. Migrate Profiles table locally
+                        const existingProfile = await db.profiles.get(oldId);
+                        if (existingProfile) {
+                            await db.profiles.delete(oldId);
+                            await db.profiles.put({
+                                ...existingProfile,
+                                id: newId,
+                                email: staffEmail,
+                                is_synced: 0,
+                                updated_at: new Date().toISOString()
+                            });
+                        }
+                        
+                        // 2. Migrate subject_assignments
+                        const assignments = await db.subject_assignments.where('teacher_id').equals(oldId).toArray();
+                        for (const a of assignments) {
+                            await db.subject_assignments.update(a.id, prepareForSync({ teacher_id: newId }));
+                        }
+                        
+                        // 3. Migrate form_teachers
+                        const formTeachersList = await db.form_teachers.where('teacher_id').equals(oldId).toArray();
+                        for (const f of formTeachersList) {
+                            await db.form_teachers.update(f.id, prepareForSync({ teacher_id: newId }));
+                        }
+                        
+                        // 4. Migrate timetable
+                        const timetables = await db.timetable.where('teacher_id').equals(oldId).toArray();
+                        for (const t of timetables) {
+                            await db.timetable.update(t.id, prepareForSync({ teacher_id: newId }));
+                        }
+                        
+                        // 5. Migrate cbt_exams
+                        const exams = await db.cbt_exams.where('teacher_id').equals(oldId).toArray();
+                        for (const e of exams) {
+                            await db.cbt_exams.update(e.id, prepareForSync({ teacher_id: newId }));
+                        }
+                        
+                        // 6. Migrate duty_assignments
+                        const duties = await db.duty_assignments.where('staff_id').equals(oldId).toArray();
+                        for (const d of duties) {
+                            await db.duty_assignments.update(d.id, prepareForSync({ staff_id: newId }));
+                        }
+                        
+                        // 7. Delete the old profile in Supabase cloud to prevent duplicates
+                        if (client) {
+                            await client.from('profiles').delete().eq('id', oldId);
+                        }
+                        
+                        console.log(`[Staff Migration] Successfully migrated all records from ${oldId} to ${newId}.`);
+                        
+                        // Update UI staff reference to avoid referencing stale staff ID
+                        staff.id = newId;
+                    }
+                    
+                    // Sync profile to Supabase
                     if (client) {
                         const { error: pError } = await client.from('profiles').upsert({
-                            id: authData?.user?.id || staff.id,
+                            id: newId || staff.id,
                             full_name: staff.full_name,
                             role: staff.role,
                             email: staffEmail,
@@ -8449,6 +8509,8 @@ export const UI = {
                     }
 
                     Notifications.show(`Staff login repaired. Use Staff123! as password.`, 'success');
+                    this.renderStaffDetail(newId || staff.id);
+                    this.debouncedSync();
                 } catch (err) {
                     console.error('Staff Repair error:', err);
                     Notifications.show(`Repair failed: ${err.message}`, 'error');
@@ -8501,13 +8563,12 @@ export const UI = {
                     
                     if (!email) return Notifications.show('Email is required for staff login.', 'warning');
                     
-                    await db.profiles.update(staffId, { 
+                    await db.profiles.update(staffId, prepareForSync({ 
                         full_name: name, 
                         email: email,
                         role: role, 
-                        employment_type: empType,
-                        updated_at: new Date().toISOString() 
-                    });
+                        employment_type: empType
+                    }));
                     Notifications.show('Staff records updated', 'success');
                     this.renderStaffDetail(staffId);
                     this.debouncedSync();
