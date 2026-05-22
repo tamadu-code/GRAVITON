@@ -1756,40 +1756,40 @@ export const UI = {
 
             tabContentHtml = `
                 <!-- KPI Grid -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
-                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
-                        <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="award"></i></div>
+                <div class="pp-kpi-grid">
+                    <div class="pp-kpi-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
+                        <div class="pp-kpi-icon" style="width: 48px; height: 48px; border-radius: 14px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="award"></i></div>
                         <div>
-                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Academic Average</div>
-                            <div style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">${(analytics.average || 0).toFixed(1)}%</div>
+                            <div class="pp-kpi-label" style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Academic Average</div>
+                            <div class="pp-kpi-value" style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">${(analytics.average || 0).toFixed(1)}%</div>
                         </div>
                     </div>
-                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
-                        <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="trending-up"></i></div>
+                    <div class="pp-kpi-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
+                        <div class="pp-kpi-icon" style="width: 48px; height: 48px; border-radius: 14px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="trending-up"></i></div>
                         <div>
-                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Class Ranking</div>
-                            <div style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">${analytics.rank || 'N/A'}</div>
+                            <div class="pp-kpi-label" style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Class Ranking</div>
+                            <div class="pp-kpi-value" style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">${analytics.rank || 'N/A'}</div>
                         </div>
                     </div>
-                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
-                        <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="calendar"></i></div>
+                    <div class="pp-kpi-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
+                        <div class="pp-kpi-icon" style="width: 48px; height: 48px; border-radius: 14px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="calendar"></i></div>
                         <div>
-                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Attendance Rate</div>
-                            <div style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">${(analytics.attendance_rate || 0).toFixed(1)}%</div>
+                            <div class="pp-kpi-label" style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Attendance Rate</div>
+                            <div class="pp-kpi-value" style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">${(analytics.attendance_rate || 0).toFixed(1)}%</div>
                         </div>
                     </div>
-                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
-                        <div style="width: 48px; height: 48px; border-radius: 14px; background: ${analytics.fee_balance > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${analytics.fee_balance > 0 ? '#ef4444' : '#10b981'}; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="credit-card"></i></div>
+                    <div class="pp-kpi-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 24px; padding: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.02);">
+                        <div class="pp-kpi-icon" style="width: 48px; height: 48px; border-radius: 14px; background: ${analytics.fee_balance > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; color: ${analytics.fee_balance > 0 ? '#ef4444' : '#10b981'}; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;"><i data-lucide="credit-card"></i></div>
                         <div>
-                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Tuition Balance</div>
-                            <div style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
+                            <div class="pp-kpi-label" style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Tuition Balance</div>
+                            <div class="pp-kpi-value" style="font-size: 1.5rem; font-weight: 950; color: #1e293b; margin-top: 2px;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
                         </div>
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+                <div class="pp-two-col-grid">
                     <!-- Today's Classes -->
-                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
+                    <div class="card pp-card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
                         <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
                             <span style="display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="clock" style="color:#4f46e5;"></i> Today's Schedule</span>
                             <span class="badge" style="background:#f1f5f9; color:#475569; font-size:0.7rem;">${todayWeekday}</span>
@@ -1818,7 +1818,7 @@ export const UI = {
                     </div>
 
                     <!-- Recent Bulletins -->
-                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div class="card pp-card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
                             <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
                                 <i data-lucide="bell" style="color:#ef4444;"></i> Announcements
@@ -2038,29 +2038,29 @@ export const UI = {
             ];
 
             tabContentHtml = `
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
-                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+                <div class="pp-kpi-grid">
+                    <div class="pp-kpi-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
                         <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;"><i data-lucide="check-circle-2"></i></div>
                         <div>
                             <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Present Days</div>
                             <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${presentDays} Days</div>
                         </div>
                     </div>
-                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+                    <div class="pp-kpi-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
                         <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(239, 68, 68, 0.1); color: #ef4444; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;"><i data-lucide="x-circle"></i></div>
                         <div>
                             <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Absent Days</div>
                             <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${absentDays} Days</div>
                         </div>
                     </div>
-                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+                    <div class="pp-kpi-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
                         <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;"><i data-lucide="alarm-clock"></i></div>
                         <div>
                             <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Late Logins</div>
                             <div style="font-size: 1.25rem; font-weight: 900; color: #1e293b; margin-top: 2px;">${lateDays} Days</div>
                         </div>
                     </div>
-                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+                    <div class="pp-kpi-card" style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
                         <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;"><i data-lucide="activity"></i></div>
                         <div>
                             <div style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase;">Turnout Rate</div>
@@ -2069,9 +2069,9 @@ export const UI = {
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                <div class="pp-two-col-grid">
                     <!-- Calendar Widget Card -->
-                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
+                    <div class="card pp-card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                             <h3 style="font-weight: 900; color: #1e293b; margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
                                 <i data-lucide="calendar-days" style="color: #4f46e5;"></i> ${monthName} ${selYear}
@@ -2101,22 +2101,31 @@ export const UI = {
                                 } else if (d.status === 'Absent') {
                                     statusStyles = 'background: #fee2e2 !important; color: #b91c1c !important; border: 1px solid #fecdd3 !important;';
                                 } else if (d.status === 'Late') {
-                                    statusStyles = 'background: #fef3c7 !important; color: #d97706 !important; border: 1px solid #fde68a !important;';
+                                    statusStyles = 'background: #ffedd5 !important; color: #ea580c !important; border: 1px solid #fed7aa !important;';
                                 }
                                 return `<div class="attendance-calendar-day" style="aspect-ratio: 1 !important; display: flex !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; border-radius: 12px !important; font-weight: 700 !important; font-size: 0.85rem !important; transition: all 0.2s ease !important; ${statusStyles}">${d.dayNumber}</div>`;
                             }).join('')}
                         </div>
 
                         <!-- Legends -->
-                        <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem; flex-wrap: wrap;">
-                            <div class="attendance-legend-item"><div class="attendance-legend-color" style="background: #dcfce7; border: 1px solid #bbf7d0;"></div> Present</div>
-                            <div class="attendance-legend-item"><div class="attendance-legend-color" style="background: #fee2e2; border: 1px solid #fecdd3;"></div> Absent</div>
-                            <div class="attendance-legend-item"><div class="attendance-legend-color" style="background: #fef3c7; border: 1px solid #fde68a;"></div> Late</div>
+                        <div style="display: flex; gap: 1.5rem; justify-content: center; margin-top: 1.5rem; flex-wrap: wrap;">
+                            <div class="attendance-legend-item" style="display: flex !important; align-items: center !important; gap: 6px !important; font-size: 0.8rem !important; font-weight: 700 !important; color: #475569 !important;">
+                                <div class="attendance-legend-color" style="width: 12px !important; height: 12px !important; border-radius: 4px !important; background: #dcfce7 !important; border: 1px solid #bbf7d0 !important;"></div>
+                                Present
+                            </div>
+                            <div class="attendance-legend-item" style="display: flex !important; align-items: center !important; gap: 6px !important; font-size: 0.8rem !important; font-weight: 700 !important; color: #475569 !important;">
+                                <div class="attendance-legend-color" style="width: 12px !important; height: 12px !important; border-radius: 4px !important; background: #fee2e2 !important; border: 1px solid #fecdd3 !important;"></div>
+                                Absent
+                            </div>
+                            <div class="attendance-legend-item" style="display: flex !important; align-items: center !important; gap: 6px !important; font-size: 0.8rem !important; font-weight: 700 !important; color: #475569 !important;">
+                                <div class="attendance-legend-color" style="width: 12px !important; height: 12px !important; border-radius: 4px !important; background: #ffedd5 !important; border: 1px solid #fed7aa !important;"></div>
+                                Late
+                            </div>
                         </div>
                     </div>
 
                     <!-- Attendance Log Card -->
-                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div class="card pp-card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
                             <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.1rem;">
                                 <i data-lucide="clipboard-list" style="color: #4f46e5;"></i> Detailed Attendance History
@@ -2505,15 +2514,61 @@ export const UI = {
         };
 
         this.contentArea.innerHTML = `
-            <div class="parent-portal-container animate-fade-in" style="padding: 1rem; min-height: 100vh;">
+            <style>
+                /* === Parent Portal Mobile Responsive Styles === */
+                .pp-container { padding: 1rem; min-height: 100vh; }
+                .pp-header { margin-bottom: 2rem; padding: 2rem; border-radius: 28px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white; box-shadow: 0 20px 40px -10px rgba(15,23,42,0.4); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem; }
+                .pp-header-title { font-size: 1.75rem; font-weight: 950; margin: 0; display: flex; align-items: center; gap: 0.75rem; }
+                .pp-header-subtitle { color: #94a3b8; font-weight: 600; margin-top: 0.5rem; }
+                .pp-scholar-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
+                .pp-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+                .pp-two-col-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+                .pp-tab-bar { background: rgba(255, 255, 255, 0.85) !important; backdrop-filter: blur(10px) !important; -webkit-backdrop-filter: blur(10px) !important; border: 1px solid rgba(226, 232, 240, 0.8) !important; border-radius: 24px !important; padding: 8px !important; display: flex !important; gap: 8px !important; margin-bottom: 2.5rem !important; overflow-x: auto !important; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.04) !important; scrollbar-width: none !important; }
+                .pp-tab-bar::-webkit-scrollbar { display: none; }
+                .pp-tab-btn-label { display: inline; }
+
+                /* Tablet breakpoint */
+                @media (max-width: 768px) {
+                    .pp-container { padding: 0.5rem; }
+                    .pp-header { padding: 1.25rem; border-radius: 20px; gap: 1rem; flex-direction: column; align-items: flex-start; }
+                    .pp-header-title { font-size: 1.35rem; }
+                    .pp-header-subtitle { font-size: 0.85rem; }
+                    .pp-scholar-grid { grid-template-columns: 1fr !important; gap: 0.75rem; }
+                    .pp-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 0.75rem; }
+                    .pp-two-col-grid { grid-template-columns: 1fr !important; gap: 1rem; }
+                    .pp-tab-bar { border-radius: 16px !important; padding: 6px !important; gap: 4px !important; margin-bottom: 1.5rem !important; }
+                }
+
+                /* Phone breakpoint */
+                @media (max-width: 480px) {
+                    .pp-container { padding: 0.25rem; }
+                    .pp-header { padding: 1rem; border-radius: 16px; margin-bottom: 1rem; }
+                    .pp-header-title { font-size: 1.15rem; gap: 0.5rem; }
+                    .pp-header-title i, .pp-header-title svg { width: 22px !important; height: 22px !important; }
+                    .pp-header-subtitle { font-size: 0.78rem; margin-top: 0.25rem; }
+                    .pp-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 0.5rem; }
+                    .pp-kpi-card { padding: 0.85rem !important; border-radius: 16px !important; }
+                    .pp-kpi-card .pp-kpi-icon { width: 36px !important; height: 36px !important; border-radius: 10px !important; }
+                    .pp-kpi-card .pp-kpi-label { font-size: 0.55rem !important; }
+                    .pp-kpi-card .pp-kpi-value { font-size: 1.05rem !important; }
+                    .pp-two-col-grid { grid-template-columns: 1fr !important; gap: 0.75rem; }
+                    .pp-tab-bar { border-radius: 14px !important; padding: 4px !important; gap: 3px !important; margin-bottom: 1rem !important; }
+                    .pp-tab-btn-label { display: none !important; }
+                    .parent-portal-tab-btn { min-width: 44px !important; padding: 0.7rem 0.5rem !important; font-size: 0 !important; justify-content: center !important; }
+                    .parent-portal-tab-btn i, .parent-portal-tab-btn svg { width: 20px !important; height: 20px !important; }
+                    .pp-card { padding: 1.25rem !important; border-radius: 20px !important; }
+                    .pp-card h3 { font-size: 0.95rem !important; }
+                }
+            </style>
+            <div class="parent-portal-container pp-container animate-fade-in">
                 <!-- Parent Dashboard Header -->
-                <header style="margin-bottom: 2rem; padding: 2rem; border-radius: 28px; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: white; box-shadow: 0 20px 40px -10px rgba(15,23,42,0.4); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem;">
+                <header class="pp-header">
                     <div>
-                        <h1 style="font-size: 1.75rem; font-weight: 950; margin: 0; display: flex; align-items: center; gap: 0.75rem;">
+                        <h1 class="pp-header-title">
                             <i data-lucide="shield-check" style="color: #818cf8; width: 28px; height: 28px;"></i>
                             Parent Portal
                         </h1>
-                        <p style="color: #94a3b8; font-weight: 600; margin-top: 0.5rem;">Secure monitoring and fee payments for your linked scholars.</p>
+                        <p class="pp-header-subtitle">Secure monitoring and fee payments for your linked scholars.</p>
                     </div>
                     <div style="background: rgba(255,255,255,0.07); padding: 0.75rem 1.5rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 0.75rem;">
                         <div style="width: 32px; height: 32px; border-radius: 50%; background: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 800; color: white;">
@@ -2532,7 +2587,7 @@ export const UI = {
                         <i data-lucide="users" style="color: #4f46e5; width: 20px;"></i>
                         Select Scholar
                     </h3>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem;">
+                    <div class="pp-scholar-grid">
                         ${myChildren.map(child => {
                             const isActive = child.student_id === activeStudentId;
                             const childInitials = child.name.split(' ').map(n => n.charAt(0)).slice(0, 2).join('').toUpperCase();
@@ -2554,15 +2609,15 @@ export const UI = {
                 </div>
 
                 <!-- Tabbed navigation bar -->
-                <div class="parent-portal-tabs" style="background: rgba(255, 255, 255, 0.85) !important; backdrop-filter: blur(10px) !important; -webkit-backdrop-filter: blur(10px) !important; border: 1px solid rgba(226, 232, 240, 0.8) !important; border-radius: 24px !important; padding: 8px !important; display: flex !important; gap: 8px !important; margin-bottom: 2.5rem !important; overflow-x: auto !important; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.04) !important; scrollbar-width: none !important;">
-                    <button class="parent-portal-tab-btn ${activeTab === 'overview' ? 'active' : ''}" data-tab="overview" style="${btnStyle('overview')}"><i data-lucide="layout-dashboard" style="width:18px; ${activeTab === 'overview' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Overview</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'academic' ? 'active' : ''}" data-tab="academic" style="${btnStyle('academic')}"><i data-lucide="award" style="width:18px; ${activeTab === 'academic' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Academic</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'attendance' ? 'active' : ''}" data-tab="attendance" style="${btnStyle('attendance')}"><i data-lucide="calendar" style="width:18px; ${activeTab === 'attendance' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Attendance</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'timetable' ? 'active' : ''}" data-tab="timetable" style="${btnStyle('timetable')}"><i data-lucide="clock" style="width:18px; ${activeTab === 'timetable' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Timetable</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'finances' ? 'active' : ''}" data-tab="finances" style="${btnStyle('finances')}"><i data-lucide="credit-card" style="width:18px; ${activeTab === 'finances' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Finances</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'cbt' ? 'active' : ''}" data-tab="cbt" style="${btnStyle('cbt')}"><i data-lucide="cpu" style="width:18px; ${activeTab === 'cbt' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> CBT Exams</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'notices' ? 'active' : ''}" data-tab="notices" style="${btnStyle('notices')}"><i data-lucide="bell" style="width:18px; ${activeTab === 'notices' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Notices</button>
-                    <button class="parent-portal-tab-btn ${activeTab === 'profile' ? 'active' : ''}" data-tab="profile" style="${btnStyle('profile')}"><i data-lucide="user" style="width:18px; ${activeTab === 'profile' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> Profile</button>
+                <div class="parent-portal-tabs pp-tab-bar">
+                    <button class="parent-portal-tab-btn ${activeTab === 'overview' ? 'active' : ''}" data-tab="overview" style="${btnStyle('overview')}"><i data-lucide="layout-dashboard" style="width:18px; ${activeTab === 'overview' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> <span class="pp-tab-btn-label">Overview</span></button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'academic' ? 'active' : ''}" data-tab="academic" style="${btnStyle('academic')}"><i data-lucide="award" style="width:18px; ${activeTab === 'academic' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> <span class="pp-tab-btn-label">Academic</span></button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'attendance' ? 'active' : ''}" data-tab="attendance" style="${btnStyle('attendance')}"><i data-lucide="calendar" style="width:18px; ${activeTab === 'attendance' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> <span class="pp-tab-btn-label">Attendance</span></button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'timetable' ? 'active' : ''}" data-tab="timetable" style="${btnStyle('timetable')}"><i data-lucide="clock" style="width:18px; ${activeTab === 'timetable' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> <span class="pp-tab-btn-label">Timetable</span></button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'finances' ? 'active' : ''}" data-tab="finances" style="${btnStyle('finances')}"><i data-lucide="credit-card" style="width:18px; ${activeTab === 'finances' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> <span class="pp-tab-btn-label">Finances</span></button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'cbt' ? 'active' : ''}" data-tab="cbt" style="${btnStyle('cbt')}"><i data-lucide="cpu" style="width:18px; ${activeTab === 'cbt' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> <span class="pp-tab-btn-label">CBT Exams</span></button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'notices' ? 'active' : ''}" data-tab="notices" style="${btnStyle('notices')}"><i data-lucide="bell" style="width:18px; ${activeTab === 'notices' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> <span class="pp-tab-btn-label">Notices</span></button>
+                    <button class="parent-portal-tab-btn ${activeTab === 'profile' ? 'active' : ''}" data-tab="profile" style="${btnStyle('profile')}"><i data-lucide="user" style="width:18px; ${activeTab === 'profile' ? 'color: white !important;' : 'color: #64748b !important;'}"></i> <span class="pp-tab-btn-label">Profile</span></button>
                 </div>
 
                 <!-- Active tab panel -->
