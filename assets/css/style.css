@@ -5525,4 +5525,40 @@ body.window-blurred.exam-mode .cbt-exam-container {
     }
 }
 
+/* Full-Width Mobile Attendance Cards */
+@media (max-width: 768px) {
+    /* Stretch the attendance list card only, keeping header/stats padded */
+    .view-container:has(#attendance-list-container) > .card {
+        margin-left: -1rem !important;
+        margin-right: -1rem !important;
+        width: calc(100% + 2rem) !important;
+        max-width: calc(100% + 2rem) !important;
+        border-radius: 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+    }
+    
+    /* Adjust padding on the inner wrapper of the card */
+    .view-container:has(#attendance-list-container) > .card > div[style*="padding: 1.5rem"] {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+    
+    /* Keep controls inside the card padded */
+    .view-container:has(#attendance-list-container) > .card > div[style*="padding: 1.5rem"] > div:not(#attendance-list-container) {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    
+    /* Ensure the individual attendance cards are flat/edge-to-edge */
+    .attendance-card {
+        border-radius: 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        width: 100% !important;
+    }
+}
+
 

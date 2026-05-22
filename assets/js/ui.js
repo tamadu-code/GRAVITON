@@ -520,7 +520,7 @@ export const UI = {
         const adminSectionHeaders = document.querySelectorAll('.nav-section-header');
         
         // Modules allowed for teachers
-        const teacherAllowedViews = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard'];
+        const teacherAllowedViews = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'profile'];
         
         // Modules allowed for parents
         const parentAllowedViews = ['dashboard'];
@@ -1310,42 +1310,253 @@ export const UI = {
         if (!container) return;
 
         if (!className) {
-            container.innerHTML = '<div style="text-align: center; opacity: 0.5;">Select a class to view timetable.</div>';
+            container.innerHTML = '<div style="text-align: center; opacity: 0.5; padding: 2rem;">Select a class to view timetable.</div>';
             return;
         }
 
         const entries = await db.timetable.where('class_name').equals(className).toArray();
         if (entries.length === 0) {
             container.innerHTML = `
-                <div style="text-align: center; opacity: 0.5;">
-                    <i data-lucide="calendar-off" style="width: 32px; height: 32px; margin-bottom: 1rem;"></i>
-                    <p>No timetable published for ${className} yet.</p>
+                <div style="text-align: center; opacity: 0.5; padding: 3rem 1.5rem;">
+                    <i data-lucide="calendar-off" style="width: 32px; height: 32px; margin-bottom: 1rem; color: #94a3b8;"></i>
+                    <p style="font-weight: 700; color: #64748b;">No timetable published for ${className} yet.</p>
                 </div>
             `;
             if (typeof lucide !== 'undefined') lucide.createIcons();
             return;
         }
 
-        // Simple Visualizer
+        const subjects = await db.subjects.toArray().catch(() => []);
+        const subjectMap = subjects.reduce((m, s) => { m[s.id] = s.name; return m; }, {});
+
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        const periodColors = {
+            1: { bg: '#eef2ff', text: '#4f46e5', border: '#4f46e5' },
+            2: { bg: '#ecfdf5', text: '#10b981', border: '#10b981' },
+            3: { bg: '#fffbeb', text: '#d97706', border: '#f59e0b' },
+            4: { bg: '#fef2f2', text: '#ef4444', border: '#ef4444' },
+            5: { bg: '#f5f3ff', text: '#8b5cf6', border: '#8b5cf6' },
+            6: { bg: '#fdf2f8', text: '#ec4899', border: '#ec4899' },
+            7: { bg: '#ecfeff', text: '#0891b2', border: '#06b6d4' },
+            8: { bg: '#f0fdfa', text: '#0d9488', border: '#14b8a6' },
+            default: { bg: '#f8fafc', text: '#6366f1', border: '#6366f1' }
+        };
+
         container.innerHTML = `
-            <div style="width: 100%; overflow-x: auto;">
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; min-width: 600px;">
-                    ${days.map(day => `
-                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                            <div style="font-weight: 800; color: #1e293b; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.5rem; text-align: center; border-bottom: 2px solid #eef2ff; padding-bottom: 4px;">${day}</div>
-                            ${entries.filter(e => e.day_of_week === day).sort((a,b) => a.period_number - b.period_number).map(e => `
-                                <div style="background: white; padding: 0.75rem; border-radius: 12px; border: 1px solid #f1f5f9; box-shadow: var(--shadow-sm); text-align: center;">
-                                    <div style="font-weight: 800; color: #4f46e5; font-size: 0.75rem;">${e.subject_id}</div>
-                                    <div style="font-size: 0.6rem; color: #94a3b8; font-weight: 700; margin-top: 2px;">Period ${e.period_number}</div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    `).join('')}
+            <style>
+                .tt-wrapper {
+                    width: 100%;
+                }
+                .tt-tabs {
+                    display: none;
+                    gap: 0.5rem;
+                    margin-bottom: 1.5rem;
+                    overflow-x: auto;
+                    padding-bottom: 6px;
+                    scrollbar-width: none;
+                    -webkit-overflow-scrolling: touch;
+                }
+                .tt-tabs::-webkit-scrollbar {
+                    display: none;
+                }
+                .tt-tab {
+                    background: #f8fafc;
+                    color: #64748b;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 12px;
+                    padding: 0.6rem 1.25rem;
+                    font-weight: 800;
+                    font-size: 0.8rem;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    white-space: nowrap;
+                }
+                .tt-tab.active {
+                    background: #4f46e5;
+                    color: white;
+                    border-color: #4f46e5;
+                    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+                }
+                .tt-grid {
+                    display: grid;
+                    grid-template-columns: repeat(5, 1fr);
+                    gap: 1rem;
+                    width: 100%;
+                }
+                .tt-column {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.75rem;
+                }
+                .tt-day-header {
+                    font-weight: 900;
+                    color: #1e293b;
+                    font-size: 0.7rem;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    margin-bottom: 0.5rem;
+                    text-align: center;
+                    border-bottom: 2px solid #eef2ff;
+                    padding-bottom: 6px;
+                }
+                .tt-card {
+                    background: white;
+                    padding: 1rem;
+                    border-radius: 16px;
+                    border: 1px solid #f1f5f9;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+                    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+                    position: relative;
+                    overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                }
+                .tt-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 16px -4px rgba(0,0,0,0.08);
+                }
+                .tt-subject {
+                    font-weight: 850;
+                    color: #1e293b;
+                    font-size: 0.85rem;
+                    line-height: 1.3;
+                }
+                .tt-period {
+                    font-size: 0.7rem;
+                    color: #64748b;
+                    font-weight: 700;
+                    margin-top: 4px;
+                    display: flex;
+                    align-items: center;
+                    gap: 0.25rem;
+                }
+                .tt-teacher {
+                    font-size: 0.65rem;
+                    color: #94a3b8;
+                    font-weight: 600;
+                    margin-top: 6px;
+                    border-top: 1px dashed #f1f5f9;
+                    padding-top: 6px;
+                }
+                .tt-card-badge {
+                    display: none;
+                }
+                @media (max-width: 767px) {
+                    .tt-tabs {
+                        display: flex;
+                    }
+                    .tt-grid {
+                        grid-template-columns: 1fr;
+                        gap: 0;
+                    }
+                    .tt-column {
+                        display: none;
+                    }
+                    .tt-column.active {
+                        display: flex;
+                        animation: ttFadeIn 0.3s ease-out;
+                    }
+                    .tt-day-header {
+                        display: none;
+                    }
+                    .tt-card {
+                        padding: 1.25rem;
+                        border-radius: 20px;
+                        margin-bottom: 0.75rem;
+                        flex-direction: row;
+                        align-items: center;
+                        justify-content: space-between;
+                        gap: 1rem;
+                    }
+                    .tt-card-main {
+                        flex: 1;
+                    }
+                    .tt-card-badge {
+                        display: block;
+                        padding: 4px 10px;
+                        border-radius: 8px;
+                        font-size: 0.72rem;
+                        font-weight: 800;
+                        flex-shrink: 0;
+                    }
+                }
+                @keyframes ttFadeIn {
+                    from { opacity: 0; transform: translateY(8px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            </style>
+            <div class="tt-wrapper">
+                <div class="tt-tabs">
+                    ${days.map(day => `<button class="tt-tab" data-day="${day}">${day.slice(0,3)}</button>`).join('')}
+                </div>
+                <div class="tt-grid">
+                    ${days.map(day => {
+                        const dayEntries = entries.filter(e => e.day_of_week === day).sort((a,b) => a.period_number - b.period_number);
+                        return `
+                            <div class="tt-column" data-day="${day}">
+                                <div class="tt-day-header">${day}</div>
+                                ${dayEntries.length === 0 ? `
+                                    <div style="text-align: center; padding: 2rem 0; opacity: 0.4; font-size: 0.75rem; font-weight: 700; color: #64748b;">
+                                        No Classes
+                                    </div>
+                                ` : dayEntries.map(e => {
+                                    const subjectName = subjectMap[e.subject_id] || e.subject_id;
+                                    const colors = periodColors[e.period_number] || periodColors.default;
+                                    return `
+                                        <div class="tt-card" style="border-left: 4px solid ${colors.border};">
+                                            <div class="tt-card-main">
+                                                <div class="tt-subject">${subjectName}</div>
+                                                <div class="tt-period">
+                                                    <i data-lucide="clock" style="width: 12px; height: 12px; color: #94a3b8;"></i>
+                                                    Period ${e.period_number}
+                                                </div>
+                                                <div class="tt-teacher">
+                                                    Teacher ID: ${e.teacher_id || 'N/A'}
+                                                </div>
+                                            </div>
+                                            <div class="tt-card-badge" style="background: ${colors.bg}; color: ${colors.text};">Period ${e.period_number}</div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             </div>
         `;
+
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Bind mobile tab click handlers
+        const tabs = container.querySelectorAll('.tt-tab');
+        const columns = container.querySelectorAll('.tt-column');
+        
+        function selectDay(dayName) {
+            tabs.forEach(t => {
+                if (t.getAttribute('data-day') === dayName) {
+                    t.classList.add('active');
+                } else {
+                    t.classList.remove('active');
+                }
+            });
+            columns.forEach(c => {
+                if (c.getAttribute('data-day') === dayName) {
+                    c.classList.add('active');
+                } else {
+                    c.classList.remove('active');
+                }
+            });
+        }
+
+        tabs.forEach(t => {
+            t.onclick = () => selectDay(t.getAttribute('data-day'));
+        });
+
+        // Default active day is today (Mon-Fri)
+        const today = new Date().getDay();
+        const daysOfWeek = ['Monday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Monday']; // Sun->Mon, Sat->Mon
+        selectDay(daysOfWeek[today]);
     },
 
     async openResultPinModal() {
@@ -1746,6 +1957,8 @@ export const UI = {
             
             const timetableEntries = await db.timetable.where('class_name').equals(activeChild.class_name).toArray();
             const todayClasses = timetableEntries.filter(e => e.day_of_week === todayWeekday).sort((a,b) => a.period_number - b.period_number);
+            const subjects = await db.subjects.toArray().catch(() => []);
+            const subjectMap = subjects.reduce((m, s) => { m[s.id] = s.name; return m; }, {});
 
             // Recent notices
             let notices = await db.notices.toArray().catch(() => []);
@@ -1800,20 +2013,23 @@ export const UI = {
                                     <i data-lucide="calendar-off" style="width: 32px; height: 32px; margin-bottom: 0.5rem;"></i>
                                     <p style="font-weight: 600; font-size:0.85rem;">No classes scheduled for today.</p>
                                 </div>
-                            ` : todayClasses.map(c => `
-                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 1rem; border-radius: 16px; border: 1px solid #f1f5f9; background: #f8fafc; transition: all 0.2s;">
-                                    <div style="display: flex; align-items: center; gap: 1rem;">
-                                        <div style="width: 40px; height: 40px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.85rem;">
-                                            ${(c.subject_id || 'Sub').slice(0, 3).toUpperCase()}
+                            ` : todayClasses.map(c => {
+                                const subjectName = subjectMap[c.subject_id] || c.subject_id;
+                                return `
+                                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 1rem; border-radius: 16px; border: 1px solid #f1f5f9; background: #f8fafc; transition: all 0.2s;">
+                                        <div style="display: flex; align-items: center; gap: 1rem;">
+                                            <div style="width: 40px; height: 40px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.85rem;">
+                                                ${(subjectName || 'Sub').slice(0, 3).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <div style="font-weight: 800; color: #1e293b; font-size: 0.9rem;">${subjectName}</div>
+                                                <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">Period ${c.period_number}</div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <div style="font-weight: 800; color: #1e293b; font-size: 0.9rem;">${c.subject_id}</div>
-                                            <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">Period ${c.period_number}</div>
-                                        </div>
+                                        <span class="badge" style="background: white; border: 1px solid #e2e8f0; color: #4f46e5; font-size: 0.7rem; font-weight: 700;">Active</span>
                                     </div>
-                                    <span class="badge" style="background: white; border: 1px solid #e2e8f0; color: #4f46e5; font-size: 0.7rem; font-weight: 700;">Active</span>
-                                </div>
-                            `).join('')}
+                                `;
+                            }).join('')}
                         </div>
                     </div>
 
@@ -2196,65 +2412,81 @@ export const UI = {
                 </div>
             `;
         } else if (activeTab === 'timetable') {
-            const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-            const todayIndex = new Date().getDay();
-            const defaultDay = todayIndex === 0 || todayIndex === 6 ? 'Monday' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][todayIndex];
-            const selDay = localStorage.getItem('parent_timetable_day') || defaultDay;
-
-            const timetableEntries = await db.timetable.where('class_name').equals(activeChild.class_name).toArray();
-            const dayClasses = timetableEntries.filter(e => e.day_of_week === selDay).sort((a,b) => a.period_number - b.period_number);
-
-            tabContentHtml = `
-                <!-- Day Pills -->
-                <div style="display: flex; gap: 0.5rem; margin-bottom: 2rem; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;">
-                    ${daysOfWeek.map(d => {
-                        const isActive = d === selDay;
-                        return `<button class="parent-timetable-day-btn btn" data-day="${d}" style="border-radius: 12px; height: 40px; padding: 0 1.25rem; font-weight: 800; background: ${isActive ? '#4f46e5' : 'white'}; color: ${isActive ? 'white' : '#475569'}; border: 1px solid ${isActive ? '#4f46e5' : '#e2e8f0'}; box-shadow: ${isActive ? '0 4px 12px rgba(79,70,229,0.2)' : 'none'}; white-space: nowrap;">${d}</button>`;
-                    }).join('')}
-                </div>
-
-                <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0;">
-                    <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
-                        <span style="display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="calendar" style="color: #4f46e5;"></i> Timetable for ${selDay}</span>
-                        <span class="badge" style="background:#eef2ff; color:#4f46e5; font-size:0.75rem;">Class: ${activeChild.class_name}</span>
-                    </h3>
-
-                    <div style="display: flex; flex-direction: column; gap: 1rem;">
-                        ${dayClasses.length === 0 ? `
-                            <div style="text-align: center; padding: 4rem; opacity: 0.5;">
-                                <i data-lucide="calendar-off" style="width: 48px; height: 48px; margin-bottom: 1rem; color: #94a3b8;"></i>
-                                <p style="font-weight: 700; font-size:0.95rem; color:#64748b;">No scheduled classes for ${selDay}.</p>
-                            </div>
-                        ` : dayClasses.map(c => `
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 1.25rem; border-radius: 20px; border: 1px solid #e2e8f0; background: #f8fafc; transition: all 0.2s;">
-                                <div style="display: flex; align-items: center; gap: 1.25rem;">
-                                    <div style="width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1rem; box-shadow: 0 8px 16px -4px rgba(79,70,229,0.3);">
-                                        ${(c.subject_id || 'Sub').slice(0, 3).toUpperCase()}
-                                    </div>
-                                    <div>
-                                        <div style="font-weight: 900; color: #1e293b; font-size: 1.05rem;">${c.subject_id}</div>
-                                        <div style="font-size: 0.8rem; color: #64748b; font-weight: 600; margin-top: 2px;">Subject Lecturer / Teacher ID: ${c.teacher_id || 'Assigned Staff'}</div>
-                                    </div>
-                                </div>
-                                <div style="text-align: right;">
-                                    <span class="badge" style="background: rgba(79, 70, 229, 0.1); color: #4f46e5; font-size: 0.75rem; font-weight: 800; border-radius: 8px; padding: 4px 10px;">Period ${c.period_number}</span>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
+            tabContentHtml = `<div id="timetable-visualizer-container"></div>`;
         } else if (activeTab === 'finances') {
             const payments = await db.payments.where('student_id').equals(activeStudentId).reverse().sortBy('date');
+
+            let combinedPaymentWidgetHtml = '';
+            if (myChildren.length > 1) {
+                // Fetch student analytics for all children
+                const childrenAnalytics = {};
+                for (const child of myChildren) {
+                    const childAnal = await db.student_analytics.get(child.student_id) || { fee_balance: 0 };
+                    childrenAnalytics[child.student_id] = childAnal;
+                }
+
+                combinedPaymentWidgetHtml = `
+                    <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03); margin-bottom: 1.5rem;">
+                        <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem;">
+                            <div style="width: 40px; height: 40px; background: #f5f3ff; color: #6366f1; border-radius: 12px; display: flex; align-items: center; justify-content: center;"><i data-lucide="layers" style="width:20px;"></i></div>
+                            Combined Tuition Checkout
+                        </h3>
+                        <p style="color: #64748b; font-size: 0.85rem; line-height: 1.5; margin-bottom: 1.5rem; font-weight: 600;">Select children to pay their outstanding balances in one transaction.</p>
+                        
+                        <!-- Checkbox list -->
+                        <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+                            ${myChildren.map(child => {
+                                const childAnal = childrenAnalytics[child.student_id] || { fee_balance: 0 };
+                                const balance = parseFloat(childAnal.fee_balance) || 0;
+                                const isChecked = balance > 0;
+                                return `
+                                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 1rem; border-radius: 16px; border: 1px solid #e2e8f0; background: #f8fafc; transition: all 0.2s;">
+                                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                            <input type="checkbox" class="combined-child-checkbox" data-student-id="${child.student_id}" data-name="${child.name}" data-balance="${balance}" ${isChecked ? 'checked' : ''} style="width: 20px; height: 20px; border-radius: 6px; cursor: pointer; accent-color: #4f46e5;">
+                                            <div>
+                                                <div style="font-weight: 800; color: #1e293b; font-size: 0.9rem;">${child.name}</div>
+                                                <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">Class: ${child.class_name}</div>
+                                            </div>
+                                        </div>
+                                        <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem;">₦${balance.toLocaleString()}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+
+                        <!-- Combined Breakdown -->
+                        <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 16px; padding: 1.25rem; margin-bottom: 1.5rem;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                                <span style="font-weight: 700; color: #6b21a8; font-size: 0.85rem;">Combined School Fees</span>
+                                <span id="combined-subtotal" style="font-weight: 800; color: #1e293b;">₦0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                                <span style="font-weight: 700; color: #6b21a8; font-size: 0.85rem;">Platform Maintenance</span>
+                                <span style="font-weight: 800; color: #64748b;">₦${maintenanceFee.toLocaleString()}</span>
+                            </div>
+                            <div style="border-top: 2px dashed #ddd6fe; margin: 0.75rem 0;"></div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="font-weight: 900; color: #1e293b; font-size: 1rem;">Total Combined Charge</span>
+                                <span id="combined-total" style="font-weight: 950; color: #6b21a8; font-size: 1.1rem;">₦0</span>
+                            </div>
+                        </div>
+
+                        <button id="pay-combined-btn" class="btn w-100" style="height: 60px; border-radius: 18px; font-weight: 900; font-size: 1.05rem; background: linear-gradient(135deg, #6b21a8 0%, #8b5cf6 100%); color: white; border: none; display: flex; align-items: center; justify-content: center; gap: 0.75rem; box-shadow: 0 10px 25px -5px rgba(107,33,168,0.4);">
+                            <i data-lucide="zap"></i> PAY ₦<span id="combined-btn-total">0</span> (COMBINED)
+                        </button>
+                    </div>
+                `;
+            }
 
             tabContentHtml = `
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
                     <!-- Pay Now Card -->
                     <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        ${combinedPaymentWidgetHtml}
                         <div class="card" style="padding: 2rem; border-radius: 28px; background: white; border: 1px solid #e2e8f0; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.03);">
                             <h3 style="font-weight: 900; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
                                 <div style="width: 40px; height: 40px; background: #eef2ff; color: #4338ca; border-radius: 12px; display: flex; align-items: center; justify-content: center;"><i data-lucide="credit-card" style="width:20px;"></i></div>
-                                Tuition Payment
+                                Tuition Payment (${activeChild.name})
                             </h3>
                             
                             <div class="form-group" style="margin-bottom: 1.25rem;">
@@ -2708,14 +2940,10 @@ export const UI = {
             };
         }
 
-        // Timetable Day Selector
-        document.querySelectorAll('.parent-timetable-day-btn').forEach(btn => {
-            btn.onclick = () => {
-                const day = btn.getAttribute('data-day');
-                localStorage.setItem('parent_timetable_day', day);
-                UI.renderParentDashboard();
-            };
-        });
+        // Timetable Visualizer
+        if (activeTab === 'timetable' && activeChild) {
+            await this.renderTimetableVisualizer(activeChild.class_name);
+        }
 
         // Paystack Tuition Setup
         const amountInput = document.getElementById('payment-amount');
@@ -2744,6 +2972,69 @@ export const UI = {
             buyPinBtn.onclick = () => {
                 this.initiatePaystackPayment(pinPrice, 'Result Pin');
             };
+        }
+
+        // Combined Paystack Tuition Setup
+        if (activeTab === 'finances' && myChildren.length > 1) {
+            const checkboxes = document.querySelectorAll('.combined-child-checkbox');
+            const elCombinedSubtotal = document.getElementById('combined-subtotal');
+            const elCombinedTotal = document.getElementById('combined-total');
+            const elCombinedBtnTotal = document.getElementById('combined-btn-total');
+            const payCombinedBtn = document.getElementById('pay-combined-btn');
+
+            const calculateCombinedTotal = () => {
+                let subtotal = 0;
+                checkboxes.forEach(cb => {
+                    if (cb.checked) {
+                        subtotal += parseFloat(cb.getAttribute('data-balance')) || 0;
+                    }
+                });
+                const total = subtotal > 0 ? (subtotal + maintenanceFee) : 0;
+
+                if (elCombinedSubtotal) elCombinedSubtotal.textContent = '₦' + subtotal.toLocaleString();
+                if (elCombinedTotal) elCombinedTotal.textContent = '₦' + total.toLocaleString();
+                if (elCombinedBtnTotal) elCombinedBtnTotal.textContent = total.toLocaleString();
+                if (payCombinedBtn) {
+                    payCombinedBtn.disabled = subtotal <= 0;
+                    payCombinedBtn.style.opacity = subtotal <= 0 ? '0.5' : '1';
+                }
+            };
+
+            // Bind change events to all checkboxes
+            checkboxes.forEach(cb => {
+                cb.onchange = () => {
+                    calculateCombinedTotal();
+                };
+            });
+
+            // Initial calculation
+            calculateCombinedTotal();
+
+            if (payCombinedBtn) {
+                payCombinedBtn.onclick = () => {
+                    const breakdown = [];
+                    let subtotal = 0;
+                    checkboxes.forEach(cb => {
+                        if (cb.checked) {
+                            const bal = parseFloat(cb.getAttribute('data-balance')) || 0;
+                            if (bal > 0) {
+                                breakdown.push({
+                                    student_id: cb.getAttribute('data-student-id'),
+                                    name: cb.getAttribute('data-name'),
+                                    amount: bal
+                                });
+                                subtotal += bal;
+                            }
+                        }
+                    });
+
+                    if (breakdown.length === 0 || subtotal <= 0) {
+                        return Notifications.show('Please select at least one child with an outstanding balance.', 'warning');
+                    }
+
+                    this.initiateCombinedPaystackPayment(subtotal, breakdown);
+                };
+            }
         }
 
         // Notices Category Filters
@@ -8428,15 +8719,23 @@ export const UI = {
                 
                 try {
                     const DEFAULT_STAFF_PASSWORD = 'Staff123!';
-                    const { data: authData, error: authError } = await registerUser(staffEmail, DEFAULT_STAFF_PASSWORD, staff.full_name, staff.role);
-                    
-                    if (authError && !authError.message.includes('already registered')) {
-                        throw authError;
-                    }
-                    
-                    let newId = authData?.user?.id;
-                    const oldId = staff.id;
                     const client = window.getSupabase ? window.getSupabase() : null;
+                    if (!client) throw new Error("Cloud sync engine not connected");
+
+                    const { data, error: authError } = await client.functions.invoke('admin-repair-auth', {
+                        body: {
+                            email: staffEmail,
+                            password: DEFAULT_STAFF_PASSWORD,
+                            full_name: staff.full_name,
+                            role: staff.role
+                        }
+                    });
+
+                    if (authError) throw authError;
+                    if (data && data.error) throw new Error(data.error);
+
+                    let newId = data?.user?.id || data?.id;
+                    const oldId = staff.id;
 
                     // --- ROBUST DUPLICATE PROFILE & UUID RESOLUTION ---
                     if (client && (!newId || newId === oldId)) {
@@ -15525,10 +15824,138 @@ export const UI = {
             }
 
             this.debouncedSync();
-            this.renderStudentFeesPortal();
+            const isParent = (this.currentUser.role || '').toLowerCase() === 'parent';
+            if (isParent) {
+                this.renderParentDashboard();
+            } else {
+                this.renderStudentFeesPortal();
+            }
         } catch (err) {
             console.error('Payment Processing Error:', err);
             Notifications.show('Failed to update records. Please contact administration with your reference.', 'error');
+        }
+    },
+
+    async initiateCombinedPaystackPayment(amount, breakdown) {
+        const settings = await db.settings.toArray();
+        const getVal = (key, fallback) => (settings.find(s => s.key === key)?.value) || fallback;
+        
+        const paystackKey = getVal('paystack_public_key', '');
+        const subaccount = getVal('paystack_subaccount', '');
+        const maintenanceFee = parseFloat(getVal('paystack_maintenance_fee', '200'));
+        
+        if (!paystackKey || paystackKey === 'pk_test_placeholder_key' || paystackKey.includes('xxxx') || paystackKey.length < 15) {
+            return Notifications.show('Paystack public key is invalid or not configured. Please set a valid key in System Config.', 'error');
+        }
+
+        const totalCharge = amount + maintenanceFee;
+        const transactionRef = 'PAY-' + Math.floor((Math.random() * 1000000000) + 1);
+
+        // Store breakdown in localStorage under reference key for retrieval on success callback
+        localStorage.setItem('pending_combined_payment_' + transactionRef, JSON.stringify({
+            breakdown: breakdown,
+            total: amount
+        }));
+
+        const payData = {
+            key: paystackKey,
+            email: this.currentUser.email,
+            amount: Math.round(totalCharge * 100),
+            currency: 'NGN',
+            ref: transactionRef,
+            metadata: {
+                category: 'Combined Tuition Payment',
+                school_fee: amount,
+                maintenance_fee: maintenanceFee,
+                custom_fields: [
+                    { display_name: "Category", variable_name: "payment_category", value: "Combined Tuition Payment" },
+                    { display_name: "Maintenance Fee", variable_name: "maintenance_fee", value: `₦${maintenanceFee}` }
+                ]
+            },
+            callback: function(response) {
+                Notifications.show('Payment successful! Verifying...', 'success');
+                UI.handleCombinedPaymentSuccess(response, transactionRef);
+            },
+            onClose: function() {
+                Notifications.show('Payment window closed.', 'warning');
+            }
+        };
+
+        if (subaccount && subaccount.startsWith('ACCT_')) {
+            payData.subaccount = subaccount;
+            payData.transaction_charge = Math.round(maintenanceFee * 100);
+            payData.bearer = 'subaccount';
+        }
+
+        const handler = PaystackPop.setup(payData);
+        handler.openIframe();
+    },
+
+    async handleCombinedPaymentSuccess(response, reference) {
+        try {
+            const pendingDataStr = localStorage.getItem('pending_combined_payment_' + reference);
+            if (!pendingDataStr) {
+                console.error('No pending combined payment breakdown found for ref:', reference);
+                this.renderParentDashboard();
+                return;
+            }
+            const pendingData = JSON.parse(pendingDataStr);
+            const breakdown = pendingData.breakdown; // Array of { student_id, amount }
+
+            for (const item of breakdown) {
+                // 1. Record the payment for each child
+                const newPayment = prepareForSync({
+                    id: crypto.randomUUID(),
+                    student_id: item.student_id,
+                    amount: item.amount,
+                    reference: reference,
+                    status: 'success',
+                    category: 'Tuition Payment',
+                    date: new Date().toISOString().split('T')[0],
+                    channel: 'Paystack',
+                    is_synced: 0
+                });
+                await db.payments.add(newPayment);
+
+                // 2. Update Student Analytics (Fee Balance)
+                const analytics = await db.student_analytics.get(item.student_id);
+                if (analytics) {
+                    const newPaid = (parseFloat(analytics.fee_paid) || 0) + item.amount;
+                    const newBalance = Math.max(0, (parseFloat(analytics.fee_balance) || 0) - item.amount);
+                    
+                    await db.student_analytics.update(item.student_id, {
+                        fee_paid: newPaid,
+                        fee_balance: newBalance,
+                        is_synced: 0,
+                        updated_at: new Date().toISOString()
+                    });
+                } else {
+                    await db.student_analytics.put(prepareForSync({
+                        student_id: item.student_id,
+                        fee_paid: item.amount,
+                        fee_balance: 0,
+                        average: 0,
+                        rank: 'N/A',
+                        attendance_rate: 0,
+                        is_synced: 0,
+                        updated_at: new Date().toISOString()
+                    }));
+                }
+            }
+
+            // Cleanup local storage
+            localStorage.removeItem('pending_combined_payment_' + reference);
+
+            Notifications.show(`Combined payment of ₦${pendingData.total.toLocaleString()} was successful!`, 'success');
+            
+            // Sync changes to cloud
+            this.debouncedSync();
+            
+            // Re-render Parent Dashboard
+            this.renderParentDashboard();
+        } catch (err) {
+            console.error('Combined Payment Success Processing Error:', err);
+            Notifications.show('Failed to record combined payments. Please contact administration.', 'error');
         }
     },
 
