@@ -8434,9 +8434,30 @@ export const UI = {
                         throw authError;
                     }
                     
-                    const newId = authData?.user?.id;
+                    let newId = authData?.user?.id;
                     const oldId = staff.id;
                     const client = window.getSupabase ? window.getSupabase() : null;
+
+                    // --- ROBUST DUPLICATE PROFILE & UUID RESOLUTION ---
+                    if (client && (!newId || newId === oldId)) {
+                        console.log(`[Staff Repair] UUID not recovered from auth or equals oldId. Searching for duplicate profiles...`);
+                        
+                        // Search for another profile with the same full name but a different ID
+                        const { data: duplicateProfiles } = await client.from('profiles')
+                            .select('id, email, full_name')
+                            .neq('id', oldId);
+                        
+                        if (duplicateProfiles && duplicateProfiles.length > 0) {
+                            const match = duplicateProfiles.find(p => 
+                                p.full_name && p.full_name.toLowerCase().trim() === staff.full_name.toLowerCase().trim()
+                            );
+                            
+                            if (match) {
+                                console.log(`[Staff Repair] Found matching duplicate profile with UUID: ${match.id}`);
+                                newId = match.id;
+                            }
+                        }
+                    }
 
                     if (newId && newId !== oldId) {
                         console.log(`[Staff Migration] UUID Change detected: ${oldId} -> ${newId}. Migrating all related records...`);
@@ -8449,6 +8470,7 @@ export const UI = {
                                 ...existingProfile,
                                 id: newId,
                                 email: staffEmail,
+                                assigned_id: existingProfile.assigned_id || staff.assigned_id || `SCH/STF/${Math.floor(Math.random()*9000)+1000}`,
                                 is_synced: 0,
                                 updated_at: new Date().toISOString()
                             });
@@ -8497,12 +8519,18 @@ export const UI = {
                     
                     // Sync profile to Supabase
                     if (client) {
+                        const targetProfileId = newId || staff.id;
+                        const generatedStaffId = staff.assigned_id || `SCH/STF/${Math.floor(Math.random()*9000)+1000}`;
+                        
+                        // Save generated ID locally
+                        await db.profiles.update(targetProfileId, { assigned_id: generatedStaffId });
+                        
                         const { error: pError } = await client.from('profiles').upsert({
-                            id: newId || staff.id,
+                            id: targetProfileId,
                             full_name: staff.full_name,
                             role: staff.role,
                             email: staffEmail,
-                            assigned_id: staff.assigned_id,
+                            assigned_id: generatedStaffId,
                             updated_at: new Date().toISOString()
                         });
                         if (pError) console.warn('Staff profile repair warning:', pError);
@@ -8569,6 +8597,31 @@ export const UI = {
                         role: role, 
                         employment_type: empType
                     }));
+                    
+                    // Immediately push to Supabase so the change takes effect without waiting for background sync
+                    const client = window.getSupabase ? window.getSupabase() : null;
+                    if (client) {
+                        const updatedProfile = await db.profiles.get(staffId);
+                        if (updatedProfile) {
+                            const { error: pushError } = await client.from('profiles').upsert({
+                                id: staffId,
+                                full_name: name,
+                                email: email,
+                                role: role,
+                                employment_type: empType,
+                                assigned_id: updatedProfile.assigned_id,
+                                status: updatedProfile.status || 'Active',
+                                updated_at: new Date().toISOString()
+                            });
+                            if (pushError) {
+                                console.warn('[Staff Update] Direct Supabase push warning:', pushError.message);
+                            } else {
+                                console.log(`[Staff Update] Profile for ${name} pushed to Supabase immediately.`);
+                                await db.profiles.update(staffId, { is_synced: 1 });
+                            }
+                        }
+                    }
+                    
                     Notifications.show('Staff records updated', 'success');
                     this.renderStaffDetail(staffId);
                     this.debouncedSync();

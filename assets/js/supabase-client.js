@@ -78,7 +78,7 @@ export async function syncToCloud() {
                 
                 // Table-level field whitelists
                 const whitelist = {
-                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'employment_type', 'updated_at'],
+                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'employment_type', 'assigned_id', 'updated_at'],
                     students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'passport_url', 'updated_at'],
                     classes: ['id', 'name', 'level', 'updated_at'],
                     subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
@@ -705,8 +705,21 @@ export async function registerUser(email, password, fullName, role) {
             updated_at: new Date().toISOString()
         }, { onConflict: 'email' });
     } else if (error && (error.message.includes('already registered') || error.message.includes('already exists'))) {
-        console.log(`[Register] User ${email} already exists, attempting to recover ID...`);
-        // If profile exists, use it. If not, we can't easily get the ID, but we can return null error to allow caller to proceed
+        console.log(`[Register] User ${email} already exists, attempting to recover ID via sign-in...`);
+        
+        // Try signing in to get the real auth UUID
+        const { data: loginData, error: loginError } = await client.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+        
+        if (!loginError && loginData?.user) {
+            console.log(`[Register] Recovered auth UUID via sign-in: ${loginData.user.id}`);
+            return { data: { user: { id: loginData.user.id } }, error: null };
+        }
+        
+        // Fallback: search profiles table by email
+        console.log(`[Register] Sign-in failed (${loginError?.message}), falling back to profiles lookup...`);
         const { data: profile } = await client.from('profiles').select('id').eq('email', email).maybeSingle();
         return { data: { user: profile ? { id: profile.id } : null }, error: null };
     }
