@@ -302,7 +302,7 @@ async function loadAuthenticatedApp(authUser) {
     if (footerRoleEl) footerRoleEl.textContent = currentRole;
     if (footerAvatarEl) footerAvatarEl.textContent = currentName.charAt(0).toUpperCase();
 
-    const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights'];
+    const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights', 'profile'];
     const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances'];
     const parentAllowed = ['dashboard'];
     const accountsAllowed = ['dashboard', 'finances', 'noticeboard'];
@@ -764,7 +764,7 @@ navItems.forEach(item => {
 
         // Strict Role-Based Protection
         const role = UI.currentUser?.role;
-        const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights'];
+        const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights', 'profile'];
         const accountsAllowed = ['dashboard', 'finances', 'noticeboard'];
 
         if (role === 'Teacher' && !teacherAllowed.includes(view)) {

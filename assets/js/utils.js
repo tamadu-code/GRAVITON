@@ -591,10 +591,13 @@ export async function generateCredentialsPDF(students, schoolInfo = {}) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     
+    // Sort students alphabetically
+    const sortedStudents = [...students].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    
     // Header
     doc.setFontSize(22);
     doc.setTextColor(31, 111, 235);
-    doc.text(schoolInfo.name || 'GRAVITON ACADEMY', 105, 20, { align: 'center' });
+    doc.text(schoolInfo.schoolName || schoolInfo.name || 'GRAVITON ACADEMY', 105, 20, { align: 'center' });
     doc.setFontSize(12);
     doc.setTextColor(100, 116, 139);
     doc.text('Student Access Credentials', 105, 28, { align: 'center' });
@@ -604,7 +607,7 @@ export async function generateCredentialsPDF(students, schoolInfo = {}) {
     
     // Cards
     let y = 45;
-    students.forEach((student, index) => {
+    sortedStudents.forEach((student, index) => {
         if (y > 250) {
             doc.addPage();
             y = 20;
@@ -632,7 +635,7 @@ export async function generateCredentialsPDF(students, schoolInfo = {}) {
         doc.setTextColor(15, 23, 42);
         doc.setFont('helvetica', 'bold');
         doc.text(`Portal ID: ${student.student_id}`, 25, y + 32);
-        doc.text(`Password: Password123`, 100, y + 32);
+        doc.text(`Password: ${student.student_id}`, 100, y + 32);
         
         y += 55;
     });

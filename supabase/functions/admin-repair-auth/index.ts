@@ -15,13 +15,44 @@ serve(async (req) => {
   }
 
   try {
-    const { email, password, full_name, role } = await req.json()
+    const { email, password, full_name, role, id } = await req.json()
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    
+    // --- New Path: Update Auth by User ID (e.g. Email / Profile changes) ---
+    if (id) {
+      console.log(`Updating auth user for ID: ${id}...`);
+      const updateParams: any = {
+        email_confirm: true,
+        user_metadata: { full_name, role }
+      };
+      if (email) updateParams.email = email;
+      if (password) updateParams.password = password;
+
+      const { data: userData, error: updateError } = await supabase.auth.admin.updateUserById(id, updateParams);
+      if (updateError) throw updateError;
+
+      // Update their profile table row as well
+      const profileUpdate: any = {
+        id: id,
+        full_name: full_name || '',
+        role: role || 'Student',
+        status: 'Active',
+        updated_at: new Date().toISOString()
+      };
+      if (email) profileUpdate.email = email;
+
+      await supabase.from('profiles').upsert(profileUpdate);
+
+      return new Response(JSON.stringify({ success: true, message: 'Auth user updated successfully by ID', user: userData.user }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
 
     if (!email || !password) {
       return new Response(JSON.stringify({ error: 'Email and password required' }), { status: 400, headers: corsHeaders })
     }
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     
     // 1. Try to find if user exists in auth.users by getting them from profiles
     const { data: profile } = await supabase.from('profiles').select('id').eq('email', email).maybeSingle()
