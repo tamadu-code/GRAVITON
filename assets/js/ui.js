@@ -15706,7 +15706,27 @@ export const UI = {
             
             const newPins = [];
             for (let i = 0; i < size; i++) {
-async renderFinances() {
+                const serial = Math.floor(10000000 + Math.random() * 90000000).toString();
+                const pin = Math.floor(100000 + Math.random() * 900000).toString();
+                newPins.push(prepareForSync({
+                    id: crypto.randomUUID(),
+                    serial,
+                    pin_code: pin,
+                    status: 'UNASSIGNED',
+                    student_id: null,
+                    used_count: 0,
+                    usage_limit: limit
+                }));
+            }
+            
+            await db.pins.bulkAdd(newPins);
+            document.getElementById('ui-modal').remove();
+            Notifications.show(`${size} pins successfully generated and logged.`, 'success');
+            this.renderPins();
+        }, 'Generate Batch', 'zap');
+    },
+
+    async renderFinances() {
         const role = this.currentUser.role;
         if (role === 'Student') return this.renderStudentFeesPortal();
         
