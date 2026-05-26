@@ -63,6 +63,7 @@ serve(async (req) => {
         console.log(`User found in profiles (${userId}). Updating password via admin API...`);
         // We update the password for the existing user
         const { data, error } = await supabase.auth.admin.updateUserById(userId, {
+            email: email,
             password: password,
             email_confirm: true,
             user_metadata: { full_name, role }
@@ -75,14 +76,14 @@ serve(async (req) => {
            const user = users.users.find(u => u.email === email);
            if (user) {
                userId = user.id;
-               const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, { password, email_confirm: true });
+               const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, { email, password, email_confirm: true });
                if (updateErr) throw updateErr;
            } else {
                throw error;
            }
         }
         
-        return new Response(JSON.stringify({ success: true, message: 'Password reset for existing user' }), {
+        return new Response(JSON.stringify({ success: true, message: 'Password reset for existing user', user: { id: userId } }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 200,
         })
@@ -106,7 +107,7 @@ serve(async (req) => {
                 status: 'Active'
             });
             
-            return new Response(JSON.stringify({ success: true, message: 'Password reset and profile restored' }), {
+            return new Response(JSON.stringify({ success: true, message: 'Password reset and profile restored', user: { id: userId } }), {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
               status: 200,
             });
@@ -123,6 +124,7 @@ serve(async (req) => {
         
         if (createError) throw createError;
         
+        let createdUserId = newUser?.user?.id;
         if (newUser && newUser.user) {
             await supabase.from('profiles').upsert({
                 id: newUser.user.id,
@@ -133,7 +135,7 @@ serve(async (req) => {
             });
         }
         
-        return new Response(JSON.stringify({ success: true, message: 'New user provisioned' }), {
+        return new Response(JSON.stringify({ success: true, message: 'New user provisioned', user: { id: createdUserId } }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 200,
         })

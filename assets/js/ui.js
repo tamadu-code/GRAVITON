@@ -8,6 +8,15 @@ import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
 
+const normalizeTerm = (t) => {
+    if (!t) return '1st Term';
+    const s = t.trim().toLowerCase();
+    if (s === 'first' || s === 'first term' || s === '1st' || s === '1st term') return '1st Term';
+    if (s === 'second' || s === 'second term' || s === '2nd' || s === '2nd term') return '2nd Term';
+    if (s === 'third' || s === 'third term' || s === '3rd' || s === '3rd term') return '3rd Term';
+    return t;
+};
+
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
     get viewTitle() { return document.getElementById('view-title'); },
@@ -879,6 +888,69 @@ export const UI = {
             ...assignments.map(a => a.class_name),
             ...formAssignments.map(f => f.class_name)
         ])];
+
+        // Fetch teacher's timetable entries dynamically
+        const scheduleEntries = await db.timetable.where('teacher_id').equals(teacherId).toArray();
+        const subjectsList = await db.subjects.toArray();
+        const subjectsMap = {};
+        subjectsList.forEach(s => {
+            subjectsMap[s.id] = s.name;
+        });
+
+        const periodTimes = {
+            1: '08:00 AM',
+            2: '08:45 AM',
+            3: '09:30 AM',
+            4: '10:45 AM',
+            5: '11:30 AM',
+            6: '12:15 PM',
+            7: '01:45 PM',
+            8: '02:30 PM'
+        };
+
+        const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const todayName = daysOfWeek[new Date().getDay()];
+        const activeDay = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].includes(todayName) ? todayName : 'Monday';
+
+        const getDayScheduleHtml = (day) => {
+            const dayEntries = scheduleEntries
+                .filter(e => e.day_of_week === day)
+                .sort((a, b) => a.period_number - b.period_number);
+                
+            if (dayEntries.length === 0) {
+                return `
+                    <div style="text-align: center; padding: 2.5rem 1rem; color: #64748b; background: #f8fafc; border-radius: 20px; border: 2px dashed #e2e8f0; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; width: 100%;">
+                        <span style="font-size: 1.5rem;">🎉</span>
+                        <p style="margin: 0; font-weight: 800; font-size: 0.9rem; color: #334155;">No Classes Scheduled</p>
+                        <p style="margin: 0; font-size: 0.75rem; color: #94a3b8; font-weight: 500;">Enjoy your free day!</p>
+                    </div>
+                `;
+            }
+            
+            return dayEntries.map(entry => {
+                const subjectName = subjectsMap[entry.subject_id] || entry.subject_id || 'Unknown Subject';
+                const timeStr = periodTimes[entry.period_number] || 'TBD';
+                const isToday = day === todayName;
+                const cardStyle = isToday 
+                    ? 'background: #eff6ff; border: 1px solid #bfdbfe; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.05);' 
+                    : 'background: #f8fafc; border: 1px solid #f1f5f9;';
+                const timeColor = isToday ? '#2563eb' : '#64748b';
+                
+                return `
+                    <div style="display: flex; align-items: center; gap: 1.25rem; padding: 1rem; ${cardStyle} border-radius: 16px; width: 100%;">
+                        <div style="width: 75px; font-weight: 800; color: ${timeColor}; font-size: 0.75rem; border-right: 2px solid ${isToday ? '#bfdbfe' : '#e2e8f0'}; padding-right: 0.75rem; text-align: right; box-sizing: border-box;">${timeStr}</div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: 800; color: #1e293b; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${subjectName}</div>
+                            <div style="font-size: 0.7rem; color: #64748b; font-weight: 700; margin-top: 0.15rem; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                                <span style="background: #e2e8f0; color: #475569; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem;">${entry.class_name}</span>
+                                ${entry.sub_class ? `<span style="background: #e0e7ff; color: #4338ca; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem;">${entry.sub_class}</span>` : ''}
+                                <span>Period ${entry.period_number}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        };
         
         // Optimize student fetching
         const isAdmin = (this.currentUser.role || '').toLowerCase() === 'admin' || (this.currentUser.role || '').toLowerCase() === 'principal';
@@ -1054,36 +1126,22 @@ export const UI = {
                         </div>
 
                         <div class="glass-card" style="background: white; padding: 2rem; border-radius: 32px; border: 1px solid #e2e8f0;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                                 <h3 style="font-size: 1.25rem; font-weight: 800; color: #1e293b; margin: 0;"><i data-lucide="calendar" style="width: 20px; vertical-align: middle; margin-right: 8px; color: #2563eb;"></i> Personal Schedule</h3>
                                 <button class="btn btn-secondary" onclick="UI.renderView('timetables')" style="font-size: 0.75rem; padding: 0.5rem 1rem; border-radius: 10px;">Full Map</button>
                             </div>
                             
-                            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                                <!-- Mock Schedule Items - Real implementation would fetch from db.timetable -->
-                                <div style="display: flex; align-items: center; gap: 1.5rem; padding: 1rem; background: #f8fafc; border-radius: 16px; border: 1px solid #f1f5f9;">
-                                    <div style="width: 80px; font-weight: 800; color: #64748b; font-size: 0.75rem;">08:30 AM</div>
-                                    <div style="flex: 1;">
-                                        <div style="font-weight: 800; color: #1e293b;">Mathematics</div>
-                                        <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">JSS 3 Blue • Period 1</div>
-                                    </div>
-                                    <span style="background: #ecfdf5; color: #10b981; font-size: 0.6rem; font-weight: 800; padding: 4px 8px; border-radius: 6px;">COMPLETED</span>
-                                </div>
-                                <div style="display: flex; align-items: center; gap: 1.5rem; padding: 1rem; background: #eff6ff; border-radius: 16px; border: 1px solid #bfdbfe;">
-                                    <div style="width: 80px; font-weight: 800; color: #2563eb; font-size: 0.75rem;">11:15 AM</div>
-                                    <div style="flex: 1;">
-                                        <div style="font-weight: 800; color: #1e293b;">Further Mathematics</div>
-                                        <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">SSS 2 Science • Period 4</div>
-                                    </div>
-                                    <span style="background: #2563eb; color: white; font-size: 0.6rem; font-weight: 800; padding: 4px 8px; border-radius: 6px;">NEXT UP</span>
-                                </div>
-                                <div style="display: flex; align-items: center; gap: 1.5rem; padding: 1rem; background: #f8fafc; border-radius: 16px; border: 1px solid #f1f5f9; opacity: 0.6;">
-                                    <div style="width: 80px; font-weight: 800; color: #64748b; font-size: 0.75rem;">01:45 PM</div>
-                                    <div style="flex: 1;">
-                                        <div style="font-weight: 800; color: #1e293b;">Data Processing</div>
-                                        <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">SSS 1 Comm • Period 7</div>
-                                    </div>
-                                </div>
+                            <!-- Day Selector Tabs -->
+                            <div style="display: flex; gap: 0.25rem; margin-bottom: 1rem; background: #f1f5f9; padding: 4px; border-radius: 12px; width: 100%; box-sizing: border-box;">
+                                ${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => `
+                                    <button class="day-tab-btn" data-day="${day}" style="flex: 1; border: none; background: ${day === activeDay ? 'white' : 'transparent'}; color: ${day === activeDay ? '#1e293b' : '#64748b'}; padding: 0.5rem 0.25rem; border-radius: 8px; font-weight: 800; font-size: 0.7rem; cursor: pointer; transition: all 0.2s; box-shadow: ${day === activeDay ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'};">
+                                        ${day.substring(0, 3)}
+                                    </button>
+                                `).join('')}
+                            </div>
+                            
+                            <div id="teacher-schedule-list" style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%;">
+                                ${getDayScheduleHtml(activeDay)}
                             </div>
                         </div>
                     </div>
@@ -1189,6 +1247,29 @@ export const UI = {
                 } finally {
                     if (icon) icon.classList.remove('spinning');
                 }
+            });
+        }
+
+        // Day Selector logic
+        const dayBtns = document.querySelectorAll('.day-tab-btn');
+        const scheduleList = document.getElementById('teacher-schedule-list');
+        if (dayBtns && scheduleList) {
+            dayBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    // Update active button state
+                    dayBtns.forEach(b => {
+                        b.style.background = 'transparent';
+                        b.style.color = '#64748b';
+                        b.style.boxShadow = 'none';
+                    });
+                    btn.style.background = 'white';
+                    btn.style.color = '#1e293b';
+                    btn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+                    
+                    // Render selected day's schedule
+                    const day = btn.dataset.day;
+                    scheduleList.innerHTML = getDayScheduleHtml(day);
+                });
             });
         }
 
@@ -7200,10 +7281,14 @@ export const UI = {
 
                 // Derive status: check is_late boolean and sign_in time for records that may have status='Present' but are actually late
                 let status = record ? record.status : defaultStatus;
-                if (currentTab === 'subject' && !record) {
-                    const dailyRec = uniqueSchoolMap.get(s.student_id);
-                    if (dailyRec && (dailyRec.status === 'Present' || dailyRec.status === 'Late')) {
-                        status = 'Present';
+                if (currentTab === 'subject') {
+                    if (!subjectName) {
+                        status = 'Select Subject';
+                    } else if (!record) {
+                        const dailyRec = uniqueSchoolMap.get(s.student_id);
+                        if (dailyRec && (dailyRec.status === 'Present' || dailyRec.status === 'Late')) {
+                            status = 'Present';
+                        }
                     }
                 }
                 if (record && status === 'Present') {
@@ -7219,7 +7304,7 @@ export const UI = {
                         }
                     }
                 }
-                const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : (['Holiday', 'Weekend', 'Closed'].includes(status) ? '#64748b' : '#ef4444'));
+                const statusColor = status === 'Present' ? '#10b981' : (status === 'Late' ? '#f59e0b' : (['Holiday', 'Weekend', 'Closed', 'Select Subject'].includes(status) ? '#64748b' : '#ef4444'));
                 
                 const formatTime = (val) => {
                     if (!val) return '--:--';
@@ -7291,10 +7376,16 @@ export const UI = {
                                             Managed by Biometric System
                                         </div>
                                     ` : `
-                                        <select class="input subject-status-select" ${isOffDay ? 'disabled' : ''} data-student-id="${s.student_id}" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: ${isOffDay ? '#f8fafc' : 'white'}; border: 1px solid #e2e8f0; font-size: 0.8rem; cursor: ${isOffDay ? 'not-allowed' : 'default'}; color: ${isOffDay ? '#94a3b8' : '#1e293b'};">
-                                            <option value="Absent" ${status === 'Absent' ? 'selected' : ''}>Absent</option>
-                                            <option value="Present" ${status === 'Present' ? 'selected' : ''}>Present</option>
-                                        </select>
+                                        ${!subjectName ? `
+                                            <div style="background: #f1f5f9; color: #64748b; font-size: 0.75rem; font-weight: 700; padding: 0.6rem; border-radius: 8px; text-align: center; border: 1px solid #e2e8f0; width: 100%;">
+                                                Please select a subject first
+                                            </div>
+                                        ` : `
+                                            <select class="input subject-status-select" ${isOffDay ? 'disabled' : ''} data-student-id="${s.student_id}" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: ${isOffDay ? '#f8fafc' : 'white'}; border: 1px solid #e2e8f0; font-size: 0.8rem; cursor: ${isOffDay ? 'not-allowed' : 'default'}; color: ${isOffDay ? '#94a3b8' : '#1e293b'};">
+                                                <option value="Absent" ${status === 'Absent' ? 'selected' : ''}>Absent</option>
+                                                <option value="Present" ${status === 'Present' ? 'selected' : ''}>Present</option>
+                                            </select>
+                                        `}
                                     `}
                                 </div>
                             </div>
@@ -9049,7 +9140,7 @@ export const UI = {
                             }
                             
                             // Synchronize with auth.users if email has changed
-                            if (oldEmail && oldEmail !== email) {
+                            if (oldEmail !== email) {
                                 Notifications.show('Syncing authentication email with cloud...', 'info');
                                 try {
                                     const { data: authData, error: authErr } = await client.functions.invoke('admin-repair-auth', {
@@ -13870,7 +13961,8 @@ export const UI = {
                                 <option value="Commercial">Commercial</option>
                             </select>
                         </div>
-                        <div style="display: flex; gap: 0.75rem; align-items: flex-end; padding-top: 1.5rem;">
+                        <div style="display: flex; gap: 0.75rem; align-items: center; padding-top: 1.5rem; flex-wrap: wrap;">
+                            <div id="tt-edit-status" style="margin-right: 1rem; display: flex; align-items: center;"></div>
                             <button id="btn-save-timetable" class="btn btn-primary" style="height: 52px; border-radius: 12px; padding: 0 2rem; background: #2563eb;">
                                 <i data-lucide="save"></i> Save Schedule
                             </button>
@@ -13932,6 +14024,10 @@ export const UI = {
         const emptyState = document.getElementById('tt-empty-state');
         const saveBtn = document.getElementById('btn-save-timetable');
         const slots = document.querySelectorAll('.tt-slot-select');
+        const editStatusMsg = document.getElementById('tt-edit-status');
+
+        const role = (this.currentUser.role || '').toLowerCase();
+        const isTeacher = role === 'teacher';
 
         const loadTimetable = async () => {
             const cls = classSelect.value;
@@ -13943,6 +14039,28 @@ export const UI = {
             }
             gridContainer.style.display = 'block';
             emptyState.style.display = 'none';
+
+            // Determine if the user is authorized to edit the schedule for this class
+            let canEdit = true;
+            if (isTeacher) {
+                const formTeacherRecords = await db.form_teachers.where('teacher_id').equals(this.currentUser.id).toArray();
+                const formClasses = formTeacherRecords.map(r => r.class_name);
+                canEdit = formClasses.includes(cls);
+            }
+
+            // Show/Hide save button and status message
+            if (canEdit) {
+                saveBtn.style.display = 'inline-flex';
+                if (isTeacher) {
+                    editStatusMsg.innerHTML = `<span style="color: #10b981; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 4px;"><i data-lucide="check-circle" style="width: 16px; height: 16px;"></i> Editable (Your Form Class)</span>`;
+                } else {
+                    editStatusMsg.innerHTML = '';
+                }
+            } else {
+                saveBtn.style.display = 'none';
+                editStatusMsg.innerHTML = `<span style="color: #ef4444; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 4px;"><i data-lucide="lock" style="width: 16px; height: 16px;"></i> Read-Only (Form Class Editing Only)</span>`;
+            }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
 
             // Filter subjects for this class to only show what is assigned
             const assignments = await db.subject_assignments.where('class_name').equals(cls).toArray();
@@ -13965,6 +14083,15 @@ export const UI = {
             slots.forEach(s => {
                 s.innerHTML = optionsHtml;
                 s.value = "";
+                if (canEdit) {
+                    s.removeAttribute('disabled');
+                    s.style.pointerEvents = 'auto';
+                    s.style.opacity = '1';
+                } else {
+                    s.setAttribute('disabled', 'true');
+                    s.style.pointerEvents = 'none';
+                    s.style.opacity = '0.7';
+                }
             });
 
             // Load existing timetable for this class and stream
@@ -13983,6 +14110,14 @@ export const UI = {
             const cls = classSelect.value;
             const stream = streamSelect.value;
             if (!cls) return Notifications.show('Please select a class first', 'error');
+
+            if (isTeacher) {
+                const formTeacherRecords = await db.form_teachers.where('teacher_id').equals(this.currentUser.id).toArray();
+                const formClasses = formTeacherRecords.map(r => r.class_name);
+                if (!formClasses.includes(cls)) {
+                    return Notifications.show('Access Denied: You can only edit your assigned form class timetable.', 'error');
+                }
+            }
 
             Notifications.show('Compiling academic schedule...', 'info');
 
@@ -15571,27 +15706,7 @@ export const UI = {
             
             const newPins = [];
             for (let i = 0; i < size; i++) {
-                const serial = Math.floor(10000000 + Math.random() * 90000000).toString();
-                const pin = Math.floor(100000 + Math.random() * 900000).toString();
-                newPins.push(prepareForSync({
-                    id: crypto.randomUUID(),
-                    serial,
-                    pin_code: pin,
-                    status: 'UNASSIGNED',
-                    student_id: null,
-                    used_count: 0,
-                    usage_limit: limit
-                }));
-            }
-            
-            await db.pins.bulkAdd(newPins);
-            document.getElementById('ui-modal').remove();
-            Notifications.show(`${size} pins successfully generated and logged.`, 'success');
-            this.renderPins();
-        }, 'Generate Batch', 'zap');
-    },
-
-    async renderFinances() {
+async renderFinances() {
         const role = this.currentUser.role;
         if (role === 'Student') return this.renderStudentFeesPortal();
         
@@ -15612,6 +15727,26 @@ export const UI = {
         
         const todayIntake = incomePayments.filter(p => p.date === new Date().toISOString().split('T')[0]).reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
         
+        // Calculate student fee balances dynamically in-memory
+        const activeStudents = students.filter(s => s.is_active !== false && s.is_active !== 0);
+        const feeStructures = await db.fee_structures.toArray();
+        
+        const settings = await db.settings.toArray();
+        const currentTerm = settings.find(s => s.key === 'currentTerm')?.value || '1st Term';
+        const currentSession = settings.find(s => s.key === 'currentSession')?.value || '2025/2026';
+
+        const allSessions = [...new Set([
+            '2025/2026',
+            ...feeStructures.map(f => f.session).filter(Boolean),
+            ...payments.map(p => p.session).filter(Boolean),
+            currentSession
+        ])].sort();
+
+        const allTerms = ['1st Term', '2nd Term', '3rd Term'];
+
+        // Helper to normalize terms
+        const normalizeTerm = (t) => (t || '1st Term').toLowerCase().replace('st', '').replace('nd', '').replace('rd', '').replace('th', '').trim();
+
         // Monthly Cashflow calculations (last 6 months)
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const last6Months = [];
@@ -15687,7 +15822,7 @@ export const UI = {
                         <button class="btn" onclick="UI.renderFeeStructures()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; height: 48px; padding: 0 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
                             <i data-lucide="layers" style="width: 18px;"></i> Fee Config
                         </button>
-                        <button class="btn" onclick="UI.generateFinancialPDF()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; height: 48px; padding: 0 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
+                        <button class="btn" onclick="UI.showExportPDFModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; height: 48px; padding: 0 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
                             <i data-lucide="download" style="width: 18px;"></i> Export PDF
                         </button>
                         <button class="btn" onclick="UI.showRecordExpenseModal()" style="background: #f87171; color: #7f1d1d; border: none; border-radius: 16px; height: 48px; padding: 0 1.5rem; font-weight: 900; display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; box-shadow: 0 10px 15px -3px rgba(248, 113, 113, 0.4);">
@@ -15761,12 +15896,15 @@ export const UI = {
                 <!-- Ledger Tab System -->
                 <div class="card" style="background: white; border-radius: 28px; padding: 0; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 2rem;">
                     <!-- Tab Headers -->
-                    <div style="display: flex; background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 0 1.5rem;">
+                    <div style="display: flex; background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 0 1.5rem; flex-wrap: wrap;">
                         <button class="ledger-tab-btn active" data-tab="revenue" style="padding: 1.25rem 1.5rem; font-weight: 800; font-size: 0.95rem; border: none; background: transparent; cursor: pointer; color: #2563eb; border-bottom: 3px solid #2563eb; transition: all 0.2s;">
                             <i data-lucide="arrow-down-right" style="display: inline-block; width: 16px; height: 16px; margin-right: 0.35rem; vertical-align: text-bottom; color: #10b981;"></i> Payments (Revenue) Ledger
                         </button>
                         <button class="ledger-tab-btn" data-tab="expenses" style="padding: 1.25rem 1.5rem; font-weight: 800; font-size: 0.95rem; border: none; background: transparent; cursor: pointer; color: #64748b; border-bottom: 3px solid transparent; transition: all 0.2s;">
                             <i data-lucide="arrow-up-left" style="display: inline-block; width: 16px; height: 16px; margin-right: 0.35rem; vertical-align: text-bottom; color: #ef4444;"></i> Operations Expense Ledger
+                        </button>
+                        <button class="ledger-tab-btn" data-tab="balances" style="padding: 1.25rem 1.5rem; font-weight: 800; font-size: 0.95rem; border: none; background: transparent; cursor: pointer; color: #64748b; border-bottom: 3px solid transparent; transition: all 0.2s;">
+                            <i data-lucide="scale" style="display: inline-block; width: 16px; height: 16px; margin-right: 0.35rem; vertical-align: text-bottom; color: #6366f1;"></i> Student Fee Balances
                         </button>
                     </div>
                     
@@ -15882,6 +16020,79 @@ export const UI = {
                             </table>
                         </div>
                     </div>
+
+                    <!-- Student Balances Tab Content -->
+                    <div id="balances-ledger-content" class="ledger-tab-content" style="display: none;">
+                        <div style="padding: 1.5rem 2rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; background: #f8fafc;">
+                            <h3 style="font-weight: 900; color: #1e293b; margin: 0; font-size: 1.15rem;">Student Fee Balances</h3>
+                            <div style="display: flex; gap: 1rem; flex: 1; min-width: 300px; justify-content: flex-end; flex-wrap: wrap;">
+                                <!-- Status Filter -->
+                                <select id="balance-status-filter" style="border-radius: 12px; border: 1px solid #cbd5e1; height: 44px; padding: 0 1rem; font-size: 0.85rem; font-weight: 700; background: white; color: #1e293b; outline: none;">
+                                    <option value="all">All Statuses</option>
+                                    <option value="owing">Owing / Partial</option>
+                                    <option value="paid">Fully Paid</option>
+                                    <option value="nofees">No Fees Assigned</option>
+                                </select>
+                                <!-- Session Filter -->
+                                <select id="balance-session-filter" style="border-radius: 12px; border: 1px solid #cbd5e1; height: 44px; padding: 0 1rem; font-size: 0.85rem; font-weight: 700; background: white; color: #1e293b; outline: none;">
+                                    <option value="all">All Sessions</option>
+                                    ${allSessions.map(s => `<option value="${s}" ${s === currentSession ? 'selected' : ''}>${s}</option>`).join('')}
+                                </select>
+                                <!-- Term Filter -->
+                                <select id="balance-term-filter" style="border-radius: 12px; border: 1px solid #cbd5e1; height: 44px; padding: 0 1rem; font-size: 0.85rem; font-weight: 700; background: white; color: #1e293b; outline: none;">
+                                    <option value="all">All Terms</option>
+                                    ${allTerms.map(t => `<option value="${t}" ${t === currentTerm ? 'selected' : ''}>${t}</option>`).join('')}
+                                </select>
+                                <!-- Sort Filter -->
+                                <select id="balance-sort-by" style="border-radius: 12px; border: 1px solid #cbd5e1; height: 44px; padding: 0 1rem; font-size: 0.85rem; font-weight: 700; background: white; color: #1e293b; outline: none;">
+                                    <option value="name-asc">Sort by Name (A-Z)</option>
+                                    <option value="name-desc">Sort by Name (Z-A)</option>
+                                    <option value="class-asc">Sort by Class (A-Z)</option>
+                                    <option value="class-desc">Sort by Class (Z-A)</option>
+                                    <option value="balance-desc">Sort by Owing (High-Low)</option>
+                                </select>
+                                <!-- Search -->
+                                <div style="position: relative; width: 100%; max-width: 250px;">
+                                    <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 16px; color: #94a3b8;"></i>
+                                    <input type="text" id="balance-search" placeholder="Search student name or ID..." style="padding-left: 2.75rem; border-radius: 12px; border: 1px solid #cbd5e1; height: 44px; width: 100%; font-size: 0.85rem; font-weight: 600; outline: none; background: white; color: #1e293b;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Dynamic Term Financial Summary Widget -->
+                        <div id="term-financial-summary" style="margin: 1.5rem 2rem; padding: 1.5rem; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1px solid #bfdbfe; border-radius: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                            <div>
+                                <div style="font-size: 0.75rem; font-weight: 800; color: #1e40af; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.25rem;"><i data-lucide="layers" style="width:14px;"></i> Expected Income for Term</div>
+                                <div id="summary-expected-income" style="font-size: 1.65rem; font-weight: 950; color: #1e3a8a; margin-top: 0.25rem;">₦0</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.75rem; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.25rem;"><i data-lucide="check-circle" style="width:14px;"></i> Actual Received Income</div>
+                                <div id="summary-received-income" style="font-size: 1.65rem; font-weight: 950; color: #14532d; margin-top: 0.25rem;">₦0</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.75rem; font-weight: 800; color: #991b1b; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.25rem;"><i data-lucide="alert-circle" style="width:14px;"></i> Outstanding Receivables</div>
+                                <div id="summary-outstanding-income" style="font-size: 1.65rem; font-weight: 950; color: #7f1d1d; margin-top: 0.25rem;">₦0</div>
+                            </div>
+                        </div>
+
+                        <div class="table-container" style="max-height: 500px; overflow-y: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr style="background: white; border-bottom: 2px solid #f1f5f9;">
+                                        <th style="padding: 1.25rem 2rem; color: #64748b; font-weight: 800; font-size: 0.75rem;">STUDENT NAME & ID</th>
+                                        <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">CLASS NAME</th>
+                                        <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">EXPECTED FEE</th>
+                                        <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">TOTAL PAID</th>
+                                        <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">OUTSTANDING DUE</th>
+                                        <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">UNPAID FEES</th>
+                                        <th style="text-align: right; padding-right: 2rem; color: #64748b; font-weight: 800; font-size: 0.75rem;">STATUS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="balances-table-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -15894,7 +16105,8 @@ export const UI = {
             const tabs = document.querySelectorAll('.ledger-tab-btn');
             const contents = {
                 revenue: document.getElementById('revenue-ledger-content'),
-                expenses: document.getElementById('expenses-ledger-content')
+                expenses: document.getElementById('expenses-ledger-content'),
+                balances: document.getElementById('balances-ledger-content')
             };
             
             tabs.forEach(tab => {
@@ -15942,6 +16154,218 @@ export const UI = {
                     });
                 });
             }
+
+            // Dynamic rendering of Student Fee Balances table
+            const balancesBody = document.getElementById('balances-table-body');
+            
+            const renderBalancesTable = () => {
+                if (!balancesBody) return;
+                
+                const q = document.getElementById('balance-search')?.value.toLowerCase() || '';
+                const statusFilter = document.getElementById('balance-status-filter')?.value || 'all';
+                const sessionFilter = document.getElementById('balance-session-filter')?.value || 'all';
+                const termFilter = document.getElementById('balance-term-filter')?.value || 'all';
+                const sortBy = document.getElementById('balance-sort-by')?.value || 'name-asc';
+                
+                // Let's compute term-specific statistics dynamically
+                let expectedSum = 0;
+                let receivedSum = 0;
+                
+                const normalizedTermFilter = termFilter !== 'all' ? normalizeTerm(termFilter) : 'all';
+                
+                // 1. Process active students
+                const processedStudents = activeStudents.map(s => {
+                    const studentClass = (s.class_name || '').trim().toLowerCase();
+                    
+                    // Filter fee structures for this student's class
+                    const sStructures = feeStructures.filter(fs => {
+                        if ((fs.class_name || '').trim().toLowerCase() !== studentClass) return false;
+                        
+                        if (sessionFilter !== 'all' && fs.session && fs.session !== sessionFilter) return false;
+                        if (normalizedTermFilter !== 'all') {
+                            const fsTerm = normalizeTerm(fs.term);
+                            if (fsTerm !== normalizedTermFilter) return false;
+                        }
+                        return true;
+                    });
+                    
+                    // Expected amount for this student
+                    const expected = sStructures.reduce((sum, fs) => sum + (parseFloat(fs.amount) || 0), 0);
+                    
+                    let paid = 0;
+                    const detailedOwing = [];
+                    
+                    // Match payments structure-by-structure
+                    sStructures.forEach(fs => {
+                        const fsTerm = fs.term || '1st Term';
+                        const fsSession = fs.session || '2025/2026';
+                        const fsCat = fs.category || 'School Fees';
+                        const fsAmt = parseFloat(fs.amount) || 0;
+                        
+                        // Sum successful payments matching student, term, session and category
+                        const pPaid = payments.filter(p => {
+                            if (p.student_id !== s.student_id) return false;
+                            if (p.status !== 'success') return false;
+                            if (p.category?.startsWith('Expense:')) return false;
+                            
+                            const pCat = p.category || 'School Fees';
+                            if (pCat.toLowerCase().trim() !== fsCat.toLowerCase().trim()) return false;
+                            
+                            const pTerm = normalizeTerm(p.term);
+                            const fsTermNorm = normalizeTerm(fsTerm);
+                            if (pTerm !== fsTermNorm) return false;
+                            
+                            const pSession = p.session || '2025/2026';
+                            if (pSession.trim() !== fsSession.trim()) return false;
+                            
+                            return true;
+                        }).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+                        
+                        paid += pPaid;
+                        const bal = Math.max(0, fsAmt - pPaid);
+                        if (bal > 0) {
+                            detailedOwing.push({
+                                term: fsTerm,
+                                category: fsCat,
+                                owing: bal
+                            });
+                        }
+                    });
+                    
+                    const balance = Math.max(0, expected - paid);
+                    
+                    expectedSum += expected;
+                    receivedSum += paid;
+                    
+                    let status = 'Owing';
+                    if (expected > 0 && balance === 0) {
+                        status = 'Paid';
+                    } else if (expected === 0 && paid === 0) {
+                        status = 'No Fees';
+                    } else if (expected > 0 && paid > 0 && balance > 0) {
+                        status = 'Partial';
+                    }
+                    
+                    return {
+                        id: s.student_id,
+                        name: s.name || 'Unknown Student',
+                        class_name: s.class_name || 'No Class',
+                        expected: expected,
+                        paid: paid,
+                        balance: balance,
+                        status: status,
+                        detailedOwing: detailedOwing
+                    };
+                });
+                
+                // Update dynamic Term Summary cards
+                const outstandingSum = Math.max(0, expectedSum - receivedSum);
+                const expEl = document.getElementById('summary-expected-income');
+                const recEl = document.getElementById('summary-received-income');
+                const outEl = document.getElementById('summary-outstanding-income');
+                
+                if (expEl) expEl.textContent = '₦' + expectedSum.toLocaleString();
+                if (recEl) recEl.textContent = '₦' + receivedSum.toLocaleString();
+                if (outEl) outEl.textContent = '₦' + outstandingSum.toLocaleString();
+                
+                // 2. Filter
+                let filtered = processedStudents.filter(s => {
+                    const matchesSearch = s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q);
+                    if (!matchesSearch) return false;
+                    
+                    if (statusFilter === 'owing') {
+                        return s.balance > 0;
+                    } else if (statusFilter === 'paid') {
+                        return s.expected > 0 && s.balance === 0;
+                    } else if (statusFilter === 'nofees') {
+                        return s.expected === 0;
+                    }
+                    return true;
+                });
+                
+                // 3. Sort
+                filtered.sort((a, b) => {
+                    if (sortBy === 'name-asc') {
+                        return a.name.localeCompare(b.name);
+                    } else if (sortBy === 'name-desc') {
+                        return b.name.localeCompare(a.name);
+                    } else if (sortBy === 'class-asc') {
+                        return a.class_name.localeCompare(b.class_name);
+                    } else if (sortBy === 'class-desc') {
+                        return b.class_name.localeCompare(a.class_name);
+                    } else if (sortBy === 'balance-desc') {
+                        return b.balance - a.balance;
+                    }
+                    return 0;
+                });
+                
+                // 4. Render
+                if (filtered.length === 0) {
+                    balancesBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 4rem; color: #94a3b8; font-weight:600;">No student balance records match the filters.</td></tr>';
+                    return;
+                }
+                
+                balancesBody.innerHTML = filtered.map(s => {
+                    let badgeBg = '#fee2e2; color: #ef4444';
+                    let badgeLabel = 'OWING';
+                    if (s.status === 'Paid') {
+                        badgeBg = '#dcfce7; color: #16a34a';
+                        badgeLabel = 'FULLY PAID';
+                    } else if (s.status === 'Partial') {
+                        badgeBg = '#fef3c7; color: #d97706';
+                        badgeLabel = 'PARTIAL';
+                    } else if (s.status === 'No Fees') {
+                        badgeBg = '#f1f5f9; color: #64748b';
+                        badgeLabel = 'NO FEES';
+                    }
+                    
+                    let owingDetailsHtml = '<span style="color: #10b981; font-weight: 700; display: inline-flex; align-items: center; gap: 0.25rem;"><i data-lucide="check" style="width: 14px; height: 14px;"></i> Fully Paid</span>';
+                    if (s.balance > 0 && s.detailedOwing.length > 0) {
+                        owingDetailsHtml = s.detailedOwing.map(item => `
+                            <div style="font-size: 0.8rem; font-weight: 600; color: #b91c1c; margin-bottom: 0.15rem;">
+                                <strong style="color: #ef4444;">${item.term}:</strong> ${item.category} (₦${item.owing.toLocaleString()})
+                            </div>
+                        `).join('');
+                    } else if (s.expected === 0) {
+                        owingDetailsHtml = '<span style="color: #64748b; font-weight: 600;">No fees set</span>';
+                    }
+                    
+                    return `
+                        <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.2s;">
+                            <td style="padding: 1.25rem 2rem;">
+                                <div style="font-weight: 800; color: #1e293b;">${s.name}</div>
+                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${s.id}</div>
+                            </td>
+                            <td>
+                                <div style="font-weight: 700; color: #475569;">${s.class_name}</div>
+                            </td>
+                            <td><div style="font-weight: 700; color: #334155;">₦${s.expected.toLocaleString()}</div></td>
+                            <td><div style="font-weight: 700; color: #16a34a;">₦${s.paid.toLocaleString()}</div></td>
+                            <td><div style="font-weight: 900; color: ${s.balance > 0 ? '#ef4444' : '#1e293b'};">₦${s.balance.toLocaleString()}</div></td>
+                            <td style="max-width: 250px; padding: 1rem 0.5rem;">
+                                ${owingDetailsHtml}
+                            </td>
+                            <td style="text-align: right; padding-right: 2rem;">
+                                <span style="background: ${badgeBg}; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 0.7rem; display: inline-flex; align-items: center; gap: 0.4rem;">
+                                    <div style="width: 6px; height: 6px; border-radius: 50%; background: currentColor;"></div>
+                                    ${badgeLabel}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+                
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            };
+
+            document.getElementById('balance-search')?.addEventListener('input', renderBalancesTable);
+            document.getElementById('balance-status-filter')?.addEventListener('change', renderBalancesTable);
+            document.getElementById('balance-session-filter')?.addEventListener('change', renderBalancesTable);
+            document.getElementById('balance-term-filter')?.addEventListener('change', renderBalancesTable);
+            document.getElementById('balance-sort-by')?.addEventListener('change', renderBalancesTable);
+            
+            // Initial balances render
+            renderBalancesTable();
 
             // Render Chart.js
             const cashflowCtx = document.getElementById('financial-cashflow-chart')?.getContext('2d');
@@ -16437,6 +16861,10 @@ export const UI = {
         const studentId = this.getActiveStudentId();
         
         try {
+            const settings = await db.settings.toArray();
+            const term = settings.find(s => s.key === 'currentTerm')?.value || '1st Term';
+            const session = settings.find(s => s.key === 'currentSession')?.value || '2025/2026';
+
             // 1. Record the payment
             const newPayment = prepareForSync({
                 id: crypto.randomUUID(),
@@ -16447,6 +16875,8 @@ export const UI = {
                 category: category,
                 date: new Date().toISOString().split('T')[0],
                 channel: 'Paystack',
+                term: term,
+                session: session,
                 is_synced: 0
             });
             await db.payments.add(newPayment);
@@ -16573,6 +17003,10 @@ export const UI = {
 
     async handleCombinedPaymentSuccess(response, reference) {
         try {
+            const settings = await db.settings.toArray();
+            const term = settings.find(s => s.key === 'currentTerm')?.value || '1st Term';
+            const session = settings.find(s => s.key === 'currentSession')?.value || '2025/2026';
+
             const pendingDataStr = localStorage.getItem('pending_combined_payment_' + reference);
             if (!pendingDataStr) {
                 console.error('No pending combined payment breakdown found for ref:', reference);
@@ -16593,6 +17027,8 @@ export const UI = {
                     category: 'Tuition Payment',
                     date: new Date().toISOString().split('T')[0],
                     channel: 'Paystack',
+                    term: term,
+                    session: session,
                     is_synced: 0
                 });
                 await db.payments.add(newPayment);
@@ -16640,11 +17076,14 @@ export const UI = {
     },
 
     async renderFeeStructures() {
-        const [structures, classes] = await Promise.all([
+        const [structures, classes, settings] = await Promise.all([
             db.fee_structures.toArray(),
-            db.classes.toArray()
+            db.classes.toArray(),
+            db.settings.toArray()
         ]);
         classes.sort((a, b) => a.name.localeCompare(b.name));
+        const defaultTerm = settings.find(s => s.key === 'currentTerm')?.value || '1st Term';
+        const defaultSession = settings.find(s => s.key === 'currentSession')?.value || '2025/2026';
 
         this.showModal('Fee Structures', `
             <div style="background: #0f172a; border-radius: 20px; padding: 1.5rem; color: #f8fafc; max-height: 350px; overflow-y: auto; margin-bottom: 1.5rem;">
@@ -16667,7 +17106,7 @@ export const UI = {
                                     </div>
                                     <div>
                                         <div style="font-weight: 800; color: #f8fafc; font-size: 0.9rem;">${s.class_name}</div>
-                                        <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 600; margin-top: 0.1rem; text-transform: uppercase; letter-spacing: 0.05em;">${s.category || 'School Fees'}</div>
+                                        <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 600; margin-top: 0.1rem; text-transform: uppercase; letter-spacing: 0.05em;">${s.category || 'School Fees'} — ${normalizeTerm(s.term)} (${s.session || '2025/2026'})</div>
                                     </div>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 1rem;">
@@ -16699,6 +17138,22 @@ export const UI = {
                     <div class="form-group">
                         <label class="form-label" style="font-weight: 800; font-size: 0.7rem; text-transform: uppercase; color: #475569; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Fee Category</label>
                         <input type="text" id="new-fee-cat" class="form-control" value="School Fees" style="height: 42px; border-radius: 10px; border: 2px solid #e2e8f0; font-weight: 700; color: #1e293b; padding: 0 0.75rem; width: 100%;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-weight: 800; font-size: 0.7rem; text-transform: uppercase; color: #475569; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Select Term</label>
+                        <select id="new-fee-term" class="form-control" style="height: 42px; border-radius: 10px; border: 2px solid #e2e8f0; font-weight: 700; color: #1e293b; background: white; width: 100%; padding: 0 0.5rem;">
+                            <option value="1st Term" ${defaultTerm === '1st Term' ? 'selected' : ''}>1st Term</option>
+                            <option value="2nd Term" ${defaultTerm === '2nd Term' ? 'selected' : ''}>2nd Term</option>
+                            <option value="3rd Term" ${defaultTerm === '3rd Term' ? 'selected' : ''}>3rd Term</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-weight: 800; font-size: 0.7rem; text-transform: uppercase; color: #475569; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Select Session</label>
+                        <select id="new-fee-session" class="form-control" style="height: 42px; border-radius: 10px; border: 2px solid #e2e8f0; font-weight: 700; color: #1e293b; background: white; width: 100%; padding: 0 0.5rem;">
+                            <option value="2025/2026" ${defaultSession === '2025/2026' ? 'selected' : ''}>2025/2026</option>
+                            <option value="2026/2027" ${defaultSession === '2026/2027' ? 'selected' : ''}>2026/2027</option>
+                            <option value="2024/2025" ${defaultSession === '2024/2025' ? 'selected' : ''}>2024/2025</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label class="form-label" style="font-weight: 800; font-size: 0.7rem; text-transform: uppercase; color: #475569; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Amount (₦)</label>
@@ -16806,12 +17261,19 @@ export const UI = {
         const className = document.getElementById('new-fee-class').value;
         const category = document.getElementById('new-fee-cat').value;
         const amount = document.getElementById('new-fee-amount').value;
+        const term = document.getElementById('new-fee-term').value;
+        const session = document.getElementById('new-fee-session').value;
         
         if (!className || !amount) return Notifications.show('Please fill all fields', 'warning');
         
         const cleanClassName = className.trim().toLowerCase();
         const allStructures = await db.fee_structures.toArray();
-        const duplicate = allStructures.find(f => (f.class_name || '').trim().toLowerCase() === cleanClassName && (f.category || 'School Fees').toLowerCase().trim() === category.toLowerCase().trim());
+        const duplicate = allStructures.find(f => 
+            (f.class_name || '').trim().toLowerCase() === cleanClassName && 
+            (f.category || 'School Fees').toLowerCase().trim() === category.toLowerCase().trim() &&
+            normalizeTerm(f.term) === normalizeTerm(term) &&
+            (f.session || '2025/2026').trim() === session.trim()
+        );
 
         if (duplicate) {
             await db.fee_structures.put(prepareForSync({
@@ -16825,8 +17287,8 @@ export const UI = {
                 class_name: className,
                 category: category,
                 amount: parseFloat(amount),
-                term: 'FIRST TERM',
-                session: '2025/2026'
+                term: term,
+                session: session
             }));
         }
         
