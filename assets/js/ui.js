@@ -13408,6 +13408,7 @@ export const UI = {
                 id: standardId, // Enforce standard ID format
                 student_id: finalStudentId,
                 subject_id: exam.subject_id,
+                class_name: exam.class_name || scoreData.class_name,
                 term: exam.term,
                 session: exam.session,
                 [exam.score_field]: scoreValue,
@@ -15244,6 +15245,24 @@ export const UI = {
         let realProfiles = await db.profiles.toArray().catch(() => []);
         let realAuditLogs = await db.audit_logs.toArray().catch(() => []);
 
+        // Build map for quick student ID -> student lookup to fall back on class_name
+        const studentMap = new Map();
+        realStudents.forEach(st => {
+            if (st.student_id) {
+                studentMap.set(String(st.student_id).toLowerCase().trim(), st);
+            }
+        });
+
+        // Enrich realScores that are missing class_name
+        realScores.forEach(s => {
+            if (!s.class_name && s.student_id) {
+                const st = studentMap.get(String(s.student_id).toLowerCase().trim());
+                if (st && st.class_name) {
+                    s.class_name = st.class_name;
+                }
+            }
+        });
+
         let isMock = false;
         let scores = realScores;
         let students = realStudents;
@@ -15258,9 +15277,10 @@ export const UI = {
             targetAssignments = assignments.filter(a => String(a.teacher_id) === String(teacherId));
             const subIds = targetAssignments.map(a => a.subject_id);
             const cls = [...new Set(targetAssignments.map(a => a.class_name))];
+            const clsLower = cls.map(c => String(c || '').toLowerCase().trim());
             subjects = subjects.filter(s => subIds.includes(s.id));
-            students = students.filter(s => cls.includes(s.class_name));
-            scores = scores.filter(s => subIds.includes(s.subject_id) && cls.includes(s.class_name));
+            students = students.filter(s => s.class_name && clsLower.includes(String(s.class_name).toLowerCase().trim()));
+            scores = scores.filter(s => subIds.includes(s.subject_id) && s.class_name && clsLower.includes(String(s.class_name).toLowerCase().trim()));
         }
 
         const terms = ['1st Term','2nd Term','3rd Term'];
@@ -15268,6 +15288,20 @@ export const UI = {
         let selectedTerm = localStorage.getItem('insights_term') || '1st Term';
         let selectedSession = localStorage.getItem('insights_session') || '2025/2026';
         let activeTab = localStorage.getItem('insights_active_tab') || 'dashboard';
+
+        // Resilient term and session matching helpers
+        const isTermMatch = (dbTerm, filterTerm) => {
+            const normalize = (t) => String(t || '').toLowerCase().replace(/\s+/g, '').replace('1st', 'first').replace('2nd', 'second').replace('3rd', 'third');
+            const dbt = normalize(dbTerm);
+            const flt = normalize(filterTerm);
+            return dbt === flt || (dbt && flt && (dbt.includes(flt) || flt.includes(dbt)));
+        };
+
+        const isSessionMatch = (dbSession, filterSession) => {
+            const dbs = String(dbSession || '').toLowerCase().replace(/\s+/g, '');
+            const fls = String(filterSession || '').toLowerCase().replace(/\s+/g, '');
+            return dbs === fls || (dbs && fls && (dbs.includes(fls) || fls.includes(dbs)));
+        };
 
         // Build course map
         const courses = [];
@@ -15293,7 +15327,7 @@ export const UI = {
 
         // --- Compute Global KPIs ---
         const _siComputeKPIs = () => {
-            const filteredScores = scores.filter(s => s.term === selectedTerm && s.session === selectedSession);
+            const filteredScores = scores.filter(s => isTermMatch(s.term, selectedTerm) && isSessionMatch(s.session, selectedSession));
             const totalStudents = students.length;
             let totalExpectedEntries = 0;
             let totalActualEntries = 0;
@@ -15302,8 +15336,9 @@ export const UI = {
             let pendingAudits = 0;
 
             courses.forEach(c => {
-                const cls = students.filter(s => s.class_name === c.class_name);
-                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name === c.class_name);
+                const targetClsLower = String(c.class_name || '').toLowerCase().trim();
+                const cls = students.filter(s => s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
+                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
                 gradeFields.forEach(f => {
                     totalExpectedEntries += cls.length;
                     totalActualEntries += cScores.filter(s => s[f] !== null && s[f] !== undefined && s[f] !== '').length;
@@ -15321,12 +15356,13 @@ export const UI = {
 
         // --- Department performance data ---
         const _siDeptPerformance = () => {
-            const filteredScores = scores.filter(s => s.term === selectedTerm && s.session === selectedSession);
+            const filteredScores = scores.filter(s => isTermMatch(s.term, selectedTerm) && isSessionMatch(s.session, selectedSession));
             const deptMap = {};
             courses.forEach(c => {
                 const dept = c.subject_type || 'Core';
                 if (!deptMap[dept]) deptMap[dept] = { scores: [], target: 85 };
-                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name === c.class_name);
+                const targetClsLower = String(c.class_name || '').toLowerCase().trim();
+                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
                 cScores.forEach(s => { if (s.total != null) deptMap[dept].scores.push(s.total); });
             });
             return Object.entries(deptMap).map(([name, data]) => {
@@ -15337,12 +15373,17 @@ export const UI = {
 
         // --- Missing scores data ---
         const _siMissingScores = () => {
-            const filteredScores = scores.filter(s => s.term === selectedTerm && s.session === selectedSession);
+            const filteredScores = scores.filter(s => isTermMatch(s.term, selectedTerm) && isSessionMatch(s.session, selectedSession));
             const missing = [];
             courses.forEach(c => {
-                const cls = students.filter(s => s.class_name === c.class_name);
-                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name === c.class_name);
-                const missingStudents = cls.filter(st => !cScores.find(sc => sc.student_id === st.student_id));
+                const targetClsLower = String(c.class_name || '').toLowerCase().trim();
+                const cls = students.filter(s => s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
+                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
+                const missingStudents = cls.filter(st => !cScores.find(sc => {
+                    const scId = String(sc.student_id || '').trim().toLowerCase();
+                    const sId = String(st.student_id || '').trim().toLowerCase();
+                    return scId && sId && (scId === sId || scId.includes(sId) || sId.includes(scId));
+                }));
                 if (missingStudents.length > 0) {
                     const daysSinceUpdate = cScores.length > 0 ? Math.round((Date.now() - Math.max(...cScores.map(s => new Date(s.updated_at).getTime()))) / (24*3600*1000)) : 99;
                     missing.push({
@@ -15362,12 +15403,13 @@ export const UI = {
 
         // --- Alerts ---
         const _siAlerts = () => {
-            const filteredScores = scores.filter(s => s.term === selectedTerm && s.session === selectedSession);
+            const filteredScores = scores.filter(s => isTermMatch(s.term, selectedTerm) && isSessionMatch(s.session, selectedSession));
             const alerts = [];
             courses.forEach(c => {
-                const cls = students.filter(s => s.class_name === c.class_name);
+                const targetClsLower = String(c.class_name || '').toLowerCase().trim();
+                const cls = students.filter(s => s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
                 if (cls.length === 0) return;
-                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name === c.class_name);
+                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
                 gradeFields.forEach(f => {
                     const entered = cScores.filter(s => s[f] !== null && s[f] !== undefined && s[f] !== '').length;
                     const pct = Math.round((entered / cls.length) * 100);
@@ -15612,19 +15654,24 @@ export const UI = {
         // SCREEN 2: Class Score Entry & Monitor
         // ====================================
         const renderClassEntry = () => {
-            const filteredScores = scores.filter(s => s.term === selectedTerm && s.session === selectedSession);
+            const filteredScores = scores.filter(s => isTermMatch(s.term, selectedTerm) && isSessionMatch(s.session, selectedSession));
             const firstCourse = courses[0];
             let selCourseIdx = 0;
 
             const buildTable = (idx) => {
                 const course = courses[idx] || courses[0];
                 if (!course) return '<div class="si-empty-state"><div class="si-empty-state__text">No courses available</div></div>';
-                const cls = students.filter(s => s.class_name === course.class_name).sort((a, b) => a.name.localeCompare(b.name));
-                const cScores = filteredScores.filter(s => String(s.subject_id) === String(course.subject_id) && s.class_name === course.class_name);
+                const targetClsLower = String(course.class_name || '').toLowerCase().trim();
+                const cls = students.filter(s => s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower).sort((a, b) => a.name.localeCompare(b.name));
+                const cScores = filteredScores.filter(s => String(s.subject_id) === String(course.subject_id) && s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
 
                 let highest = -1, lowest = 101, highIdx = -1, lowIdx = -1;
                 const rows = cls.map((st, i) => {
-                    const sc = cScores.find(s => s.student_id === st.student_id);
+                    const sc = cScores.find(s => {
+                        const scId = String(s.student_id || '').trim().toLowerCase();
+                        const sId = String(st.student_id || '').trim().toLowerCase();
+                        return scId && sId && (scId === sId || scId.includes(sId) || sId.includes(scId));
+                    });
                     const total = sc ? (sc.total || 0) : 0;
                     if (total > highest) { highest = total; highIdx = i; }
                     if (total < lowest && sc) { lowest = total; lowIdx = i; }
@@ -15743,7 +15790,7 @@ export const UI = {
         // SCREEN 3: Subject Performance Analysis
         // ========================================
         const renderSubjectAnalysis = () => {
-            const filteredScores = scores.filter(s => s.term === selectedTerm && s.session === selectedSession);
+            const filteredScores = scores.filter(s => isTermMatch(s.term, selectedTerm) && isSessionMatch(s.session, selectedSession));
             const threshold = 40;
 
             // Subject cards
@@ -15752,7 +15799,8 @@ export const UI = {
             courses.forEach(c => {
                 if (!subjectMap[c.subject_id]) subjectMap[c.subject_id] = { name: c.subject_name, type: c.subject_type, classes: [], scores: [] };
                 subjectMap[c.subject_id].classes.push(c.class_name);
-                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name === c.class_name);
+                const targetClsLower = String(c.class_name || '').toLowerCase().trim();
+                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
                 subjectMap[c.subject_id].scores.push(...cScores);
             });
 
@@ -15786,7 +15834,11 @@ export const UI = {
             const atRisk = Object.entries(studentFailMap)
                 .filter(([, fails]) => fails.length >= 2)
                 .map(([sid, fails]) => {
-                    const st = students.find(s => s.student_id === sid);
+                    const st = students.find(s => {
+                        const sId = String(s.student_id || '').trim().toLowerCase();
+                        const targetId = String(sid).trim().toLowerCase();
+                        return sId === targetId || sId.includes(targetId) || targetId.includes(sId);
+                    });
                     return { name: st ? st.name : sid, class_name: st ? st.class_name : '', failCount: fails.length, lowestScore: Math.min(...fails.map(f => f.total)) };
                 })
                 .sort((a,b) => a.name.localeCompare(b.name))
@@ -15859,7 +15911,7 @@ export const UI = {
         // SCREEN 4: Teacher Submission Monitor
         // ==========================================
         const renderTeacherMonitor = () => {
-            const filteredScores = scores.filter(s => s.term === selectedTerm && s.session === selectedSession);
+            const filteredScores = scores.filter(s => isTermMatch(s.term, selectedTerm) && isSessionMatch(s.session, selectedSession));
 
             // Group teachers by department
             const teacherMap = {};
@@ -15867,8 +15919,9 @@ export const UI = {
                 if (!teacherMap[c.teacher_id]) {
                     teacherMap[c.teacher_id] = { name: c.teacher_name, dept: c.subject_type || 'Core', courses: [], totalExpected: 0, totalEntered: 0 };
                 }
-                const cls = students.filter(s => s.class_name === c.class_name);
-                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name === c.class_name);
+                const targetClsLower = String(c.class_name || '').toLowerCase().trim();
+                const cls = students.filter(s => s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
+                const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
                 let expected = 0, entered = 0;
                 gradeFields.forEach(f => {
                     expected += cls.length;
