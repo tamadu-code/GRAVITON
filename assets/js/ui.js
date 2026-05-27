@@ -15252,94 +15252,6 @@ export const UI = {
         let profiles = realProfiles;
         let auditLogs = realAuditLogs;
 
-        // --- Mock Data Fallback ---
-        if (scores.length === 0 || students.length === 0 || subjects.length === 0) {
-            isMock = true;
-            const cTId = isTeacher ? teacherId : 'prof-adams';
-            const tName = isTeacher ? currentUserName : 'Mr. David Adams';
-            const mockSubjects = [
-                { id: 'sub-math', name: 'Mathematics', type: 'Science' },
-                { id: 'sub-eng', name: 'English Language', type: 'Arts' },
-                { id: 'sub-phy', name: 'Physics', type: 'Science' },
-                { id: 'sub-chem', name: 'Chemistry', type: 'Science' },
-                { id: 'sub-bio', name: 'Biology', type: 'Science' },
-                { id: 'sub-hist', name: 'History', type: 'Arts' },
-                { id: 'sub-pe', name: 'Physical Education', type: 'Physical' }
-            ];
-            const mockClasses = [
-                { id: 'cls-1s', name: 'SSS 1 Science' },
-                { id: 'cls-1a', name: 'SSS 1 Arts' },
-                { id: 'cls-2s', name: 'SSS 2 Science' }
-            ];
-            const mockProfiles = [
-                { id: cTId, full_name: tName, role: 'Teacher' },
-                { id: 'prof-baker', full_name: 'Mrs. Sarah Baker', role: 'Teacher' },
-                { id: 'prof-carter', full_name: 'Dr. John Carter', role: 'Teacher' },
-                { id: 'prof-davis', full_name: 'Miss Clara Davis', role: 'Teacher' },
-                { id: 'prof-miller', full_name: 'Prof. Miller', role: 'Teacher' }
-            ];
-            const mockAssignments = [
-                { id: 'asg-1', teacher_id: cTId, subject_id: 'sub-math', class_name: 'SSS 1 Science' },
-                { id: 'asg-2', teacher_id: 'prof-baker', subject_id: 'sub-eng', class_name: 'SSS 1 Arts' },
-                { id: 'asg-3', teacher_id: 'prof-carter', subject_id: 'sub-phy', class_name: 'SSS 2 Science' },
-                { id: 'asg-4', teacher_id: cTId, subject_id: 'sub-chem', class_name: 'SSS 1 Science' },
-                { id: 'asg-5', teacher_id: 'prof-carter', subject_id: 'sub-bio', class_name: 'SSS 2 Science' },
-                { id: 'asg-6', teacher_id: 'prof-davis', subject_id: 'sub-hist', class_name: 'SSS 1 Arts' },
-                { id: 'asg-7', teacher_id: 'prof-miller', subject_id: 'sub-pe', class_name: 'SSS 1 Science' }
-            ];
-            const firstNames = ['James','Mary','John','Patricia','Robert','Jennifer','Michael','Linda','William','Elizabeth','David','Barbara','Richard','Susan','Joseph','Jessica'];
-            const lastNames = ['Smith','Johnson','Williams','Brown','Jones','Garcia','Miller','Davis','Rodriguez','Martinez','Hernandez','Lopez','Gonzalez','Wilson','Anderson','Thomas'];
-            const mockStudents = [];
-            mockClasses.forEach((cls, cIdx) => {
-                for (let i = 1; i <= 10; i++) {
-                    mockStudents.push({
-                        student_id: `NKQMS-2025-${cIdx * 100 + i}`,
-                        name: `${firstNames[(cIdx * 10 + i) % firstNames.length]} ${lastNames[(cIdx * 12 + i) % lastNames.length]}`,
-                        class_name: cls.name,
-                        is_active: true
-                    });
-                }
-            });
-            const mockScores = [];
-            const term = '1st Term';
-            const session = '2025/2026';
-            mockAssignments.forEach((asg) => {
-                const classStudents = mockStudents.filter(s => s.class_name === asg.class_name);
-                classStudents.forEach((student, sIdx) => {
-                    const standardId = `${student.student_id}_${asg.subject_id}_${term}_${session}`;
-                    let entryProfile = 'complete';
-                    if (asg.subject_id === 'sub-eng') entryProfile = 'partial-high';
-                    if (asg.subject_id === 'sub-phy') entryProfile = 'partial-mid';
-                    if (asg.subject_id === 'sub-bio') entryProfile = 'partial-low';
-                    if (asg.subject_id === 'sub-hist') entryProfile = 'empty';
-                    const sc = { id: standardId, student_id: student.student_id, subject_id: asg.subject_id, class_name: asg.class_name, term, session, updated_at: new Date().toISOString() };
-                    let hasAny = false;
-                    const addF = (f, max, p) => { if (Math.random() < p) { sc[f] = Math.round(Math.random() * max); hasAny = true; } else { sc[f] = null; } };
-                    if (entryProfile === 'complete') { addF('assignment',10,1); addF('test1',20,1); addF('test2',20,1); addF('project',10,1); addF('exam',40,1); const bt = new Date(); bt.setHours(bt.getHours()-2); sc.updated_at = bt.toISOString(); }
-                    else if (entryProfile === 'partial-high') { addF('assignment',10,.95); addF('test1',20,.95); addF('test2',20,.95); addF('project',10,sIdx===2?0:.9); addF('exam',40,.95); const et = new Date(); et.setDate(et.getDate()-2); sc.updated_at = et.toISOString(); }
-                    else if (entryProfile === 'partial-mid') { addF('assignment',10,.85); addF('test1',20,.8); addF('test2',20,.7); addF('project',10,.85); addF('exam',40,sIdx<6?.9:0); const et = new Date(); et.setDate(et.getDate()-8); sc.updated_at = et.toISOString(); }
-                    else if (entryProfile === 'partial-low') { addF('assignment',10,.7); addF('test1',20,.7); addF('test2',20,0); addF('project',10,0); addF('exam',40,0); const et = new Date(); et.setDate(et.getDate()-12); sc.updated_at = et.toISOString(); }
-                    if (hasAny) {
-                        const ca = (sc.assignment||0)+(sc.test1||0)+(sc.test2||0)+(sc.project||0);
-                        sc.ca = ca; sc.total = ca + (sc.exam||0);
-                        mockScores.push(sc);
-                    }
-                });
-            });
-            // Rankings
-            mockAssignments.forEach(asg => {
-                const cs = mockScores.filter(s => s.subject_id === asg.subject_id && s.class_name === asg.class_name);
-                cs.sort((a,b) => b.total - a.total);
-                let r = 1; cs.forEach((s,i) => { if (i > 0 && s.total < cs[i-1].total) r = i+1; s.rank = String(r); });
-            });
-            const mockAuditLogs = [
-                { id: 'aud-1', operation: 'INSERT', table: 'scores', record_id: `NKQMS-2025-101_sub-math_${term}_${session}`, timestamp: new Date(Date.now()-2*3600*1000).toISOString(), user_id: cTId, details: JSON.stringify({ student_id:'NKQMS-2025-101', subject_id:'sub-math', class_name:'SSS 1 Science', term, session, changed_fields:['assignment','test1','test2','project','exam'], teacher_name: tName }) },
-                { id: 'aud-2', operation: 'INSERT', table: 'scores', record_id: `NKQMS-2025-201_sub-eng_${term}_${session}`, timestamp: new Date(Date.now()-48*3600*1000).toISOString(), user_id: 'prof-baker', details: JSON.stringify({ student_id:'NKQMS-2025-201', subject_id:'sub-eng', class_name:'SSS 1 Arts', term, session, changed_fields:['assignment','test1'], teacher_name:'Mrs. Sarah Baker' }) },
-                { id: 'aud-3', operation: 'UPDATE', table: 'scores', record_id: `NKQMS-2025-301_sub-phy_${term}_${session}`, timestamp: new Date(Date.now()-8*24*3600*1000).toISOString(), user_id: 'prof-carter', details: JSON.stringify({ student_id:'NKQMS-2025-301', subject_id:'sub-phy', class_name:'SSS 2 Science', term, session, changed_fields:['assignment','test1','test2','project'], teacher_name:'Dr. John Carter' }) }
-            ];
-            scores = mockScores; students = mockStudents; subjects = mockSubjects; assignments = mockAssignments; profiles = mockProfiles; auditLogs = mockAuditLogs;
-        }
-
         // Role scoping
         let targetAssignments = assignments;
         if (isTeacher) {
@@ -15487,11 +15399,6 @@ export const UI = {
                     time: timeStr
                 });
             });
-            if (items.length === 0) {
-                items.push({ icon: 'cloud-upload', user: 'Prof. Miller', action: 'uploaded', detail: 'Grade 11 Math scores.', time: '12 mins ago' });
-                items.push({ icon: 'edit', user: 'Admin Team', action: 'modified', detail: 'the Term 2 deadline.', time: '2 hours ago' });
-                items.push({ icon: 'file-text', user: 'Sarah Chen', action: 'generated', detail: 'Class Performance Report.', time: '5 hours ago' });
-            }
             return items;
         };
 
@@ -15594,9 +15501,7 @@ export const UI = {
                                     </div>
                                 </div>
                                 <div class="si-chart-bars">
-                                    ${(depts.length > 0 ? depts : [
-                                        {name:'SCIENCE',pct:78,target:85},{name:'ARTS',pct:62,target:85},{name:'MATH',pct:92,target:85},{name:'LANGUAGES',pct:74,target:85},{name:'PHYS ED',pct:88,target:85}
-                                    ]).map(d => `
+                                    ${depts.length > 0 ? depts.map(d => `
                                         <div class="si-bar-group">
                                             <div class="si-bar-track">
                                                 <div class="si-bar-fill" style="height:${d.pct}%"></div>
@@ -15604,7 +15509,7 @@ export const UI = {
                                             </div>
                                             <span class="si-bar-label">${d.name}</span>
                                         </div>
-                                    `).join('')}
+                                    `).join('') : '<div class="si-empty-state" style="width: 100%;"><div class="si-empty-state__text">No department performance data available</div></div>'}
                                 </div>
                             </div>
 
@@ -15629,11 +15534,7 @@ export const UI = {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            ${(missingData.length > 0 ? missingData : [
-                                                {className:'Mathematics 101-A',instructor:'Dr. Aris Thorne',missing:8,total:18,pct:44,deadline:'Tomorrow',isOverdue:false},
-                                                {className:'English Literature',instructor:'Ms. Clara Oswald',missing:3,total:20,pct:15,deadline:'Oct 24',isOverdue:false},
-                                                {className:'World History',instructor:'Mr. Marcus Aurelius',missing:16,total:20,pct:80,deadline:'Overdue',isOverdue:true}
-                                            ]).map(m => `
+                                            ${missingData.length > 0 ? missingData.map(m => `
                                                 <tr>
                                                     <td style="font-weight:500;">${m.className}</td>
                                                     <td>${m.instructor}</td>
@@ -15648,7 +15549,7 @@ export const UI = {
                                                     <td class="${m.isOverdue || m.deadline === 'Tomorrow' ? 'si-table__deadline--overdue' : ''}">${m.deadline}</td>
                                                     <td style="text-align:right;"><button class="si-table__action-btn si-remind-btn" data-teacher="${m.teacherId||''}">Remind</button></td>
                                                 </tr>
-                                            `).join('')}
+                                            `).join('') : '<tr><td colspan="5" class="si-empty-state" style="text-align:center;"><div class="si-empty-state__text">No missing scores found</div></td></tr>'}
                                         </tbody>
                                     </table>
                                 </div>
@@ -15664,10 +15565,7 @@ export const UI = {
                                     <span class="si-alert-badge">${alerts.length} LIVE</span>
                                 </div>
                                 <div class="si-alert-list">
-                                    ${(alerts.length > 0 ? alerts.slice(0, 3) : [
-                                        {title:'Grade 10 - Biology B',desc:'Final scores missing for 12 students.'},
-                                        {title:'Grade 12 - Physics Advanced',desc:'Lab reports overdue for entry.'}
-                                    ]).map(a => `
+                                    ${alerts.length > 0 ? alerts.slice(0, 3).map(a => `
                                         <div class="si-alert-item">
                                             <div class="si-alert-item__icon"><i data-lucide="alert-circle" style="width:20px;height:20px;"></i></div>
                                             <div class="si-alert-item__content">
@@ -15675,16 +15573,16 @@ export const UI = {
                                                 <div class="si-alert-item__desc">${a.desc}</div>
                                             </div>
                                         </div>
-                                    `).join('')}
+                                    `).join('') : '<div class="si-empty-state"><div class="si-empty-state__text">No critical alerts</div></div>'}
                                 </div>
-                                <button class="si-alert-link">View all ${alerts.length || 14} alerts</button>
+                                ${alerts.length > 0 ? `<button class="si-alert-link">View all ${alerts.length} alerts</button>` : ''}
                             </div>
 
                             <!-- Recent Activity -->
                             <div class="si-activity-card">
                                 <h3 class="si-activity-title">Recent Activity</h3>
                                 <div class="si-activity-list">
-                                    ${activity.map(a => `
+                                    ${activity.length > 0 ? activity.map(a => `
                                         <div class="si-activity-item">
                                             <div class="si-activity-dot"><i data-lucide="${a.icon}" style="width:14px;height:14px;"></i></div>
                                             <div>
@@ -15692,7 +15590,7 @@ export const UI = {
                                                 <div class="si-activity-time">${a.time}</div>
                                             </div>
                                         </div>
-                                    `).join('')}
+                                    `).join('') : '<div class="si-empty-state"><div class="si-empty-state__text">No recent activity</div></div>'}
                                 </div>
                             </div>
                         </div>
@@ -15896,7 +15794,7 @@ export const UI = {
                 <div class="si-fade-in">
                     <!-- Subject Cards -->
                     <div class="si-subject-grid">
-                        ${subjectData.map(s => `
+                        ${subjectData.length > 0 ? subjectData.map(s => `
                             <div class="si-subject-card">
                                 <div class="si-subject-card__name">${s.name}</div>
                                 <div class="si-subject-card__meta">${s.type} • ${s.classCount} class${s.classCount!==1?'es':''} • ${s.studentCount} students</div>
@@ -15927,7 +15825,7 @@ export const UI = {
                                     </div>
                                 </div>
                             </div>
-                        `).join('')}
+                        `).join('') : '<div class="si-empty-state" style="grid-column: span 3; width: 100%;"><div class="si-empty-state__text">No subjects performance data available</div></div>'}
                     </div>
 
                     <!-- At-Risk Students -->
@@ -16018,7 +15916,7 @@ export const UI = {
                     </div>
 
                     <!-- Department Groups -->
-                    ${Object.entries(deptGroups).map(([dept, teachers]) => `
+                    ${Object.entries(deptGroups).length > 0 ? Object.entries(deptGroups).map(([dept, teachers]) => `
                         <div class="si-dept-group">
                             <div class="si-dept-header" data-dept="${dept}">
                                 <span class="si-dept-header__title">
@@ -16052,7 +15950,7 @@ export const UI = {
                                 `).join('')}
                             </div>
                         </div>
-                    `).join('')}
+                    `).join('') : '<div class="si-empty-state"><div class="si-empty-state__text">No submission monitoring data available</div></div>'}
                 </div>
             `;
             if (typeof lucide !== 'undefined') lucide.createIcons();
