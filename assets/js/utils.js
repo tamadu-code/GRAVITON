@@ -894,7 +894,7 @@ export async function generatePaymentReceipt(payment, student, schoolInfo = {}) 
         feeStructures.forEach(item => {
             doc.setFont('helvetica', 'normal');
             doc.text(item.category || "General Fees", 12, y);
-            doc.text(`₦${item.amount.toLocaleString()}`, 88, y, { align: 'right' });
+            doc.text(`NGN ${item.amount.toLocaleString()}`, 88, y, { align: 'right' });
             configuredTotal += item.amount;
             y += 5.5;
         });
@@ -905,7 +905,7 @@ export async function generatePaymentReceipt(payment, student, schoolInfo = {}) 
 
         doc.setFont('helvetica', 'bold');
         doc.text("Total Configured Fee:", 12, y);
-        doc.text(`₦${configuredTotal.toLocaleString()}`, 88, y, { align: 'right' });
+        doc.text(`NGN ${configuredTotal.toLocaleString()}`, 88, y, { align: 'right' });
         y += 3.5;
     }
 
@@ -915,7 +915,7 @@ export async function generatePaymentReceipt(payment, student, schoolInfo = {}) 
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10.5);
     doc.setFont('helvetica', 'bold');
-    doc.text(`AMOUNT PAID: ₦${payment.amount.toLocaleString()}`, 50, y + 6.5, { align: 'center' });
+    doc.text(`AMOUNT PAID: NGN ${payment.amount.toLocaleString()}`, 50, y + 6.5, { align: 'center' });
 
     y += 18;
     doc.setTextColor(100, 116, 139);
