@@ -15285,6 +15285,7 @@ export const UI = {
                 });
             }
         });
+        courses.sort((a, b) => a.subject_name.localeCompare(b.subject_name) || a.class_name.localeCompare(b.class_name));
 
         const uniqueClasses = [...new Set(courses.map(c => c.class_name))].sort();
         const gradeFields = ['assignment','test1','test2','project','exam'];
@@ -15331,7 +15332,7 @@ export const UI = {
             return Object.entries(deptMap).map(([name, data]) => {
                 const avg = data.scores.length > 0 ? data.scores.reduce((a,b) => a+b, 0) / data.scores.length : 0;
                 return { name: name.toUpperCase(), avg: Math.round(avg), target: data.target, pct: Math.min(100, Math.round(avg)) };
-            });
+            }).sort((a, b) => a.name.localeCompare(b.name));
         };
 
         // --- Missing scores data ---
@@ -15618,7 +15619,7 @@ export const UI = {
             const buildTable = (idx) => {
                 const course = courses[idx] || courses[0];
                 if (!course) return '<div class="si-empty-state"><div class="si-empty-state__text">No courses available</div></div>';
-                const cls = students.filter(s => s.class_name === course.class_name);
+                const cls = students.filter(s => s.class_name === course.class_name).sort((a, b) => a.name.localeCompare(b.name));
                 const cScores = filteredScores.filter(s => String(s.subject_id) === String(course.subject_id) && s.class_name === course.class_name);
 
                 let highest = -1, lowest = 101, highIdx = -1, lowIdx = -1;
@@ -15771,6 +15772,7 @@ export const UI = {
                 });
                 subjectData.push({ id, name: data.name, type: data.type, classCount: [...new Set(data.classes)].length, studentCount: totals.length, avg: parseFloat(avg), passRate, dist });
             });
+            subjectData.sort((a, b) => a.name.localeCompare(b.name));
 
             // At-risk students: below threshold across 2+ subjects
             const studentFailMap = {};
@@ -15787,7 +15789,7 @@ export const UI = {
                     const st = students.find(s => s.student_id === sid);
                     return { name: st ? st.name : sid, class_name: st ? st.class_name : '', failCount: fails.length, lowestScore: Math.min(...fails.map(f => f.total)) };
                 })
-                .sort((a,b) => a.lowestScore - b.lowestScore)
+                .sort((a,b) => a.name.localeCompare(b.name))
                 .slice(0, 8);
 
             tabContent.innerHTML = `
@@ -15887,7 +15889,13 @@ export const UI = {
                     const ago = Math.round((Date.now() - new Date(lastLog.timestamp).getTime()) / 60000);
                     return ago < 60 ? `${ago}m ago` : ago < 1440 ? `${Math.round(ago/60)}h ago` : `${Math.round(ago/1440)}d ago`;
                 })() : 'No activity';
+                t.courses.sort(); // Sort courses alphabetically
                 deptGroups[t.dept].push({ id: tid, name: t.name, courses: t.courses, pct, lastActivity, initials: t.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() });
+            });
+
+            // Sort teachers inside each department alphabetically by name
+            Object.keys(deptGroups).forEach(d => {
+                deptGroups[d].sort((a, b) => a.name.localeCompare(b.name));
             });
 
             const totalTeachers = Object.values(teacherMap).length;
@@ -15916,7 +15924,7 @@ export const UI = {
                     </div>
 
                     <!-- Department Groups -->
-                    ${Object.entries(deptGroups).length > 0 ? Object.entries(deptGroups).map(([dept, teachers]) => `
+                    ${Object.entries(deptGroups).length > 0 ? Object.entries(deptGroups).sort((a,b) => a[0].localeCompare(b[0])).map(([dept, teachers]) => `
                         <div class="si-dept-group">
                             <div class="si-dept-header" data-dept="${dept}">
                                 <span class="si-dept-header__title">
