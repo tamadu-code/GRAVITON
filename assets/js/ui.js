@@ -16449,21 +16449,9 @@ export const UI = {
                 updateInsightsViews();
             });
         });
-
+        
         // Draw initial state
         updateInsightsViews();
-    },             <td>${high}%</td>
-                                            <td>${passRate}%</td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        `;
-        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     async renderNoticeBoard() {
