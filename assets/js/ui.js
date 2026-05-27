@@ -15000,7 +15000,21 @@ export const UI = {
                         if (db[table]) {
                             await db[table].clear();
                             await db[table].bulkAdd(backup[table]);
-      async renderInsights() {
+                        }
+                    }
+                    
+                    Notifications.show('Restore successful! Reloading application...', 'success');
+                    setTimeout(() => location.reload(), 1500);
+                }
+            } catch (err) {
+                console.error(err);
+                Notifications.show('Invalid backup file.', 'error');
+            }
+        };
+        reader.readAsText(file);
+    },
+
+    async renderInsights() {
         const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
         const teacherId = this.currentUser.id;
         const currentUserName = this.currentUser.full_name || this.currentUser.name || 'Teacher';
