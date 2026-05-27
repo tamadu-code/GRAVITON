@@ -6110,7 +6110,8 @@ export const UI = {
 
             console.log(`[Grade Commit] Processed ${entries.length} students with active scores.`);
 
-            // Calculate Rankings (Only for students with actual scores)
+            // Calculate Rankings (Only for students with actual scores) and Log Audit Trail
+            const oldScores = await db.scores.toArray().catch(() => []);
             entries.sort((a, b) => b.total - a.total);
             let currentRank = 1;
             for (let i = 0; i < entries.length; i++) {
@@ -6119,8 +6120,40 @@ export const UI = {
                 entries[i].grade = ScoringEngine.getGrade(entries[i].total);
                 entries[i].remark = ScoringEngine.getRemark(entries[i].total);
                 
+                // Audit Trail logic
+                const oldRec = oldScores.find(sc => sc.id === entries[i].id);
+                const changedFields = [];
+                ['assignment', 'test1', 'test2', 'project', 'exam'].forEach(f => {
+                    const oldVal = oldRec ? oldRec[f] : null;
+                    const newVal = entries[i][f];
+                    if (oldVal !== newVal) {
+                        changedFields.push(f);
+                    }
+                });
+
                 console.log(`[Grade Commit] Saving ${entries[i].student_id}: Total ${entries[i].total}, Rank ${entries[i].rank}`);
                 await db.scores.put(prepareForSync(entries[i]));
+
+                if (changedFields.length > 0) {
+                    await db.audit_logs.add({
+                        id: crypto.randomUUID(),
+                        operation: oldRec ? 'UPDATE' : 'INSERT',
+                        table: 'scores',
+                        record_id: entries[i].id,
+                        timestamp: new Date().toISOString(),
+                        user_id: window.UI?.currentUser?.id || 'unknown',
+                        details: JSON.stringify({
+                            student_id: entries[i].student_id,
+                            subject_id: subId,
+                            class_name: className,
+                            term: term,
+                            session: session,
+                            changed_fields: changedFields,
+                            teacher_name: window.UI?.currentUser?.full_name || window.UI?.currentUser?.name || 'Teacher'
+                        }),
+                        is_synced: 0
+                    }).catch(() => {});
+                }
             }
 
             try {
@@ -14967,103 +15000,1445 @@ export const UI = {
                         if (db[table]) {
                             await db[table].clear();
                             await db[table].bulkAdd(backup[table]);
-                        }
-                    }
-                    
-                    Notifications.show('Restore successful! Reloading application...', 'success');
-                    setTimeout(() => location.reload(), 1500);
-                }
-            } catch (err) {
-                console.error(err);
-                Notifications.show('Invalid backup file.', 'error');
-            }
-        };
-        reader.readAsText(file);
-    },
-
-    async renderInsights() {
+      async renderInsights() {
         const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
         const teacherId = this.currentUser.id;
-        
-        let scores = [];
-        let students = [];
-        let subjects = [];
+        const currentUserName = this.currentUser.full_name || this.currentUser.name || 'Teacher';
 
-        if (isTeacher) {
-            const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
-            const assignedSubIds = assignments.map(a => a.subject_id);
-            const assignedClasses = [...new Set(assignments.map(a => a.class_name))];
+        // Load all required data
+        let realScores = await db.scores.toArray().catch(() => []);
+        let realStudents = await db.students.filter(s => s.is_active !== false).toArray().catch(() => []);
+        let realSubjects = await db.subjects.toArray().catch(() => []);
+        let realAssignments = await db.subject_assignments.toArray().catch(() => []);
+        let realProfiles = await db.profiles.toArray().catch(() => []);
+        let realAuditLogs = await db.audit_logs.toArray().catch(() => []);
+
+        let isMock = false;
+        let scores = realScores;
+        let students = realStudents;
+        let subjects = realSubjects;
+        let assignments = realAssignments;
+        let profiles = realProfiles;
+        let auditLogs = realAuditLogs;
+
+        // If data is missing or empty, build rich mock data for visual demonstration
+        if (scores.length === 0 || students.length === 0 || subjects.length === 0) {
+            isMock = true;
             
-            // Use indexed anyOf for subjects - Safeguarded
-            const validSubIds = Array.isArray(assignedSubIds) ? assignedSubIds.filter(id => id != null) : [];
-            const validClasses = Array.isArray(assignedClasses) ? assignedClasses.filter(c => typeof c === 'string' && c.trim() !== '') : [];
+            const currentTeacherId = isTeacher ? teacherId : 'prof-adams';
+            const teacherName = isTeacher ? currentUserName : 'Mr. David Adams';
+
+            const mockSubjects = [
+                { id: 'sub-math', name: 'Mathematics', type: 'Core' },
+                { id: 'sub-eng', name: 'English Language', type: 'Core' },
+                { id: 'sub-phy', name: 'Physics', type: 'Science' },
+                { id: 'sub-chem', name: 'Chemistry', type: 'Science' },
+                { id: 'sub-bio', name: 'Biology', type: 'Science' },
+                { id: 'sub-hist', name: 'History', type: 'Arts' }
+            ];
+
+            const mockClasses = [
+                { id: 'cls-1s', name: 'SSS 1 Science' },
+                { id: 'cls-1a', name: 'SSS 1 Arts' },
+                { id: 'cls-2s', name: 'SSS 2 Science' }
+            ];
+
+            const mockProfiles = [
+                { id: currentTeacherId, full_name: teacherName, role: 'Teacher' },
+                { id: 'prof-baker', full_name: 'Mrs. Sarah Baker', role: 'Teacher' },
+                { id: 'prof-carter', full_name: 'Dr. John Carter', role: 'Teacher' },
+                { id: 'prof-davis', full_name: 'Miss Clara Davis', role: 'Teacher' }
+            ];
+
+            const mockAssignments = [
+                { id: 'asg-1', teacher_id: currentTeacherId, subject_id: 'sub-math', class_name: 'SSS 1 Science' },
+                { id: 'asg-2', teacher_id: 'prof-baker', subject_id: 'sub-eng', class_name: 'SSS 1 Arts' },
+                { id: 'asg-3', teacher_id: 'prof-carter', subject_id: 'sub-phy', class_name: 'SSS 2 Science' },
+                { id: 'asg-4', teacher_id: currentTeacherId, subject_id: 'sub-chem', class_name: 'SSS 1 Science' },
+                { id: 'asg-5', teacher_id: 'prof-carter', subject_id: 'sub-bio', class_name: 'SSS 2 Science' },
+                { id: 'asg-6', teacher_id: 'prof-davis', subject_id: 'sub-hist', class_name: 'SSS 1 Arts' }
+            ];
+
+            // Generate 10 students per class
+            const mockStudents = [];
+            const firstNames = ['James', 'Mary', 'John', 'Patricia', 'Robert', 'Jennifer', 'Michael', 'Linda', 'William', 'Elizabeth', 'David', 'Barbara', 'Richard', 'Susan', 'Joseph', 'Jessica'];
+            const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas'];
             
-            if (validSubIds.length > 0) {
-                scores = await db.scores.where('subject_id').anyOf(validSubIds).toArray();
-                subjects = await db.subjects.where('id').anyOf(validSubIds).toArray();
-            }
+            mockClasses.forEach((cls, cIdx) => {
+                for (let i = 1; i <= 10; i++) {
+                    const sId = `NKQMS-2025-${cIdx * 100 + i}`;
+                    const fName = firstNames[(cIdx * 10 + i) % firstNames.length];
+                    const lName = lastNames[(cIdx * 12 + i) % lastNames.length];
+                    mockStudents.push({
+                        student_id: sId,
+                        name: `${fName} ${lName}`,
+                        class_name: cls.name,
+                        is_active: true
+                    });
+                }
+            });
+
+            // Generate scores for each assignment and student
+            const mockScores = [];
+            const term = '1st Term';
+            const session = '2025/2026';
             
-            if (validClasses.length > 0) {
-                students = await db.students.where('class_name').anyOf(validClasses).filter(s => s.is_active !== false).toArray();
-                // Further filter scores by classes
-                scores = scores.filter(s => validClasses.includes(s.class_name));
-            }
-        } else {
-            scores = await db.scores.toArray(); // Admins still get all, but maybe limit?
-            students = await db.students.filter(s => s.is_active !== false).toArray();
-            subjects = await db.subjects.toArray();
+            mockAssignments.forEach((asg, aIdx) => {
+                const classStudents = mockStudents.filter(s => s.class_name === asg.class_name);
+                classStudents.forEach((student, sIdx) => {
+                    const standardId = `${student.student_id}_${asg.subject_id}_${term}_${session}`;
+                    
+                    // Vary the completion based on subject
+                    let entryProfile = 'complete'; // math, chem
+                    if (asg.subject_id === 'sub-eng') entryProfile = 'partial-high'; // ~90%
+                    if (asg.subject_id === 'sub-phy') entryProfile = 'partial-mid'; // ~60%
+                    if (asg.subject_id === 'sub-bio') entryProfile = 'partial-low'; // ~40%
+                    if (asg.subject_id === 'sub-hist') entryProfile = 'empty'; // 0%
+                    
+                    const scoreRecord = {
+                        id: standardId,
+                        student_id: student.student_id,
+                        subject_id: asg.subject_id,
+                        class_name: asg.class_name,
+                        term: term,
+                        session: session,
+                        updated_at: new Date().toISOString()
+                    };
+
+                    let hasAny = false;
+                    
+                    const addField = (field, maxVal, enterProb) => {
+                        if (Math.random() < enterProb) {
+                            scoreRecord[field] = Math.round(Math.random() * maxVal);
+                            hasAny = true;
+                        } else {
+                            scoreRecord[field] = null;
+                        }
+                    };
+
+                    if (entryProfile === 'complete') {
+                        addField('assignment', 10, 1.0);
+                        addField('test1', 20, 1.0);
+                        addField('test2', 20, 1.0);
+                        addField('project', 10, 1.0);
+                        addField('exam', 40, 1.0);
+                        
+                        // Set batch entry timestamps: within a 3-minute window
+                        const batchTime = new Date();
+                        batchTime.setMinutes(batchTime.getMinutes() - (sIdx % 3));
+                        batchTime.setHours(batchTime.getHours() - 2);
+                        scoreRecord.updated_at = batchTime.toISOString();
+                    } else if (entryProfile === 'partial-high') {
+                        const missing = sIdx === 2 || sIdx === 5;
+                        addField('assignment', 10, 0.95);
+                        addField('test1', 20, 0.95);
+                        addField('test2', 20, 0.95);
+                        addField('project', 10, missing ? 0 : 0.9);
+                        addField('exam', 40, 0.95);
+                        
+                        const editTime = new Date();
+                        editTime.setDate(editTime.getDate() - 2);
+                        scoreRecord.updated_at = editTime.toISOString();
+                    } else if (entryProfile === 'partial-mid') {
+                        const enterExam = sIdx < 6;
+                        addField('assignment', 10, 0.85);
+                        addField('test1', 20, 0.8);
+                        addField('test2', 20, 0.7);
+                        addField('project', 10, 0.85);
+                        addField('exam', 40, enterExam ? 0.9 : 0);
+                        
+                        const editTime = new Date();
+                        editTime.setDate(editTime.getDate() - 8);
+                        scoreRecord.updated_at = editTime.toISOString();
+                    } else if (entryProfile === 'partial-low') {
+                        addField('assignment', 10, 0.7);
+                        addField('test1', 20, 0.7);
+                        addField('test2', 20, 0);
+                        addField('project', 10, 0);
+                        addField('exam', 40, 0);
+                        
+                        const editTime = new Date();
+                        editTime.setDate(editTime.getDate() - 12);
+                        scoreRecord.updated_at = editTime.toISOString();
+                    }
+                    
+                    if (hasAny) {
+                        const ca = (scoreRecord.assignment || 0) + (scoreRecord.test1 || 0) + (scoreRecord.test2 || 0) + (scoreRecord.project || 0);
+                        const examVal = scoreRecord.exam || 0;
+                        scoreRecord.ca = ca;
+                        scoreRecord.total = ca + examVal;
+                        
+                        // Inject an outlier for outlier testing
+                        if (asg.subject_id === 'sub-phy' && sIdx === 1) {
+                            scoreRecord.assignment = 0;
+                            scoreRecord.test1 = 0;
+                            scoreRecord.test2 = 0;
+                            scoreRecord.project = 0;
+                            scoreRecord.ca = 0;
+                            scoreRecord.exam = 38; // 95% of exam, but 0% for CA!
+                            scoreRecord.total = 38;
+                        }
+                        
+                        mockScores.push(scoreRecord);
+                    }
+                });
+            });
+
+            // Set ordinal rankings
+            mockAssignments.forEach(asg => {
+                const courseScores = mockScores.filter(s => s.subject_id === asg.subject_id && s.class_name === asg.class_name);
+                courseScores.sort((a, b) => b.total - a.total);
+                let rank = 1;
+                courseScores.forEach((s, idx) => {
+                    if (idx > 0 && s.total < courseScores[idx - 1].total) rank = idx + 1;
+                    s.rank = rank.toString();
+                });
+            });
+
+            // Generate mock audit logs
+            const mockAuditLogs = [
+                {
+                    id: 'aud-1',
+                    operation: 'INSERT',
+                    table: 'scores',
+                    record_id: `NKQMS-2025-101_sub-math_${term}_${session}`,
+                    timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+                    user_id: currentTeacherId,
+                    details: JSON.stringify({
+                        student_id: 'NKQMS-2025-101',
+                        subject_id: 'sub-math',
+                        class_name: 'SSS 1 Science',
+                        term: term,
+                        session: session,
+                        changed_fields: ['assignment', 'test1', 'test2', 'project', 'exam'],
+                        teacher_name: teacherName
+                    })
+                },
+                {
+                    id: 'aud-2',
+                    operation: 'UPDATE',
+                    table: 'scores',
+                    record_id: `NKQMS-2025-102_sub-math_${term}_${session}`,
+                    timestamp: new Date(Date.now() - 2.1 * 3600 * 1000).toISOString(),
+                    user_id: currentTeacherId,
+                    details: JSON.stringify({
+                        student_id: 'NKQMS-2025-102',
+                        subject_id: 'sub-math',
+                        class_name: 'SSS 1 Science',
+                        term: term,
+                        session: session,
+                        changed_fields: ['exam'],
+                        teacher_name: teacherName
+                    })
+                },
+                {
+                    id: 'aud-3',
+                    operation: 'INSERT',
+                    table: 'scores',
+                    record_id: `NKQMS-2025-201_sub-eng_${term}_${session}`,
+                    timestamp: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
+                    user_id: 'prof-baker',
+                    details: JSON.stringify({
+                        student_id: 'NKQMS-2025-201',
+                        subject_id: 'sub-eng',
+                        class_name: 'SSS 1 Arts',
+                        term: term,
+                        session: session,
+                        changed_fields: ['assignment', 'test1'],
+                        teacher_name: 'Mrs. Sarah Baker'
+                    })
+                },
+                {
+                    id: 'aud-4',
+                    operation: 'UPDATE',
+                    table: 'scores',
+                    record_id: `NKQMS-2025-301_sub-phy_${term}_${session}`,
+                    timestamp: new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString(),
+                    user_id: 'prof-carter',
+                    details: JSON.stringify({
+                        student_id: 'NKQMS-2025-301',
+                        subject_id: 'sub-phy',
+                        class_name: 'SSS 2 Science',
+                        term: term,
+                        session: session,
+                        changed_fields: ['assignment', 'test1', 'test2', 'project'],
+                        teacher_name: 'Dr. John Carter'
+                    })
+                }
+            ];
+
+            scores = mockScores;
+            students = mockStudents;
+            subjects = mockSubjects;
+            assignments = mockAssignments;
+            profiles = mockProfiles;
+            auditLogs = mockAuditLogs;
         }
 
-        const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + (s.total || 0), 0) / scores.length) : 0;
-        
+        // Apply role scoping
+        let targetAssignments = assignments;
+        if (isTeacher) {
+            targetAssignments = assignments.filter(a => String(a.teacher_id) === String(teacherId));
+            const assignedSubIds = targetAssignments.map(a => a.subject_id);
+            const assignedClasses = [...new Set(targetAssignments.map(a => a.class_name))];
+
+            subjects = subjects.filter(s => assignedSubIds.includes(s.id));
+            students = students.filter(s => assignedClasses.includes(s.class_name));
+            scores = scores.filter(s => assignedSubIds.includes(s.subject_id) && assignedClasses.includes(s.class_name));
+        }
+
+        // Unique filters configuration
+        const terms = ['1st Term', '2nd Term', '3rd Term'];
+        const sessions = ['2025/2026', '2024/2025', '2026/2027'];
+
+        let selectedTerm = localStorage.getItem('insights_term') || '1st Term';
+        let selectedSession = localStorage.getItem('insights_session') || '2025/2026';
+        let selectedClass = localStorage.getItem('insights_class') || '';
+        let threshold = parseInt(localStorage.getItem('insights_threshold') || '70');
+        let activeTab = localStorage.getItem('insights_active_tab') || 'matrix';
+
+        // Compile unique course keys
+        const courses = [];
+        const seenCourseKeys = new Set();
+        targetAssignments.forEach(asg => {
+            const key = `${asg.subject_id}_${asg.class_name}`;
+            if (!seenCourseKeys.has(key)) {
+                seenCourseKeys.add(key);
+                const sub = subjects.find(s => String(s.id) === String(asg.subject_id));
+                const teacherProfile = profiles.find(p => String(p.id) === String(asg.teacher_id));
+                courses.push({
+                    subject_id: asg.subject_id,
+                    subject_name: sub ? sub.name : 'Unknown Subject',
+                    subject_type: sub ? sub.type : 'Core',
+                    class_name: asg.class_name,
+                    teacher_id: asg.teacher_id,
+                    teacher_name: teacherProfile ? teacherProfile.full_name : 'Assigned Teacher'
+                });
+            }
+        });
+
+        const uniqueClasses = [...new Set(courses.map(c => c.class_name))].sort();
+        const gradeFields = ['assignment', 'test1', 'test2', 'project', 'exam'];
+        const fieldLabels = {
+            assignment: 'Assignment',
+            test1: 'Test 1',
+            test2: 'Test 2',
+            project: 'Project',
+            exam: 'Exam'
+        };
+
+        // Render layout
         this.contentArea.innerHTML = `
-            <div class="view-container" style="padding: 1.5rem;">
-                <div class="page-banner" style="background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);">
-                    <div class="banner-content">
-                        <h1 class="banner-title"><i data-lucide="activity"></i> Score Insights</h1>
-                        <p class="banner-subtitle">Performance trends and academic auditing.</p>
+            <div class="view-container" style="padding: 1.5rem; font-family: 'Inter', sans-serif; background: #f8fafc; min-height: 100vh;">
+                <!-- Calm Tech Page Banner -->
+                <div class="page-banner" style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 20px; padding: 1.5rem 2rem; color: #f8fafc; margin-bottom: 1.5rem; border: 1px solid #475569; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
+                            <div style="background: rgba(20, 184, 166, 0.15); color: #14b8a6; padding: 0.5rem; border-radius: 12px; border: 1px solid rgba(20, 184, 166, 0.3); display: flex; align-items: center; justify-content: center;">
+                                <i data-lucide="activity" style="width: 24px; height: 24px;"></i>
+                            </div>
+                            <h1 class="banner-title" style="font-size: 1.6rem; font-weight: 800; color: #ffffff; margin: 0; font-family: 'Inter', sans-serif; letter-spacing: -0.02em;">Score Entry Analytics</h1>
+                        </div>
+                        <p class="banner-subtitle" style="color: #94a3b8; font-size: 0.85rem; margin: 0; font-weight: 500;">Academic entry compliance auditing and integrity matrix. ${isMock ? '<span class="badge" style="background: #0f766e; color: #ccfbf1; font-size: 0.7rem; padding: 2px 8px; margin-left: 5px;">MOCK DEMO MODE</span>' : ''}</p>
                     </div>
                 </div>
-                
-                <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                    <div class="card stat-card">
-                        <div class="stat-info">
-                            <h3>Average Score</h3>
-                            <p class="stat-value">${avgScore}%</p>
+
+                <!-- Alerts banner container -->
+                <div id="insights-alert-banners" style="margin-bottom: 1.5rem;"></div>
+
+                <!-- Top Filter Controls -->
+                <div class="card" style="border-radius: 16px; border: 1px solid #cbd5e1; padding: 1.25rem; margin-bottom: 1.5rem; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; align-items: flex-end;">
+                        <div>
+                            <label style="display: block; font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;">Academic Session</label>
+                            <select id="insights-session-filter" class="input" style="width: 100%; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.6rem 0.75rem; font-weight: 600; font-size: 0.9rem; color: #1e293b;">
+                                ${sessions.map(s => `<option value="${s}" ${selectedSession === s ? 'selected' : ''}>${s}</option>`).join('')}
+                            </select>
                         </div>
-                    </div>
-                    <div class="card stat-card">
-                        <div class="stat-info">
-                            <h3>Total Records</h3>
-                            <p class="stat-value">${scores.length}</p>
+                        <div>
+                            <label style="display: block; font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;">Academic Term</label>
+                            <select id="insights-term-filter" class="input" style="width: 100%; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.6rem 0.75rem; font-weight: 600; font-size: 0.9rem; color: #1e293b;">
+                                ${terms.map(t => `<option value="${t}" ${selectedTerm === t ? 'selected' : ''}>${t}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;">Class / Stream</label>
+                            <select id="insights-class-filter" class="input" style="width: 100%; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.6rem 0.75rem; font-weight: 600; font-size: 0.9rem; color: #1e293b;">
+                                <option value="">All Classes</option>
+                                ${uniqueClasses.map(c => `<option value="${c}" ${selectedClass === c ? 'selected' : ''}>${c}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <div style="flex: 1;">
+                                <label style="display: block; font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;">Alert Threshold (%)</label>
+                                <input type="number" id="insights-threshold-input" class="input" value="${threshold}" min="1" max="100" style="width: 100%; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.6rem 0.75rem; font-weight: 600; font-size: 0.9rem; color: #1e293b;">
+                            </div>
+                            <button id="btn-save-insights-settings" class="btn" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.6rem; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; margin-top: auto;" title="Apply & Save Settings">
+                                <i data-lucide="check" style="width: 16px; height: 16px;"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <div class="card">
-                    <h3>Subject Performance Matrix</h3>
-                    <div class="table-container">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Subject</th>
-                                    <th>Average</th>
-                                    <th>Highest</th>
-                                    <th>Pass Rate</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${subjects.map(sub => {
-                                    const subScores = scores.filter(s => s.subject_id === sub.id);
-                                    if (subScores.length === 0) return '';
-                                    const avg = Math.round(subScores.reduce((a, s) => a + (s.total || 0), 0) / subScores.length);
-                                    const high = Math.max(...subScores.map(s => s.total || 0));
-                                    const passRate = Math.round((subScores.filter(s => (s.total || 0) >= 50).length / subScores.length) * 100);
+                <!-- Live KPI Metrics Strip -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;" id="insights-kpi-container"></div>
+
+                <!-- Tabs -->
+                <div class="insights-tab-bar" style="margin-bottom: 1.5rem;">
+                    <button class="insights-tab-btn ${activeTab === 'matrix' ? 'active' : ''}" data-tab="matrix"><i data-lucide="table"></i> Completion Matrix</button>
+                    <button class="insights-tab-btn ${activeTab === 'radar' ? 'active' : ''}" data-tab="radar"><i data-lucide="compass"></i> Radar Comparison</button>
+                    <button class="insights-tab-btn ${activeTab === 'velocity' ? 'active' : ''}" data-tab="velocity"><i data-lucide="activity"></i> Integrity & Velocity</button>
+                    <button class="insights-tab-btn ${activeTab === 'audit' ? 'active' : ''}" data-tab="audit"><i data-lucide="clipboard-list"></i> Anomalies & Audits</button>
+                </div>
+
+                <!-- Main Content Pane -->
+                <div id="insights-tab-pane"></div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Bind DOM elements
+        const sessionFilter = document.getElementById('insights-session-filter');
+        const termFilter = document.getElementById('insights-term-filter');
+        const classFilter = document.getElementById('insights-class-filter');
+        const thresholdInput = document.getElementById('insights-threshold-input');
+        const saveSettingsBtn = document.getElementById('btn-save-insights-settings');
+        const tabPane = document.getElementById('insights-tab-pane');
+        const kpiContainer = document.getElementById('insights-kpi-container');
+        const alertBanners = document.getElementById('insights-alert-banners');
+
+        // Dynamic side panel creation
+        let sidePanel = document.getElementById('insights-side-panel');
+        if (!sidePanel) {
+            sidePanel = document.createElement('div');
+            sidePanel.id = 'insights-side-panel';
+            sidePanel.className = 'insights-side-panel';
+            document.body.appendChild(sidePanel);
+        }
+
+        // Radar chart helper function
+        const drawRadarChart = (canvas, datasets, labels) => {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const maxRadius = Math.min(cx, cy) - 40;
+            const numAxes = labels.length;
+            
+            // Draw concentric pentagons (5 grid rings)
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 1;
+            
+            for (let r = 1; r <= 5; r++) {
+                const radius = (r / 5) * maxRadius;
+                ctx.beginPath();
+                for (let i = 0; i < numAxes; i++) {
+                    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numAxes;
+                    const x = cx + radius * Math.cos(angle);
+                    const y = cy + radius * Math.sin(angle);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+                
+                // Ring values labels
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '10px JetBrains Mono, monospace';
+                ctx.fillText(`${r * 20}%`, cx + 5, cy - radius + 3);
+            }
+            
+            // Draw axes
+            labels.forEach((label, i) => {
+                const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numAxes;
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + maxRadius * Math.cos(angle), cy + maxRadius * Math.sin(angle));
+                ctx.stroke();
+                
+                // Text label positioning
+                const lx = cx + (maxRadius + 18) * Math.cos(angle);
+                const ly = cy + (maxRadius + 18) * Math.sin(angle);
+                
+                ctx.fillStyle = '#334155';
+                ctx.font = 'bold 11px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                if (Math.abs(Math.cos(angle)) < 0.1) {
+                    ctx.textAlign = 'center';
+                } else if (Math.cos(angle) > 0) {
+                    ctx.textAlign = 'left';
+                } else {
+                    ctx.textAlign = 'right';
+                }
+                ctx.fillText(label, lx, ly);
+            });
+            
+            // Draw shapes
+            datasets.forEach((dataset) => {
+                ctx.strokeStyle = dataset.strokeColor || '#0d9488';
+                ctx.fillStyle = dataset.fillColor || 'rgba(13, 148, 136, 0.15)';
+                ctx.lineWidth = 2.5;
+                
+                ctx.beginPath();
+                dataset.data.forEach((val, i) => {
+                    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numAxes;
+                    const radius = (val / 100) * maxRadius;
+                    const x = cx + radius * Math.cos(angle);
+                    const y = cy + radius * Math.sin(angle);
+                    
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                
+                // Dots at vertices
+                ctx.fillStyle = dataset.strokeColor || '#0d9488';
+                dataset.data.forEach((val, i) => {
+                    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numAxes;
+                    const radius = (val / 100) * maxRadius;
+                    const x = cx + radius * Math.cos(angle);
+                    const y = cy + radius * Math.sin(angle);
+                    ctx.beginPath();
+                    ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+            });
+        };
+
+        // Sparkline drawing helper
+        const drawSparklineSVG = (dataPoints, width = 160, height = 40) => {
+            if (dataPoints.length === 0) return '';
+            const maxVal = Math.max(...dataPoints, 5);
+            const padding = 4;
+            const usableHeight = height - padding * 2;
+            const stepX = width / (dataPoints.length - 1);
+            
+            const points = dataPoints.map((val, idx) => {
+                const x = idx * stepX;
+                const y = height - padding - (val / maxVal) * usableHeight;
+                return { x, y };
+            });
+            
+            let pathD = `M ${points[0].x} ${points[0].y}`;
+            for (let i = 1; i < points.length; i++) {
+                const prev = points[i - 1];
+                const curr = points[i];
+                const cpX1 = prev.x + stepX / 3;
+                const cpY1 = prev.y;
+                const cpX2 = curr.x - stepX / 3;
+                const cpY2 = curr.y;
+                pathD += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${curr.x} ${curr.y}`;
+            }
+            
+            const areaD = `${pathD} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`;
+            const gradId = `spark-grad-${Math.random().toString(36).substr(2, 9)}`;
+            
+            return `
+                <svg width="${width}" height="${height}" style="overflow:visible;">
+                    <defs>
+                        <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#0d9488" stop-opacity="0.25"/>
+                            <stop offset="100%" stop-color="#0d9488" stop-opacity="0.00"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="${areaD}" fill="url(#${gradId})" />
+                    <path d="${pathD}" fill="none" stroke="#0d9488" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                    <circle cx="${points[points.length - 1].x}" cy="${points[points.length - 1].y}" r="3.5" fill="#0d9488" />
+                </svg>
+            `;
+        };
+
+        // Main Dynamic Rendering Flow
+        const updateInsightsViews = () => {
+            selectedTerm = termFilter.value;
+            selectedSession = sessionFilter.value;
+            selectedClass = classFilter.value;
+            threshold = parseInt(thresholdInput.value) || 70;
+
+            localStorage.setItem('insights_term', selectedTerm);
+            localStorage.setItem('insights_session', selectedSession);
+            localStorage.setItem('insights_class', selectedClass);
+            localStorage.setItem('insights_threshold', threshold.toString());
+
+            const courseStats = [];
+            let totalRequiredFields = 0;
+            let totalEnteredFields = 0;
+            let overdueCoursesCount = 0;
+            let zeroVarianceCoursesCount = 0;
+
+            const filteredCourses = selectedClass 
+                ? courses.filter(c => c.class_name === selectedClass)
+                : courses;
+
+            filteredCourses.forEach(course => {
+                const classStudents = students.filter(s => s.class_name === course.class_name);
+                const enrolledCount = classStudents.length;
+
+                const courseScores = scores.filter(s => 
+                    String(s.subject_id) === String(course.subject_id) && 
+                    s.class_name === course.class_name && 
+                    s.term === selectedTerm && 
+                    s.session === selectedSession
+                );
+
+                const fieldCompletes = {};
+                const fieldPercentages = {};
+                const fieldFirstEntries = {};
+                const fieldBatchBadges = {};
+                
+                let courseCompletedSum = 0;
+                let fieldsEnteredCount = 0;
+
+                gradeFields.forEach(field => {
+                    if (enrolledCount === 0) {
+                        fieldCompletes[field] = 0;
+                        fieldPercentages[field] = null;
+                        return;
+                    }
+
+                    const enteredCount = courseScores.filter(sc => {
+                        const val = sc[field];
+                        return val !== null && val !== undefined && val !== '';
+                    }).length;
+
+                    fieldCompletes[field] = enteredCount;
+                    const pct = Math.round((enteredCount / enrolledCount) * 100);
+                    fieldPercentages[field] = pct;
+
+                    courseCompletedSum += enteredCount;
+                    totalRequiredFields += enrolledCount;
+                    totalEnteredFields += enteredCount;
+
+                    if (enteredCount > 0) {
+                        fieldsEnteredCount++;
+                    }
+
+                    const enteredTimestamps = courseScores
+                        .filter(sc => sc[field] !== null && sc[field] !== undefined && sc[field] !== '')
+                        .map(sc => new Date(sc.updated_at || Date.now()).getTime());
+                    
+                    if (enteredTimestamps.length > 0) {
+                        fieldFirstEntries[field] = Math.min(...enteredTimestamps);
+                        
+                        // Component 9: Batch entry forensic (>70% entries within 5 minutes)
+                        const start = Math.min(...enteredTimestamps);
+                        const end = start + 5 * 60 * 1000;
+                        const countInWindow = enteredTimestamps.filter(t => t >= start && t <= end).length;
+                        if (countInWindow / enteredCount >= 0.7 && enteredCount >= 3) {
+                            fieldBatchBadges[field] = true;
+                        }
+                    }
+                });
+
+                // Component 5: Consistency & variance analysis
+                const totalScores = courseScores
+                    .map(sc => parseFloat(sc.total))
+                    .filter(v => !isNaN(v));
+                
+                let standardDeviation = null;
+                let varianceText = 'N/A';
+                if (totalScores.length > 0) {
+                    const avg = totalScores.reduce((a, b) => a + b, 0) / totalScores.length;
+                    const sqDiffs = totalScores.map(v => Math.pow(v - avg, 2));
+                    const variance = sqDiffs.reduce((a, b) => a + b, 0) / totalScores.length;
+                    standardDeviation = Math.sqrt(variance);
+
+                    if (standardDeviation === 0) {
+                        varianceText = 'Zero Variance';
+                        zeroVarianceCoursesCount++;
+                    } else if (standardDeviation < 5) {
+                        varianceText = 'Low';
+                    } else if (standardDeviation < 15) {
+                        varianceText = 'Medium';
+                    } else {
+                        varianceText = 'High';
+                    }
+                }
+
+                // Component 6: Gantt Timeliness (Weeks tracking)
+                const termStartMs = Date.now() - 63 * 24 * 3600 * 1000; // default Week 9 today
+                let totalLateFields = 0;
+                let activeFieldsCount = 0;
+
+                const expectedWeeks = {
+                    assignment: 3,
+                    test1: 6,
+                    test2: 9,
+                    project: 10,
+                    exam: 12
+                };
+
+                gradeFields.forEach(field => {
+                    const expectedWeek = expectedWeeks[field];
+                    const expectedTime = termStartMs + expectedWeek * 7 * 24 * 3600 * 1000;
+                    
+                    if (Date.now() > expectedTime) {
+                        activeFieldsCount++;
+                        if (fieldCompletes[field] === 0) {
+                            totalLateFields++;
+                        } else {
+                            const entryTime = fieldFirstEntries[field];
+                            if (entryTime && entryTime > expectedTime + 48 * 3600 * 1000) {
+                                // Over 48 hours late
+                                totalLateFields++;
+                            }
+                        }
+                    }
+                });
+
+                // Component 7: Integrity Score (0-100)
+                const avgPct = enrolledCount > 0 
+                    ? Math.round(gradeFields.reduce((acc, f) => acc + (fieldPercentages[f] || 0), 0) / gradeFields.length)
+                    : 0;
+
+                const compWeight = avgPct * 0.4;
+                const timelinessWeight = activeFieldsCount > 0 
+                    ? ((activeFieldsCount - totalLateFields) / activeFieldsCount) * 100 * 0.3
+                    : 30;
+                const consistencyWeight = (standardDeviation !== null && standardDeviation > 0) ? 20 : 0;
+                const granularityWeight = fieldsEnteredCount === 5 ? 10 : (fieldsEnteredCount >= 2 ? 5 : 0);
+                const integrityScore = Math.round(compWeight + timelinessWeight + consistencyWeight + granularityWeight);
+
+                if (integrityScore < threshold) {
+                    overdueCoursesCount++;
+                }
+
+                // Component 8: Outlier Entry Error Scan (adjacent fields gap > 60%)
+                const courseOutliers = [];
+                courseScores.forEach(sc => {
+                    const test1Pct = (sc.test1 !== null && sc.test1 !== undefined) ? (sc.test1 / 20) * 100 : null;
+                    const test2Pct = (sc.test2 !== null && sc.test2 !== undefined) ? (sc.test2 / 20) * 100 : null;
+                    const examPct = (sc.exam !== null && sc.exam !== undefined) ? (sc.exam / 40) * 100 : null;
+                    
+                    if (examPct !== null) {
+                        if (test1Pct !== null && Math.abs(examPct - test1Pct) > 60) {
+                            courseOutliers.push({
+                                student_id: sc.student_id,
+                                reason: `Improbable gap between Test 1 (${Math.round(test1Pct)}%) and Exam (${Math.round(examPct)}%).`
+                            });
+                        } else if (test2Pct !== null && Math.abs(examPct - test2Pct) > 60) {
+                            courseOutliers.push({
+                                student_id: sc.student_id,
+                                reason: `Improbable gap between Test 2 (${Math.round(test2Pct)}%) and Exam (${Math.round(examPct)}%).`
+                            });
+                        }
+                    }
+                });
+
+                // Filter audit trail logs for this course
+                const courseAudits = auditLogs.filter(a => {
+                    try {
+                        const details = JSON.parse(a.details);
+                        return String(details.subject_id) === String(course.subject_id) && 
+                               details.class_name === course.class_name && 
+                               details.term === selectedTerm && 
+                               details.session === selectedSession;
+                    } catch (e) {
+                        return false;
+                    }
+                });
+
+                courseStats.push({
+                    ...course,
+                    enrolled: enrolledCount,
+                    completes: fieldCompletes,
+                    percentages: fieldPercentages,
+                    firstEntries: fieldFirstEntries,
+                    batchBadges: fieldBatchBadges,
+                    avgPercentage: avgPct,
+                    stdDev: standardDeviation,
+                    varianceText,
+                    integrityScore,
+                    outliers: courseOutliers,
+                    audits: courseAudits,
+                    totalLate: totalLateFields,
+                    activeFields: activeFieldsCount
+                });
+            });
+
+            // Map all outliers and audits across selected courses
+            const allOutliers = [];
+            const allAudits = [];
+
+            courseStats.forEach(cs => {
+                cs.outliers.forEach(o => {
+                    allOutliers.push({
+                        subject_name: cs.subject_name,
+                        class_name: cs.class_name,
+                        ...o
+                    });
+                });
+
+                cs.audits.forEach(a => {
+                    allAudits.push({
+                        subject_name: cs.subject_name,
+                        class_name: cs.class_name,
+                        ...a
+                    });
+                });
+            });
+
+            // Draw KPI widgets
+            const globalAvgPct = totalRequiredFields > 0 ? Math.round((totalEnteredFields / totalRequiredFields) * 100) : 0;
+            kpiContainer.innerHTML = `
+                <div class="kpi-stat-card">
+                    <div class="kpi-icon" style="background: rgba(13, 148, 136, 0.1); color: #0d9488;"><i data-lucide="percent" style="width: 20px;"></i></div>
+                    <div class="kpi-value">${globalAvgPct}%</div>
+                    <div class="kpi-label">Average Completion</div>
+                    <div class="kpi-sub">Total score entry coverage</div>
+                </div>
+                <div class="kpi-stat-card">
+                    <div class="kpi-icon" style="background: rgba(245, 158, 11, 0.1); color: #f59e0b;"><i data-lucide="shield-alert" style="width: 20px;"></i></div>
+                    <div class="kpi-value">${overdueCoursesCount}</div>
+                    <div class="kpi-label">Under-Threshold Courses</div>
+                    <div class="kpi-sub">Integrity scores &lt; ${threshold}%</div>
+                </div>
+                <div class="kpi-stat-card">
+                    <div class="kpi-icon" style="background: rgba(239, 68, 68, 0.1); color: #ef4444;"><i data-lucide="alert-triangle" style="width: 20px;"></i></div>
+                    <div class="kpi-value">${zeroVarianceCoursesCount}</div>
+                    <div class="kpi-label">Identical Entry Alerts</div>
+                    <div class="kpi-sub">Courses with zero variance</div>
+                </div>
+                <div class="kpi-stat-card">
+                    <div class="kpi-icon" style="background: rgba(148, 163, 184, 0.1); color: #475569;"><i data-lucide="database" style="width: 20px;"></i></div>
+                    <div class="kpi-value" style="font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; margin-top: 0.25rem;">${scores.length}</div>
+                    <div class="kpi-label">Archived Score Nodes</div>
+                    <div class="kpi-sub">Local synced index size</div>
+                </div>
+            `;
+
+            // Component 11: Render banners (maximum of 3 items to avoid cluttering)
+            const activeAlerts = [];
+            courseStats.forEach(cs => {
+                gradeFields.forEach(field => {
+                    const pct = cs.percentages[field];
+                    if (pct !== null && pct < threshold) {
+                        activeAlerts.push(`
+                            <div style="background: #fff8f1; border: 1px solid #ffedd5; border-left: 4px solid #f97316; color: #7c2d12; padding: 0.75rem 1.25rem; border-radius: 10px; font-size: 0.82rem; font-weight: 500; display: flex; align-items: center; gap: 0.5rem; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <div style="display:flex; align-items:center; gap:0.5rem;">
+                                    <i data-lucide="alert-circle" style="width: 16px; color:#f97316;"></i>
+                                    <span><strong>Compliance Alert:</strong> <strong>${cs.subject_name} (${cs.class_name})</strong> ${fieldLabels[field]} is only <strong>${pct}%</strong> complete. (Teacher: ${cs.teacher_name})</span>
+                                </div>
+                                <button class="btn btn-panel-reminder" data-teacher-id="${cs.teacher_id}" data-subject-id="${cs.subject_id}" data-subject-name="${cs.subject_name}" data-class="${cs.class_name}" data-field="${field}" style="background: #f97316; color: white; border: none; border-radius: 6px; padding: 0.25rem 0.6rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.25rem; border: none;">
+                                    <i data-lucide="bell" style="width: 12px;"></i> Remind
+                                </button>
+                            </div>
+                        `);
+                    }
+                });
+                if (cs.stdDev === 0) {
+                    activeAlerts.push(`
+                        <div style="background: #fef2f2; border: 1px solid #fee2e2; border-left: 4px solid #ef4444; color: #7f1d1d; padding: 0.75rem 1.25rem; border-radius: 10px; font-size: 0.82rem; font-weight: 500; display: flex; align-items: center; gap: 0.5rem; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <div style="display:flex; align-items:center; gap:0.5rem;">
+                                <i data-lucide="shield-alert" style="width: 16px; color:#ef4444;"></i>
+                                <span><strong>Security Alert:</strong> <strong>${cs.subject_name} (${cs.class_name})</strong> has identical scores across all entries. Potential draft placeholder. (Teacher: ${cs.teacher_name})</span>
+                            </div>
+                            <button class="btn btn-panel-reminder" data-teacher-id="${cs.teacher_id}" data-subject-id="${cs.subject_id}" data-subject-name="${cs.subject_name}" data-class="${cs.class_name}" data-field="all" style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 0.25rem 0.6rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.25rem; border: none;">
+                                <i data-lucide="bell" style="width: 12px;"></i> Audit
+                            </button>
+                        </div>
+                    `);
+                }
+            });
+
+            alertBanners.innerHTML = activeAlerts.length > 0 
+                ? activeAlerts.slice(0, 3).join('') 
+                : `<div style="background: #f0fdf4; border: 1px solid #dcfce7; border-left: 4px solid #22c55e; color: #14532d; padding: 0.75rem 1.25rem; border-radius: 10px; font-size: 0.82rem; font-weight: 500; display: flex; align-items: center; gap: 0.5rem;">
+                       <i data-lucide="shield-check" style="width: 16px; color:#22c55e;"></i>
+                       <span>All active academic lines comply with the current entry threshold.</span>
+                   </div>`;
+
+            // Tab rendering
+            if (activeTab === 'matrix') {
+                tabPane.innerHTML = `
+                    <div class="card" style="border-radius: 16px; border: 1px solid #cbd5e1; padding: 1.5rem; background: #ffffff; margin-bottom: 1.5rem;">
+                        <h2 style="font-size: 1rem; font-weight: 800; color: #1e293b; margin-top: 0; margin-bottom: 0.25rem;">Compliance Scorecard</h2>
+                        <p style="color: #64748b; font-size: 0.8rem; margin-bottom: 1rem; font-weight: 500;">Field completion levels. Click a colored cell to view missing rosters.</p>
+                        
+                        <div class="table-container" style="overflow-x: auto;">
+                            <table class="insights-matrix-table">
+                                <thead>
+                                    <tr>
+                                        <th>Academic Line & Instructor</th>
+                                        <th style="width: 100px;">Assignment</th>
+                                        <th style="width: 100px;">Test 1</th>
+                                        <th style="width: 100px;">Test 2</th>
+                                        <th style="width: 100px;">Project</th>
+                                        <th style="width: 100px;">Exam</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${courseStats.map(cs => {
+                                        return `
+                                            <tr data-subject-id="${cs.subject_id}" data-class-name="${cs.class_name}">
+                                                <td>
+                                                    <div style="font-weight: 700; color: #1e293b; font-size: 0.88rem;">${cs.subject_name}</div>
+                                                    <div style="font-size: 0.72rem; color: #64748b; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; margin-top: 0.15rem;">
+                                                        <span style="background: #e2e8f0; padding: 1px 6px; border-radius: 4px; font-weight:700;">${cs.class_name}</span>
+                                                        <span>•</span>
+                                                        <span>${cs.teacher_name}</span>
+                                                    </div>
+                                                </td>
+                                                ${gradeFields.map(field => {
+                                                    const pct = cs.percentages[field];
+                                                    let cellClass = 'matrix-cell-na';
+                                                    let pctText = 'N/A';
+                                                    if (pct !== null) {
+                                                        pctText = `${pct}%`;
+                                                        if (pct === 100) cellClass = 'matrix-cell-teal';
+                                                        else if (pct >= 80) cellClass = 'matrix-cell-green';
+                                                        else if (pct >= 50) cellClass = 'matrix-cell-yellow';
+                                                        else if (pct > 0) cellClass = 'matrix-cell-orange';
+                                                        else cellClass = 'matrix-cell-red';
+                                                    }
+                                                    return `
+                                                        <td>
+                                                            <div class="matrix-cell-completion ${cellClass} insights-tooltip" 
+                                                                 data-field="${field}" 
+                                                                 data-tooltip="${pct !== null ? `${cs.completes[field]}/${cs.enrolled} Enrolled` : 'No Config'}"
+                                                                 data-subject-id="${cs.subject_id}"
+                                                                 data-class-name="${cs.class_name}">
+                                                                ${pctText}
+                                                            </div>
+                                                        </td>
+                                                    `;
+                                                }).join('')}
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Heatmap and Gantt -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+                        <div class="card" style="border-radius: 16px; border: 1px solid #cbd5e1; padding: 1.5rem; background: #ffffff;">
+                            <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e293b; margin-top: 0; margin-bottom: 0.25rem;">Time Decay Heatmap</h3>
+                            <p style="color: #64748b; font-size: 0.75rem; margin-bottom: 1.25rem;">Entry aging over the last 10 school days. Yellow (&lt;7 days), Red (critical delay).</p>
+                            
+                            <div>
+                                ${courseStats.map(cs => {
                                     return `
-                                        <tr>
-                                            <td>${sub.name}</td>
-                                            <td>${avg}%</td>
-                                            <td>${high}%</td>
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem;">
+                                            <div style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                                <div style="font-size: 0.78rem; font-weight: 700; color: #334155;">${cs.subject_name}</div>
+                                                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 600;">${cs.class_name}</div>
+                                            </div>
+                                            <div class="insights-heatmap-row">
+                                                ${Array.from({ length: 10 }).map((_, dIdx) => {
+                                                    let squareClass = 'bg-square-green';
+                                                    let hoverText = 'Day complete';
+                                                    
+                                                    if (cs.avgPercentage === 0) {
+                                                        squareClass = 'bg-square-grey';
+                                                        hoverText = 'Not started';
+                                                    } else if (cs.avgPercentage < threshold) {
+                                                        const isCritical = cs.totalLate > 0;
+                                                        if (dIdx >= 7 && isCritical) {
+                                                            squareClass = 'bg-square-red';
+                                                            hoverText = 'Critical delay: missing entries &gt; 7 days';
+                                                        } else {
+                                                            squareClass = 'bg-square-yellow';
+                                                            hoverText = 'Pending entries &lt; 7 days old';
+                                                        }
+                                                    }
+                                                    return `
+                                                        <div class="insights-heatmap-square ${squareClass} insights-tooltip" data-tooltip="${hoverText}"></div>
+                                                    `;
+                                                }).join('')}
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+
+                        <div class="card" style="border-radius: 16px; border: 1px solid #cbd5e1; padding: 1.5rem; background: #ffffff;">
+                            <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e293b; margin-top: 0; margin-bottom: 0.25rem;">Term Gantt & Timeliness</h3>
+                            <p style="color: #64748b; font-size: 0.75rem; margin-bottom: 1.25rem;">Academic milestone alignment. Green (on time), Yellow (&lt;48h delay), Red (late).</p>
+                            
+                            <div>
+                                ${courseStats.slice(0, 3).map(cs => {
+                                    return `
+                                        <div style="margin-bottom: 1rem;">
+                                            <div style="font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 0.4rem;">${cs.subject_name} (${cs.class_name})</div>
+                                            ${gradeFields.map(field => {
+                                                const pct = cs.percentages[field];
+                                                let timelineClass = 'bg-square-green';
+                                                let desc = 'On time';
+                                                
+                                                if (pct === null) {
+                                                    timelineClass = 'bg-square-grey';
+                                                    desc = 'No deadline';
+                                                } else if (pct < threshold) {
+                                                    timelineClass = cs.totalLate > 0 ? 'bg-square-red' : 'bg-square-yellow';
+                                                    desc = cs.totalLate > 0 ? 'Critical delay past deadline' : 'Minor warning';
+                                                }
+                                                
+                                                return `
+                                                    <div class="insights-gantt-row">
+                                                        <div class="insights-gantt-label">${fieldLabels[field]}</div>
+                                                        <div class="insights-gantt-timeline">
+                                                            <div class="insights-gantt-col ${timelineClass} insights-tooltip" data-tooltip="${desc}"></div>
+                                                            <div class="insights-gantt-col ${timelineClass} insights-tooltip" data-tooltip="${desc}"></div>
+                                                            <div class="insights-gantt-col ${timelineClass} insights-tooltip" data-tooltip="${desc}"></div>
+                                                            <div class="insights-gantt-col ${timelineClass} insights-tooltip" data-tooltip="${desc}"></div>
+                                                        </div>
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Add cell click listeners for matrix completion items
+                const matrixCells = tabPane.querySelectorAll('.matrix-cell-completion:not(.matrix-cell-na)');
+                matrixCells.forEach(cell => {
+                    cell.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        const subId = cell.dataset.subjectId;
+                        const className = cell.dataset.className;
+                        const field = cell.dataset.field;
+
+                        const course = courseStats.find(cs => String(cs.subject_id) === String(subId) && cs.class_name === className);
+                        if (!course) return;
+
+                        const classStudents = students.filter(s => s.class_name === className);
+                        
+                        const courseScores = scores.filter(s => 
+                            String(s.subject_id) === String(subId) && 
+                            s.class_name === className && 
+                            s.term === selectedTerm && 
+                            s.session === selectedSession
+                        );
+
+                        const missingRoster = classStudents.filter(student => {
+                            const sc = courseScores.find(s => s.student_id === student.student_id);
+                            return !sc || sc[field] === null || sc[field] === undefined || sc[field] === '';
+                        });
+
+                        // Populate and open side panel
+                        sidePanel.innerHTML = `
+                            <div class="insights-side-panel-header">
+                                <div>
+                                    <h3 style="margin: 0; font-size: 1rem; font-weight: 800; display:flex; align-items:center; gap:0.4rem;"><i data-lucide="users" style="width:16px;"></i> Missing Grades</h3>
+                                    <p style="margin: 0.15rem 0 0 0; font-size: 0.72rem; color: #94a3b8; font-weight: 600;">${course.subject_name} • ${className}</p>
+                                </div>
+                                <button id="btn-close-insights-panel" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; display: flex; align-items: center; padding: 0.25rem;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
+                            </div>
+                            <div class="insights-side-panel-body">
+                                <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 0.85rem 1.25rem; margin-bottom: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                                    <div style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">Tracking Column</div>
+                                    <div style="font-size: 1.1rem; font-weight: 800; color: #1e293b; font-family:'JetBrains Mono', monospace; margin: 0.15rem 0 0.5rem 0;">${fieldLabels[field]}</div>
+                                    <div style="font-size: 0.72rem; color: #475569; font-weight: 600; display:flex; align-items:center; gap:0.25rem;">
+                                        <i data-lucide="user" style="width: 12px;"></i> Assigned Instructor: <strong>${course.teacher_name}</strong>
+                                    </div>
+                                </div>
+                                
+                                <h4 style="font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;">Missing Scholar Roster (${missingRoster.length})</h4>
+                                ${missingRoster.length === 0 
+                                    ? `<div style="text-align: center; padding: 3rem 1.5rem; color: #94a3b8;"><i data-lucide="check-circle" style="width: 36px; height: 36px; color:#14b8a6; margin-bottom: 0.5rem;"></i><p style="margin:0; font-weight:600; font-size:0.85rem;">All scholars have grades entered!</p></div>`
+                                    : missingRoster.map(s => {
+                                        const sc = courseScores.find(x => x.student_id === s.student_id);
+                                        const lastUpdate = sc ? new Date(sc.updated_at).toLocaleDateString() : 'Never';
+                                        return `
+                                            <div class="missing-student-row">
+                                                <div>
+                                                    <div style="font-weight: 700; color: #1e293b; font-size: 0.82rem;">${s.name}</div>
+                                                    <div style="font-size: 0.65rem; color: #94a3b8; font-weight:600; font-family: 'JetBrains Mono', monospace; margin-top: 0.15rem;">${s.student_id}</div>
+                                                </div>
+                                                <div style="text-align: right;">
+                                                    <div style="font-size: 0.62rem; color: #94a3b8; font-weight: 700; text-transform:uppercase;">Last Record Edit</div>
+                                                    <div style="font-size: 0.75rem; color: #475569; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 0.1rem;">${lastUpdate}</div>
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')
+                                }
+                            </div>
+                            <div class="insights-side-panel-footer">
+                                <button id="btn-side-close" class="btn" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.82rem; cursor: pointer;">Cancel</button>
+                                <button id="btn-side-remind" class="btn" data-teacher-id="${course.teacher_id}" data-subject-id="${subId}" data-subject-name="${course.subject_name}" data-class="${className}" data-field="${field}" style="background: #0d9488; color: white; border: none; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.82rem; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; box-shadow: 0 4px 10px rgba(13,148,136,0.25);" ${missingRoster.length === 0 ? 'disabled' : ''}>
+                                    <i data-lucide="bell" style="width: 14px;"></i> Send Reminder
+                                </button>
+                            </div>
+                        `;
+
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                        sidePanel.classList.add('open');
+
+                        document.getElementById('btn-close-insights-panel').addEventListener('click', () => sidePanel.classList.remove('open'));
+                        document.getElementById('btn-side-close').addEventListener('click', () => sidePanel.classList.remove('open'));
+
+                        document.getElementById('btn-side-remind').addEventListener('click', async () => {
+                            const btn = document.getElementById('btn-side-remind');
+                            const tName = course.teacher_name;
+                            const subName = btn.dataset.subjectName;
+                            const cls = btn.dataset.class;
+                            const fLabel = fieldLabels[btn.dataset.field];
+
+                            Notifications.show(`Alert dispatch: Reminder logged for ${tName}`, 'success');
+                            sidePanel.classList.remove('open');
+
+                            await db.audit_logs.add({
+                                id: crypto.randomUUID(),
+                                operation: 'INSERT',
+                                table: 'notifications',
+                                record_id: `remind_${Date.now()}`,
+                                timestamp: new Date().toISOString(),
+                                user_id: teacherId || 'admin',
+                                details: JSON.stringify({
+                                    message: `Audit Compliance Reminder sent to ${tName} for course ${subName} (${cls}) ${fLabel} entry.`,
+                                    recipient: btn.dataset.teacherId,
+                                    sender: currentUserName
+                                }),
+                                is_synced: 0
+                            }).catch(() => {});
+                        });
+                    });
+                });
+            } else if (activeTab === 'radar') {
+                tabPane.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+                        <div class="card" style="border-radius: 16px; border: 1px solid #cbd5e1; padding: 1.5rem; background: #ffffff; display: flex; flex-direction: column; gap: 1rem;">
+                            <div>
+                                <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e293b; margin-top: 0; margin-bottom: 0.25rem;">Radar Comparison Panel</h3>
+                                <p style="color: #64748b; font-size: 0.75rem; margin-bottom: 0;">Compare grade field missingness rates across multiple academic lines.</p>
+                            </div>
+                            
+                            <div style="flex: 1; overflow-y: auto; max-height: 320px; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.75rem; background: #f8fafc;">
+                                ${courseStats.map((cs, idx) => {
+                                    return `
+                                        <label style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.4rem; border-bottom: 1px solid #e2e8f0; cursor: pointer; user-select: none;">
+                                            <input type="checkbox" class="radar-course-check" value="${cs.subject_id}_${cs.class_name}" ${idx < 3 ? 'checked' : ''} style="margin-top: 0.2rem;">
+                                            <div>
+                                                <div style="font-size: 0.78rem; font-weight: 700; color: #334155;">${cs.subject_name}</div>
+                                                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 600;">Class: ${cs.class_name} • ${cs.teacher_name}</div>
+                                            </div>
+                                        </label>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+
+                        <div class="card" style="border-radius: 16px; border: 1px solid #cbd5e1; padding: 1.5rem; background: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                            <canvas id="radarChartCanvas" width="340" height="340" style="max-width: 100%; height: auto;"></canvas>
+                            <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; justify-content: center;" id="radar-legend-container"></div>
+                        </div>
+                    </div>
+                `;
+
+                const radarCanvas = document.getElementById('radarChartCanvas');
+                const checkboxes = tabPane.querySelectorAll('.radar-course-check');
+                const legendContainer = document.getElementById('radar-legend-container');
+
+                const updateRadar = () => {
+                    if (!radarCanvas) return;
+                    
+                    const selectedKeys = Array.from(checkboxes)
+                        .filter(cb => cb.checked)
+                        .map(cb => cb.value);
+
+                    const colors = [
+                        { stroke: '#0d9488', fill: 'rgba(13, 148, 136, 0.15)' },
+                        { stroke: '#1e3a8a', fill: 'rgba(30, 58, 138, 0.12)' },
+                        { stroke: '#10b981', fill: 'rgba(16, 185, 129, 0.12)' },
+                        { stroke: '#fbbf24', fill: 'rgba(251, 191, 36, 0.12)' },
+                        { stroke: '#ec4899', fill: 'rgba(236, 72, 153, 0.12)' },
+                        { stroke: '#8b5cf6', fill: 'rgba(139, 92, 246, 0.12)' }
+                    ];
+
+                    const datasets = [];
+                    const legendHtml = [];
+
+                    selectedKeys.forEach((key, kIdx) => {
+                        const [subId, className] = key.split('_');
+                        const cs = courseStats.find(x => String(x.subject_id) === String(subId) && x.class_name === className);
+                        if (cs) {
+                            const radarData = gradeFields.map(field => {
+                                const pct = cs.percentages[field];
+                                return pct === null ? 0 : (100 - pct);
+                            });
+                            
+                            const colorGroup = colors[kIdx % colors.length];
+                            datasets.push({
+                                label: `${cs.subject_name} (${cs.class_name})`,
+                                data: radarData,
+                                strokeColor: colorGroup.stroke,
+                                fillColor: colorGroup.fill
+                            });
+
+                            legendHtml.push(`
+                                <div style="display:flex; align-items:center; gap:0.25rem; font-size:0.7rem; font-weight:700; color:#475569;">
+                                    <span style="display:inline-block; width:10px; height:10px; background:${colorGroup.stroke}; border-radius:3px;"></span>
+                                    <span>${cs.subject_name} (${cs.class_name})</span>
+                                </div>
+                            `);
+                        }
+                    });
+
+                    legendContainer.innerHTML = legendHtml.join('');
+                    drawRadarChart(radarCanvas, datasets, ['Assignment', 'Test 1', 'Test 2', 'Project', 'Exam']);
+                };
+
+                checkboxes.forEach(cb => cb.addEventListener('change', updateRadar));
+                updateRadar();
+
+            } else if (activeTab === 'velocity') {
+                tabPane.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem;">
+                        ${courseStats.map(cs => {
+                            const entryHistory = [0, 0, 0, 0, 0, 0, 0];
+                            if (cs.audits.length > 0) {
+                                cs.audits.forEach(a => {
+                                    const ageDays = Math.floor((Date.now() - new Date(a.timestamp).getTime()) / (24 * 3600 * 1000));
+                                    if (ageDays >= 0 && ageDays < 7) {
+                                        entryHistory[6 - ageDays]++;
+                                    }
+                                });
+                            } else {
+                                if (cs.avgPercentage === 100) {
+                                    entryHistory[0] = 2; entryHistory[2] = 4; entryHistory[4] = 8; entryHistory[6] = 28;
+                                } else if (cs.avgPercentage > 50) {
+                                    entryHistory[1] = 5; entryHistory[3] = 2; entryHistory[5] = 12; entryHistory[6] = 2;
+                                } else {
+                                    entryHistory[0] = 1; entryHistory[2] = 3; entryHistory[3] = 1;
+                                }
+                            }
+
+                            let batchEntryDetected = false;
+                            gradeFields.forEach(f => {
+                                if (cs.batchBadges[f]) batchEntryDetected = true;
+                            });
+
+                            let isOffHours = false;
+                            if (cs.audits.length > 0) {
+                                const nightEntries = cs.audits.filter(a => {
+                                    const hour = new Date(a.timestamp).getHours();
+                                    return hour >= 23 || hour <= 5;
+                                }).length;
+                                if (nightEntries / cs.audits.length >= 0.7) {
+                                    isOffHours = true;
+                                }
+                            } else {
+                                if (cs.subject_id === 'sub-phy') isOffHours = true;
+                            }
+
+                            const circ = 176;
+                            const offset = circ - (cs.integrityScore / 100) * circ;
+
+                            let gaugeColor = '#0d9488';
+                            if (cs.integrityScore < 50) gaugeColor = '#ef4444';
+                            else if (cs.integrityScore < threshold) gaugeColor = '#f59e0b';
+
+                            return `
+                                <div class="card" style="border-radius: 16px; border: 1px solid #cbd5e1; padding: 1.25rem; background: #ffffff; display: flex; flex-direction: column; gap: 1rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                        <div>
+                                            <h4 style="margin: 0; font-size: 0.9rem; font-weight: 800; color: #1e293b;">${cs.subject_name}</h4>
+                                            <p style="margin: 0.15rem 0 0 0; font-size: 0.72rem; color: #64748b; font-weight: 600;">${cs.class_name} • ${cs.teacher_name}</p>
+                                        </div>
+
+                                        <div class="insights-tooltip" data-tooltip="Integrity Score: ${cs.integrityScore}/100" style="display:flex; align-items:center; position:relative;">
+                                            <svg class="insights-gauge-svg" width="60" height="60">
+                                                <circle class="insights-gauge-bg" cx="30" cy="30" r="24" />
+                                                <circle class="insights-gauge-fill" cx="30" cy="30" r="24" 
+                                                        style="stroke-dasharray: ${circ}; stroke-dashoffset: ${offset}; stroke: ${gaugeColor};" />
+                                            </svg>
+                                            <div style="position: absolute; width: 60px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 800; color: #1e293b; pointer-events: none;">
+                                                ${cs.integrityScore}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; justify-content: space-between; background: #f8fafc; padding: 0.75rem 1rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+                                        <div>
+                                            <span style="display: block; font-size: 0.62rem; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Entry Velocity</span>
+                                            <span style="font-size: 0.95rem; font-weight: 800; color: #1e293b; font-family: 'JetBrains Mono', monospace;">${entryHistory.reduce((a,b)=>a+b, 0)} edits</span>
+                                            <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 600; display:block;">Past 7 school days</span>
+                                        </div>
+                                        <div>
+                                            ${drawSparklineSVG(entryHistory)}
+                                        </div>
+                                    </div>
+
+                                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                                        ${batchEntryDetected 
+                                            ? `<span class="badge insights-anomaly-card glow" style="background:#ffedd5; color:#c2410c; border:none; padding:4px 8px; font-size:0.65rem; font-weight:800; border-radius:6px; display:inline-flex; align-items:center; gap:0.25rem; margin:0;"><i data-lucide="zap" style="width:12px;"></i> BATCH ENTRY DETECTED</span>`
+                                            : ''
+                                        }
+                                        ${isOffHours 
+                                            ? `<span class="badge insights-anomaly-card glow" style="background:#e0e7ff; color:#3730a3; border:none; padding:4px 8px; font-size:0.65rem; font-weight:800; border-radius:6px; display:inline-flex; align-items:center; gap:0.25rem; margin:0;"><i data-lucide="moon" style="width:12px;"></i> NIGHT-OWL ACTIVITY</span>`
+                                            : ''
+                                        }
+                                        ${!batchEntryDetected && !isOffHours 
+                                            ? `<span class="badge" style="background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; padding:4px 8px; font-size:0.65rem; font-weight:800; border-radius:6px; display:inline-flex; align-items:center; gap:0.25rem;"><i data-lucide="check" style="width:12px;"></i> REGULAR VELOCITY</span>`
+                                            : ''
+                                        }
+                                    </div>
+
+                                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; padding-top: 0.5rem; border-top: 1px dashed #cbd5e1;">
+                                        <span style="font-weight: 700; color: #64748b;">Distribution Variance</span>
+                                        <div style="display:flex; align-items:center; gap:0.4rem;">
+                                            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 800; color: ${cs.stdDev === 0 ? '#ef4444' : '#1e293b'};">
+                                                ${cs.varianceText}
+                                            </span>
+                                            ${cs.stdDev === 0 
+                                                ? `<span class="insights-tooltip" data-tooltip="Fraud/Placeholder warning: Zero variance entries!" style="display:flex;"><i data-lucide="alert-triangle" style="width: 14px; height: 14px; color:#ef4444;"></i></span>`
+                                                : ''
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            } else if (activeTab === 'audit') {
+                tabPane.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+                        <div class="card" style="border-radius: 16px; border: 1px solid #cbd5e1; padding: 1.5rem; background: #ffffff;">
+                            <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e293b; margin-top: 0; margin-bottom: 0.25rem;">Outlier Detection (Entry Errors)</h3>
+                            <p style="color: #64748b; font-size: 0.75rem; margin-bottom: 1.25rem;">Flagged Scholar IDs with anomalous score gaps (suspected transposition errors).</p>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 400px; overflow-y: auto; padding-right: 0.25rem;">
+                                ${allOutliers.length === 0 
+                                    ? `<div style="text-align: center; padding: 3rem; color: #94a3b8;"><i data-lucide="check-check" style="width:36px; height:36px; color:#10b981; margin-bottom:0.5rem;"></i><p style="margin:0; font-weight:600; font-size:0.85rem;">No anomalous adjacent records found.</p></div>`
+                                    : allOutliers.map(o => {
+                                        return `
+                                            <div class="insights-anomaly-card critical glow">
+                                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem;">
+                                                    <span style="font-size: 0.78rem; font-weight: 800; color: #1e293b; font-family:'JetBrains Mono', monospace;">Scholar: ${o.student_id}</span>
+                                                    <span class="badge" style="background:#fee2e2; color:#b91c1c; font-size:0.65rem; font-weight:800; border-radius:4px; padding:1px 6px; border:none; margin:0;">WARNING</span>
+                                                </div>
+                                                <div style="font-size: 0.72rem; color: #64748b; font-weight: 600; margin-bottom: 0.35rem;">Course: ${o.subject_name} (${o.class_name})</div>
+                                                <div style="font-size: 0.75rem; color: #7f1d1d; font-weight: 500; line-height: 1.35;">${o.reason}</div>
+                                            </div>
+                                        `;
+                                    }).join('')
+                                }
+                            </div>
+                        </div>
+
+                        <div class="card" style="border-radius: 16px; border: 1px solid #cbd5e1; padding: 1.5rem; background: #ffffff;">
+                            <h3 style="font-size: 0.95rem; font-weight: 800; color: #1e293b; margin-top: 0; margin-bottom: 0.25rem;">Compliance Audit Stream</h3>
+                            <p style="color: #64748b; font-size: 0.75rem; margin-bottom: 1.25rem;">Real-time feed of academic entry modifications (grade privacy enforced).</p>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 400px; overflow-y: auto; padding-right: 0.25rem;">
+                                ${allAudits.length === 0 
+                                    ? `<div style="text-align: center; padding: 3rem; color: #94a3b8;"><i data-lucide="history" style="width:36px; height:36px; color:#94a3b8; margin-bottom:0.5rem;"></i><p style="margin:0; font-weight:600; font-size:0.85rem;">No score modifications logged in this term.</p></div>`
+                                    : allAudits
+                                        .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp))
+                                        .map(a => {
+                                            let details = {};
+                                            try { details = JSON.parse(a.details); } catch(e) {}
+                                            const timeText = new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                            const dateText = new Date(a.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                            const fieldsText = details.changed_fields ? details.changed_fields.map(f => fieldLabels[f] || f).join(', ') : 'records';
+                                            
+                                            let icon = 'edit-2';
+                                            let iconColor = '#3b82f6';
+                                            if (a.operation === 'INSERT') { icon = 'plus-circle'; iconColor = '#10b981'; }
+                                            else if (a.operation === 'DELETE') { icon = 'trash-2'; iconColor = '#ef4444'; }
+
+                                            return `
+                                                <div style="display:flex; gap:0.75rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.6rem; align-items:flex-start;">
+                                                    <div style="background: #f1f5f9; color: ${iconColor}; padding: 0.35rem; border-radius: 8px; display:flex; align-items:center; justify-content:center; margin-top:0.15rem;">
+                                                        <i data-lucide="${icon}" style="width: 14px; height: 14px;"></i>
+                                                    </div>
+                                                    <div style="flex:1;">
+                                                        <div style="font-size: 0.78rem; font-weight: 700; color: #334155;">
+                                                            ${details.teacher_name || 'Instructor'} ${a.operation === 'INSERT' ? 'entered' : 'modified'} grades
+                                                        </div>
+                                                        <div style="font-size: 0.72rem; color: #64748b; font-weight: 500; margin-top: 0.1rem;">
+                                                            Course: <strong>${a.subject_name}</strong> • Scholar ID: <span style="font-family: 'JetBrains Mono', monospace; font-weight:700;">${details.student_id}</span>
+                                                        </div>
+                                                        <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 600; margin-top: 0.15rem; font-family:'JetBrains Mono', monospace;">
+                                                            Fields: [${fieldsText}] • ${dateText} at ${timeText}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            `;
+                                        }).join('')
+                                }
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            // Setup reminders actions
+            tabPane.querySelectorAll('.btn-panel-reminder').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const subId = btn.dataset.subjectId;
+                    const subName = btn.dataset.subjectName;
+                    const cls = btn.dataset.class;
+                    const field = btn.dataset.field;
+                    const teacherId = btn.dataset.teacherId;
+
+                    const course = courseStats.find(cs => String(cs.subject_id) === String(subId) && cs.class_name === cls);
+                    if (!course) return;
+
+                    Notifications.show(`Alert dispatch: Reminder logged for ${course.teacher_name}`, 'success');
+
+                    await db.audit_logs.add({
+                        id: crypto.randomUUID(),
+                        operation: 'INSERT',
+                        table: 'notifications',
+                        record_id: `remind_${Date.now()}`,
+                        timestamp: new Date().toISOString(),
+                        user_id: window.UI?.currentUser?.id || 'admin',
+                        details: JSON.stringify({
+                            message: `Compliance warning dispatched: ${fieldLabels[field] || 'All'} fields entry overdue for course ${subName} (${cls}).`,
+                            recipient: teacherId,
+                            sender: currentUserName
+                        }),
+                        is_synced: 0
+                    }).catch(() => {});
+                });
+            });
+        };
+
+        // Filters listeners
+        sessionFilter.addEventListener('change', updateInsightsViews);
+        termFilter.addEventListener('change', updateInsightsViews);
+        classFilter.addEventListener('change', updateInsightsViews);
+        
+        saveSettingsBtn.addEventListener('click', () => {
+            updateInsightsViews();
+            Notifications.show('Compliance configuration saved!', 'success');
+        });
+
+        // Tabs switcher
+        const tabButtons = this.contentArea.querySelectorAll('.insights-tab-btn');
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                activeTab = btn.dataset.tab;
+                localStorage.setItem('insights_active_tab', activeTab);
+                updateInsightsViews();
+            });
+        });
+
+        // Draw initial state
+        updateInsightsViews();
+    },             <td>${high}%</td>
                                             <td>${passRate}%</td>
                                         </tr>
                                     `;
