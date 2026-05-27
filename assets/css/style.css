@@ -4373,6 +4373,7 @@ input[type="date"].console-input::-webkit-calendar-picker-indicator {
         border-radius: inherit;
         z-index: 10;
     }
+}
 
 .desktop-only { display: inline-flex; }
 .mobile-only { display: none; }

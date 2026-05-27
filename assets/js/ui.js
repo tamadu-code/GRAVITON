@@ -15015,6 +15015,223 @@ export const UI = {
     },
 
     async renderInsights() {
+        // Dynamic isolated CSS injection to bypass PWA cache completely and guarantee premium visuals
+        let styleTag = document.getElementById('si-dynamic-styles');
+        if (!styleTag) {
+            styleTag = document.createElement('style');
+            styleTag.id = 'si-dynamic-styles';
+            styleTag.innerHTML = `
+                @keyframes siFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+                @keyframes siBarGrow { from { height: 0; } }
+                .si-fade-in { animation: siFadeIn .35s ease both; }
+                .si-container { font-family: 'Inter', sans-serif; background: #f8fafc; min-height: 100vh; padding: 2rem 1.5rem; }
+                .si-page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem; }
+                .si-page-title { font-size: 32px; font-weight: 600; color: #1b1b1d; letter-spacing: -.01em; line-height: 40px; margin: 0; }
+                .si-page-subtitle { font-size: 16px; font-weight: 400; color: #45464d; margin-top: 4px; line-height: 24px; }
+                .si-header-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+                .si-btn-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 1px solid #c6c6cd; border-radius: 8px; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; background: transparent; color: #1b1b1d; cursor: pointer; transition: background .2s; }
+                .si-btn-secondary:hover { background: #f0edef; }
+                .si-btn-primary { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #131b2e; color: #fff; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; cursor: pointer; transition: opacity .2s; }
+                .si-btn-primary:hover { opacity: .88; }
+                .si-btn-remind { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid #0058be; color: #0058be; background: transparent; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .2s; }
+                .si-btn-remind:hover { background: #0058be; color: #fff; }
+                .si-btn-remind-all { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: #131b2e; color: #fff; border: none; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity .2s; }
+                .si-btn-remind-all:hover { opacity: .88; }
+                .si-tab-bar { display: flex; gap: 0; background: #fcf8fa; border-bottom: 1px solid #c6c6cd; margin-bottom: 1.5rem; overflow-x: auto; }
+                .si-tab-btn { flex: none; padding: 12px 20px; border: none; border-bottom: 2px solid transparent; background: transparent; color: #76777d; font-size: 14px; font-weight: 500; font-family: 'Inter', sans-serif; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all .2s; white-space: nowrap; }
+                .si-tab-btn:hover { color: #1b1b1d; background: #f0edef; }
+                .si-tab-btn.active { color: #1b1b1d; border-bottom: 2px solid #0058be; font-weight: 600; }
+                .si-kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px; }
+                .si-kpi-card { background: #fff; border: 1px solid #c6c6cd; border-radius: 8px; padding: 24px; display: flex; flex-direction: column; justify-content: space-between; min-height: 140px; transition: box-shadow .2s; }
+                .si-kpi-card:hover { box-shadow: 0 4px 20px rgba(15,23,42,.06); }
+                .si-kpi-card__top { display: flex; justify-content: space-between; align-items: flex-start; }
+                .si-kpi-card__label { font-size: 12px; font-weight: 600; color: #45464d; text-transform: uppercase; letter-spacing: .05em; line-height: 16px; }
+                .si-kpi-card__icon { color: #0058be; }
+                .si-kpi-card__icon--warning { color: #ba1a1a; }
+                .si-kpi-card__body { margin-top: 16px; }
+                .si-kpi-card__value { font-size: 48px; font-weight: 700; color: #1b1b1d; line-height: 56px; letter-spacing: -.02em; font-feature-settings: 'tnum'; }
+                .si-kpi-card__trend { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+                .si-kpi-card__trend--up { color: #16a34a; }
+                .si-kpi-card__trend--warning { color: #ba1a1a; }
+                .si-kpi-card__progress { height: 8px; background: #eae7e9; border-radius: 99px; overflow: hidden; margin-top: 16px; }
+                .si-kpi-card__progress-fill { height: 100%; background: #0058be; border-radius: 99px; transition: width 1s cubic-bezier(.4,0,.2,1); }
+                .si-bento-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 24px; }
+                .si-bento-main { grid-column: span 8; display: flex; flex-direction: column; gap: 24px; }
+                .si-bento-side { grid-column: span 4; display: flex; flex-direction: column; gap: 24px; }
+                .si-chart-card { background: #fff; border: 1px solid #c6c6cd; border-radius: 8px; padding: 32px; min-height: 380px; }
+                .si-chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+                .si-chart-title { font-size: 20px; font-weight: 600; color: #1b1b1d; line-height: 28px; }
+                .si-chart-legend { display: flex; gap: 16px; align-items: center; }
+                .si-chart-legend__item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #45464d; }
+                .si-chart-legend__dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+                .si-chart-legend__dot--primary { background: #131b2e; }
+                .si-chart-legend__dot--target { background: #c6c6cd; }
+                .si-chart-bars { display: flex; align-items: flex-end; justify-content: space-around; height: 256px; padding: 0 24px; }
+                .si-bar-group { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 64px; cursor: default; }
+                .si-bar-group:hover .si-bar-fill { background: #0058be; }
+                .si-bar-track { position: relative; width: 100%; height: 192px; background: #eae7e9; border-radius: 4px 4px 0 0; }
+                .si-bar-fill { position: absolute; bottom: 0; width: 100%; background: #131b2e; border-radius: 4px 4px 0 0; transition: all .5s cubic-bezier(.4,0,.2,1); animation: siBarGrow .8s ease both; }
+                .si-bar-target { position: absolute; width: 100%; height: 0; border-top: 2px dashed #c6c6cd; }
+                .si-bar-label { font-size: 12px; font-weight: 600; color: #45464d; text-transform: uppercase; letter-spacing: .05em; }
+                .si-alert-card { background: #fff; border: 1px solid #c6c6cd; border-radius: 8px; padding: 24px; }
+                .si-alert-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+                .si-alert-title { font-size: 20px; font-weight: 600; color: #1b1b1d; }
+                .si-alert-badge { background: #ffdad6; color: #93000a; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 4px; }
+                .si-alert-list { display: flex; flex-direction: column; gap: 8px; }
+                .si-alert-item { display: flex; gap: 16px; padding: 16px; background: #f6f3f5; border-radius: 8px; border-left: 4px solid #ba1a1a; }
+                .si-alert-item__icon { flex-shrink: 0; width: 20px; height: 20px; color: #ba1a1a; display: flex; align-items: flex-start; padding-top: 2px; }
+                .si-alert-item__content { flex: 1; }
+                .si-alert-item__title { font-size: 12px; font-weight: 600; color: #1b1b1d; line-height: 16px; }
+                .si-alert-item__desc { font-size: 14px; font-weight: 400; color: #45464d; line-height: 20px; margin-top: 2px; }
+                .si-alert-link { display: block; text-align: center; color: #0058be; font-size: 12px; font-weight: 600; padding: 8px; cursor: pointer; margin-top: 8px; }
+                .si-alert-link:hover { text-decoration: underline; }
+                .si-activity-card { background: #fff; border: 1px solid #c6c6cd; border-radius: 8px; padding: 24px; }
+                .si-activity-title { font-size: 20px; font-weight: 600; color: #1b1b1d; margin-bottom: 16px; }
+                .si-activity-list { position: relative; display: flex; flex-direction: column; gap: 20px; padding-left: 0; }
+                .si-activity-list::before { content: ''; position: absolute; left: 11px; top: 8px; bottom: 8px; width: 1px; background: #c6c6cd; }
+                .si-activity-item { position: relative; padding-left: 40px; }
+                .si-activity-dot { position: absolute; left: 0; top: 2px; width: 22px; height: 22px; border-radius: 50%; background: #d8e2ff; display: flex; align-items: center; justify-content: center; }
+                .si-activity-dot i, .si-activity-dot .lucide { width: 14px; height: 14px; color: #0058be; }
+                .si-activity-text { font-size: 14px; font-weight: 400; color: #1b1b1d; line-height: 20px; }
+                .si-activity-text strong { font-weight: 700; }
+                .si-activity-time { font-size: 12px; font-weight: 600; color: #76777d; margin-top: 4px; letter-spacing: .05em; }
+                .si-table-card { background: #fff; border: 1px solid #c6c6cd; border-radius: 8px; overflow: hidden; }
+                .si-table-header { padding: 24px; background: #f6f3f5; border-bottom: 1px solid #c6c6cd; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+                .si-table-title { font-size: 20px; font-weight: 600; color: #1b1b1d; }
+                .si-table { width: 100%; text-align: left; border-collapse: collapse; }
+                .si-table thead { background: #fcf8fa; }
+                .si-table th { font-size: 12px; font-weight: 600; color: #45464d; text-transform: uppercase; letter-spacing: .05em; padding: 12px 24px; border-bottom: 1px solid #c6c6cd; white-space: nowrap; }
+                .si-table td { padding: 14px 24px; font-size: 14px; font-weight: 400; color: #1b1b1d; border-bottom: 1px solid #e4e2e4; }
+                .si-table tr:hover td { background: rgba(33,112,228,.04); }
+                .si-table__progress { display: inline-flex; align-items: center; gap: 8px; }
+                .si-table__progress-bar { width: 96px; height: 6px; background: #eae7e9; border-radius: 99px; overflow: hidden; }
+                .si-table__progress-fill { height: 100%; border-radius: 99px; }
+                .si-table__progress-fill--error { background: #ba1a1a; }
+                .si-table__progress-fill--info { background: #0058be; }
+                .si-table__progress-count { font-size: 12px; font-weight: 600; color: #45464d; font-feature-settings: 'tnum'; }
+                .si-table__deadline--overdue { color: #ba1a1a; font-weight: 600; }
+                .si-table__deadline--urgent { color: #ba1a1a; font-weight: 600; }
+                .si-table__action-btn { color: #0058be; font-size: 12px; font-weight: 600; background: transparent; border: none; cursor: pointer; padding: 0; }
+                .si-table__action-btn:hover { text-decoration: underline; }
+                .si-chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: 9999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+                .si-chip--submitted { background: #dcfce7; color: #15803d; }
+                .si-chip--late { background: #fef3c7; color: #92400e; }
+                .si-chip--draft { background: #f1f5f9; color: #64748b; }
+                .si-chip--missing { background: #ffdad6; color: #93000a; }
+                .si-entry-table td.si-score-cell { font-feature-settings: 'tnum'; text-align: center; font-weight: 500; font-size: 14px; }
+                .si-entry-table .si-score-high { color: #16a34a; font-weight: 700; }
+                .si-entry-table .si-score-low { color: #ba1a1a; font-weight: 700; }
+                .si-entry-table .si-row-avg td { background: #f6f3f5; font-weight: 700; font-size: 13px; border-top: 2px solid #c6c6cd; }
+                .si-summary-bar { display: flex; gap: 32px; padding: 16px 24px; background: #f0edef; border-radius: 8px; margin-top: 16px; flex-wrap: wrap; }
+                .si-summary-item { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 80px; }
+                .si-summary-item__value { font-size: 20px; font-weight: 700; color: #1b1b1d; font-feature-settings: 'tnum'; }
+                .si-summary-item__label { font-size: 11px; font-weight: 600; color: #45464d; text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+                .si-subject-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; margin-bottom: 24px; }
+                .si-subject-card { background: #fff; border: 1px solid #c6c6cd; border-radius: 8px; padding: 24px; display: flex; flex-direction: column; transition: box-shadow .2s; }
+                .si-subject-card:hover { box-shadow: 0 4px 20px rgba(15,23,42,.06); }
+                .si-subject-card__name { font-size: 16px; font-weight: 600; color: #1b1b1d; }
+                .si-subject-card__meta { font-size: 12px; color: #76777d; margin-top: 4px; }
+                .si-subject-card__stats { margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+                .si-subject-stat { text-align: center; padding: 10px 8px; background: #f8fafc; border-radius: 4px; }
+                .si-subject-stat__value { font-size: 20px; font-weight: 700; color: #1b1b1d; font-feature-settings: 'tnum'; }
+                .si-subject-stat__label { font-size: 11px; font-weight: 600; color: #76777d; text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+                .si-at-risk-list { margin-top: 0; }
+                .si-at-risk-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #e4e2e4; transition: background .15s; }
+                .si-at-risk-row:hover { background: #f8fafc; }
+                .si-at-risk-row:last-child { border-bottom: none; }
+                .si-at-risk-row__info { display: flex; flex-direction: column; }
+                .si-at-risk-row__name { font-size: 14px; font-weight: 600; color: #1b1b1d; }
+                .si-at-risk-row__class { font-size: 12px; color: #76777d; margin-top: 2px; }
+                .si-at-risk-row__score { font-size: 14px; font-weight: 600; font-feature-settings: 'tnum'; }
+                .si-at-risk-row__score--fail { color: #ba1a1a; }
+                .si-distribution-bar { display: flex; height: 32px; border-radius: 4px; overflow: hidden; gap: 2px; }
+                .si-distribution-bar__segment { transition: width .5s ease; }
+                .si-distribution-bar__segment--a { background: #0058be; }
+                .si-distribution-bar__segment--b { background: #2170e4; }
+                .si-distribution-bar__segment--c { background: #f59e0b; }
+                .si-distribution-bar__segment--d { background: #f97316; }
+                .si-distribution-bar__segment--f { background: #ba1a1a; }
+                .si-dept-group { margin-bottom: 24px; }
+                .si-dept-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #f0edef; border: 1px solid #c6c6cd; border-radius: 8px 8px 0 0; cursor: pointer; user-select: none; }
+                .si-dept-header__title { font-size: 14px; font-weight: 700; color: #1b1b1d; display: flex; align-items: center; gap: 8px; }
+                .si-dept-header__count { font-size: 12px; color: #76777d; font-weight: 600; }
+                .si-dept-body { border: 1px solid #c6c6cd; border-top: none; border-radius: 0 0 8px 8px; overflow: hidden; }
+                .si-dept-body.collapsed { display: none; }
+                .si-teacher-row { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid #e4e2e4; transition: background .15s; }
+                .si-teacher-row:last-child { border-bottom: none; }
+                .si-teacher-row:hover { background: #f8fafc; }
+                .si-teacher-row__info { display: flex; gap: 12px; align-items: center; flex: 1; min-width: 0; }
+                .si-teacher-row__avatar { width: 40px; height: 40px; border-radius: 50%; background: #d8e2ff; color: #0058be; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+                .si-teacher-row__details { min-width: 0; }
+                .si-teacher-row__name { font-size: 14px; font-weight: 600; color: #1b1b1d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                .si-teacher-row__classes { font-size: 12px; color: #76777d; margin-top: 2px; }
+                .si-teacher-row__progress { width: 200px; flex-shrink: 0; margin: 0 16px; }
+                .si-teacher-row__progress-track { height: 8px; background: #eae7e9; border-radius: 99px; overflow: hidden; }
+                .si-teacher-row__progress-fill { height: 100%; border-radius: 99px; transition: width 1s cubic-bezier(.4,0,.2,1); }
+                .si-teacher-row__progress-fill--complete { background: #16a34a; }
+                .si-teacher-row__progress-fill--partial { background: #f59e0b; }
+                .si-teacher-row__progress-fill--low { background: #ba1a1a; }
+                .si-teacher-row__pct { font-size: 12px; font-weight: 700; color: #45464d; margin-top: 4px; text-align: right; font-feature-settings: 'tnum'; }
+                .si-completion-stats { display: flex; gap: 32px; padding: 16px 24px; background: #fff; border: 1px solid #c6c6cd; border-radius: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+                .si-completion-stat { display: flex; flex-direction: column; }
+                .si-completion-stat__value { font-size: 24px; font-weight: 700; color: #1b1b1d; font-feature-settings: 'tnum'; }
+                .si-completion-stat__label { font-size: 12px; font-weight: 600; color: #76777d; text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+                .si-filters { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 24px; }
+                .si-filter-group { display: flex; flex-direction: column; gap: 4px; }
+                .si-filter-label { font-size: 12px; font-weight: 600; color: #45464d; text-transform: uppercase; letter-spacing: .05em; }
+                .si-filter-select { padding: 8px 12px; border: 1px solid #c6c6cd; border-radius: 4px; font-size: 14px; font-weight: 400; font-family: 'Inter', sans-serif; background: #fff; min-width: 160px; color: #1b1b1d; transition: border-color .2s; }
+                .si-filter-select:focus { border-color: #0058be; outline: none; box-shadow: 0 0 0 3px rgba(0,88,190,.1); }
+                .si-mock-banner { background: #f0fdf4; border: 1px solid #dcfce7; border-left: 4px solid #16a34a; border-radius: 4px; padding: 8px 16px; font-size: 12px; font-weight: 600; color: #15803d; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+                .si-empty-state { text-align: center; padding: 48px 24px; color: #76777d; }
+                .si-empty-state__icon { width: 48px; height: 48px; margin: 0 auto 12px; color: #c6c6cd; }
+                .si-empty-state__text { font-size: 14px; font-weight: 600; }
+                .si-side-panel { position: fixed; top: 0; right: -420px; width: 400px; height: 100vh; background: #fff; border-left: 1px solid #c6c6cd; box-shadow: -4px 0 20px rgba(15,23,42,.08); z-index: 1000; transition: right .3s cubic-bezier(.4,0,.2,1); display: flex; flex-direction: column; }
+                .si-side-panel.open { right: 0; }
+                .si-side-panel__header { padding: 24px; border-bottom: 1px solid #e4e2e4; display: flex; justify-content: space-between; align-items: flex-start; }
+                .si-side-panel__body { flex: 1; overflow-y: auto; padding: 24px; }
+                .si-side-panel__footer { padding: 16px 24px; border-top: 1px solid #e4e2e4; display: flex; justify-content: flex-end; gap: 8px; }
+                .si-side-panel__close { background: transparent; border: none; color: #76777d; cursor: pointer; padding: 4px; display: flex; }
+                @media (max-width: 1024px) {
+                    .si-bento-grid { grid-template-columns: 1fr; }
+                    .si-bento-main, .si-bento-side { grid-column: span 1; }
+                    .si-teacher-row__progress { width: 120px; }
+                }
+                @media (max-width: 768px) {
+                    .si-container { padding: 1rem; }
+                    .si-kpi-grid { grid-template-columns: 1fr; }
+                    .si-page-header { flex-direction: column; align-items: flex-start; }
+                    .si-page-title { font-size: 24px; line-height: 32px; }
+                    .si-chart-bars { padding: 0 8px; height: 180px; }
+                    .si-bar-track { height: 140px; }
+                    .si-bar-group { width: 40px; }
+                    .si-tab-bar { overflow-x: auto; }
+                    .si-tab-btn { font-size: 12px; padding: 8px 12px; }
+                    .si-table th, .si-table td { padding: 10px 12px; font-size: 13px; }
+                    .si-teacher-row { flex-direction: column; align-items: flex-start; gap: 12px; }
+                    .si-teacher-row__progress { width: 100%; margin: 0; }
+                    .si-filters { flex-direction: column; }
+                    .si-filter-select { width: 100%; }
+                    .si-completion-stats { flex-direction: column; gap: 16px; }
+                    .si-summary-bar { flex-direction: column; gap: 12px; }
+                    .si-side-panel { width: 100%; right: -100%; }
+                }
+                .si-modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 2000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px); animation: siFadeIn .2s ease; }
+                .si-modal { background: #fff; border-radius: 12px; padding: 32px; width: 420px; max-width: 92vw; box-shadow: 0 20px 60px rgba(15,23,42,.18); animation: siFadeIn .25s ease; }
+                .si-modal__title { font-size: 20px; font-weight: 600; color: #1b1b1d; margin-bottom: 4px; }
+                .si-modal__desc { font-size: 14px; color: #76777d; margin-bottom: 24px; }
+                .si-modal__field { margin-bottom: 16px; }
+                .si-modal__field label { display: block; font-size: 12px; font-weight: 600; color: #45464d; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+                .si-modal__field select { width: 100%; padding: 10px 14px; border: 1px solid #c6c6cd; border-radius: 8px; font-size: 14px; font-family: 'Inter', sans-serif; background: #fff; color: #1b1b1d; transition: border-color .2s; }
+                .si-modal__field select:focus { border-color: #0058be; outline: none; box-shadow: 0 0 0 3px rgba(0,88,190,.1); }
+                .si-modal__actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 28px; }
+                .si-modal__cancel { padding: 10px 20px; border: 1px solid #c6c6cd; border-radius: 8px; background: transparent; color: #1b1b1d; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .15s; }
+                .si-modal__cancel:hover { background: #f0edef; }
+                .si-modal__apply { padding: 10px 20px; border: none; border-radius: 8px; background: #0058be; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+                .si-modal__apply:hover { opacity: .88; }
+            `;
+            document.head.appendChild(styleTag);
+        }
+
         const isTeacher = (this.currentUser.role || '').toLowerCase() === 'teacher';
         const teacherId = this.currentUser.id;
         const currentUserName = this.currentUser.full_name || this.currentUser.name || 'Teacher';
@@ -15287,7 +15504,7 @@ export const UI = {
                 <div class="si-page-header">
                     <div>
                         <h2 class="si-page-title">Dashboard Overview</h2>
-                        <p class="si-page-subtitle">Term 2 • Academic Session 2023-24</p>
+                        <p class="si-page-subtitle" id="si-page-subtitle">${selectedTerm} • Academic Session ${selectedSession}</p>
                     </div>
                     <div class="si-header-actions">
                         <button class="si-btn-secondary" id="si-btn-export"><i data-lucide="download" style="width:16px;height:16px;"></i> Export</button>
@@ -15600,13 +15817,24 @@ export const UI = {
             tabContent.innerHTML = `<div class="si-fade-in">${buildTable(0)}</div>`;
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
-            // Course selector binding
+            // Course and Term selector binding
             const bind = () => {
                 const sel = document.getElementById('si-course-select');
                 if (sel) sel.addEventListener('change', () => {
                     tabContent.innerHTML = `<div class="si-fade-in">${buildTable(parseInt(sel.value))}</div>`;
                     if (typeof lucide !== 'undefined') lucide.createIcons();
                     bind();
+                });
+
+                const termSel = document.getElementById('si-term-select2');
+                if (termSel) termSel.addEventListener('change', () => {
+                    selectedTerm = termSel.value;
+                    localStorage.setItem('insights_term', selectedTerm);
+                    // Update subtitle
+                    const subtitle = document.getElementById('si-page-subtitle');
+                    if (subtitle) subtitle.textContent = `${selectedTerm} • Academic Session ${selectedSession}`;
+                    // Re-render class entry with new term filter
+                    renderClassEntry();
                 });
             };
             bind();
@@ -15871,6 +16099,67 @@ export const UI = {
                 renderTab(btn.dataset.siTab);
             });
         });
+
+        // --- Term Settings Modal ---
+        const termSettingsBtn = document.getElementById('si-btn-term-settings');
+        if (termSettingsBtn) {
+            termSettingsBtn.addEventListener('click', () => {
+                // Remove any existing modal
+                const existing = document.getElementById('si-term-modal');
+                if (existing) existing.remove();
+
+                const modal = document.createElement('div');
+                modal.id = 'si-term-modal';
+                modal.className = 'si-modal-overlay';
+                modal.innerHTML = `
+                    <div class="si-modal">
+                        <div class="si-modal__title">Term Settings</div>
+                        <div class="si-modal__desc">Select the academic term and session to view data for.</div>
+                        <div class="si-modal__field">
+                            <label>Term</label>
+                            <select id="si-modal-term">
+                                ${terms.map(t => `<option value="${t}" ${t === selectedTerm ? 'selected' : ''}>${t}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="si-modal__field">
+                            <label>Session</label>
+                            <select id="si-modal-session">
+                                ${sessions.map(s => `<option value="${s}" ${s === selectedSession ? 'selected' : ''}>${s}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="si-modal__actions">
+                            <button class="si-modal__cancel" id="si-modal-cancel">Cancel</button>
+                            <button class="si-modal__apply" id="si-modal-apply">Apply</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+
+                // Close on overlay click
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) modal.remove();
+                });
+
+                // Cancel
+                document.getElementById('si-modal-cancel').addEventListener('click', () => modal.remove());
+
+                // Apply
+                document.getElementById('si-modal-apply').addEventListener('click', () => {
+                    selectedTerm = document.getElementById('si-modal-term').value;
+                    selectedSession = document.getElementById('si-modal-session').value;
+                    localStorage.setItem('insights_term', selectedTerm);
+                    localStorage.setItem('insights_session', selectedSession);
+
+                    // Update subtitle
+                    const subtitle = document.getElementById('si-page-subtitle');
+                    if (subtitle) subtitle.textContent = `${selectedTerm} • Academic Session ${selectedSession}`;
+
+                    modal.remove();
+                    renderTab(activeTab);
+                    Notifications.show(`Switched to ${selectedTerm} — ${selectedSession}`, 'success');
+                });
+            });
+        }
 
         // Initial render
         renderTab(activeTab);
