@@ -16197,9 +16197,18 @@ export const UI = {
                 const processedStudents = activeStudents.map(s => {
                     const studentClass = (s.class_name || '').trim().toLowerCase();
                     
-                    // Filter fee structures for this student's class
+                    // Filter fee structures for this student's class (with stream/arm awareness)
                     const sStructures = feeStructures.filter(fs => {
-                        if ((fs.class_name || '').trim().toLowerCase() !== studentClass) return false;
+                        const fsClassClean = (fs.class_name || '').trim().toLowerCase();
+                        const studentSub = (s.sub_class || '').trim().toLowerCase();
+                        const studentFull = (studentClass + ' ' + studentSub).trim();
+                        
+                        const isClassMatch = studentClass === fsClassClean || 
+                                             studentFull === fsClassClean ||
+                                             (studentClass.startsWith(fsClassClean) && !/^\d/.test(studentClass.slice(fsClassClean.length).trim())) ||
+                                             (studentFull.startsWith(fsClassClean) && !/^\d/.test(studentFull.slice(fsClassClean.length).trim()));
+                                             
+                        if (!isClassMatch) return false;
                         
                         if (sessionFilter !== 'all' && fs.session && fs.session !== sessionFilter) return false;
                         if (normalizedTermFilter !== 'all') {
@@ -17313,7 +17322,15 @@ export const UI = {
         }
         
         const allStudents = await db.students.toArray();
-        const classStudents = allStudents.filter(s => (s.class_name || '').trim().toLowerCase() === cleanClassName);
+        const classStudents = allStudents.filter(s => {
+            const studentClass = (s.class_name || '').trim().toLowerCase();
+            const studentSub = (s.sub_class || '').trim().toLowerCase();
+            const studentFull = (studentClass + ' ' + studentSub).trim();
+            return studentClass === cleanClassName || 
+                   studentFull === cleanClassName ||
+                   (studentClass.startsWith(cleanClassName) && !/^\d/.test(studentClass.slice(cleanClassName.length).trim())) ||
+                   (studentFull.startsWith(cleanClassName) && !/^\d/.test(studentFull.slice(cleanClassName.length).trim()));
+        });
         for (const s of classStudents) {
             await this.refreshStudentFinancials(s.student_id);
         }
@@ -17333,7 +17350,15 @@ export const UI = {
                 if (className) {
                     const cleanClassName = className.trim().toLowerCase();
                     const allStudents = await db.students.toArray();
-                    const classStudents = allStudents.filter(s => (s.class_name || '').trim().toLowerCase() === cleanClassName);
+                    const classStudents = allStudents.filter(s => {
+                        const studentClass = (s.class_name || '').trim().toLowerCase();
+                        const studentSub = (s.sub_class || '').trim().toLowerCase();
+                        const studentFull = (studentClass + ' ' + studentSub).trim();
+                        return studentClass === cleanClassName || 
+                               studentFull === cleanClassName ||
+                               (studentClass.startsWith(cleanClassName) && !/^\d/.test(studentClass.slice(cleanClassName.length).trim())) ||
+                               (studentFull.startsWith(cleanClassName) && !/^\d/.test(studentFull.slice(cleanClassName.length).trim()));
+                    });
                     for (const s of classStudents) {
                         await this.refreshStudentFinancials(s.student_id);
                     }
@@ -17520,7 +17545,9 @@ export const UI = {
             const seen = new Set();
             for (const s of structures) {
                 if (!s.class_name) continue;
-                const key = `${s.class_name.toLowerCase().trim()}_${(s.category || 'School Fees').toLowerCase().trim()}`;
+                const termNorm = normalizeTerm(s.term);
+                const sessionNorm = (s.session || '2025/2026').trim().toLowerCase();
+                const key = `${s.class_name.toLowerCase().trim()}_${(s.category || 'School Fees').toLowerCase().trim()}_${termNorm}_${sessionNorm}`;
                 if (seen.has(key)) {
                     console.log('[Cleanup] Removing duplicate fee structure:', s.id, key);
                     await db.fee_structures.delete(s.id);
@@ -17549,8 +17576,16 @@ export const UI = {
             const totalPaid = payments.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
             
             const studentClass = (student.class_name || '').trim().toLowerCase();
+            const studentSub = (student.sub_class || '').trim().toLowerCase();
+            const studentFull = (studentClass + ' ' + studentSub).trim();
             const allStructures = await db.fee_structures.toArray();
-            const structures = allStructures.filter(f => (f.class_name || '').trim().toLowerCase() === studentClass);
+            const structures = allStructures.filter(f => {
+                const fsClassClean = (f.class_name || '').trim().toLowerCase();
+                return studentClass === fsClassClean || 
+                       studentFull === fsClassClean ||
+                       (studentClass.startsWith(fsClassClean) && !/^\d/.test(studentClass.slice(fsClassClean.length).trim())) ||
+                       (studentFull.startsWith(fsClassClean) && !/^\d/.test(studentFull.slice(fsClassClean.length).trim()));
+            });
             const totalExpected = structures.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
             
             const analytics = await db.student_analytics.get(studentId) || { id: studentId, student_id: studentId };
