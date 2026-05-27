@@ -1065,3 +1065,189 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
     
     return doc;
 }
+
+/**
+ * Generate PDF Timetable Landscape (A4) with Dynamic Branding, Audit Log, and print preview
+ */
+export async function generateTimetablePDF(className, classes, subjects, schoolInfo, currentUser) {
+    const { jsPDF } = window.jspdf;
+    
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width; 
+    const pageHeight = doc.internal.pageSize.height;
+    
+    const themeColor = schoolInfo.themeColor || '#4f46e5';
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 79, g: 70, b: 229 };
+    };
+    const rgb = hexToRgb(themeColor);
+
+    const subjectMap = subjects.reduce((m, s) => { m[s.id] = s.name; return m; }, {});
+    
+    const classesToPrint = className && className !== 'all' 
+        ? classes.filter(c => c.name === className)
+        : classes;
+
+    let isFirstPage = true;
+
+    for (const c of classesToPrint) {
+        const entries = await db.timetable.where('class_name').equals(c.name).toArray();
+        if (entries.length === 0 && className && className !== 'all') {
+            continue;
+        }
+        
+        if (!isFirstPage) {
+            doc.addPage();
+        }
+        isFirstPage = false;
+
+        doc.setFillColor(248, 250, 252);
+        doc.rect(5, 5, pageWidth - 10, pageHeight - 10, 'F');
+        
+        doc.setDrawColor(rgb.r, rgb.g, rgb.b);
+        doc.setLineWidth(1);
+        doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
+        
+        doc.setFillColor(rgb.r, rgb.g, rgb.b);
+        doc.rect(5, 5, pageWidth - 10, 28, 'F');
+
+        let logoX = 12;
+        if (schoolInfo.schoolLogo) {
+            try {
+                doc.addImage(schoolInfo.schoolLogo, 'PNG', 10, 8, 22, 22);
+                logoX = 36;
+            } catch (e) {
+                console.error("Failed to render logo in timetable PDF:", e);
+            }
+        }
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.text((schoolInfo.schoolName || schoolInfo.name || "GRAVITON ACADEMY").toUpperCase(), logoX, 16);
+        
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(9);
+        doc.setTextColor(226, 232, 240);
+        doc.text(schoolInfo.schoolMotto || "Offline-First Excellence", logoX, 22);
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text(`CLASS TIMETABLE: ${c.name.toUpperCase()}`, pageWidth - 12, 18, { align: 'right' });
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(226, 232, 240);
+        doc.text(`Session: ${schoolInfo.currentSession || '2025/2026'} | Term: ${schoolInfo.currentTerm || '1st Term'}`, pageWidth - 12, 24, { align: 'right' });
+
+        const startY = 40;
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        const periods = [1, 2, 3, 4, 5, 6, 7, 8];
+        
+        const dayColWidth = 35;
+        const periodColWidth = (pageWidth - 10 - 10 - dayColWidth) / 8;
+
+        doc.setFillColor(rgb.r, rgb.g, rgb.b);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(255, 255, 255);
+        
+        doc.rect(10, startY, dayColWidth, 10, 'F');
+        doc.text("DAY", 10 + dayColWidth/2, startY + 6.5, { align: 'center' });
+        
+        periods.forEach((p, index) => {
+            const x = 10 + dayColWidth + (index * periodColWidth);
+            doc.setFillColor(index % 2 === 0 ? rgb.r : rgb.r - 20);
+            doc.rect(x, startY, periodColWidth, 10, 'F');
+            doc.text(`PERIOD ${p}`, x + periodColWidth/2, startY + 6.5, { align: 'center' });
+        });
+
+        let currentY = startY + 10;
+        
+        days.forEach((day, dIndex) => {
+            doc.setDrawColor(226, 232, 240);
+            doc.setFillColor(241, 245, 249);
+            doc.rect(10, currentY, dayColWidth, 22, 'F');
+            doc.rect(10, currentY, dayColWidth, 22);
+            
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(30, 41, 59);
+            doc.text(day.toUpperCase(), 10 + dayColWidth/2, currentY + 12.5, { align: 'center' });
+            
+            periods.forEach((p, pIndex) => {
+                const x = 10 + dayColWidth + (pIndex * periodColWidth);
+                const entry = entries.find(e => e.day_of_week === day && e.period_number === p);
+                
+                doc.setFillColor(255, 255, 255);
+                doc.rect(x, currentY, periodColWidth, 22, 'F');
+                doc.rect(x, currentY, periodColWidth, 22);
+                
+                if (entry) {
+                    const subName = subjectMap[entry.subject_id] || entry.subject_id || '';
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(8.5);
+                    doc.setTextColor(15, 23, 42);
+                    
+                    const splitSub = doc.splitTextToSize(subName, periodColWidth - 4);
+                    let textY = currentY + 7;
+                    splitSub.slice(0, 2).forEach(line => {
+                        doc.text(line, x + periodColWidth/2, textY, { align: 'center' });
+                        textY += 4.5;
+                    });
+                    
+                    if (entry.teacher_id) {
+                        doc.setFont('helvetica', 'italic');
+                        doc.setFontSize(7);
+                        doc.setTextColor(100, 116, 139);
+                        doc.text(entry.teacher_id, x + periodColWidth/2, currentY + 18, { align: 'center' });
+                    }
+                } else {
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(7.5);
+                    doc.setTextColor(203, 213, 225);
+                    doc.text("FREE", x + periodColWidth/2, currentY + 12.5, { align: 'center' });
+                }
+            });
+            currentY += 22;
+        });
+
+        const auditId = crypto.randomUUID().substring(0, 8).toUpperCase();
+        const timestamp = new Date().toISOString();
+        const userName = currentUser.name || "Administrator";
+        const userId = currentUser.id || "Admin";
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text(`AUDIT TRAIL SECURED: ID-${auditId} | GENERATED BY: ${userName} (${userId}) | DATE: ${new Date(timestamp).toLocaleString()} | SYSTEM: GRAVITON CORE`, 10, pageHeight - 10);
+        doc.text(`Page: ${classesToPrint.indexOf(c) + 1} of ${classesToPrint.length}`, pageWidth - 10, pageHeight - 10, { align: 'right' });
+        
+        try {
+            await db.audit_logs.add({
+                id: crypto.randomUUID(),
+                operation: 'print',
+                table: 'timetable',
+                record_id: c.name,
+                timestamp: timestamp,
+                user_id: userId,
+                is_synced: 0
+            });
+        } catch (e) {
+            console.error("Failed to write print audit log:", e);
+        }
+    }
+
+    const pdfBlob = doc.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    
+    const printWindow = window.open(pdfUrl, '_blank');
+    if (!printWindow) {
+        doc.save(`Timetable_Report_${className || 'General'}.pdf`);
+        Notifications.show('Timetable printed! Check downloads.', 'success');
+    } else {
+        Notifications.show('Print Preview opened in a new tab!', 'success');
+    }
+}

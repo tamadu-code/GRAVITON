@@ -432,11 +432,14 @@ export const UI = {
             const restrictedForTeachers = ['academic', 'bulkimport', 'staff', 'promotion', 'config', 'reports'];
             const allowedForStudents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins'];
             const allowedForParents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins', 'timetables', 'profile'];
+            const isFinance = role === 'finance' || role === 'finance officer' || role === 'finance manager';
+            const allowedForFinance = ['dashboard', 'finances', 'pins', 'profile', 'noticeboard'];
             
             let isRestricted = false;
             if (isTeacher && restrictedForTeachers.includes(viewName)) isRestricted = true;
             if (isStudent && !allowedForStudents.includes(viewName)) isRestricted = true;
             if (isParent && !allowedForParents.includes(viewName)) isRestricted = true;
+            if (isFinance && !allowedForFinance.includes(viewName)) isRestricted = true;
 
             if (isRestricted) {
                 this.contentArea.innerHTML = `
@@ -533,6 +536,9 @@ export const UI = {
         
         // Modules allowed for parents
         const parentAllowedViews = ['dashboard'];
+
+        // Modules allowed for finance officer
+        const financeAllowedViews = ['dashboard', 'finances', 'pins', 'profile', 'noticeboard'];
         
         navItems.forEach(item => {
             const view = item.dataset.view;
@@ -548,16 +554,25 @@ export const UI = {
                 } else {
                     item.style.display = 'flex';
                 }
+            } else if (role === 'finance' || role === 'finance officer' || role === 'finance manager') {
+                if (!financeAllowedViews.includes(view)) {
+                    item.setAttribute('style', 'display: none !important');
+                } else {
+                    item.style.display = 'flex';
+                }
             } else {
                 // Admin or other roles
                 item.style.display = 'flex';
             }
         });
 
-        // Hide "ADMINISTRATION" section header if role is not admin
+        // Hide "ADMINISTRATION" section header if role is not admin or finance
         adminSectionHeaders.forEach(header => {
-            if (role !== 'admin') {
+            const isFinRole = role === 'finance' || role === 'finance officer' || role === 'finance manager';
+            if (role !== 'admin' && !isFinRole) {
                 header.setAttribute('style', 'display: none !important');
+            } else {
+                header.style.display = 'flex';
             }
         });
     },
@@ -4706,6 +4721,7 @@ export const UI = {
                                  ${!((this.currentUser.role || '').toLowerCase() === 'teacher') ? `
                                  <button id="btn-sync-biometric" class="btn btn-secondary" title="Update Biometric Record" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;"><i data-lucide="refresh-cw"></i> Sync Biometric</button>
                                  <button id="btn-repair-auth" class="btn btn-secondary" title="Fix Login Issues" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a;"><i data-lucide="shield-alert"></i> Repair Auth</button>
+                                 <button id="btn-promote-student" class="btn btn-secondary" title="Promote Student" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;"><i data-lucide="trending-up"></i> Promote</button>
                                  <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
                                  <button id="btn-delete-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fee2e2; border: 1px solid #fecaca;"><i data-lucide="trash-2"></i> Delete</button>
                                  ${student.is_active !== false ? 
@@ -4958,6 +4974,57 @@ export const UI = {
                 Notifications.show(`${student.name} has been reactivated.`, 'success');
                 this.renderStudents();
                 this.debouncedSync();
+            };
+        }
+
+        // Promotion modal for individual student
+        const promoteBtn = document.getElementById('btn-promote-student');
+        if (promoteBtn) {
+            promoteBtn.onclick = async () => {
+                const classes = await db.classes.toArray();
+                classes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                
+                const currentClass = student.class_name || 'None';
+                
+                let selectHtml = `
+                    <div style="padding: 0.5rem; color: white;">
+                        <p style="margin-bottom: 1rem; font-size: 0.9rem; color: #94a3b8;">
+                            Promote <strong>${student.name}</strong> from <strong>${currentClass}</strong> to the next class level.
+                        </p>
+                        <div class="form-group">
+                            <label style="font-weight: 800; font-size: 0.75rem; text-transform: uppercase; color: #94a3b8; display: block; margin-bottom: 0.5rem;">Target Class</label>
+                            <select id="promote-target-class" class="input w-100" style="height: 48px; border-radius: 10px; border: 2px solid #e2e8f0; background: white; color: #1e293b; font-weight: 700; width: 100%;">
+                                <option value="">-- Select Class --</option>
+                                ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                <option value="Graduated">Graduated / Alumni</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+
+                this.showModal(`Promote Student`, selectHtml, async () => {
+                    const targetClass = document.getElementById('promote-target-class').value;
+                    if (!targetClass) {
+                        return Notifications.show('Please select a target class', 'warning');
+                    }
+
+                    if (confirm(`Confirm promoting ${student.name} to ${targetClass}?`)) {
+                        await db.students.update(studentId, {
+                            class_name: targetClass,
+                            updated_at: new Date().toISOString(),
+                            is_synced: 0
+                        });
+                        
+                        // Update analytics balance for new class fee structure
+                        await this.refreshStudentFinancials(studentId);
+
+                        Notifications.show(`${student.name} promoted to ${targetClass}`, 'success');
+                        document.getElementById('ui-modal')?.remove();
+                        this.renderStudentDetail(studentId);
+                        this.debouncedSync();
+                    }
+                }, 'Confirm Promotion', 'trending-up');
+                if (typeof lucide !== 'undefined') lucide.createIcons();
             };
         }
 
@@ -9280,59 +9347,225 @@ export const UI = {
     },
 
     async renderPromotionEngine() {
-        const classes = await db.classes.toArray();
+        const [allStudents, classes] = await Promise.all([
+            db.students.toArray(),
+            db.classes.toArray()
+        ]);
+        const activeStudents = allStudents.filter(s => s.is_active !== false && s.is_active !== 0 && s.status === 'Active');
         
+        // Count populations
+        const populations = {};
+        classes.forEach(c => populations[c.name] = 0);
+        activeStudents.forEach(s => {
+            const cls = s.class_name;
+            if (cls) {
+                if (populations[cls] === undefined) populations[cls] = 0;
+                populations[cls]++;
+            }
+        });
+
+        // Sort classes
+        classes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
         this.contentArea.innerHTML = `
-            <div class="card" style="max-width: 600px;">
-                <h3>Promotion Engine</h3>
-                <p class="text-secondary mb-2">Promote all students from one class to another.</p>
-                
-                <div class="form-group mb-2">
-                    <label>From Class</label>
-                    <select id="promo-from" class="input w-100">
-                        ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-                    </select>
+            <div class="view-container animate-fade-in" style="padding: 1.5rem;">
+                <div class="view-header" style="margin-bottom: 2rem;">
+                    <h1 class="text-2xl font-bold text-slate-800">Student Promotion Engine</h1>
+                    <p class="text-slate-500">Manage academic session transitions, school-wide promotions, or individual student class reassignments.</p>
                 </div>
-                
-                <div class="form-group mb-2">
-                    <label>To Class</label>
-                    <select id="promo-to" class="input w-100">
-                        ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-                        <option value="Graduated">Graduated</option>
-                    </select>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2rem; margin-bottom: 2rem;">
+                    <!-- Left: Populations & School-wide Promotion -->
+                    <div class="card" style="background: white; padding: 2rem; border-radius: 24px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <h3 style="font-weight: 800; color: #1e293b; margin-top: 0; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="bar-chart-2" style="color: #6366f1;"></i> Class Populations Preview
+                            </h3>
+                            <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.5rem;">Review current active student populations before performing promotions.</p>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 250px; overflow-y: auto; padding-right: 0.5rem; margin-bottom: 1.5rem;">
+                                ${classes.map(c => `
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;">
+                                        <span style="font-weight: 700; color: #1e293b;">${c.name}</span>
+                                        <span style="background: #e0f2fe; color: #0369a1; font-weight: 800; font-size: 0.75rem; padding: 0.25rem 0.6rem; border-radius: 6px;">
+                                            ${populations[c.name] || 0} student(s)
+                                        </span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div style="background: #faf5ff; border: 1px solid #f3e8ff; padding: 1.25rem; border-radius: 16px;">
+                            <h4 style="margin: 0 0 0.5rem; color: #7e22ce; font-weight: 800; font-size: 0.9rem; display: flex; align-items: center; gap: 0.25rem;"><i data-lucide="sparkles" style="width:16px;"></i> Automated School-Wide Promotion</h4>
+                            <p style="font-size: 0.75rem; color: #6b21a8; line-height: 1.4; margin-bottom: 1rem;">
+                                Automatically promotes all students based on system logic (JSS 1 → JSS 2, JSS 3 → SSS 1, SSS 3 → Graduated).
+                            </p>
+                            <button id="run-school-wide-promotion" class="btn btn-primary w-100" style="background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%); border: none; font-weight: 800; height: 44px; border-radius: 10px; color: white;">
+                                Run School-Wide Promotion Session
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right: Custom Batch Promotion -->
+                    <div class="card" style="background: white; padding: 2rem; border-radius: 24px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <h3 style="font-weight: 800; color: #1e293b; margin-top: 0; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="arrow-right-left" style="color: #f59e0b;"></i> Custom Batch Promotion
+                            </h3>
+                            <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.5rem;">Promote or move all students from a specific class to a target class manually.</p>
+                            
+                            <div class="form-group" style="margin-bottom: 1.25rem;">
+                                <label style="font-weight: 800; font-size: 0.75rem; color: #475569; display: block; margin-bottom: 0.5rem;">FROM CLASS</label>
+                                <select id="promo-from" class="input w-100" style="height: 48px; border-radius: 10px; border: 2px solid #e2e8f0; font-weight: 700; width: 100%;">
+                                    <option value="">-- Choose Class --</option>
+                                    ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                </select>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 1.5rem;">
+                                <label style="font-weight: 800; font-size: 0.75rem; color: #475569; display: block; margin-bottom: 0.5rem;">TO CLASS</label>
+                                <select id="promo-to" class="input w-100" style="height: 48px; border-radius: 10px; border: 2px solid #e2e8f0; font-weight: 700; width: 100%;">
+                                    <option value="">-- Choose Target Class --</option>
+                                    ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                    <option value="Graduated">Graduated / Alumni</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button id="run-batch-promotion" class="btn btn-warning w-100" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none; font-weight: 800; height: 44px; border-radius: 10px; color: white;">
+                            Run Custom Batch Move
+                        </button>
+                    </div>
                 </div>
-                
-                <button id="run-promotion" class="btn btn-warning">Run Batch Promotion</button>
+
+                <!-- Bottom Section: Individual Promotion Center -->
+                <div class="card" style="background: white; padding: 2rem; border-radius: 24px; border: 1px solid #e2e8f0;">
+                    <h3 style="font-weight: 800; color: #1e293b; margin-top: 0; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="search" style="color: #10b981;"></i> Individual Student Promotion Center
+                    </h3>
+                    <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.5rem;">Search for a specific student to inspect their details and promote/reassign them individually.</p>
+                    
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 250px; position: relative;">
+                            <i data-lucide="search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 18px; color: #94a3b8;"></i>
+                            <input type="text" id="promo-student-search" placeholder="Type student name or ID..." style="padding-left: 3rem; border-radius: 12px; border: 2px solid #cbd5e1; height: 48px; width: 100%; font-size: 0.9rem; font-weight: 600; outline: none; background: white; color: #1e293b;">
+                        </div>
+                    </div>
+
+                    <div id="promo-search-results" style="margin-top: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; max-height: 200px; overflow-y: auto;">
+                        <div style="text-align: center; color: #94a3b8; padding: 1.5rem; font-size: 0.85rem; font-weight: 600;">Type above to search for students.</div>
+                    </div>
+                </div>
             </div>
         `;
 
-        document.getElementById('run-promotion').addEventListener('click', async () => {
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // 1. School-wide promotion event handler
+        document.getElementById('run-school-wide-promotion').addEventListener('click', async () => {
+            await this.executePromotion();
+            this.renderPromotionEngine();
+        });
+
+        // 2. Custom Batch promotion event handler
+        document.getElementById('run-batch-promotion').addEventListener('click', async () => {
             const from = document.getElementById('promo-from').value;
             const to = document.getElementById('promo-to').value;
             
+            if (!from || !to) {
+                Notifications.show('Please select both source and destination classes', 'warning');
+                return;
+            }
             if (from === to) {
                 Notifications.show('Source and destination classes must be different', 'error');
                 return;
             }
 
-            const students = await db.students.where('class_name').equals(from).toArray();
-            
-            if (students.length === 0) {
-                Notifications.show(`No students found in ${from}`, 'error');
+            const classStudents = activeStudents.filter(s => s.class_name === from);
+            if (classStudents.length === 0) {
+                Notifications.show(`No active students found in ${from}`, 'error');
                 return;
             }
 
-            if (confirm(`Are you sure you want to promote ${students.length} students from ${from} to ${to}?`)) {
-                for (const s of students) {
+            if (confirm(`Are you sure you want to promote/move ${classStudents.length} students from ${from} to ${to}?`)) {
+                for (const s of classStudents) {
                     await db.students.update(s.student_id, {
                         class_name: to,
                         is_synced: 0,
                         updated_at: new Date().toISOString()
                     });
+                    // Refresh financials for student under new class
+                    await this.refreshStudentFinancials(s.student_id);
                 }
-                Notifications.show(`Successfully promoted ${students.length} students`, 'success');
+                Notifications.show(`Successfully moved ${classStudents.length} students from ${from} to ${to}`, 'success');
                 this.renderPromotionEngine();
+                this.debouncedSync();
             }
+        });
+
+        // 3. Search and individual promotion
+        const searchInput = document.getElementById('promo-student-search');
+        const resultsContainer = document.getElementById('promo-search-results');
+
+        searchInput.addEventListener('input', () => {
+            const q = searchInput.value.toLowerCase().trim();
+            if (!q) {
+                resultsContainer.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 1.5rem; font-size: 0.85rem; font-weight: 600;">Type above to search for students.</div>';
+                return;
+            }
+
+            const matches = allStudents.filter(s => 
+                (s.name || '').toLowerCase().includes(q) || 
+                (s.student_id || '').toLowerCase().includes(q)
+            ).slice(0, 10);
+
+            if (matches.length === 0) {
+                resultsContainer.innerHTML = '<div style="text-align: center; color: #f87171; padding: 1.5rem; font-size: 0.85rem; font-weight: 600;">No matching students found.</div>';
+                return;
+            }
+
+            resultsContainer.innerHTML = matches.map(s => `
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1.25rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
+                    <div>
+                        <div style="font-weight: 800; color: #1e293b;">${s.name}</div>
+                        <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;">ID: ${s.student_id} • Current Class: ${s.class_name || 'None'}</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <select class="promo-quick-select" data-sid="${s.student_id}" style="height: 36px; border-radius: 8px; border: 1px solid #cbd5e1; font-weight: 700; color: #1e293b; background: white; padding: 0 0.5rem;">
+                            <option value="">-- Choose Next Class --</option>
+                            ${classes.map(c => `<option value="${c.name}" ${s.class_name === c.name ? 'disabled' : ''}>${c.name}</option>`).join('')}
+                            <option value="Graduated">Graduated</option>
+                        </select>
+                        <button class="btn btn-sm btn-primary run-individual-promo-btn" data-sid="${s.student_id}" style="height: 36px; border-radius: 8px; font-weight: 800; padding: 0 1rem; border: none; color: white;">Promote</button>
+                    </div>
+                </div>
+            `).join('');
+
+            // Attach event listeners to results buttons
+            document.querySelectorAll('.run-individual-promo-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    const sid = btn.dataset.sid;
+                    const select = document.querySelector(`.promo-quick-select[data-sid="${sid}"]`);
+                    const target = select.value;
+                    const studentObj = allStudents.find(s => s.student_id === sid);
+
+                    if (!target) {
+                        return Notifications.show('Please select a target class', 'warning');
+                    }
+
+                    if (confirm(`Confirm promoting ${studentObj.name} to ${target}?`)) {
+                        await db.students.update(sid, {
+                            class_name: target,
+                            updated_at: new Date().toISOString(),
+                            is_synced: 0
+                        });
+                        await this.refreshStudentFinancials(sid);
+                        Notifications.show(`${studentObj.name} promoted to ${target}`, 'success');
+                        this.renderPromotionEngine();
+                        this.debouncedSync();
+                    }
+                };
+            });
         });
     },
 
@@ -13963,8 +14196,14 @@ export const UI = {
                         </div>
                         <div style="display: flex; gap: 0.75rem; align-items: center; padding-top: 1.5rem; flex-wrap: wrap;">
                             <div id="tt-edit-status" style="margin-right: 1rem; display: flex; align-items: center;"></div>
-                            <button id="btn-save-timetable" class="btn btn-primary" style="height: 52px; border-radius: 12px; padding: 0 2rem; background: #2563eb;">
+                            <button id="btn-save-timetable" class="btn btn-primary" style="height: 52px; border-radius: 12px; padding: 0 1.5rem; background: #2563eb;">
                                 <i data-lucide="save"></i> Save Schedule
+                            </button>
+                            <button id="btn-print-class-tt" class="btn" style="height: 52px; border-radius: 12px; padding: 0 1.5rem; background: #10b981; color: white; border: none; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <i data-lucide="printer"></i> Print Class
+                            </button>
+                            <button id="btn-print-general-tt" class="btn" style="height: 52px; border-radius: 12px; padding: 0 1.5rem; background: #7c3aed; color: white; border: none; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <i data-lucide="layers"></i> Print General School
                             </button>
                         </div>
                     </div>
@@ -14025,6 +14264,35 @@ export const UI = {
         const saveBtn = document.getElementById('btn-save-timetable');
         const slots = document.querySelectorAll('.tt-slot-select');
         const editStatusMsg = document.getElementById('tt-edit-status');
+        
+        const printClassBtn = document.getElementById('btn-print-class-tt');
+        const printGeneralBtn = document.getElementById('btn-print-general-tt');
+        
+        if (printClassBtn) {
+            printClassBtn.onclick = async () => {
+                const cls = classSelect.value;
+                if (!cls) {
+                    return Notifications.show('Please select a class first!', 'warning');
+                }
+                const classes = await db.classes.toArray();
+                const settings = await db.settings.toArray();
+                const schoolInfo = {};
+                settings.forEach(s => schoolInfo[s.key] = s.value);
+                const { generateTimetablePDF } = await import('./utils.js');
+                await generateTimetablePDF(cls, classes, subjects, schoolInfo, this.currentUser);
+            };
+        }
+        
+        if (printGeneralBtn) {
+            printGeneralBtn.onclick = async () => {
+                const classes = await db.classes.toArray();
+                const settings = await db.settings.toArray();
+                const schoolInfo = {};
+                settings.forEach(s => schoolInfo[s.key] = s.value);
+                const { generateTimetablePDF } = await import('./utils.js');
+                await generateTimetablePDF('all', classes, subjects, schoolInfo, this.currentUser);
+            };
+        }
 
         const role = (this.currentUser.role || '').toLowerCase();
         const isTeacher = role === 'teacher';
@@ -15764,8 +16032,7 @@ export const UI = {
 
         const allTerms = ['1st Term', '2nd Term', '3rd Term'];
 
-        // Helper to normalize terms
-        const normalizeTerm = (t) => (t || '1st Term').toLowerCase().replace('st', '').replace('nd', '').replace('rd', '').replace('th', '').trim();
+        // Use global normalizeTerm (canonical: "1st Term", "2nd Term", "3rd Term")
 
         // Monthly Cashflow calculations (last 6 months)
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -15944,40 +16211,60 @@ export const UI = {
                                         <th style="padding: 1.25rem 2rem; color: #64748b; font-weight: 800; font-size: 0.75rem;">TRANSACTION DATE</th>
                                         <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">STUDENT INFO</th>
                                         <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">CATEGORY & REF</th>
-                                        <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">AMOUNT</th>
-                                        <th style="color: #64748b; font-weight: 800; font-size: 0.75rem;">STATUS</th>
-                                        <th style="text-align: right; padding-right: 2rem; color: #64748b; font-weight: 800; font-size: 0.75rem;">ACTIONS</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="revenue-table-body">
-                                    ${incomePayments.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding: 5rem; color: #94a3b8; font-weight: 600;">No revenue records found.</td></tr>' : incomePayments.map(p => `
-                                        <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.2s;">
-                                            <td style="padding: 1.25rem 2rem;">
-                                                <div style="font-weight: 800; color: #1e293b;">${new Date(p.date).toLocaleDateString()}</div>
-                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${new Date(p.date).toLocaleTimeString()}</div>
-                                            </td>
-                                            <td>
-                                                <div style="font-weight: 800; color: #4338ca;">${studentMap[p.student_id] || 'Unknown Student'}</div>
-                                                <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${p.student_id}</div>
-                                            </td>
-                                            <td>
-                                                <div style="font-weight: 800; color: #1e293b; margin-bottom: 0.25rem;">${p.category || 'General Payment'}</div>
-                                                <code style="background: #eef2ff; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; color: #6366f1; font-weight: 700;">${p.reference}</code>
-                                            </td>
-                                            <td><div style="font-weight: 900; color: #10b981; font-size: 1.15rem;">+ ₦${parseFloat(p.amount).toLocaleString()}</div></td>
-                                            <td>
-                                                <span style="background: ${p.status === 'success' ? '#dcfce7; color: #16a34a' : '#fee2e2; color: #ef4444'}; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 0.7rem; display: inline-flex; align-items: center; gap: 0.4rem;">
-                                                    <div style="width: 6px; height: 6px; border-radius: 50%; background: currentColor;"></div>
-                                                    ${(p.status || 'pending').toUpperCase()}
-                                                </span>
-                                            </td>
-                                            <td style="text-align: right; padding-right: 2rem;">
-                                                <button class="btn" onclick="UI.printReceipt('${p.id}')" style="background: #eff6ff; color: #3b82f6; border: none; width: 40px; height: 40px; border-radius: 10px; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s;" title="Print Receipt">
-                                                    <i data-lucide="printer" style="width: 18px;"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    `).join('')}
+                                                      ${incomePayments.length === 0 ? '<tr><td colspan="6" style="text-align:center; padding: 5rem; color: #94a3b8; font-weight: 600;">No revenue records found.</td></tr>' : incomePayments.map(p => {
+                                        let breakdownHtml = '';
+                                        if (p.description) {
+                                            breakdownHtml = `<div style="font-size: 0.75rem; color: #475569; font-weight: 700; margin-top: 0.35rem; background: #f1f5f9; padding: 4px 8px; border-radius: 8px; border: 1px solid #cbd5e1; display: inline-block;"><strong>Breakdown:</strong> ${p.description}</div>`;
+                                        } else if (p.category === 'School Fees') {
+                                            const studentObj = students.find(s => s.student_id === p.student_id);
+                                            if (studentObj && studentObj.class_name) {
+                                                const studentClass = studentObj.class_name;
+                                                const classFees = feeStructures.filter(f => (f.class_name || '').trim().toLowerCase() === studentClass.trim().toLowerCase());
+                                                if (classFees.length > 0) {
+                                                    let remainingPay = parseFloat(p.amount) || 0;
+                                                    const items = [];
+                                                    for (const f of classFees) {
+                                                        if (remainingPay <= 0) break;
+                                                        const allocation = Math.min(remainingPay, f.amount);
+                                                        items.push(`${f.category || 'Tuition'}: ₦${allocation.toLocaleString()}`);
+                                                        remainingPay -= allocation;
+                                                    }
+                                                    if (items.length > 0) {
+                                                        breakdownHtml = `<div style="font-size: 0.75rem; color: #0369a1; font-weight: 700; margin-top: 0.35rem; background: #e0f2fe; padding: 4px 8px; border-radius: 8px; border: 1px solid #bae6fd; display: inline-block;"><strong>Auto Allocation:</strong> ${items.join(' | ')}</div>`;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        return `
+                                            <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.2s;">
+                                                <td style="padding: 1.25rem 2rem;">
+                                                    <div style="font-weight: 800; color: #1e293b;">${new Date(p.date).toLocaleDateString()}</div>
+                                                    <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${new Date(p.date).toLocaleTimeString()}</div>
+                                                </td>
+                                                <td>
+                                                    <div style="font-weight: 800; color: #4338ca;">${studentMap[p.student_id] || 'Unknown Student'}</div>
+                                                    <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">${p.student_id}</div>
+                                                </td>
+                                                <td>
+                                                    <div style="font-weight: 800; color: #1e293b; margin-bottom: 0.25rem;">${p.category || 'General Payment'}</div>
+                                                    <code style="background: #eef2ff; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; color: #6366f1; font-weight: 700;">${p.reference}</code>
+                                                    ${breakdownHtml ? `<div style="display:block; margin-top:0.25rem;">${breakdownHtml}</div>` : ''}
+                                                </td>
+                                                <td><div style="font-weight: 900; color: #10b981; font-size: 1.15rem;">+ ₦${parseFloat(p.amount).toLocaleString()}</div></td>
+                                                <td>
+                                                    <span style="background: ${p.status === 'success' ? '#dcfce7; color: #16a34a' : '#fee2e2; color: #ef4444'}; padding: 0.4rem 0.8rem; border-radius: 8px; font-weight: 800; font-size: 0.7rem; display: inline-flex; align-items: center; gap: 0.4rem;">
+                                                        <div style="width: 6px; height: 6px; border-radius: 50%; background: currentColor;"></div>
+                                                        ${(p.status || 'pending').toUpperCase()}
+                                                    </span>
+                                                </td>
+                                                <td style="text-align: right; padding-right: 2rem;">
+                                                    <button class="btn" onclick="UI.printReceipt('${p.id}')" style="background: #eff6ff; color: #3b82f6; border: none; width: 40px; height: 40px; border-radius: 10px; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s;" title="Print Receipt">
+                                                        <i data-lucide="printer" style="width: 18px;"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
                                 </tbody>
                             </table>
                         </div>
@@ -17157,12 +17444,24 @@ export const UI = {
                     <i data-lucide="plus-circle" style="width: 18px; height: 18px; color: #4f46e5;"></i> Define New Fee
                 </h4>
                 <div class="grid grid-cols-2 gap-3">
-                    <div class="form-group">
-                        <label class="form-label" style="font-weight: 800; font-size: 0.7rem; text-transform: uppercase; color: #475569; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Select Class</label>
-                        <select id="new-fee-class" class="form-control" style="height: 42px; border-radius: 10px; border: 2px solid #e2e8f0; font-weight: 700; color: #1e293b; background: white; width: 100%; padding: 0 0.5rem;">
-                            <option value="">-- Choose Class --</option>
-                            ${classes.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
-                        </select>
+                    <div class="form-group" style="position: relative;">
+                        <label class="form-label" style="font-weight: 800; font-size: 0.7rem; text-transform: uppercase; color: #475569; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Select Class(es)</label>
+                        <div id="fee-class-multiselect" style="position: relative;">
+                            <div id="fee-class-trigger" onclick="document.getElementById('fee-class-dropdown').style.display = document.getElementById('fee-class-dropdown').style.display === 'block' ? 'none' : 'block'" style="height: 42px; border-radius: 10px; border: 2px solid #e2e8f0; font-weight: 700; color: #1e293b; background: white; width: 100%; padding: 0 0.75rem; display: flex; align-items: center; cursor: pointer; justify-content: space-between; user-select: none;">
+                                <span id="fee-class-label" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem;">-- Choose Class(es) --</span>
+                                <i data-lucide="chevron-down" style="width: 16px; height: 16px; color: #94a3b8; flex-shrink: 0;"></i>
+                            </div>
+                            <div id="fee-class-dropdown" style="display: none; position: absolute; top: 46px; left: 0; right: 0; background: white; border: 2px solid #e2e8f0; border-radius: 12px; max-height: 200px; overflow-y: auto; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 0.5rem;">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; cursor: pointer; font-weight: 800; font-size: 0.8rem; color: #4f46e5; border-bottom: 1px solid #e2e8f0; margin-bottom: 0.25rem;">
+                                    <input type="checkbox" id="fee-class-all" onchange="document.querySelectorAll('.fee-class-cb').forEach(cb => cb.checked = this.checked); UI._updateFeeClassLabel();" style="accent-color: #4f46e5;"> Select All
+                                </label>
+                                ${classes.map(c => `
+                                    <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.5rem; cursor: pointer; font-weight: 600; font-size: 0.8rem; color: #1e293b; border-radius: 6px; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
+                                        <input type="checkbox" class="fee-class-cb" value="${c.name}" onchange="UI._updateFeeClassLabel();" style="accent-color: #4f46e5;"> ${c.name}
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label class="form-label" style="font-weight: 800; font-size: 0.7rem; text-transform: uppercase; color: #475569; letter-spacing: 0.05em; margin-bottom: 0.4rem; display: block;">Fee Category</label>
@@ -17286,56 +17585,80 @@ export const UI = {
         }
     },
 
+    _updateFeeClassLabel() {
+        const checked = [...document.querySelectorAll('.fee-class-cb:checked')];
+        const label = document.getElementById('fee-class-label');
+        if (!label) return;
+        if (checked.length === 0) {
+            label.textContent = '-- Choose Class(es) --';
+        } else if (checked.length <= 3) {
+            label.textContent = checked.map(cb => cb.value).join(', ');
+        } else {
+            label.textContent = `${checked.length} classes selected`;
+        }
+    },
+
     async saveFeeStructure() {
-        const className = document.getElementById('new-fee-class').value;
+        const selectedClasses = [...document.querySelectorAll('.fee-class-cb:checked')].map(cb => cb.value);
         const category = document.getElementById('new-fee-cat').value;
         const amount = document.getElementById('new-fee-amount').value;
         const term = document.getElementById('new-fee-term').value;
         const session = document.getElementById('new-fee-session').value;
         
-        if (!className || !amount) return Notifications.show('Please fill all fields', 'warning');
+        if (selectedClasses.length === 0 || !amount) return Notifications.show('Please select at least one class and enter an amount', 'warning');
         
-        const cleanClassName = className.trim().toLowerCase();
         const allStructures = await db.fee_structures.toArray();
-        const duplicate = allStructures.find(f => 
-            (f.class_name || '').trim().toLowerCase() === cleanClassName && 
-            (f.category || 'School Fees').toLowerCase().trim() === category.toLowerCase().trim() &&
-            normalizeTerm(f.term) === normalizeTerm(term) &&
-            (f.session || '2025/2026').trim() === session.trim()
-        );
+        let created = 0;
+        let updated = 0;
+        
+        for (const className of selectedClasses) {
+            const cleanClassName = className.trim().toLowerCase();
+            const duplicate = allStructures.find(f => 
+                (f.class_name || '').trim().toLowerCase() === cleanClassName && 
+                (f.category || 'School Fees').toLowerCase().trim() === category.toLowerCase().trim() &&
+                normalizeTerm(f.term) === normalizeTerm(term) &&
+                (f.session || '2025/2026').trim() === session.trim()
+            );
 
-        if (duplicate) {
-            await db.fee_structures.put(prepareForSync({
-                ...duplicate,
-                amount: parseFloat(amount),
-                updated_at: new Date().toISOString()
-            }));
-        } else {
-            await db.fee_structures.add(prepareForSync({
-                id: crypto.randomUUID(),
-                class_name: className,
-                category: category,
-                amount: parseFloat(amount),
-                term: term,
-                session: session
-            }));
+            if (duplicate) {
+                await db.fee_structures.put(prepareForSync({
+                    ...duplicate,
+                    amount: parseFloat(amount),
+                    updated_at: new Date().toISOString()
+                }));
+                updated++;
+            } else {
+                await db.fee_structures.add(prepareForSync({
+                    id: crypto.randomUUID(),
+                    class_name: className,
+                    category: category,
+                    amount: parseFloat(amount),
+                    term: term,
+                    session: session
+                }));
+                created++;
+            }
+            
+            // Refresh financials for students in this class
+            const allStudents = await db.students.toArray();
+            const classStudents = allStudents.filter(s => {
+                const studentClass = (s.class_name || '').trim().toLowerCase();
+                const studentSub = (s.sub_class || '').trim().toLowerCase();
+                const studentFull = (studentClass + ' ' + studentSub).trim();
+                return studentClass === cleanClassName || 
+                       studentFull === cleanClassName ||
+                       (studentClass.startsWith(cleanClassName) && !/^\d/.test(studentClass.slice(cleanClassName.length).trim())) ||
+                       (studentFull.startsWith(cleanClassName) && !/^\d/.test(studentFull.slice(cleanClassName.length).trim()));
+            });
+            for (const s of classStudents) {
+                await this.refreshStudentFinancials(s.student_id);
+            }
         }
         
-        const allStudents = await db.students.toArray();
-        const classStudents = allStudents.filter(s => {
-            const studentClass = (s.class_name || '').trim().toLowerCase();
-            const studentSub = (s.sub_class || '').trim().toLowerCase();
-            const studentFull = (studentClass + ' ' + studentSub).trim();
-            return studentClass === cleanClassName || 
-                   studentFull === cleanClassName ||
-                   (studentClass.startsWith(cleanClassName) && !/^\d/.test(studentClass.slice(cleanClassName.length).trim())) ||
-                   (studentFull.startsWith(cleanClassName) && !/^\d/.test(studentFull.slice(cleanClassName.length).trim()));
-        });
-        for (const s of classStudents) {
-            await this.refreshStudentFinancials(s.student_id);
-        }
-        
-        Notifications.show('Fee structure saved', 'success');
+        const msg = [];
+        if (created > 0) msg.push(`${created} new`);
+        if (updated > 0) msg.push(`${updated} updated`);
+        Notifications.show(`Fee structure saved for ${selectedClasses.length} class(es): ${msg.join(', ')}`, 'success');
         this.renderFeeStructures();
         this.debouncedSync();
     },
@@ -17418,6 +17741,11 @@ export const UI = {
                         </select>
                     </div>
                 </div>
+
+                <div class="form-group">
+                    <label style="font-weight: 800; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;">Payment Breakdown / Details</label>
+                    <input type="text" id="pay-description" style="height: 52px; border-radius: 12px; border: 2px solid #334155; width: 100%; padding: 0 1rem; font-weight: 600; background: #0f172a; color: white; outline: none; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);" placeholder="e.g. Tuition: ₦10,000 | Uniform: ₦5,000">
+                </div>
                 
                 <div id="suggested-amount-info" style="display: none; background: #1e1b4b; color: #818cf8; padding: 1rem; border-radius: 16px; font-size: 0.8rem; font-weight: 700; align-items: center; gap: 0.75rem; border: 1px solid rgba(129, 140, 248, 0.2); box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                     <i data-lucide="info" style="width: 18px; color: #818cf8; flex-shrink: 0;"></i>
@@ -17430,6 +17758,7 @@ export const UI = {
             const studentId = document.getElementById('pay-student-select').value;
             const amount = document.getElementById('pay-amount').value;
             const category = document.getElementById('pay-category').value;
+            const description = document.getElementById('pay-description').value || '';
             
             if (!studentId) {
                 Notifications.show('Please select a student!', 'warning');
@@ -17457,7 +17786,8 @@ export const UI = {
                 status: 'success',
                 date: new Date().toISOString(),
                 term: term,
-                session: session
+                session: session,
+                description: description
             }));
             
             // Trigger analytics update
@@ -18227,6 +18557,32 @@ export const UI = {
 
         try {
             this.showPDFPreview(doc, `Duty_Roster_${term.replace(/\s+/g, '_')}.pdf`);
+            
+            // Reset roster config to defaults upon successful printing
+            const defaults = [
+                { key: 'rosterStartDate', value: '' },
+                { key: 'rosterWeeks', value: '14' },
+                { key: 'rosterStaffPerWeek', value: '2' },
+                { key: 'rosterMaxTurns', value: '2' },
+                { key: 'rosterBreakWeek', value: '7' },
+                { key: 'rosterBreakDuty', value: '0' },
+                { key: 'rosterExamWeek', value: '6' },
+                { key: 'rosterRevisionWeek', value: '12' },
+                { key: 'rosterTerminalWeek', value: '13' },
+                { key: 'rosterClosingWeek', value: '14' },
+                { key: 'rosterStartWeek', value: '1' }
+            ];
+            for (const s of defaults) {
+                const existing = await db.settings.where('key').equals(s.key).first();
+                if (existing) {
+                    await db.settings.update(existing.id, prepareForSync(s));
+                } else {
+                    await db.settings.add(prepareForSync({ id: `SET_${s.key.toUpperCase()}`, ...s }));
+                }
+            }
+            Notifications.show('Duty roster config auto-reset to system defaults.', 'info');
+            this.renderRoster();
+            this.debouncedSync();
         } catch (error) {
             console.error(error);
             Notifications.show('Failed to generate PDF', 'error');
@@ -18251,6 +18607,7 @@ export const UI = {
         const rosterStaffPerWeek = parseInt(getVal('rosterStaffPerWeek', '2'));
         const rosterMaxTurns = parseInt(getVal('rosterMaxTurns', '2'));
         const rosterBreakWeek = parseInt(getVal('rosterBreakWeek', '7'));
+        const rosterBreakDuty = getVal('rosterBreakDuty', '0') === '1';
         const rosterExamWeek = parseInt(getVal('rosterExamWeek', '6'));
         const rosterRevisionWeek = parseInt(getVal('rosterRevisionWeek', '12'));
         const rosterTerminalWeek = parseInt(getVal('rosterTerminalWeek', '13'));
@@ -18327,6 +18684,11 @@ export const UI = {
                         <div style="flex: 1; min-width: 100px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Mid-Term Break Wk</label>
                             <input type="number" id="roster-break-week" class="input" value="${rosterBreakWeek}" min="1" style="width: 100%; height: 44px; border-radius: 10px; font-weight: 600;">
+                        </div>
+                        <div style="flex: 1.5; min-width: 180px; display: flex; align-items: center; padding-top: 1rem;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; font-weight: 800; color: #475569; cursor: pointer; user-select: none; margin: 0;">
+                                <input type="checkbox" id="roster-break-duty" ${rosterBreakDuty ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: #4f46e5;"> Teachers on duty during mid-term break week
+                            </label>
                         </div>
                         <div style="flex: 1; min-width: 100px;">
                             <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">Mid-Term Exams Wk</label>
@@ -18444,6 +18806,7 @@ export const UI = {
         const terminalWeek = parseInt(document.getElementById('roster-terminal-week').value) || 13;
         const closingWeek = parseInt(document.getElementById('roster-closing-week').value) || 14;
         const breakWeek = parseInt(document.getElementById('roster-break-week').value) || 7;
+        const breakDuty = document.getElementById('roster-break-duty').checked;
         const startWeek = parseInt(document.getElementById('roster-start-week').value) || 1;
 
         if (!startDateStr) return Notifications.show('Please set a Term Start Date.', 'warning');
@@ -18455,6 +18818,7 @@ export const UI = {
             { key: 'rosterStaffPerWeek', value: staffPerWeek.toString() },
             { key: 'rosterMaxTurns', value: maxTurns.toString() },
             { key: 'rosterBreakWeek', value: breakWeek.toString() },
+            { key: 'rosterBreakDuty', value: breakDuty ? '1' : '0' },
             { key: 'rosterExamWeek', value: examWeek.toString() },
             { key: 'rosterRevisionWeek', value: revisionWeek.toString() },
             { key: 'rosterTerminalWeek', value: terminalWeek.toString() },
@@ -18473,7 +18837,10 @@ export const UI = {
 
         // Calculate slots needed based on active weeks
         const activeWeeks = totalWeeks - startWeek + 1;
-        const totalSlotsNeeded = Math.max(0, activeWeeks) * staffPerWeek;
+        // If breakDuty is false, we don't assign staff on breakWeek (1 less active week if breakWeek is inside active range)
+        const breakInsideActive = breakWeek >= startWeek && breakWeek <= totalWeeks;
+        const dutyWeeksCount = (breakInsideActive && !breakDuty) ? Math.max(0, activeWeeks - 1) : Math.max(0, activeWeeks);
+        const totalSlotsNeeded = dutyWeeksCount * staffPerWeek;
         const maxAvailableSlots = fullTimeStaff.length * maxTurns;
 
         if (totalSlotsNeeded > maxAvailableSlots) {
@@ -18493,6 +18860,7 @@ export const UI = {
         let poolIndex = 0;
 
         const getWeekStatus = (weekNum) => {
+            if (weekNum === breakWeek) return 'Mid-Term Break';
             if (weekNum === examWeek) return 'Mid-Term Exams';
             if (weekNum === revisionWeek) return 'Revision';
             if (weekNum === terminalWeek) return 'Terminal Exams';
@@ -18509,6 +18877,16 @@ export const UI = {
             const status = getWeekStatus(w);
 
             if (w < startWeek) {
+                newRoster.push(prepareForSync({
+                    id: crypto.randomUUID(), staff_id: null, duty_type: status,
+                    week_start: weekStart.toISOString().split('T')[0],
+                    week_end: weekEnd.toISOString().split('T')[0],
+                    week_number: w
+                }));
+                continue;
+            }
+
+            if (w === breakWeek && !breakDuty) {
                 newRoster.push(prepareForSync({
                     id: crypto.randomUUID(), staff_id: null, duty_type: status,
                     week_start: weekStart.toISOString().split('T')[0],
