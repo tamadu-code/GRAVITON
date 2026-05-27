@@ -15229,6 +15229,22 @@ export const UI = {
                 .si-modal__cancel:hover { background: #f0edef; }
                 .si-modal__apply { padding: 10px 20px; border: none; border-radius: 8px; background: #0058be; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
                 .si-modal__apply:hover { opacity: .88; }
+
+                /* Collapsible card styles for mobile */
+                .si-card-header { display: flex; justify-content: space-between; align-items: center; }
+                .si-alert-list-modal { display: flex; flex-direction: column; gap: 12px; }
+                .si-alert-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; padding-right: 4px; }
+                @media (max-width: 768px) {
+                    .si-collapsible-card { margin-bottom: 16px !important; }
+                    .si-collapsible-card .si-card-header { cursor: pointer; user-select: none; }
+                    .si-collapsible-card .si-card-header::after { content: '▼'; font-size: 11px; color: #76777d; font-weight: 700; transition: transform 0.2s ease; margin-left: 8px; }
+                    .si-collapsible-card.expanded .si-card-header::after { transform: rotate(180deg); }
+                    .si-collapsible-card .si-card-body-collapse { display: none; margin-top: 16px; }
+                    .si-collapsible-card.expanded .si-card-body-collapse { display: block; }
+                }
+                @media (min-width: 769px) {
+                    .si-collapsible-card .si-card-body-collapse { display: block !important; }
+                }
             `;
             document.head.appendChild(styleTag);
         }
@@ -15398,7 +15414,7 @@ export const UI = {
                     });
                 }
             });
-            return missing.sort((a,b) => b.pct - a.pct).slice(0, 8);
+            return missing.sort((a,b) => b.pct - a.pct);
         };
 
         // --- Alerts ---
@@ -15417,7 +15433,8 @@ export const UI = {
                         alerts.push({
                             title: `${c.class_name} - ${c.subject_name}`,
                             desc: `${fieldLabels[f]} scores missing for ${cls.length - entered} students.`,
-                            teacherId: c.teacher_id, teacherName: c.teacher_name
+                            teacherId: c.teacher_id, teacherName: c.teacher_name,
+                            className: c.class_name, subjectId: c.subject_id, subjectName: c.subject_name
                         });
                     }
                 });
@@ -15428,7 +15445,7 @@ export const UI = {
         // --- Activity feed ---
         const _siActivity = () => {
             const items = [];
-            const sortedLogs = auditLogs.filter(a => a.table === 'scores').sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 5);
+            const sortedLogs = auditLogs.filter(a => a.table === 'scores').sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 20);
             sortedLogs.forEach(a => {
                 let d = {}; try { d = JSON.parse(a.details); } catch(e) {}
                 const t = new Date(a.timestamp);
@@ -15535,66 +15552,70 @@ export const UI = {
                     <div class="si-bento-grid">
                         <div class="si-bento-main">
                             <!-- Bar Chart -->
-                            <div class="si-chart-card">
-                                <div class="si-chart-header">
-                                    <h3 class="si-chart-title">Performance by Department</h3>
+                            <div class="si-chart-card si-collapsible-card expanded">
+                                <div class="si-chart-header si-card-header">
+                                    <h3 class="si-chart-title" style="margin:0;">Performance by Department</h3>
                                     <div class="si-chart-legend">
                                         <span class="si-chart-legend__item"><span class="si-chart-legend__dot si-chart-legend__dot--primary"></span> Scores</span>
                                         <span class="si-chart-legend__item"><span class="si-chart-legend__dot si-chart-legend__dot--target"></span> Target</span>
                                     </div>
                                 </div>
-                                <div class="si-chart-bars">
-                                    ${depts.length > 0 ? depts.map(d => `
-                                        <div class="si-bar-group">
-                                            <div class="si-bar-track">
-                                                <div class="si-bar-fill" style="height:${d.pct}%"></div>
-                                                <div class="si-bar-target" style="bottom:${d.target}%"></div>
+                                <div class="si-card-body-collapse">
+                                    <div class="si-chart-bars" style="margin-top:16px;">
+                                        ${depts.length > 0 ? depts.map(d => `
+                                            <div class="si-bar-group">
+                                                <div class="si-bar-track">
+                                                    <div class="si-bar-fill" style="height:${d.pct}%"></div>
+                                                    <div class="si-bar-target" style="bottom:${d.target}%"></div>
+                                                </div>
+                                                <span class="si-bar-label">${d.name}</span>
                                             </div>
-                                            <span class="si-bar-label">${d.name}</span>
-                                        </div>
-                                    `).join('') : '<div class="si-empty-state" style="width: 100%;"><div class="si-empty-state__text">No department performance data available</div></div>'}
+                                        `).join('') : '<div class="si-empty-state" style="width: 100%;"><div class="si-empty-state__text">No department performance data available</div></div>'}
+                                    </div>
                                 </div>
                             </div>
 
                             <!-- Missing Scores Table -->
-                            <div class="si-table-card">
-                                <div class="si-table-header">
-                                    <h3 class="si-table-title">Missing Scores Tracking</h3>
+                            <div class="si-table-card si-collapsible-card expanded">
+                                <div class="si-table-header si-card-header">
+                                    <h3 class="si-table-title" style="margin:0;">Missing Scores Tracking</h3>
                                     <select class="si-filter-select" style="min-width:auto;">
                                         <option>Filter: High Priority</option>
                                         <option>Filter: Recent</option>
                                     </select>
                                 </div>
-                                <div style="overflow-x:auto;">
-                                    <table class="si-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Class Name</th>
-                                                <th>Instructor</th>
-                                                <th>Students Missing</th>
-                                                <th>Deadline</th>
-                                                <th style="text-align:right;">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${missingData.length > 0 ? missingData.map(m => `
+                                <div class="si-card-body-collapse">
+                                    <div style="overflow-x:auto; max-height: 480px; overflow-y: auto;">
+                                        <table class="si-table">
+                                            <thead>
                                                 <tr>
-                                                    <td style="font-weight:500;">${m.className}</td>
-                                                    <td>${m.instructor}</td>
-                                                    <td>
-                                                        <div class="si-table__progress">
-                                                            <div class="si-table__progress-bar">
-                                                                <div class="si-table__progress-fill ${m.pct > 40 ? 'si-table__progress-fill--error' : 'si-table__progress-fill--info'}" style="width:${m.pct}%"></div>
-                                                            </div>
-                                                            <span class="si-table__progress-count">${String(m.missing).padStart(2,'0')}/${m.total}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td class="${m.isOverdue || m.deadline === 'Tomorrow' ? 'si-table__deadline--overdue' : ''}">${m.deadline}</td>
-                                                    <td style="text-align:right;"><button class="si-table__action-btn si-remind-btn" data-teacher="${m.teacherId||''}">Remind</button></td>
+                                                    <th>Class Name</th>
+                                                    <th>Instructor</th>
+                                                    <th>Students Missing</th>
+                                                    <th>Deadline</th>
+                                                    ${!isTeacher ? `<th style="text-align:right;">Action</th>` : ''}
                                                 </tr>
-                                            `).join('') : '<tr><td colspan="5" class="si-empty-state" style="text-align:center;"><div class="si-empty-state__text">No missing scores found</div></td></tr>'}
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody>
+                                                ${missingData.length > 0 ? missingData.map(m => `
+                                                    <tr>
+                                                        <td style="font-weight:500;">${m.className}</td>
+                                                        <td>${m.instructor}</td>
+                                                        <td>
+                                                            <div class="si-table__progress">
+                                                                <div class="si-table__progress-bar">
+                                                                    <div class="si-table__progress-fill ${m.pct > 40 ? 'si-table__progress-fill--error' : 'si-table__progress-fill--info'}" style="width:${m.pct}%"></div>
+                                                                </div>
+                                                                <span class="si-table__progress-count">${String(m.missing).padStart(2,'0')}/${m.total}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td class="${m.isOverdue || m.deadline === 'Tomorrow' ? 'si-table__deadline--overdue' : ''}">${m.deadline}</td>
+                                                        ${!isTeacher ? `<td style="text-align:right;"><button class="si-table__action-btn si-remind-btn" data-teacher-id="${m.teacherId||''}" data-teacher-name="${m.instructor||''}" data-class-name="${m.className}">Remind</button></td>` : ''}
+                                                    </tr>
+                                                `).join('') : '<tr><td colspan="5" class="si-empty-state" style="text-align:center;"><div class="si-empty-state__text">No missing scores found</div></td></tr>'}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -15602,38 +15623,45 @@ export const UI = {
                         <!-- Right Sidebar -->
                         <div class="si-bento-side">
                             <!-- Critical Alerts -->
-                            <div class="si-alert-card">
-                                <div class="si-alert-header">
-                                    <h3 class="si-alert-title">Critical Alerts</h3>
+                            <div class="si-alert-card si-collapsible-card expanded">
+                                <div class="si-alert-header si-card-header">
+                                    <h3 class="si-alert-title" style="margin:0;">Critical Alerts</h3>
                                     <span class="si-alert-badge">${alerts.length} LIVE</span>
                                 </div>
-                                <div class="si-alert-list">
-                                    ${alerts.length > 0 ? alerts.slice(0, 3).map(a => `
-                                        <div class="si-alert-item">
-                                            <div class="si-alert-item__icon"><i data-lucide="alert-circle" style="width:20px;height:20px;"></i></div>
-                                            <div class="si-alert-item__content">
-                                                <div class="si-alert-item__title">${a.title}</div>
-                                                <div class="si-alert-item__desc">${a.desc}</div>
+                                <div class="si-card-body-collapse">
+                                    <div class="si-alert-list" style="margin-top:16px;">
+                                        ${alerts.length > 0 ? alerts.map((a, idx) => `
+                                            <div class="si-alert-item si-alert-goto-gradebook" data-alert-idx="${idx}" data-class-name="${a.className}" data-subject-id="${a.subjectId}" style="cursor:pointer; transition: background 0.2s;">
+                                                <div class="si-alert-item__icon"><i data-lucide="alert-circle" style="width:20px;height:20px;"></i></div>
+                                                <div class="si-alert-item__content">
+                                                    <div class="si-alert-item__title">${a.title}</div>
+                                                    <div class="si-alert-item__desc">${a.desc}</div>
+                                                    <div style="font-size:11px; color:#0058be; font-weight:600; margin-top:4px; display:flex; align-items:center; gap:4px;"><i data-lucide="external-link" style="width:12px;height:12px;"></i> Open in Gradebook</div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    `).join('') : '<div class="si-empty-state"><div class="si-empty-state__text">No critical alerts</div></div>'}
+                                        `).join('') : '<div class="si-empty-state"><div class="si-empty-state__text">No critical alerts</div></div>'}
+                                    </div>
+                                    ${alerts.length > 0 ? `<button class="si-alert-link">View all ${alerts.length} alerts</button>` : ''}
                                 </div>
-                                ${alerts.length > 0 ? `<button class="si-alert-link">View all ${alerts.length} alerts</button>` : ''}
                             </div>
 
                             <!-- Recent Activity -->
-                            <div class="si-activity-card">
-                                <h3 class="si-activity-title">Recent Activity</h3>
-                                <div class="si-activity-list">
-                                    ${activity.length > 0 ? activity.map(a => `
-                                        <div class="si-activity-item">
-                                            <div class="si-activity-dot"><i data-lucide="${a.icon}" style="width:14px;height:14px;"></i></div>
-                                            <div>
-                                                <div class="si-activity-text"><strong>${a.user}</strong> ${a.action} ${a.detail}</div>
-                                                <div class="si-activity-time">${a.time}</div>
+                            <div class="si-activity-card si-collapsible-card expanded">
+                                <div class="si-activity-header si-card-header" style="margin-bottom:16px;">
+                                    <h3 class="si-activity-title" style="margin:0;">Recent Activity</h3>
+                                </div>
+                                <div class="si-card-body-collapse">
+                                    <div class="si-activity-list">
+                                        ${activity.length > 0 ? activity.map(a => `
+                                            <div class="si-activity-item">
+                                                <div class="si-activity-dot"><i data-lucide="${a.icon}" style="width:14px;height:14px;"></i></div>
+                                                <div>
+                                                    <div class="si-activity-text"><strong>${a.user}</strong> ${a.action} ${a.detail}</div>
+                                                    <div class="si-activity-time">${a.time}</div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    `).join('') : '<div class="si-empty-state"><div class="si-empty-state__text">No recent activity</div></div>'}
+                                        `).join('') : '<div class="si-empty-state"><div class="si-empty-state__text">No recent activity</div></div>'}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -15642,10 +15670,141 @@ export const UI = {
             `;
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
-            // Remind buttons
+            // Collapsible cards toggle (only active on mobile viewports)
+            tabContent.querySelectorAll('.si-collapsible-card .si-card-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    if (window.innerWidth <= 768) {
+                        const card = header.closest('.si-collapsible-card');
+                        card.classList.toggle('expanded');
+                    }
+                });
+            });
+
+            // Navigate to gradebook from inline alerts
+            tabContent.querySelectorAll('.si-alert-goto-gradebook').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    if (e.target.closest('.si-btn-remind')) return; // Don't navigate if clicking Remind
+                    const className = item.dataset.className;
+                    const subjectId = item.dataset.subjectId;
+                    UI.renderView('gradebook', className || null, subjectId || null, selectedTerm, selectedSession);
+                });
+                item.addEventListener('mouseenter', () => { item.style.background = '#eef4ff'; });
+                item.addEventListener('mouseleave', () => { item.style.background = ''; });
+            });
+
+            // View all alerts modal
+            const alertLink = tabContent.querySelector('.si-alert-link');
+            if (alertLink) {
+                alertLink.addEventListener('click', () => {
+                    const existing = document.getElementById('si-alerts-modal');
+                    if (existing) existing.remove();
+
+                    const modal = document.createElement('div');
+                    modal.id = 'si-alerts-modal';
+                    modal.className = 'si-modal-overlay';
+                    modal.innerHTML = `
+                        <div class="si-modal" style="width: 540px; max-width: 95vw; display: flex; flex-direction: column; max-height: 85vh;">
+                            <div class="si-modal__title" style="display:flex; justify-content:space-between; align-items:center;">
+                                <span>Critical Alerts (${alerts.length})</span>
+                                <button id="si-alerts-modal-close" style="background:transparent; border:none; font-size:1.5rem; cursor:pointer; color:#76777d; line-height:1;">&times;</button>
+                            </div>
+                            <div class="si-modal__desc">Complete list of critical alerts indicating courses with less than 50% score entries.</div>
+                            <div style="overflow-y:auto; flex:1; padding-right:4px;" class="si-alert-list-modal">
+                                ${alerts.map(a => `
+                                    <div class="si-alert-item si-alert-goto-gradebook" data-class-name="${a.className}" data-subject-id="${a.subjectId}" style="margin-bottom:12px; display:flex; align-items:center; gap:16px; cursor:pointer; transition: background 0.2s;">
+                                        <div class="si-alert-item__icon"><i data-lucide="alert-circle" style="width:20px;height:20px;"></i></div>
+                                        <div class="si-alert-item__content" style="flex:1;">
+                                            <div class="si-alert-item__title">${a.title}</div>
+                                            <div class="si-alert-item__desc">${a.desc}</div>
+                                            ${!isTeacher ? `<div style="font-size:11px; color:#76777d; font-weight:600; margin-top:4px;">Instructor: ${a.teacherName}</div>` : ''}
+                                            <div style="font-size:11px; color:#0058be; font-weight:600; margin-top:4px; display:flex; align-items:center; gap:4px;"><i data-lucide="external-link" style="width:12px;height:12px;"></i> Open in Gradebook</div>
+                                        </div>
+                                        ${!isTeacher ? `<button class="si-btn-remind si-remind-teacher" data-teacher-id="${a.teacherId}" data-teacher-name="${a.teacherName}" data-class-name="${a.title}" style="flex-shrink:0; font-size:11px; padding:4px 8px;">Remind</button>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                    modal.addEventListener('click', (e) => {
+                        if (e.target === modal) modal.remove();
+                    });
+                    document.getElementById('si-alerts-modal-close').addEventListener('click', () => modal.remove());
+
+                    // Wire up reminds inside alerts modal
+                    modal.querySelectorAll('.si-remind-teacher').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const tId = btn.dataset.teacherId;
+                            const tName = btn.dataset.teacherName;
+                            const cName = btn.dataset.className;
+                            if (tId) {
+                                try {
+                                    await db.notices.add(prepareForSync({
+                                        id: `N${Date.now()}_remind`,
+                                        title: `⚠️ Outstanding Score Submission Reminder`,
+                                        content: `Hello ${tName}, please upload outstanding scores for ${cName || 'your classes'} for ${selectedTerm} (${selectedSession}).`,
+                                        category: 'Urgent',
+                                        target: String(tId),
+                                        author: currentUserName,
+                                        is_active: 1,
+                                        updated_at: new Date().toISOString()
+                                    }));
+                                    if (this.debouncedSync) this.debouncedSync();
+                                    Notifications.show(`Reminder notice sent to ${tName}!`, 'success');
+                                } catch (err) {
+                                    console.error(err);
+                                    Notifications.show('Failed to send reminder', 'error');
+                                }
+                            }
+                        });
+                    });
+
+                    // Navigate to gradebook from modal alerts
+                    modal.querySelectorAll('.si-alert-goto-gradebook').forEach(item => {
+                        item.addEventListener('click', (e) => {
+                            if (e.target.closest('.si-btn-remind')) return;
+                            const className = item.dataset.className;
+                            const subjectId = item.dataset.subjectId;
+                            modal.remove();
+                            UI.renderView('gradebook', className || null, subjectId || null, selectedTerm, selectedSession);
+                        });
+                        item.addEventListener('mouseenter', () => { item.style.background = '#eef4ff'; });
+                        item.addEventListener('mouseleave', () => { item.style.background = ''; });
+                    });
+                });
+            }
+
+            // Remind buttons in missing scores table
             tabContent.querySelectorAll('.si-remind-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    Notifications.show('Reminder sent successfully!', 'success');
+                btn.addEventListener('click', async () => {
+                    const tId = btn.dataset.teacherId;
+                    const tName = btn.dataset.teacherName;
+                    const cName = btn.dataset.className;
+                    if (tId) {
+                        try {
+                            await db.notices.add(prepareForSync({
+                                id: `N${Date.now()}_remind`,
+                                title: `⚠️ Score Submission Reminder: ${cName}`,
+                                content: `Hello ${tName || 'Teacher'}, please upload the missing scores for ${cName || 'your course'} for ${selectedTerm} (${selectedSession}).`,
+                                category: 'Urgent',
+                                target: String(tId),
+                                author: currentUserName,
+                                is_active: 1,
+                                updated_at: new Date().toISOString()
+                            }));
+                            if (this.debouncedSync) this.debouncedSync();
+                            Notifications.show(`Reminder notice sent to ${tName || 'teacher'}!`, 'success');
+                        } catch (err) {
+                            console.error('Failed to save reminder notice:', err);
+                            Notifications.show('Failed to send reminder', 'error');
+                        }
+                    } else {
+                        Notifications.show('Reminder sent successfully!', 'success');
+                    }
                 });
             });
         };
@@ -15971,9 +16130,10 @@ export const UI = {
                             <div class="si-completion-stat__value">${overallPct}%</div>
                             <div class="si-completion-stat__label">Overall Progress</div>
                         </div>
+                        ${!isTeacher ? `
                         <div style="margin-left:auto;">
                             <button class="si-btn-remind-all" id="si-remind-all"><i data-lucide="bell" style="width:14px;height:14px;"></i> Remind All Pending</button>
-                        </div>
+                        </div>` : ''}
                     </div>
 
                     <!-- Department Groups -->
@@ -16002,11 +16162,12 @@ export const UI = {
                                             </div>
                                             <div class="si-teacher-row__pct">${t.pct}% • ${t.lastActivity}</div>
                                         </div>
+                                        ${!isTeacher ? `
                                         <div class="si-teacher-row__actions">
                                             <button class="si-btn-remind si-remind-teacher" data-teacher-id="${t.id}" data-teacher-name="${t.name}">
                                                 <i data-lucide="bell" style="width:12px;height:12px;"></i> Remind
                                             </button>
-                                        </div>
+                                        </div>` : ''}
                                     </div>
                                 `).join('')}
                             </div>
@@ -16026,16 +16187,66 @@ export const UI = {
 
             // Remind buttons
             tabContent.querySelectorAll('.si-remind-teacher').forEach(btn => {
-                btn.addEventListener('click', (e) => {
+                btn.addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    Notifications.show(`Reminder sent to ${btn.dataset.teacherName}`, 'success');
+                    const tId = btn.dataset.teacherId;
+                    const tName = btn.dataset.teacherName;
+                    if (tId) {
+                        try {
+                            await db.notices.add(prepareForSync({
+                                id: `N${Date.now()}_remind`,
+                                title: `⚠️ Outstanding Score Submission Reminder`,
+                                content: `Hello ${tName}, please upload outstanding scores for your courses for ${selectedTerm} (${selectedSession}).`,
+                                category: 'Urgent',
+                                target: String(tId),
+                                author: currentUserName,
+                                is_active: 1,
+                                updated_at: new Date().toISOString()
+                            }));
+                            if (this.debouncedSync) this.debouncedSync();
+                            Notifications.show(`Reminder notice sent to ${tName}!`, 'success');
+                        } catch (err) {
+                            console.error(err);
+                            Notifications.show('Failed to send reminder', 'error');
+                        }
+                    } else {
+                        Notifications.show(`Reminder sent to ${tName}`, 'success');
+                    }
                 });
             });
 
             const remindAll = document.getElementById('si-remind-all');
-            if (remindAll) remindAll.addEventListener('click', () => {
-                Notifications.show(`Reminders sent to all pending teachers`, 'success');
-            });
+            if (remindAll) {
+                remindAll.addEventListener('click', async () => {
+                    let count = 0;
+                    for (const [tid, t] of Object.entries(teacherMap)) {
+                        const pct = t.totalExpected > 0 ? (t.totalEntered / t.totalExpected) : 0;
+                        if (pct < 0.95) {
+                            try {
+                                await db.notices.add(prepareForSync({
+                                    id: `N${Date.now()}_remind_${tid}`,
+                                    title: `⚠️ Urgent: Score Submission Outstanding`,
+                                    content: `Hello ${t.name}, this is an automated reminder to submit outstanding scores for your courses for ${selectedTerm} (${selectedSession}).`,
+                                    category: 'Urgent',
+                                    target: String(tid),
+                                    author: currentUserName,
+                                    is_active: 1,
+                                    updated_at: new Date().toISOString()
+                                }));
+                                count++;
+                            } catch (err) {
+                                console.error(err);
+                            }
+                        }
+                    }
+                    if (count > 0) {
+                        if (this.debouncedSync) this.debouncedSync();
+                        Notifications.show(`Reminder notices sent to ${count} pending teachers!`, 'success');
+                    } else {
+                        Notifications.show('All teachers are already up to date!', 'info');
+                    }
+                });
+            }
         };
 
         // ========================================
@@ -16058,6 +16269,68 @@ export const UI = {
                 renderTab(btn.dataset.siTab);
             });
         });
+
+        // --- Export Button ---
+        const exportBtn = document.getElementById('si-btn-export');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => {
+                const XLSXLib = window.XLSX;
+                if (!XLSXLib) {
+                    return Notifications.show('Excel export library is loading, please try again in a moment.', 'warning');
+                }
+                try {
+                    const kpis = _siComputeKPIs();
+                    const depts = _siDeptPerformance();
+                    const missing = _siMissingScores();
+                    const alerts = _siAlerts();
+
+                    const wb = XLSXLib.utils.book_new();
+
+                    // Sheet 1: Overview KPIs
+                    const overviewData = [
+                        ['Metric', 'Value'],
+                        ['Completion Rate', `${kpis.completionRate}%`],
+                        ['Average Score', parseFloat(kpis.avgScore)],
+                        ['Pending Audits', parseInt(kpis.pendingAudits)],
+                        ['Total Students', parseInt(kpis.totalStudents)],
+                        ['Total Entries Submitted', parseInt(kpis.totalEntries)],
+                        ['Total Expected Entries', parseInt(kpis.totalExpected)]
+                    ];
+                    const wsOverview = XLSXLib.utils.aoa_to_sheet(overviewData);
+                    XLSXLib.utils.book_append_sheet(wb, wsOverview, "Overview");
+
+                    // Sheet 2: Department Performance
+                    const deptData = [['Department', 'Average Score', 'Target', 'Progress %']];
+                    depts.forEach(d => {
+                        deptData.push([d.name, d.avg, d.target, d.pct]);
+                    });
+                    const wsDept = XLSXLib.utils.aoa_to_sheet(deptData);
+                    XLSXLib.utils.book_append_sheet(wb, wsDept, "Departments");
+
+                    // Sheet 3: Missing Scores
+                    const missingData = [['Class Name', 'Instructor', 'Missing Students', 'Total Students', 'Percentage Missing', 'Deadline']];
+                    missing.forEach(m => {
+                        missingData.push([m.className, m.instructor, m.missing, m.total, m.pct, m.deadline]);
+                    });
+                    const wsMissing = XLSXLib.utils.aoa_to_sheet(missingData);
+                    XLSXLib.utils.book_append_sheet(wb, wsMissing, "Missing Scores");
+
+                    // Sheet 4: Critical Alerts
+                    const alertsData = [['Course / Subject', 'Description', 'Instructor']];
+                    alerts.forEach(a => {
+                        alertsData.push([a.title, a.desc, a.teacherName]);
+                    });
+                    const wsAlerts = XLSXLib.utils.aoa_to_sheet(alertsData);
+                    XLSXLib.utils.book_append_sheet(wb, wsAlerts, "Critical Alerts");
+
+                    XLSXLib.writeFile(wb, `Score_Insights_${selectedTerm.replace(/\s+/g, '_')}_${selectedSession.replace(/[\/\s]+/g, '_')}.xlsx`);
+                    Notifications.show('Insights exported to Excel successfully!', 'success');
+                } catch (err) {
+                    console.error('Failed to export insights:', err);
+                    Notifications.show('Failed to export insights', 'error');
+                }
+            });
+        }
 
         // --- Term Settings Modal ---
         const termSettingsBtn = document.getElementById('si-btn-term-settings');
@@ -16147,7 +16420,7 @@ export const UI = {
 
             notices = notices.filter(n => {
                 if (n.target === 'All') return true;
-                if (isTeacher && n.target === 'Staff') return true;
+                if (isTeacher && (n.target === 'Staff' || n.target === String(this.currentUser.id))) return true;
                 if (isTeacher && teacherClasses.includes(n.target)) return true;
                 if (!isTeacher && n.target === 'Students') return true;
                 if (studentClass && n.target === studentClass) return true;
