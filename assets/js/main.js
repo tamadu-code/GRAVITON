@@ -6,8 +6,9 @@ import { UI } from './ui.js';
 import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, registerUser, resetPassword, startSyncLoop, syncToCloud, syncFromCloud } from './supabase-client.js';
 import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
+import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v26.1 (BUILD v287) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v26.1 (BUILD v288) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -285,6 +286,9 @@ async function loadAuthenticatedApp(authUser) {
         name: currentName,
         assigned_id: profile.assigned_id || null
     };
+
+    // Initialize Push Notifications asynchronously
+    initPushNotifications(authUser.id).catch(err => console.warn('[Push] Setup warning:', err));
 
     // Initialize sidebar visibility based on role
     UI.initSidebar();

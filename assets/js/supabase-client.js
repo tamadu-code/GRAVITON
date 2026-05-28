@@ -321,6 +321,7 @@ export async function syncFromCloud(forceAll = false) {
     // ── Clear stale lock (may persist across page reloads) ──
     if (window._isSyncingFromCloud && !forceAll) return;
     window._isSyncingFromCloud = true;
+    let totalPulledAcrossAllTables = 0;
 
     const lastSyncTime = localStorage.getItem('last_sync_timestamp');
     // Subtract 60 minutes as buffer to avoid missing records at boundary
@@ -486,6 +487,7 @@ export async function syncFromCloud(forceAll = false) {
                 }
                 if (totalPulled > 0) {
                     console.log(`[Sync] Pulled ${totalPulled} total records into '${table}' table.`);
+                    totalPulledAcrossAllTables += totalPulled;
                 }
 
                 // --- Deletion Reconciliation for Core Tables ---
@@ -541,6 +543,7 @@ export async function syncFromCloud(forceAll = false) {
             localStorage.setItem('last_sync_timestamp', new Date().toISOString());
         }
         console.log('[Sync] Cloud Pull sequence complete.');
+        window.dispatchEvent(new CustomEvent('sync-complete', { detail: { count: totalPulledAcrossAllTables } }));
     }
 }
 
@@ -558,7 +561,10 @@ export function startSyncLoop(intervalMs = 60000) {
         setTimeout(async () => {
             try {
                 await syncFromCloud();
-                await syncToCloud();
+                const res = await syncToCloud();
+                if (res && res.count > 0) {
+                    window.dispatchEvent(new CustomEvent('sync-complete', { detail: { count: res.count } }));
+                }
             } catch (err) {
                 console.warn('[Sync] Periodic sync error:', err);
             }
@@ -640,7 +646,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v26.1 (BUILD v287) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v26.1 (BUILD v288) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);
