@@ -1,0 +1,9 @@
+# Supabase CLI temp files
+supabase/.temp/
+
+# Node
+node_modules/
+
+# Environment
+.env
+.env.local
