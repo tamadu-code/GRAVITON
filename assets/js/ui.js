@@ -7,6 +7,7 @@ console.log('UI Module Loading...');
 import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
+import { initPushNotifications, unsubscribeUser } from './push.js';
 
 const normalizeTerm = (t) => {
     if (!t) return '1st Term';
@@ -457,6 +458,8 @@ export const UI = {
                 if (typeof lucide !== 'undefined') lucide.createIcons();
                 return;
             }
+
+            this.currentView = viewName;
 
             // Render specific view
             switch(viewName) {
@@ -1041,6 +1044,7 @@ export const UI = {
                 isAdmin || 
                 n.target === 'All' || 
                 n.target === 'Staff' || 
+                n.target === String(teacherId) || 
                 assignedClasses.includes(n.target)
             ))
             .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
@@ -14729,6 +14733,39 @@ export const UI = {
                     </div>
                 </div>
 
+                <!-- Section: PWA & Push Notifications -->
+                <div class="glass-collapse-card">
+                    <input type="checkbox" id="toggle-settings-push" class="glass-collapse-checkbox" checked>
+                    <label for="toggle-settings-push" class="glass-collapse-header">
+                        <span class="glass-collapse-title"><i data-lucide="bell" style="width: 18px; color: #4f46e5;"></i> PWA & Push Notifications</span>
+                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                    </label>
+                    <div class="glass-collapse-content">
+                        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.5rem;">Configure Web Push VAPID keys to send offline push notifications to staff and teachers.</p>
+                        
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <label>VAPID Public Key</label>
+                            <input type="text" id="set-vapid-public-key" class="input" value="${localStorage.getItem('vapid_public_key') || ''}" placeholder="Enter base64-encoded VAPID Public Key">
+                        </div>
+                        
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 20px;">
+                            <h4 style="font-size: 0.9rem; font-weight: 800; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="bell-ring" style="width: 18px; color: #4f46e5;"></i> Device Registration & Testing
+                            </h4>
+                            <p style="font-size: 0.75rem; color: #64748b; margin-bottom: 1.25rem;">Verify push capability by registering this browser instance and triggering a test notification.</p>
+                            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                <button class="btn btn-secondary" style="height: 44px; border-radius: 10px;" onclick="UI.testRegisterPush()">
+                                    Register This Device
+                                </button>
+                                <button class="btn btn-primary" style="height: 44px; border-radius: 10px;" onclick="UI.testSendPush()">
+                                    Send Test Push
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
                 <div style="display: flex; gap: 1rem; margin-bottom: 5rem;">
                     <button class="btn btn-primary" style="flex: 1; height: 56px; border-radius: 16px; font-weight: 900; font-size: 1.1rem; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);" onclick="UI.saveSettings()">
                         Save All Configuration
@@ -14883,6 +14920,60 @@ export const UI = {
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
+    async testRegisterPush() {
+        const keyInput = document.getElementById('set-vapid-public-key');
+        const key = keyInput ? keyInput.value.trim() : '';
+        if (!key) {
+            Notifications.show('Please enter a VAPID Public Key first.', 'warning');
+            return;
+        }
+        
+        localStorage.setItem('vapid_public_key', key);
+        Notifications.show('Requesting notification permissions...', 'info');
+        
+        try {
+            const res = await initPushNotifications(this.currentUser.id, key);
+            if (res.success) {
+                Notifications.show('Device registered successfully for push notifications!', 'success');
+            } else {
+                Notifications.show(`Registration failed: ${res.error}`, 'error');
+            }
+        } catch (err) {
+            Notifications.show(`Error: ${err.message}`, 'error');
+        }
+    },
+    
+    async testSendPush() {
+        const client = getSupabase();
+        if (!client) {
+            Notifications.show('Supabase client not initialized.', 'error');
+            return;
+        }
+        
+        Notifications.show('Sending test push to device...', 'info');
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            const subscription = await registration.pushManager.getSubscription();
+            if (!subscription) {
+                Notifications.show('This device is not registered. Click "Register This Device" first.', 'warning');
+                return;
+            }
+            
+            if (registration.showNotification) {
+                await registration.showNotification('💡 Graviton CMS - Test Notification', {
+                    body: 'Congratulations! This device is registered and push listeners are active.',
+                    icon: './assets/icons/icon-192.png',
+                    badge: './assets/icons/icon-192.png'
+                });
+                Notifications.show('Local test push triggered successfully!', 'success');
+            } else {
+                Notifications.show('Browser does not support service worker notifications.', 'error');
+            }
+        } catch (err) {
+            Notifications.show(`Test failed: ${err.message}`, 'error');
+        }
+    },
+
     async saveSettings() {
         Notifications.show('Saving system configuration...', 'info');
         
@@ -14921,6 +15012,12 @@ export const UI = {
                 }
             }
             await this.updateInstitutionalBranding();
+            
+            const vapidInput = document.getElementById('set-vapid-public-key');
+            if (vapidInput) {
+                localStorage.setItem('vapid_public_key', vapidInput.value.trim());
+            }
+
             Notifications.show('Settings saved successfully!', 'success');
             await this.debouncedSync();
         } catch (e) {
@@ -22327,8 +22424,77 @@ export const UI = {
 
         const filtered = all.filter(s => assignedSubIds.has(s.id));
         return (filtered.length > 0 ? filtered : all).sort((a,b) => a.name.localeCompare(b.name));
+    },
+
+    async refreshLiveNotices() {
+        const marquee = document.querySelector('.live-notices marquee');
+        if (!marquee) return;
+        
+        try {
+            const userRole = (this.currentUser?.role || '').toLowerCase();
+            const isAdmin = userRole === 'admin' || userRole === 'principal';
+            const isTeacher = userRole === 'teacher';
+            
+            let notices = await db.notices.toArray().catch(() => []);
+            let filteredNotices = notices.filter(n => n.is_active === 1 || n.is_active === true);
+            
+            if (!isAdmin) {
+                if (isTeacher) {
+                    const teacherId = this.currentUser.id;
+                    const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
+                    const formAssignments = await db.form_teachers.where('teacher_id').equals(teacherId).toArray();
+                    const assignedClasses = [...new Set([
+                        ...assignments.map(a => a.class_name),
+                        ...formAssignments.map(f => f.class_name)
+                    ])];
+                    
+                    filteredNotices = filteredNotices.filter(n => 
+                        n.target === 'All' || 
+                        n.target === 'Staff' || 
+                        n.target === String(teacherId) || 
+                        assignedClasses.includes(n.target)
+                    );
+                } else {
+                    // Student / Parent
+                    const student = await db.students.get(this.currentUser.assigned_id || '');
+                    const studentClass = student?.class_name || '';
+                    filteredNotices = filteredNotices.filter(n => 
+                        n.target === 'All' || 
+                        n.target === 'Students' || 
+                        (studentClass && n.target === studentClass)
+                    );
+                }
+            }
+            
+            filteredNotices.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+            
+            let fallbackMsg = isAdmin 
+                ? 'Welcome to Graviton CMS! All systems operational.' 
+                : 'All academic systems are operational. Stay inspired.';
+                
+            const noticeHTML = filteredNotices.length > 0 
+                ? filteredNotices.map(n => `<span style="margin-right: 3rem;">🔔 <strong>${n.title}</strong>: ${n.content || ''}</span>`).join('')
+                : `<span style="margin-right: 3rem;">${fallbackMsg}</span>`;
+                
+            marquee.innerHTML = noticeHTML;
+        } catch (err) {
+            console.error('Error refreshing live notices:', err);
+        }
     }
 };
+
+window.addEventListener('sync-complete', () => {
+    if (window.UI) {
+        window.UI.refreshLiveNotices();
+        if (window.UI.currentView === 'noticeboard') {
+            const composer = document.getElementById('broadcast-content');
+            const isTyping = composer && (composer.value.trim() !== '' || document.activeElement === composer);
+            if (!isTyping) {
+                window.UI.renderNoticeBoard();
+            }
+        }
+    }
+});
 
 window.UI = UI;
 export default UI;

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'graviton-cache-v287';
+const CACHE_NAME = 'graviton-cache-v288';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -113,3 +113,51 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+
+// --- PWA PUSH NOTIFICATION LISTENERS ---
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Graviton CMS', body: 'New notice received.' };
+  if (event.data) {
+    try {
+      payload = event.data.json();
+    } catch (e) {
+      payload = { title: 'Graviton CMS', body: event.data.text() };
+    }
+  }
+
+  const options = {
+    body: payload.body,
+    icon: './assets/icons/icon-192.png',
+    badge: './assets/icons/icon-192.png',
+    vibrate: [100, 50, 100],
+    data: payload.data || {},
+    actions: [
+      { action: 'open', title: 'Open Graviton' }
+    ]
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, options)
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // Focus existing open window
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        // If no open window, open a new one
+        if (clients.openWindow) {
+          return clients.openWindow('./');
+        }
+      })
+  );
+});
+
