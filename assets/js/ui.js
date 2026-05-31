@@ -14479,7 +14479,8 @@ export const UI = {
             schoolLogo: settings.schoolLogo || null,
             themeColor: settings.themeColor || '#060495',
             holidays: settings.holidays || '',
-            termStatus: settings.termStatus || 'Active'
+            termStatus: settings.termStatus || 'Active',
+            vapidPublicKey: settings.vapid_public_key || localStorage.getItem('vapid_public_key') || ''
         };
 
         this.contentArea.innerHTML = `
@@ -14741,7 +14742,7 @@ export const UI = {
                         
                         <div class="form-group" style="margin-bottom: 1.5rem;">
                             <label>VAPID Public Key</label>
-                            <input type="text" id="set-vapid-public-key" class="input" value="${localStorage.getItem('vapid_public_key') || ''}" placeholder="Enter base64-encoded VAPID Public Key">
+                            <input type="text" id="set-vapid-public-key" class="input" value="${config.vapidPublicKey || ''}" placeholder="Enter base64-encoded VAPID Public Key">
                         </div>
                         
                         <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 20px;">
@@ -14996,6 +14997,11 @@ export const UI = {
         }
         if (this.pendingLogo) {
             settingsToSave.push({ key: 'schoolLogo', value: this.pendingLogo });
+        }
+
+        const vapidInput = document.getElementById('set-vapid-public-key');
+        if (vapidInput) {
+            settingsToSave.push({ key: 'vapid_public_key', value: vapidInput.value.trim() });
         }
 
         try {
@@ -17007,11 +17013,41 @@ export const UI = {
                             </button>
                         </div>
                     </div>
+
+                    <!-- Push Notifications Card -->
+                    <div class="card" style="padding: 2rem; background: white; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                                <i data-lucide="bell" style="color: #4f46e5;"></i> Push Notifications
+                            </h3>
+                            <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.6;">
+                                Receive real-time announcements, exam updates, and alerts directly on this device.
+                            </p>
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.25rem; border-radius: 16px; margin-bottom: 1.5rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+                                    <span style="font-weight: 700; color: #475569;">Status:</span>
+                                    <span id="push-permission-status" style="font-weight: 800; text-transform: uppercase;">Checking...</span>
+                                </div>
+                                <div id="push-status-details" style="font-size: 0.75rem; color: #64748b; margin-top: 0.5rem; line-height: 1.4;">
+                                    Verifying push setup on this browser...
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: auto;">
+                            <button id="btn-profile-register-push" class="btn btn-secondary" style="border-radius: 12px; height: 48px; font-weight: 800; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                <i data-lucide="bell-ring"></i> Register This Device
+                            </button>
+                            <button id="btn-profile-test-push" class="btn btn-primary" style="border-radius: 12px; height: 48px; font-weight: 800; background: #4f46e5; border: none; display: none; align-items: center; justify-content: center; gap: 0.5rem;">
+                                <i data-lucide="send"></i> Send Test Push
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        this.initProfilePushUI();
 
         document.getElementById('btn-update-password').onclick = async () => {
             const newPw = document.getElementById('new-password').value;
@@ -17043,6 +17079,130 @@ export const UI = {
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i data-lucide="save"></i> Update Security Credentials';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        };
+    },
+
+    async initProfilePushUI() {
+        const statusEl = document.getElementById('push-permission-status');
+        const detailsEl = document.getElementById('push-status-details');
+        const registerBtn = document.getElementById('btn-profile-register-push');
+        const testBtn = document.getElementById('btn-profile-test-push');
+
+        if (!statusEl || !detailsEl || !registerBtn || !testBtn) return;
+
+        const isSupported = ('serviceWorker' in navigator) && ('PushManager' in window);
+        if (!isSupported) {
+            statusEl.textContent = 'Unsupported';
+            statusEl.style.color = '#ef4444';
+            detailsEl.textContent = 'Push notifications are not supported on this browser. iOS users must use Safari and select "Add to Home Screen" first.';
+            registerBtn.disabled = true;
+            registerBtn.style.opacity = '0.5';
+            return;
+        }
+
+        const updateStatus = async () => {
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                const subscription = await registration.pushManager.getSubscription();
+                const permission = Notification.permission;
+
+                if (permission === 'denied') {
+                    statusEl.textContent = 'Blocked';
+                    statusEl.style.color = '#ef4444';
+                    detailsEl.textContent = 'Notification permission has been blocked. Please enable notifications in your browser settings to receive alerts.';
+                    registerBtn.innerHTML = '<i data-lucide="bell-off"></i> Permission Blocked';
+                    registerBtn.disabled = true;
+                    testBtn.style.display = 'none';
+                } else if (subscription) {
+                    statusEl.textContent = 'Active';
+                    statusEl.style.color = '#10b981';
+                    detailsEl.textContent = 'This device is successfully registered to receive real-time push alerts.';
+                    registerBtn.innerHTML = '<i data-lucide="refresh-cw"></i> Re-register Device';
+                    testBtn.style.display = 'flex';
+                } else {
+                    statusEl.textContent = 'Not Registered';
+                    statusEl.style.color = '#f59e0b';
+                    detailsEl.textContent = 'This device is not configured to receive notifications yet.';
+                    registerBtn.innerHTML = '<i data-lucide="bell-ring"></i> Register This Device';
+                    testBtn.style.display = 'none';
+                }
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            } catch (err) {
+                console.error('[Push] Profile UI update error:', err);
+                statusEl.textContent = 'Error';
+                statusEl.style.color = '#ef4444';
+                detailsEl.textContent = `Error verifying subscription: ${err.message}`;
+            }
+        };
+
+        await updateStatus();
+
+        registerBtn.onclick = async () => {
+            const originalHtml = registerBtn.innerHTML;
+            registerBtn.disabled = true;
+            registerBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Registering...';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            try {
+                // Fetch key from DB first or localStorage
+                let key = localStorage.getItem('vapid_public_key');
+                if (!key) {
+                    const settingRecord = await db.settings.where('key').equals('vapid_public_key').first();
+                    if (settingRecord && settingRecord.value) {
+                        key = settingRecord.value;
+                        localStorage.setItem('vapid_public_key', key);
+                    }
+                }
+
+                if (!key) {
+                    Notifications.show('Web Push keys are not configured yet by the Admin.', 'warning');
+                    detailsEl.textContent = 'Error: The server VAPID keys have not been set up yet. Please contact your school administrator.';
+                    return;
+                }
+
+                const res = await initPushNotifications(this.currentUser.id, key);
+                if (res.success) {
+                    Notifications.show('This device is registered successfully for push notifications!', 'success');
+                } else {
+                    Notifications.show(`Registration failed: ${res.error}`, 'error');
+                    detailsEl.textContent = `Failed: ${res.error}. Please ensure notifications are allowed in browser settings.`;
+                }
+            } catch (err) {
+                Notifications.show(`Error: ${err.message}`, 'error');
+                detailsEl.textContent = `Error: ${err.message}`;
+            } finally {
+                registerBtn.disabled = false;
+                registerBtn.innerHTML = originalHtml;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                await updateStatus();
+            }
+        };
+
+        testBtn.onclick = async () => {
+            const originalHtml = testBtn.innerHTML;
+            testBtn.disabled = true;
+            testBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Sending...';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                if (registration.showNotification) {
+                    await registration.showNotification('💡 Graviton CMS - Push Verification', {
+                        body: `Success! Device is registered and receiving notifications for ${this.currentUser.name} (${this.currentUser.role}).`,
+                        icon: './assets/icons/icon-192.png',
+                        badge: './assets/icons/icon-192.png'
+                    });
+                    Notifications.show('Local test push triggered successfully!', 'success');
+                } else {
+                    Notifications.show('Browser does not support service worker notifications.', 'error');
+                }
+            } catch (err) {
+                Notifications.show(`Test failed: ${err.message}`, 'error');
+            } finally {
+                testBtn.disabled = false;
+                testBtn.innerHTML = originalHtml;
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             }
         };

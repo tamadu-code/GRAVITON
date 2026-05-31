@@ -3,6 +3,7 @@
  * Handles client-side Web Push API subscription and permission flow.
  */
 
+import db from './db.js';
 import { getSupabase } from './supabase-client.js';
 import { Notifications } from './utils.js';
 
@@ -33,7 +34,20 @@ export async function initPushNotifications(userId, customVapidKey = null) {
         return { success: false, error: 'Unsupported browser' };
     }
 
-    const vapidKey = customVapidKey || localStorage.getItem('vapid_public_key');
+    let vapidKey = customVapidKey || localStorage.getItem('vapid_public_key');
+    if (!vapidKey) {
+        try {
+            const settingRecord = await db.settings.where('key').equals('vapid_public_key').first();
+            if (settingRecord && settingRecord.value) {
+                vapidKey = settingRecord.value;
+                localStorage.setItem('vapid_public_key', vapidKey);
+                console.log('[Push] Loaded VAPID key from database settings.');
+            }
+        } catch (e) {
+            console.error('[Push] Error loading VAPID key from Dexie settings:', e);
+        }
+    }
+
     if (!vapidKey) {
         console.log('[Push] No VAPID public key configured. Push initialization deferred until key is set.');
         return { success: false, error: 'No VAPID key' };

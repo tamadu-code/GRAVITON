@@ -350,6 +350,10 @@ async function loadAuthenticatedApp(authUser) {
     updateSyncStatus('Syncing', 'syncing');
     startSyncLoop().then(() => {
         updateSyncStatus('Online', 'live');
+        // Retry initializing push notifications if they failed earlier due to missing key
+        if (!localStorage.getItem('vapid_public_key')) {
+            initPushNotifications(authUser.id).catch(err => console.warn('[Push] Setup retry warning:', err));
+        }
     }).catch(() => {
         updateSyncStatus('Offline', 'offline');
     });
