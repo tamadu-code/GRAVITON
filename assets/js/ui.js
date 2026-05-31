@@ -10039,30 +10039,26 @@ export const UI = {
                                                             </div>
                                                         `;
                                                     } else {
-                                                        // Admin Actions
-                                                        if (isAdmin || e.teacher_id === teacherId) {
-                                                            return `
-                                                                ${isAdmin ? `
+                                                        // Teacher / Admin Actions
+                                                        const canEdit = isAdmin || e.teacher_id === teacherId;
+                                                        return `
                                                                 <button class="btn btn-primary btn-sm" title="View Participants" onclick="UI.renderCBTParticipants('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #e0e7ff; color: #4338ca; border: none;">
                                                                     <i data-lucide="users" style="width: 18px;"></i>
                                                                 </button>
+                                                                ${isAdmin ? `
                                                                 <button class="btn btn-warning btn-sm" title="Archive Exam" onclick="UI.archiveExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #fef3c7; color: #d97706; border: none;">
                                                                     <i data-lucide="archive" style="width: 18px;"></i>
                                                                 </button>
                                                                 <button class="btn btn-danger btn-sm" title="Delete Exam" onclick="UI.deleteExam('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
                                                                     <i data-lucide="trash-2" style="width: 18px;"></i>
                                                                 </button>
-                                                                ` : `
-                                                                <button class="btn btn-primary btn-sm" title="View Participants" onclick="UI.renderCBTParticipants('${e.id}')" style="height: 40px; width: 40px; padding: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #e0e7ff; color: #4338ca; border: none;">
-                                                                    <i data-lucide="users" style="width: 18px;"></i>
-                                                                </button>
-                                                                `}
+                                                                ` : ''}
+                                                                ${canEdit ? `
                                                                 <button class="btn btn-secondary btn-sm" onclick="UI.renderCBTEditor('${e.id}')" style="height: 40px; padding: 0 1.25rem; border-radius: 10px;">
                                                                     <i data-lucide="edit-3" style="width: 16px;"></i> Edit
                                                                 </button>
-                                                            `;
-                                                        }
-                                                        return '';
+                                                                ` : ''}
+                                                        `;
                                                     }
                                                 })()}
                                             </div>
