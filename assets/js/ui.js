@@ -21126,6 +21126,7 @@ export const UI = {
         this.currentViewData = examId;
 
         // 1. Initial shell render (Instant feedback)
+        const _isAdmin = this.currentUser.role === 'Admin' || this.currentUser.role === 'Principal';
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="padding: 1rem 0.5rem;">
                 <div class="view-header" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem;">
@@ -21134,7 +21135,7 @@ export const UI = {
                         <p class="text-slate-500" style="font-size: 0.75rem; font-weight: 600;">${exam.title} — ${exam.subject_id}</p>
                     </div>
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                        <button class="btn btn-warning" onclick="UI.forceSubmitAllParticipants('${examId}')" style="border-radius: 10px; height: 38px; font-size: 0.75rem; background: #fff7ed; color: #d97706; border: 1px solid #ffedd5; font-weight: 800;"><i data-lucide="stop-circle" style="width: 14px;"></i> Force Stop All</button>
+                        ${_isAdmin ? `<button class="btn btn-warning" onclick="UI.forceSubmitAllParticipants('${examId}')" style="border-radius: 10px; height: 38px; font-size: 0.75rem; background: #fff7ed; color: #d97706; border: 1px solid #ffedd5; font-weight: 800;"><i data-lucide="stop-circle" style="width: 14px;"></i> Force Stop All</button>` : ''}
                         <button class="btn btn-secondary" onclick="UI.renderCBT()" style="border-radius: 10px; height: 38px; font-size: 0.75rem;"><i data-lucide="arrow-left" style="width: 14px;"></i> Back</button>
                     </div>
                 </div>
@@ -21360,9 +21361,13 @@ export const UI = {
                                         <div style="flex: 1; text-align: center; color: #94a3b8; font-size: 0.7rem; font-weight: 700;">Attempt Locked</div>
                                         `}
                                     ` : `
+                                        ${isAdmin ? `
                                         <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); UI.forceSubmitCBTExam('${s.student_id}', '${examId}')" style="flex: 1; border-radius: 8px; font-weight: 800; background: #fee2e2; color: #b91c1c; border: 1px solid #fecdd3; height: 40px; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; gap: 0.4rem;">
                                             <i data-lucide="log-out" style="width: 14px;"></i> Force Submit
                                         </button>
+                                        ` : `
+                                        <div style="flex: 1; text-align: center; color: #d97706; font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: #fff7ed; border-radius: 8px; height: 40px; border: 1px solid #ffedd5;"><i data-lucide="clock" style="width: 13px;"></i> Exam in progress</div>
+                                        `}
                                     `}
                                 </div>
                             ` : `
