@@ -7,7 +7,7 @@ console.log('UI Module Loading...');
 import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
-import { initPushNotifications, unsubscribeUser } from './push.js';
+import { initPushNotifications, unsubscribeUser, triggerPushNotification } from './push.js';
 
 const normalizeTerm = (t) => {
     if (!t) return '1st Term';
@@ -718,14 +718,7 @@ export const UI = {
                     <p class="text-secondary" style="font-size: 0.85rem;">Welcome back, <span class="font-bold text-primary">${this.currentUser.name}</span>. Here is what's happening today.</p>
                 </header>
 
-                <div class="live-notices" style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; margin-bottom: 1rem; overflow: hidden; display: flex; align-items: center;">
-                    <div style="background: #2563eb; color: white; padding: 0.5rem 1rem; font-weight: 800; font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; z-index: 1;">LIVE NOTICES</div>
-                    <div style="flex: 1; overflow: hidden; position: relative;">
-                        <marquee behavior="scroll" direction="left" scrollamount="6" style="padding: 0.5rem 0; color: #1e3a8a; font-weight: 500; font-size: 0.85rem;">
-                            ${noticeHTML}
-                        </marquee>
-                    </div>
-                </div>
+
 
                 <div class="stats-grid mb-1">
                     <div class="stat-card-premium" style="border-radius: 16px; padding: 1.25rem;">
@@ -1080,16 +1073,7 @@ export const UI = {
                         </div>
                     </div>
 
-                    <div class="live-notices" style="background: #2563eb; color: white; border-radius: 14px; overflow: hidden; display: flex; align-items: center; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2);">
-                        <div style="background: rgba(0,0,0,0.2); padding: 0.75rem 1.25rem; font-weight: 900; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap;">
-                            <i data-lucide="radio" style="width: 14px; vertical-align: middle; margin-right: 6px;"></i> Live Updates
-                        </div>
-                        <div style="flex: 1; overflow: hidden;">
-                            <marquee behavior="scroll" direction="left" scrollamount="5" style="padding: 0.75rem 0; font-weight: 600; font-size: 0.9rem;">
-                                ${noticeHTML}
-                            </marquee>
-                        </div>
-                    </div>
+
                 </header>
 
                 <!-- Analytics Grid -->
@@ -1230,16 +1214,19 @@ export const UI = {
                 if (!content) return Notifications.show('Please enter announcement content', 'warning');
                 
                 try {
-                    await db.notices.add(prepareForSync({
+                    const noticeData = {
                         id: `N${Date.now()}`,
                         title: `Broadcast from ${this.currentUser.name}`,
                         content: content,
                         category: 'News',
                         target: 'Students',
                         author: this.currentUser.name,
-                        is_active: 1
-                    }));
+                        is_active: 1,
+                        updated_at: new Date().toISOString()
+                    };
+                    await db.notices.add(prepareForSync(noticeData));
                     this.debouncedSync();
+                    triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                     document.getElementById('broadcast-content').value = '';
                     Notifications.show('Announcement broadcasted successfully!', 'success');
                     this.renderTeacherDashboard(); // Refresh
@@ -15842,7 +15829,7 @@ export const UI = {
                             const cName = btn.dataset.className;
                             if (tId) {
                                 try {
-                                    await db.notices.add(prepareForSync({
+                                    const noticeData = {
                                         id: `N${Date.now()}_remind`,
                                         title: `⚠️ Outstanding Score Submission Reminder`,
                                         content: `Hello ${tName}, please upload outstanding scores for ${cName || 'your classes'} for ${selectedTerm} (${selectedSession}).`,
@@ -15851,8 +15838,10 @@ export const UI = {
                                         author: currentUserName,
                                         is_active: 1,
                                         updated_at: new Date().toISOString()
-                                    }));
+                                    };
+                                    await db.notices.add(prepareForSync(noticeData));
                                     if (this.debouncedSync) this.debouncedSync();
+                                    triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                                     Notifications.show(`Reminder notice sent to ${tName}!`, 'success');
                                 } catch (err) {
                                     console.error(err);
@@ -15885,7 +15874,7 @@ export const UI = {
                     const cName = btn.dataset.className;
                     if (tId) {
                         try {
-                            await db.notices.add(prepareForSync({
+                            const noticeData = {
                                 id: `N${Date.now()}_remind`,
                                 title: `⚠️ Score Submission Reminder: ${cName}`,
                                 content: `Hello ${tName || 'Teacher'}, please upload the missing scores for ${cName || 'your course'} for ${selectedTerm} (${selectedSession}).`,
@@ -15894,8 +15883,10 @@ export const UI = {
                                 author: currentUserName,
                                 is_active: 1,
                                 updated_at: new Date().toISOString()
-                            }));
+                            };
+                            await db.notices.add(prepareForSync(noticeData));
                             if (this.debouncedSync) this.debouncedSync();
+                            triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                             Notifications.show(`Reminder notice sent to ${tName || 'teacher'}!`, 'success');
                         } catch (err) {
                             console.error('Failed to save reminder notice:', err);
@@ -16292,7 +16283,7 @@ export const UI = {
                     const tName = btn.dataset.teacherName;
                     if (tId) {
                         try {
-                            await db.notices.add(prepareForSync({
+                            const noticeData = {
                                 id: `N${Date.now()}_remind`,
                                 title: `⚠️ Outstanding Score Submission Reminder`,
                                 content: `Hello ${tName}, please upload outstanding scores for your courses for ${selectedTerm} (${selectedSession}).`,
@@ -16301,8 +16292,10 @@ export const UI = {
                                 author: currentUserName,
                                 is_active: 1,
                                 updated_at: new Date().toISOString()
-                            }));
+                            };
+                            await db.notices.add(prepareForSync(noticeData));
                             if (this.debouncedSync) this.debouncedSync();
+                            triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                             Notifications.show(`Reminder notice sent to ${tName}!`, 'success');
                         } catch (err) {
                             console.error(err);
@@ -16322,7 +16315,7 @@ export const UI = {
                         const pct = t.totalExpected > 0 ? (t.totalEntered / t.totalExpected) : 0;
                         if (pct < 0.95) {
                             try {
-                                await db.notices.add(prepareForSync({
+                                const noticeData = {
                                     id: `N${Date.now()}_remind_${tid}`,
                                     title: `⚠️ Urgent: Score Submission Outstanding`,
                                     content: `Hello ${t.name}, this is an automated reminder to submit outstanding scores for your courses for ${selectedTerm} (${selectedSession}).`,
@@ -16331,7 +16324,9 @@ export const UI = {
                                     author: currentUserName,
                                     is_active: 1,
                                     updated_at: new Date().toISOString()
-                                }));
+                                };
+                                await db.notices.add(prepareForSync(noticeData));
+                                triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                                 count++;
                             } catch (err) {
                                 console.error(err);
@@ -16692,18 +16687,21 @@ export const UI = {
                 btnPost.innerHTML = '<span class="spinning">⏳</span> Posting...';
 
                 try {
-                    await db.notices.add(prepareForSync({
+                    const noticeData = {
                         id: `N${Date.now()}`,
                         title,
                         content,
                         category,
                         target,
                         author: this.currentUser.name,
-                        is_active: 1
-                    }));
+                        is_active: 1,
+                        updated_at: new Date().toISOString()
+                    };
+                    await db.notices.add(prepareForSync(noticeData));
 
                     Notifications.show('Broadcast posted successfully!', 'success');
                     this.debouncedSync();
+                    triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                     this.renderNoticeBoard(); // Refresh view
                 } catch (err) {
                     console.error('Notice error:', err);
@@ -17037,9 +17035,6 @@ export const UI = {
                             <button id="btn-profile-register-push" class="btn btn-secondary" style="border-radius: 12px; height: 48px; font-weight: 800; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
                                 <i data-lucide="bell-ring"></i> Register This Device
                             </button>
-                            <button id="btn-profile-test-push" class="btn btn-primary" style="border-radius: 12px; height: 48px; font-weight: 800; background: #4f46e5; border: none; display: none; align-items: center; justify-content: center; gap: 0.5rem;">
-                                <i data-lucide="send"></i> Send Test Push
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -17088,9 +17083,8 @@ export const UI = {
         const statusEl = document.getElementById('push-permission-status');
         const detailsEl = document.getElementById('push-status-details');
         const registerBtn = document.getElementById('btn-profile-register-push');
-        const testBtn = document.getElementById('btn-profile-test-push');
 
-        if (!statusEl || !detailsEl || !registerBtn || !testBtn) return;
+        if (!statusEl || !detailsEl || !registerBtn) return;
 
         const isSupported = ('serviceWorker' in navigator) && ('PushManager' in window);
         if (!isSupported) {
@@ -17114,19 +17108,16 @@ export const UI = {
                     detailsEl.textContent = 'Notification permission has been blocked. Please enable notifications in your browser settings to receive alerts.';
                     registerBtn.innerHTML = '<i data-lucide="bell-off"></i> Permission Blocked';
                     registerBtn.disabled = true;
-                    testBtn.style.display = 'none';
                 } else if (subscription) {
                     statusEl.textContent = 'Active';
                     statusEl.style.color = '#10b981';
                     detailsEl.textContent = 'This device is successfully registered to receive real-time push alerts.';
                     registerBtn.innerHTML = '<i data-lucide="refresh-cw"></i> Re-register Device';
-                    testBtn.style.display = 'flex';
                 } else {
                     statusEl.textContent = 'Not Registered';
                     statusEl.style.color = '#f59e0b';
                     detailsEl.textContent = 'This device is not configured to receive notifications yet.';
                     registerBtn.innerHTML = '<i data-lucide="bell-ring"></i> Register This Device';
-                    testBtn.style.display = 'none';
                 }
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             } catch (err) {
@@ -17165,6 +17156,20 @@ export const UI = {
                 const res = await initPushNotifications(this.currentUser.id, key);
                 if (res.success) {
                     Notifications.show('This device is registered successfully for push notifications!', 'success');
+                    
+                    // Trigger the test push automatically once
+                    try {
+                        const registration = await navigator.serviceWorker.ready;
+                        if (registration.showNotification) {
+                            await registration.showNotification('💡 Graviton CMS - Push Verification', {
+                                body: `Success! Device is registered and receiving notifications for ${this.currentUser.name} (${this.currentUser.role}).`,
+                                icon: './assets/icons/icon-192.png',
+                                badge: './assets/icons/icon-192.png'
+                            });
+                        }
+                    } catch (testErr) {
+                        console.warn('[Push] Auto test push failed:', testErr);
+                    }
                 } else {
                     Notifications.show(`Registration failed: ${res.error}`, 'error');
                     detailsEl.textContent = `Failed: ${res.error}. Please ensure notifications are allowed in browser settings.`;
@@ -17177,33 +17182,6 @@ export const UI = {
                 registerBtn.innerHTML = originalHtml;
                 if (typeof lucide !== 'undefined') lucide.createIcons();
                 await updateStatus();
-            }
-        };
-
-        testBtn.onclick = async () => {
-            const originalHtml = testBtn.innerHTML;
-            testBtn.disabled = true;
-            testBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Sending...';
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-
-            try {
-                const registration = await navigator.serviceWorker.ready;
-                if (registration.showNotification) {
-                    await registration.showNotification('💡 Graviton CMS - Push Verification', {
-                        body: `Success! Device is registered and receiving notifications for ${this.currentUser.name} (${this.currentUser.role}).`,
-                        icon: './assets/icons/icon-192.png',
-                        badge: './assets/icons/icon-192.png'
-                    });
-                    Notifications.show('Local test push triggered successfully!', 'success');
-                } else {
-                    Notifications.show('Browser does not support service worker notifications.', 'error');
-                }
-            } catch (err) {
-                Notifications.show(`Test failed: ${err.message}`, 'error');
-            } finally {
-                testBtn.disabled = false;
-                testBtn.innerHTML = originalHtml;
-                if (typeof lucide !== 'undefined') lucide.createIcons();
             }
         };
     },
@@ -22600,9 +22578,99 @@ export const UI = {
         return (filtered.length > 0 ? filtered : all).sort((a,b) => a.name.localeCompare(b.name));
     },
 
+    async refreshNoticeFeed() {
+        const noticesContainer = document.querySelector('.student-notices-container');
+        if (!noticesContainer) return;
+
+        const userRole = (this.currentUser.role || '').toLowerCase();
+        const isAdmin = userRole === 'admin' || userRole === 'principal';
+        const isTeacher = userRole === 'teacher';
+
+        let notices = await db.notices.toArray().catch(() => []);
+
+        // Filter based on role
+        if (!isAdmin) {
+            let teacherClasses = [];
+            let studentClass = '';
+            if (isTeacher) {
+                const assignments = await db.subject_assignments.where('teacher_id').equals(this.currentUser.id).toArray();
+                teacherClasses = [...new Set(assignments.map(a => a.class_name))];
+            } else {
+                const student = await db.students.get(this.currentUser.assigned_id || '');
+                studentClass = student?.class_name || '';
+            }
+
+            notices = notices.filter(n => {
+                if (n.target === 'All') return true;
+                if (isTeacher && (n.target === 'Staff' || n.target === String(this.currentUser.id))) return true;
+                if (isTeacher && teacherClasses.includes(n.target)) return true;
+                if (!isTeacher && n.target === 'Students') return true;
+                if (studentClass && n.target === studentClass) return true;
+                return false;
+            });
+        }
+
+        notices.sort((a,b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+
+        const html = notices.length === 0 ? `
+            <div style="text-align: center; padding: 5rem 2rem; background: white; border-radius: 24px; border: 2px dashed #e2e8f0;">
+                <div style="width: 80px; height: 80px; background: #f1f5f9; color: #94a3b8; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+                    <i data-lucide="inbox" style="width: 40px; height: 40px;"></i>
+                </div>
+                <h3 style="color: #1e293b; font-weight: 700; margin-bottom: 0.5rem;">Quiet on the Airwaves</h3>
+                <p style="color: #64748b;">No active broadcasts found in your feed.</p>
+            </div>
+        ` : notices.map(n => {
+            const colors = {
+                'Urgent': { border: '#ef4444', bg: '#fef2f2', icon: 'alert-triangle', text: '#991b1b' },
+                'Event': { border: '#3b82f6', bg: '#eff6ff', icon: 'calendar', text: '#1e40af' },
+                'News': { border: '#10b981', bg: '#ecfdf5', icon: 'info', text: '#065f46' }
+            };
+            const theme = colors[n.category] || colors['News'];
+            
+            return `
+                <div class="card notice-card animate-fade-in-up" style="background: white; border-radius: 24px; padding: 2rem; border: 1px solid #e2e8f0; border-left: 8px solid ${theme.border}; box-shadow: var(--shadow-sm); transition: all 0.3s ease;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+                        <div style="display: flex; gap: 0.75rem; align-items: center;">
+                            <div style="background: ${theme.bg}; color: ${theme.border}; padding: 0.5rem 1rem; border-radius: 12px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="${theme.icon}" style="width: 14px; height: 14px;"></i> ${n.category || 'News'}
+                            </div>
+                            <div style="background: #f1f5f9; color: #64748b; padding: 0.5rem 1rem; border-radius: 12px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase;">
+                                To: ${n.target || 'All'}
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <span style="font-size: 0.85rem; color: #94a3b8; font-weight: 600;">${new Date(n.updated_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+                            ${isAdmin || isTeacher ? `
+                                <button style="background: #fff1f2; color: #e11d48; border: none; width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#ffe4e6'" onmouseout="this.style.background='#fff1f2'" onclick="UI.deleteNotice('${n.id}')">
+                                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <h2 style="margin: 0 0 1rem 0; font-size: 1.4rem; font-weight: 800; color: #1e293b; letter-spacing: -0.02em;">${n.title}</h2>
+                    <div style="color: #475569; line-height: 1.8; font-size: 1.05rem; margin-bottom: 2rem; white-space: pre-wrap;">${n.content}</div>
+                    <div style="display: flex; align-items: center; gap: 1rem; padding-top: 1.5rem; border-top: 1px solid #f1f5f9;">
+                        <div style="width: 40px; height: 40px; background: #e0e7ff; color: #4338ca; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.9rem;">
+                            ${(n.author || 'S').charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <div style="font-size: 0.95rem; font-weight: 800; color: #1e293b;">${n.author || 'School Administration'}</div>
+                            <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">Verified Broadcaster</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        noticesContainer.innerHTML = html;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
     async refreshLiveNotices() {
-        const marquee = document.querySelector('.live-notices marquee');
-        if (!marquee) return;
+        const marquee = document.getElementById('top-announcement-marquee');
+        const bar = document.getElementById('top-announcement-bar');
+        if (!marquee || !bar) return;
         
         try {
             const userRole = (this.currentUser?.role || '').toLowerCase();
@@ -22642,15 +22710,14 @@ export const UI = {
             
             filteredNotices.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
             
-            let fallbackMsg = isAdmin 
-                ? 'Welcome to Graviton CMS! All systems operational.' 
-                : 'All academic systems are operational. Stay inspired.';
-                
-            const noticeHTML = filteredNotices.length > 0 
-                ? filteredNotices.map(n => `<span style="margin-right: 3rem;">🔔 <strong>${n.title}</strong>: ${n.content || ''}</span>`).join('')
-                : `<span style="margin-right: 3rem;">${fallbackMsg}</span>`;
-                
-            marquee.innerHTML = noticeHTML;
+            if (filteredNotices.length > 0) {
+                const noticeHTML = filteredNotices.map(n => `<span style="margin-right: 4rem; display: inline-flex; align-items: center; gap: 0.5rem;">🔔 <strong>${n.title}</strong>: ${n.content || ''}</span>`).join('');
+                marquee.innerHTML = noticeHTML;
+                bar.style.display = 'flex';
+            } else {
+                marquee.innerHTML = '';
+                bar.style.display = 'none';
+            }
         } catch (err) {
             console.error('Error refreshing live notices:', err);
         }
@@ -22661,11 +22728,7 @@ window.addEventListener('sync-complete', () => {
     if (window.UI) {
         window.UI.refreshLiveNotices();
         if (window.UI.currentView === 'noticeboard') {
-            const composer = document.getElementById('broadcast-content');
-            const isTyping = composer && (composer.value.trim() !== '' || document.activeElement === composer);
-            if (!isTyping) {
-                window.UI.renderNoticeBoard();
-            }
+            window.UI.refreshNoticeFeed();
         }
     }
 });

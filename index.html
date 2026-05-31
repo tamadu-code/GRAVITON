@@ -18,7 +18,7 @@
     <link rel="icon" type="image/png" href="assets/icons/icon-192.png">
     
     <!-- CSS -->
-    <link rel="stylesheet" href="assets/css/style.css?v=291">
+    <link rel="stylesheet" href="assets/css/style.css?v=292">
     
     <!-- Libraries (CDNs) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -116,7 +116,7 @@
             </form>
         </div>
             <div class="login-footer-version" style="position: fixed; bottom: 1rem; left: 0; right: 0; text-align: center; font-size: 0.65rem; color: #94a3b8; font-weight: 600; opacity: 0.6; letter-spacing: 1px; z-index: 1001; pointer-events: none; text-transform: uppercase;">
-                GRAVITON CORE v26.1 <span style="margin: 0 8px; opacity: 0.3;">|</span> BUILD v291
+                GRAVITON CORE v26.1 <span style="margin: 0 8px; opacity: 0.3;">|</span> BUILD v292
             </div>
     </div>
 
@@ -406,6 +406,13 @@
 
         <!-- Main Content -->
         <main class="main-content">
+            <!-- Top Announcement Bar (Visible only when active notices exist) -->
+            <div id="top-announcement-bar" style="display: none; background: linear-gradient(90deg, #4f46e5, #3730a3); overflow: hidden; align-items: center; height: 38px; z-index: 100;">
+                <div style="flex: 1; overflow: hidden; position: relative;">
+                    <marquee id="top-announcement-marquee" behavior="scroll" direction="left" scrollamount="6" style="padding: 0.5rem 0; color: white; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.5px;">
+                    </marquee>
+                </div>
+            </div>
             <header class="top-bar">
                 <div class="page-title" style="display: flex; align-items: center; gap: 1rem; flex-shrink: 0;">
                     <button id="mobile-menu-btn" class="mobile-menu-btn">
@@ -446,13 +453,13 @@
     <script type="importmap">
     {
       "imports": {
-        "./supabase-client.js": "./assets/js/supabase-client.js?v=291",
-        "./ui.js": "./assets/js/ui.js?v=291",
-        "./db.js": "./assets/js/db.js?v=291",
-        "./utils.js": "./assets/js/utils.js?v=291"
+        "./supabase-client.js": "./assets/js/supabase-client.js?v=292",
+        "./ui.js": "./assets/js/ui.js?v=292",
+        "./db.js": "./assets/js/db.js?v=292",
+        "./utils.js": "./assets/js/utils.js?v=292"
       }
     }
     </script>
-    <script type="module" src="assets/js/main.js?v=291"></script>
+    <script type="module" src="assets/js/main.js?v=292"></script>
 </body>
 </html>

@@ -177,3 +177,42 @@ export async function unsubscribeUser() {
     }
     return false;
 }
+
+/**
+ * Direct trigger for Edge Function (fail-safe for real-time delivery)
+ */
+export async function triggerPushNotification(notice) {
+    try {
+        const client = getSupabase();
+        if (!client) {
+            console.warn('[Push] Supabase client not available for direct push trigger.');
+            return { success: false, error: 'Client not ready' };
+        }
+
+        console.log('[Push] Dispatching direct function invoke for notice:', notice.id);
+        const { data, error } = await client.functions.invoke('send-push-notice', {
+            body: {
+                record: {
+                    id: notice.id,
+                    title: notice.title,
+                    content: notice.content,
+                    category: notice.category || 'General',
+                    target: notice.target,
+                    author: notice.author || 'System',
+                    is_active: notice.is_active === 1 || notice.is_active === true || String(notice.is_active) === '1'
+                }
+            }
+        });
+
+        if (error) {
+            console.warn('[Push] Edge Function invocation error:', error);
+            return { success: false, error: error.message };
+        }
+
+        console.log('[Push] Edge Function response:', data);
+        return { success: true, data };
+    } catch (e) {
+        console.error('[Push] Direct trigger exception:', e);
+        return { success: false, error: e.message };
+    }
+}
