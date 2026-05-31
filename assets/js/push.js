@@ -49,8 +49,9 @@ export async function initPushNotifications(userId, customVapidKey = null) {
     }
 
     if (!vapidKey) {
-        console.log('[Push] No VAPID public key configured. Push initialization deferred until key is set.');
-        return { success: false, error: 'No VAPID key' };
+        vapidKey = 'BFTBMQ-fQF3UHb2ZUt3iDiLjMCwAr6O4K7l0U8xv-p040EvNCcJnGYlfC0SNuoLrCHYwR78DwboiYJ6Z8UKSo-k';
+        localStorage.setItem('vapid_public_key', vapidKey);
+        console.log('[Push] Using default VAPID key fallback.');
     }
 
     try {

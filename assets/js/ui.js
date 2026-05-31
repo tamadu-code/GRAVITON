@@ -17157,9 +17157,9 @@ export const UI = {
                 }
 
                 if (!key) {
-                    Notifications.show('Web Push keys are not configured yet by the Admin.', 'warning');
-                    detailsEl.textContent = 'Error: The server VAPID keys have not been set up yet. Please contact your school administrator.';
-                    return;
+                    key = 'BFTBMQ-fQF3UHb2ZUt3iDiLjMCwAr6O4K7l0U8xv-p040EvNCcJnGYlfC0SNuoLrCHYwR78DwboiYJ6Z8UKSo-k';
+                    localStorage.setItem('vapid_public_key', key);
+                    console.log('[Push] Using default VAPID key fallback in profile.');
                 }
 
                 const res = await initPushNotifications(this.currentUser.id, key);
@@ -22563,6 +22563,19 @@ export const UI = {
                     console.log(`[HealthCheck] Normalizing student arm: ${s.name} (${s.sub_class} -> ${normalized})`);
                     await db.students.update(s.student_id, { sub_class: normalized, is_synced: 0 });
                 }
+            }
+            
+            // 4. Ensure VAPID Public Key is stored in database settings for cloud sync
+            const localVapid = localStorage.getItem('vapid_public_key') || 'BFTBMQ-fQF3UHb2ZUt3iDiLjMCwAr6O4K7l0U8xv-p040EvNCcJnGYlfC0SNuoLrCHYwR78DwboiYJ6Z8UKSo-k';
+            const existingVapid = await db.settings.where('key').equals('vapid_public_key').first();
+            if (!existingVapid) {
+                await db.settings.add(prepareForSync({
+                    id: 'SET_VAPID_PUBLIC_KEY',
+                    key: 'vapid_public_key',
+                    value: localVapid
+                }));
+                console.log('[HealthCheck] Automatically populated VAPID public key in settings table.');
+                this.debouncedSync();
             }
             
             console.log('[HealthCheck] Maintenance complete.');
