@@ -22693,32 +22693,36 @@ export const UI = {
             let notices = await db.notices.toArray().catch(() => []);
             let filteredNotices = notices.filter(n => n.is_active === 1 || n.is_active === true);
             
-            if (!isAdmin) {
-                if (isTeacher) {
-                    const teacherId = this.currentUser.id;
-                    const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
-                    const formAssignments = await db.form_teachers.where('teacher_id').equals(teacherId).toArray();
-                    const assignedClasses = [...new Set([
-                        ...assignments.map(a => a.class_name),
-                        ...formAssignments.map(f => f.class_name)
-                    ])];
-                    
-                    filteredNotices = filteredNotices.filter(n => 
-                        n.target === 'All' || 
-                        n.target === 'Staff' || 
-                        n.target === String(teacherId) || 
-                        assignedClasses.includes(n.target)
-                    );
-                } else {
-                    // Student / Parent
-                    const student = await db.students.get(this.currentUser.assigned_id || '');
-                    const studentClass = student?.class_name || '';
-                    filteredNotices = filteredNotices.filter(n => 
-                        n.target === 'All' || 
-                        n.target === 'Students' || 
-                        (studentClass && n.target === studentClass)
-                    );
-                }
+            const userId = String(this.currentUser?.id || '');
+            if (isAdmin) {
+                filteredNotices = filteredNotices.filter(n => 
+                    n.target === 'All' || 
+                    n.target === 'Staff' || 
+                    n.target === userId
+                );
+            } else if (isTeacher) {
+                const assignments = await db.subject_assignments.where('teacher_id').equals(userId).toArray();
+                const formAssignments = await db.form_teachers.where('teacher_id').equals(userId).toArray();
+                const assignedClasses = [...new Set([
+                    ...assignments.map(a => a.class_name),
+                    ...formAssignments.map(f => f.class_name)
+                ])];
+                
+                filteredNotices = filteredNotices.filter(n => 
+                    n.target === 'All' || 
+                    n.target === 'Staff' || 
+                    n.target === userId || 
+                    assignedClasses.includes(n.target)
+                );
+            } else {
+                // Student / Parent
+                const student = await db.students.get(this.currentUser?.assigned_id || '');
+                const studentClass = student?.class_name || '';
+                filteredNotices = filteredNotices.filter(n => 
+                    n.target === 'All' || 
+                    n.target === 'Students' || 
+                    (studentClass && n.target === studentClass)
+                );
             }
             
             filteredNotices.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));

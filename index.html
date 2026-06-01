@@ -416,7 +416,7 @@
                 <div id="top-bar-extra" style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0 1rem;">
                     <h1 id="desktop-school-name" style="display: none;"></h1>
                 </div>
-                <div class="user-profile">
+                <div class="user-profile" style="position: relative;">
                     <div class="user-info">
                         <span class="user-name">Admin User</span>
                         <span class="user-role">Administrator</span>
@@ -424,15 +424,16 @@
                     <div class="user-avatar">
                         <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin" alt="Avatar">
                     </div>
-                </div>
-            </header>
-            <!-- Live Announcement Ticker (Dashboard only) -->
-            <div id="top-announcement-bar" style="display: none; background: linear-gradient(135deg, #4f46e5, #6366f1, #3730a3); overflow: hidden; height: 40px; z-index: 99; position: relative; box-shadow: 0 2px 8px rgba(79,70,229,0.25);">
-                <div style="position: absolute; inset: 0; overflow: hidden; display: flex; align-items: center;">
-                    <div id="top-announcement-marquee" style="position: absolute; white-space: nowrap; display: inline-block; padding-left: 100%; animation: ticker-scroll 35s linear infinite; color: white; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.5px;">
+                    <!-- Live Announcement Ticker (Dashboard only) -->
+                    <div id="top-announcement-bar" style="display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 260px; height: 32px; background: linear-gradient(135deg, #4f46e5, #6366f1, #3730a3); overflow: hidden; border-radius: 9999px; z-index: 1000; box-shadow: 0 4px 12px rgba(79,70,229,0.3); border: 1px solid rgba(255,255,255,0.15);">
+                        <div style="position: absolute; inset: 0; overflow: hidden; display: flex; align-items: center;">
+                            <div id="top-announcement-marquee" style="position: absolute; white-space: nowrap; display: inline-block; padding-left: 100%; animation: ticker-scroll 25s linear infinite; color: white; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.5px;">
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </header>
+            
             <style>
                 @keyframes ticker-scroll {
                     0% { transform: translate3d(0, 0, 0); }
