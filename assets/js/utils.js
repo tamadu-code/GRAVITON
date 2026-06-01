@@ -127,6 +127,42 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
     
+    // Format Term Dates (e.g. 2026-08-19 -> 19th August, 2026)
+    const formatTermDate = (dateStr) => {
+        if (!dateStr) return '';
+        if (!dateStr.includes('-')) return dateStr;
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return dateStr;
+        const year = parseInt(parts[0], 10);
+        const monthIdx = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        if (isNaN(year) || isNaN(monthIdx) || isNaN(day)) return dateStr;
+        if (monthIdx < 0 || monthIdx > 11 || day < 1 || day > 31) return dateStr;
+        const months = [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        ];
+        const month = months[monthIdx];
+        let suffix = 'th';
+        const lastDigit = day % 10;
+        const lastTwoDigits = day % 100;
+        if (lastTwoDigits >= 11 && lastTwoDigits <= 13) {
+            suffix = 'th';
+        } else if (lastDigit === 1) {
+            suffix = 'st';
+        } else if (lastDigit === 2) {
+            suffix = 'nd';
+        } else if (lastDigit === 3) {
+            suffix = 'rd';
+        }
+        return `${day}${suffix} ${month}, ${year}`;
+    };
+
+    if (schoolInfo) {
+        if (schoolInfo.termEnd) schoolInfo.termEnd = formatTermDate(schoolInfo.termEnd);
+        if (schoolInfo.termStart) schoolInfo.termStart = formatTermDate(schoolInfo.termStart);
+    }
+    
     // Fetch all student scores and subjects to compute GPA/CGPA if needed
     const [allScores, loadedSubjects] = await Promise.all([
         db.scores.where('student_id').equals(student.student_id).toArray(),
