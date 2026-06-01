@@ -7,7 +7,7 @@ console.log('UI Module Loading...');
 import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
-import { initPushNotifications, unsubscribeUser, triggerPushNotification } from './push.js';
+import { initPushNotifications, unsubscribeUser } from './push.js';
 
 const normalizeTerm = (t) => {
     if (!t) return '1st Term';
@@ -1234,7 +1234,6 @@ export const UI = {
                     };
                     await db.notices.add(prepareForSync(noticeData));
                     this.debouncedSync();
-                    triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                     document.getElementById('broadcast-content').value = '';
                     Notifications.show('Announcement broadcasted successfully!', 'success');
                     this.renderTeacherDashboard(); // Refresh
@@ -15849,7 +15848,6 @@ export const UI = {
                                     };
                                     await db.notices.add(prepareForSync(noticeData));
                                     if (this.debouncedSync) this.debouncedSync();
-                                    triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                                     Notifications.show(`Reminder notice sent to ${tName}!`, 'success');
                                 } catch (err) {
                                     console.error(err);
@@ -15894,7 +15892,6 @@ export const UI = {
                             };
                             await db.notices.add(prepareForSync(noticeData));
                             if (this.debouncedSync) this.debouncedSync();
-                            triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                             Notifications.show(`Reminder notice sent to ${tName || 'teacher'}!`, 'success');
                         } catch (err) {
                             console.error('Failed to save reminder notice:', err);
@@ -16303,7 +16300,6 @@ export const UI = {
                             };
                             await db.notices.add(prepareForSync(noticeData));
                             if (this.debouncedSync) this.debouncedSync();
-                            triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                             Notifications.show(`Reminder notice sent to ${tName}!`, 'success');
                         } catch (err) {
                             console.error(err);
@@ -16334,7 +16330,6 @@ export const UI = {
                                     updated_at: new Date().toISOString()
                                 };
                                 await db.notices.add(prepareForSync(noticeData));
-                                triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                                 count++;
                             } catch (err) {
                                 console.error(err);
@@ -16709,7 +16704,6 @@ export const UI = {
 
                     Notifications.show('Broadcast posted successfully!', 'success');
                     this.debouncedSync();
-                    triggerPushNotification(noticeData).catch(err => console.warn('[Push] Trigger error:', err));
                     this.renderNoticeBoard(); // Refresh view
                 } catch (err) {
                     console.error('Notice error:', err);
