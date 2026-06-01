@@ -461,6 +461,14 @@ export const UI = {
 
             this.currentView = viewName;
 
+            // Show live announcement ticker only on dashboard
+            const announcementBar = document.getElementById('top-announcement-bar');
+            if (viewName === 'dashboard') {
+                this.refreshLiveNotices();
+            } else if (announcementBar) {
+                announcementBar.style.display = 'none';
+            }
+
             // Render specific view
             switch(viewName) {
                 case 'dashboard': await this.renderDashboard(); break;
@@ -22671,6 +22679,11 @@ export const UI = {
         const marquee = document.getElementById('top-announcement-marquee');
         const bar = document.getElementById('top-announcement-bar');
         if (!marquee || !bar) return;
+        
+        if (this.currentView !== 'dashboard') {
+            bar.style.display = 'none';
+            return;
+        }
         
         try {
             const userRole = (this.currentUser?.role || '').toLowerCase();

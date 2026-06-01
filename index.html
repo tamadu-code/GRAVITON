@@ -406,13 +406,6 @@
 
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Top Announcement Bar (Visible only when active notices exist) -->
-            <div id="top-announcement-bar" style="display: none; background: linear-gradient(90deg, #4f46e5, #3730a3); overflow: hidden; align-items: center; height: 38px; z-index: 100;">
-                <div style="flex: 1; overflow: hidden; position: relative;">
-                    <marquee id="top-announcement-marquee" behavior="scroll" direction="left" scrollamount="6" style="padding: 0.5rem 0; color: white; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.5px;">
-                    </marquee>
-                </div>
-            </div>
             <header class="top-bar">
                 <div class="page-title" style="display: flex; align-items: center; gap: 1rem; flex-shrink: 0;">
                     <button id="mobile-menu-btn" class="mobile-menu-btn">
@@ -433,6 +426,22 @@
                     </div>
                 </div>
             </header>
+            <!-- Live Announcement Ticker (Dashboard only) -->
+            <div id="top-announcement-bar" style="display: none; background: linear-gradient(135deg, #4f46e5, #6366f1, #3730a3); overflow: hidden; height: 40px; z-index: 99; position: relative; box-shadow: 0 2px 8px rgba(79,70,229,0.25);">
+                <div style="position: absolute; inset: 0; overflow: hidden; display: flex; align-items: center;">
+                    <div id="top-announcement-marquee" style="position: absolute; white-space: nowrap; display: inline-block; padding-left: 100%; animation: ticker-scroll 35s linear infinite; color: white; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.5px;">
+                    </div>
+                </div>
+            </div>
+            <style>
+                @keyframes ticker-scroll {
+                    0% { transform: translate3d(0, 0, 0); }
+                    100% { transform: translate3d(-100%, 0, 0); }
+                }
+                #top-announcement-bar:hover #top-announcement-marquee {
+                    animation-play-state: paused;
+                }
+            </style>
             
             <div id="content-area" class="content-area">
                 <!-- Content will be injected here -->
