@@ -7218,6 +7218,12 @@ export const UI = {
             const search = searchInput.value.toLowerCase();
             const subjectName = subjectFilter.value;
 
+            // Preserve expanded states
+            const expandedStudentIds = new Set(
+                Array.from(document.querySelectorAll('.glass-collapse-checkbox:checked'))
+                    .map(cb => cb.id.replace('toggle-att-', ''))
+            );
+
             // Load records from BOTH daily and detailed tables
             const [dailyRecords, detailedRecords] = await Promise.all([
                 db.attendance.where('date').equals(date).toArray(),
@@ -7327,7 +7333,8 @@ export const UI = {
                 }
             });
 
-            const uniqueArrived = Array.from(uniqueSchoolMap.values());
+            const renderStudentIds = new Set(studentsToRender.map(s => s.student_id));
+            const uniqueArrived = Array.from(uniqueSchoolMap.values()).filter(r => renderStudentIds.has(r.student_id));
             const presentCount = uniqueArrived.filter(r => r.status === 'Present').length;
             const lateCount = uniqueArrived.filter(r => r.status === 'Late').length;
             
@@ -7428,7 +7435,7 @@ export const UI = {
 
                 return `
                     <div class="glass-collapse-card attendance-card ${record ? 'active' : ''}" style="margin: 0; background: white; border: 1px solid #e2e8f0; border-radius: 16px; transition: all 0.3s ease;">
-                        <input type="checkbox" id="toggle-att-${s.student_id}" class="glass-collapse-checkbox">
+                        <input type="checkbox" id="toggle-att-${s.student_id}" class="glass-collapse-checkbox" ${expandedStudentIds.has(s.student_id) ? 'checked' : ''}>
                         <label for="toggle-att-${s.student_id}" class="glass-collapse-header" style="padding: 0.75rem 1rem;">
                             <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1; overflow: hidden;">
                                 <div style="width: 40px; height: 40px; background: #f1f5f9; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: 800; font-size: 0.7rem; flex-shrink: 0;">
@@ -7672,6 +7679,8 @@ export const UI = {
             refreshList();
         };
 
+        this.currentRefreshList = refreshList;
+
         // Initial Load
         refreshList();
     },
@@ -7679,6 +7688,16 @@ export const UI = {
     async updateAttendanceStats(students, date) {
         try {
             console.log(`[Attendance] Updating stats for ${date}...`);
+
+            const activeTabBtn = document.querySelector('.att-tab-btn.active');
+            const activeTab = activeTabBtn ? activeTabBtn.dataset.tab : '';
+
+            if (activeTab !== 'history' && typeof this.currentRefreshList === 'function') {
+                console.log('[Attendance] Triggering list refresh directly...');
+                await this.currentRefreshList();
+                return;
+            }
+
             const [dailyRecords, detailedRecords] = await Promise.all([
                 db.attendance.where('date').equals(date).toArray(),
                 db.attendance_records.where('date').equals(date).toArray()
