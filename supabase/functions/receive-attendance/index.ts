@@ -30,52 +30,56 @@ serve(async (req) => {
     console.log(JSON.stringify(record, null, 2))
     
     // Step 2: Map fields with maximum flexibility
-    let attendance_code = record.attendance_code || record.code || record.student_code;
-
-    // If not found, try to extract a numeric code from student_id or id
-    if (!attendance_code) {
-      if (record.student_id && /^\d+$/.test(String(record.student_id))) {
-        attendance_code = record.student_id;
-      } else if (record.id && /^\d+$/.test(String(record.id))) {
-        attendance_code = record.id;
-      } else {
-        // Ultimate fallback
-        attendance_code = record.student_id || record.id;
-      }
-    }
-
+    // Raw student identifier can be a numeric code (e.g. 7456) or a string ID (e.g. "1776859939202bsvc2")
+    const raw_student_identifier = record.student_code || record.code || record.attendance_code || record.student_id || record.id;
     const date = record.date || record.attendance_date || record.datetime?.split('T')[0]
     const sign_in = record.sign_in || record.check_in || record.time || record.in_time || record.entry
     const sign_out = record.sign_out || record.check_out || record.exit_time || record.out_time || record.exit
     const is_late = record.is_late || record.late || (record.status === 'Late')
 
-    if (!attendance_code || !date) {
-      console.error('Missing required fields: attendance_code or date')
-      return new Response(JSON.stringify({ error: 'Missing attendance_code or date' }), { status: 400 })
+    if (!raw_student_identifier || !date) {
+      console.error('Missing required fields: student identifier or date')
+      return new Response(JSON.stringify({ error: 'Missing student identifier or date' }), { status: 400 })
     }
 
-    // Step 2: Find student in SMS by attendance_code
-    const { data: initialStudent, error: fetchError } = await supabase
-      .from('students')
-      .select('student_id, name, is_active')
-      .eq('attendance_code', parseInt(attendance_code))
-      .maybeSingle();
+    // Step 2: Find student in SMS
+    let student = null;
+    const numeric_code = /^\d+$/.test(String(raw_student_identifier)) ? parseInt(raw_student_identifier) : null;
 
-    let student = initialStudent;
+    if (numeric_code) {
+      // If purely numeric, look up by attendance_code
+      const { data: matched } = await supabase
+        .from('students')
+        .select('student_id, name, is_active')
+        .eq('attendance_code', numeric_code)
+        .maybeSingle();
+      student = matched;
+    } else {
+      // If alphanumeric/UUID, look up by legacy_student_id
+      const { data: matched } = await supabase
+        .from('students')
+        .select('student_id, name, is_active')
+        .eq('legacy_student_id', String(raw_student_identifier))
+        .maybeSingle();
+      student = matched;
+    }
 
     if (!student) {
-      console.log(`Student with code ${attendance_code} not found in SMS. Attempting auto-discovery...`);
+      console.log(`Student with identifier ${raw_student_identifier} not found in SMS. Attempting auto-discovery...`);
       
       const ATTENDANCE_SYSTEM_URL = Deno.env.get('ATTENDANCE_SYSTEM_URL');
       const ATTENDANCE_TOKEN = Deno.env.get('ATTENDANCE_TOKEN');
       
       if (!ATTENDANCE_SYSTEM_URL || !ATTENDANCE_TOKEN) {
         console.error('Missing Attendance System configuration for auto-discovery.');
-        return new Response(JSON.stringify({ error: `Student not found for code ${attendance_code} and auto-discovery is misconfigured` }), { status: 404 });
+        return new Response(JSON.stringify({ error: `Student not found for identifier ${raw_student_identifier} and auto-discovery is misconfigured` }), { status: 404 });
       }
 
       const baseUrl = ATTENDANCE_SYSTEM_URL.endsWith('/') ? ATTENDANCE_SYSTEM_URL.slice(0, -1) : ATTENDANCE_SYSTEM_URL;
-      const checkUrl = `${baseUrl}/rest/v1/students?code=eq.${attendance_code}&select=name,class`;
+      
+      // If the identifier contains letters or is longer than 6 chars, query by 'id' instead of 'code' in the Attendance System
+      const queryField = /^\d+$/.test(String(raw_student_identifier)) && String(raw_student_identifier).length <= 6 ? 'code' : 'id';
+      const checkUrl = `${baseUrl}/rest/v1/students?${queryField}=eq.${raw_student_identifier}&select=name,class,code`;
       
       const checkResponse = await fetch(checkUrl, {
         headers: {
@@ -88,47 +92,74 @@ serve(async (req) => {
         const attStudents = await checkResponse.json();
         if (attStudents.length > 0) {
           const attStudent = attStudents[0];
-          console.log(`Discovered student in Attendance System: ${attStudent.name}`);
+          console.log(`Discovered student in Attendance System: ${attStudent.name} (Code: ${attStudent.code})`);
           
+          const resolvedCode = parseInt(attStudent.code);
+          if (isNaN(resolvedCode)) {
+             console.error(`Discovered student ${attStudent.name} has invalid code: ${attStudent.code}`);
+             return new Response(JSON.stringify({ error: `Invalid student code ${attStudent.code}` }), { status: 500 });
+          }
+
           // Do not split class arm (Keep "JSS 1A" as "JSS 1A")
           let className = attStudent.class || 'Unknown';
           let subClass = null;
 
-          // Note: If you still want to parse the subclass for the `sub_class` field without modifying the main class_name, you could do it here:
           const classMatch = className.match(/^(.+?)\s?([A-Z])$/i);
           if (classMatch) {
             subClass = classMatch[2].toUpperCase();
-            // We NO LONGER reassign className to classMatch[1] to ensure JSS 1A remains JSS 1A in the dropdowns.
           }
 
-          // Create the student in SMS
-          const year = new Date().getFullYear();
-          const new_student_id = `NKQMS-${year}-${attendance_code}`;
-          
-          const { data: newStudent, error: createError } = await supabase
+          // Check if student already exists in SMS with this resolved code (but just without the legacy_student_id)
+          const { data: existingStudent } = await supabase
             .from('students')
-            .insert({
-              student_id: new_student_id,
-              name: attStudent.name,
-              class_name: className,
-              sub_class: subClass,
-              attendance_code: parseInt(attendance_code),
-              is_active: true,
-              admission_year: year
-            })
-            .select()
-            .single();
+            .select('student_id, name, is_active')
+            .eq('attendance_code', resolvedCode)
+            .maybeSingle();
 
-          if (createError) {
-            console.error('Failed to auto-create student in SMS:', createError);
-            return new Response(JSON.stringify({ error: 'Failed to auto-create student' }), { status: 500 });
+          if (existingStudent) {
+            // Update SMS student's legacy_student_id mapping
+            const { error: updateError } = await supabase
+              .from('students')
+              .update({ legacy_student_id: String(raw_student_identifier) })
+              .eq('student_id', existingStudent.student_id);
+              
+            if (updateError) {
+              console.warn('Failed to update student legacy_student_id mapping:', updateError);
+            }
+            
+            student = existingStudent;
+            console.log(`Linked existing SMS student ${student.name} to legacy_student_id ${raw_student_identifier}`);
+          } else {
+            // Create the student in SMS
+            const year = new Date().getFullYear();
+            const new_student_id = `NKQMS-${year}-${resolvedCode}`;
+            
+            const { data: newStudent, error: createError } = await supabase
+              .from('students')
+              .insert({
+                student_id: new_student_id,
+                name: attStudent.name,
+                class_name: className,
+                sub_class: subClass,
+                attendance_code: resolvedCode,
+                legacy_student_id: String(raw_student_identifier),
+                is_active: true,
+                admission_year: year
+              })
+              .select()
+              .single();
+
+            if (createError) {
+              console.error('Failed to auto-create student in SMS:', createError);
+              return new Response(JSON.stringify({ error: 'Failed to auto-create student' }), { status: 500 });
+            }
+            
+            student = newStudent;
+            console.log(`Auto-created student: ${student.name} (${student.student_id}) and mapped legacy_student_id`);
           }
-          
-          student = newStudent;
-          console.log(`Auto-created student: ${student.name} (${student.student_id})`);
         } else {
-          console.error(`Student code ${attendance_code} not found in Attendance System either.`);
-          return new Response(JSON.stringify({ error: `Student not found for code ${attendance_code}` }), { status: 404 });
+          console.error(`Student identifier ${raw_student_identifier} not found in Attendance System either.`);
+          return new Response(JSON.stringify({ error: `Student not found for identifier ${raw_student_identifier}` }), { status: 404 });
         }
       } else {
         console.error('Failed to communicate with Attendance System for auto-discovery.');
