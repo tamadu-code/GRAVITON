@@ -30,7 +30,20 @@ serve(async (req) => {
     console.log(JSON.stringify(record, null, 2))
     
     // Step 2: Map fields with maximum flexibility
-    const attendance_code = record.attendance_code || record.code || record.student_code || record.id
+    let attendance_code = record.attendance_code || record.code || record.student_code;
+
+    // If not found, try to extract a numeric code from student_id or id
+    if (!attendance_code) {
+      if (record.student_id && /^\d+$/.test(String(record.student_id))) {
+        attendance_code = record.student_id;
+      } else if (record.id && /^\d+$/.test(String(record.id))) {
+        attendance_code = record.id;
+      } else {
+        // Ultimate fallback
+        attendance_code = record.student_id || record.id;
+      }
+    }
+
     const date = record.date || record.attendance_date || record.datetime?.split('T')[0]
     const sign_in = record.sign_in || record.check_in || record.time || record.in_time || record.entry
     const sign_out = record.sign_out || record.check_out || record.exit_time || record.out_time || record.exit
@@ -131,30 +144,54 @@ serve(async (req) => {
       status = is_late ? 'Late' : 'Present'
     }
 
-    // Step 4: Upsert attendance record in SMS (including sign out)
+    const now = new Date().toISOString();
+
+    // Step 4A: Upsert into the `attendance` table (daily biometric sign-in/out)
+    // This is the table that holds sign_in, sign_out, is_late as TEXT columns
+    const attendancePayload: Record<string, unknown> = {
+      student_id: student.student_id,
+      date,
+      status,
+      is_late: !!is_late,
+      updated_at: now
+    };
+    // Only set sign_in/sign_out if provided, so a sign-out-only update doesn't blank sign_in
+    if (sign_in) attendancePayload.sign_in = sign_in;
+    if (sign_out) attendancePayload.sign_out = sign_out;
+
+    const { error: dailyError } = await supabase
+      .from('attendance')
+      .upsert(attendancePayload, {
+        onConflict: 'student_id,date'
+      });
+
+    if (dailyError) {
+      console.error('Failed to upsert daily attendance:', dailyError);
+      // Non-fatal: continue to attendance_records even if this fails
+    }
+
+    // Step 4B: Upsert into `attendance_records` (detailed / subject-based records)
     const isSubjectBased = !!(record.subject_id || record.subject_name || record.period_id);
-    const { data: upsertData, error: upsertError } = await supabase
+    const recordsPayload: Record<string, unknown> = {
+      date,
+      student_id: student.student_id,
+      status,
+      subject_name: record.subject_name || record.subject_id || null,
+      period_number: record.period_number || record.period_id || null,
+      is_subject_based: isSubjectBased,
+      updated_at: now
+    };
+    if (sign_in) recordsPayload.check_in = `${date}T${sign_in}`;
+    if (sign_out) recordsPayload.check_out = `${date}T${sign_out}`;
+
+    const { error: upsertError } = await supabase
       .from('attendance_records')
-      .upsert({
-        date,
-        student_id: student.student_id,
-        check_in: sign_in ? `${date}T${sign_in}` : undefined,
-        check_out: sign_out ? `${date}T${sign_out}` : undefined,
-        status: is_late ? 'Late' : 'Present',
-        subject_name: record.subject_name || record.subject_id || null,
-        period_number: record.period_number || record.period_id || null,
-        is_subject_based: isSubjectBased,
-        updated_at: new Date().toISOString(),
-        metadata: { 
-          source: 'biometric_sync',
-          raw_payload: record 
-        }
-      }, { 
-        onConflict: 'student_id,date,subject_name,period_number' 
-      })
+      .upsert(recordsPayload, {
+        onConflict: 'student_id,date,is_subject_based,subject_name,period_number'
+      });
 
     if (upsertError) {
-      console.error('Failed to upsert attendance:', upsertError)
+      console.error('Failed to upsert attendance_records:', upsertError)
       throw upsertError
     }
 
