@@ -15438,15 +15438,17 @@ export const UI = {
                 .si-side-panel__footer { padding: 16px 24px; border-top: 1px solid #e4e2e4; display: flex; justify-content: flex-end; gap: 8px; }
                 .si-side-panel__close { background: transparent; border: none; color: #76777d; cursor: pointer; padding: 4px; display: flex; }
                 @media (max-width: 1024px) {
-                    .si-bento-grid { grid-template-columns: 1fr; }
-                    .si-bento-main, .si-bento-side { grid-column: span 1; }
+                    .si-bento-grid { grid-template-columns: 1fr; width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+                    .si-bento-main, .si-bento-side { grid-column: span 1; width: 100% !important; max-width: 100% !important; min-width: 0 !important; overflow: hidden !important; }
                     .si-teacher-row__progress { width: 120px; }
                 }
                 @media (max-width: 768px) {
                     /* === CRITICAL: Mobile overflow containment === */
                     .si-container { padding: 1rem 0.5rem; box-sizing: border-box; max-width: 100%; overflow-x: hidden; width: 100% !important; }
                     .si-container * { box-sizing: border-box; max-width: 100%; }
-                    .si-kpi-grid { grid-template-columns: 1fr; gap: 12px; }
+                    .si-bento-grid { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+                    .si-bento-main, .si-bento-side { width: 100% !important; max-width: 100% !important; min-width: 0 !important; overflow: hidden !important; }
+                    .si-kpi-grid { grid-template-columns: 1fr; gap: 12px; width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
                     .si-page-header { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
                     .si-page-title { font-size: 22px; line-height: 28px; }
                     .si-page-subtitle { font-size: 13px; }
