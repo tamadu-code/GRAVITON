@@ -15477,16 +15477,34 @@ export const UI = {
         let profiles = realProfiles;
         let auditLogs = realAuditLogs;
 
+        // Fetch Form Teacher class assignments
+        const myFormClasses = isTeacher ? (await db.form_teachers.where('teacher_id').equals(teacherId).toArray()).map(f => f.class_name) : [];
+        const myFormClassesLower = myFormClasses.map(c => String(c || '').toLowerCase().trim());
+        const isFormTeacher = isTeacher && myFormClasses.length > 0;
+
         // Role scoping
         let targetAssignments = assignments;
         if (isTeacher) {
-            targetAssignments = assignments.filter(a => String(a.teacher_id) === String(teacherId));
-            const subIds = targetAssignments.map(a => a.subject_id);
-            const cls = [...new Set(targetAssignments.map(a => a.class_name))];
-            const clsLower = cls.map(c => String(c || '').toLowerCase().trim());
-            subjects = subjects.filter(s => subIds.includes(s.id));
-            students = students.filter(s => s.class_name && clsLower.includes(String(s.class_name).toLowerCase().trim()));
-            scores = scores.filter(s => subIds.includes(s.subject_id) && s.class_name && clsLower.includes(String(s.class_name).toLowerCase().trim()));
+            targetAssignments = assignments.filter(a => 
+                String(a.teacher_id) === String(teacherId) || 
+                (a.class_name && myFormClassesLower.includes(String(a.class_name).toLowerCase().trim()))
+            );
+            const myTaughtClasses = assignments.filter(a => String(a.teacher_id) === String(teacherId)).map(a => a.class_name);
+            const allowedClassesLower = [...new Set([...myTaughtClasses, ...myFormClasses])].map(c => String(c || '').toLowerCase().trim());
+            const allowedSubjectIds = new Set(targetAssignments.map(a => a.subject_id));
+            
+            subjects = subjects.filter(s => allowedSubjectIds.has(s.id));
+            students = students.filter(s => s.class_name && allowedClassesLower.includes(String(s.class_name).toLowerCase().trim()));
+            scores = scores.filter(sc => {
+                if (!sc.class_name) return false;
+                const scClassLower = String(sc.class_name).toLowerCase().trim();
+                if (myFormClassesLower.includes(scClassLower)) return true;
+                return assignments.some(a => 
+                    String(a.teacher_id) === String(teacherId) &&
+                    String(a.class_name).toLowerCase().trim() === scClassLower &&
+                    a.subject_id === sc.subject_id
+                );
+            });
         }
 
         const terms = ['1st Term','2nd Term','3rd Term'];
@@ -15783,7 +15801,7 @@ export const UI = {
                                                     <th>Instructor</th>
                                                     <th>Students Missing</th>
                                                     <th>Deadline</th>
-                                                    ${!isTeacher ? `<th style="text-align:right;">Action</th>` : ''}
+                                                    ${(!isTeacher || isFormTeacher) ? `<th style="text-align:right;">Action</th>` : ''}
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -15800,7 +15818,7 @@ export const UI = {
                                                             </div>
                                                         </td>
                                                         <td class="${m.isOverdue || m.deadline === 'Tomorrow' ? 'si-table__deadline--overdue' : ''}">${m.deadline}</td>
-                                                        ${!isTeacher ? `<td style="text-align:right;"><button class="si-table__action-btn si-remind-btn" data-teacher-id="${m.teacherId||''}" data-teacher-name="${m.instructor||''}" data-class-name="${m.className}">Remind</button></td>` : ''}
+                                                        ${(!isTeacher || (isFormTeacher && myFormClassesLower.some(fc => m.className.toLowerCase().includes(fc)))) ? `<td style="text-align:right;"><button class="si-table__action-btn si-remind-btn" data-teacher-id="${m.teacherId||''}" data-teacher-name="${m.instructor||''}" data-class-name="${m.className}">Remind</button></td>` : (isFormTeacher ? '<td></td>' : '')}
                                                     </tr>
                                                 `).join('') : '<tr><td colspan="5" class="si-empty-state" style="text-align:center;"><div class="si-empty-state__text">No missing scores found</div></td></tr>'}
                                             </tbody>
@@ -15906,10 +15924,10 @@ export const UI = {
                                         <div class="si-alert-item__content" style="flex:1;">
                                             <div class="si-alert-item__title">${a.title}</div>
                                             <div class="si-alert-item__desc">${a.desc}</div>
-                                            ${!isTeacher ? `<div style="font-size:11px; color:#76777d; font-weight:600; margin-top:4px;">Instructor: ${a.teacherName}</div>` : ''}
+                                            ${(!isTeacher || (isFormTeacher && myFormClassesLower.includes(String(a.className || '').toLowerCase().trim()))) ? `<div style="font-size:11px; color:#76777d; font-weight:600; margin-top:4px;">Instructor: ${a.teacherName}</div>` : ''}
                                             <div style="font-size:11px; color:#0058be; font-weight:600; margin-top:4px; display:flex; align-items:center; gap:4px;"><i data-lucide="external-link" style="width:12px;height:12px;"></i> Open in Gradebook</div>
                                         </div>
-                                        ${!isTeacher ? `<button class="si-btn-remind si-remind-teacher" data-teacher-id="${a.teacherId}" data-teacher-name="${a.teacherName}" data-class-name="${a.title}" style="flex-shrink:0; font-size:11px; padding:4px 8px;">Remind</button>` : ''}
+                                        ${(!isTeacher || (isFormTeacher && myFormClassesLower.includes(String(a.className || '').toLowerCase().trim()))) ? `<button class="si-btn-remind si-remind-teacher" data-teacher-id="${a.teacherId}" data-teacher-name="${a.teacherName}" data-class-name="${a.className}" style="flex-shrink:0; font-size:11px; padding:4px 8px;">Remind</button>` : ''}
                                     </div>
                                 `).join('')}
                             </div>
@@ -16268,7 +16286,7 @@ export const UI = {
             const teacherMap = {};
             courses.forEach(c => {
                 if (!teacherMap[c.teacher_id]) {
-                    teacherMap[c.teacher_id] = { name: c.teacher_name, dept: c.subject_type || 'Core', courses: [], totalExpected: 0, totalEntered: 0 };
+                    teacherMap[c.teacher_id] = { name: c.teacher_name, dept: c.subject_type || 'Core', courses: [], classes: new Set(), totalExpected: 0, totalEntered: 0 };
                 }
                 const targetClsLower = String(c.class_name || '').toLowerCase().trim();
                 const cls = students.filter(s => s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
@@ -16279,6 +16297,7 @@ export const UI = {
                     entered += cScores.filter(s => s[f] !== null && s[f] !== undefined && s[f] !== '').length;
                 });
                 teacherMap[c.teacher_id].courses.push(`${c.subject_name} (${c.class_name})`);
+                if (c.class_name) teacherMap[c.teacher_id].classes.add(c.class_name);
                 teacherMap[c.teacher_id].totalExpected += expected;
                 teacherMap[c.teacher_id].totalEntered += entered;
             });
@@ -16294,7 +16313,7 @@ export const UI = {
                     return ago < 60 ? `${ago}m ago` : ago < 1440 ? `${Math.round(ago/60)}h ago` : `${Math.round(ago/1440)}d ago`;
                 })() : 'No activity';
                 t.courses.sort(); // Sort courses alphabetically
-                deptGroups[t.dept].push({ id: tid, name: t.name, courses: t.courses, pct, lastActivity, initials: t.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() });
+                deptGroups[t.dept].push({ id: tid, name: t.name, courses: t.courses, classes: t.classes, pct, lastActivity, initials: t.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() });
             });
 
             // Sort teachers inside each department alphabetically by name
@@ -16322,7 +16341,7 @@ export const UI = {
                             <div class="si-completion-stat__value">${overallPct}%</div>
                             <div class="si-completion-stat__label">Overall Progress</div>
                         </div>
-                        ${!isTeacher ? `
+                        ${(!isTeacher || isFormTeacher) ? `
                         <div style="margin-left:auto;">
                             <button class="si-btn-remind-all" id="si-remind-all"><i data-lucide="bell" style="width:14px;height:14px;"></i> Remind All Pending</button>
                         </div>` : ''}
@@ -16339,7 +16358,10 @@ export const UI = {
                                 <span class="si-dept-header__count">${teachers.length} teacher${teachers.length!==1?'s':''}</span>
                             </div>
                             <div class="si-dept-body" data-dept-body="${dept}">
-                                ${teachers.map(t => `
+                                ${teachers.map(t => {
+                                    const hasFormClassMatch = isFormTeacher && Array.from(t.classes || []).some(cls => myFormClassesLower.includes(String(cls).toLowerCase().trim()));
+                                    const canRemind = !isTeacher || hasFormClassMatch;
+                                    return `
                                     <div class="si-teacher-row">
                                         <div class="si-teacher-row__info">
                                             <div class="si-teacher-row__avatar">${t.initials}</div>
@@ -16354,14 +16376,14 @@ export const UI = {
                                             </div>
                                             <div class="si-teacher-row__pct">${t.pct}% • ${t.lastActivity}</div>
                                         </div>
-                                        ${!isTeacher ? `
+                                        ${canRemind ? `
                                         <div class="si-teacher-row__actions">
                                             <button class="si-btn-remind si-remind-teacher" data-teacher-id="${t.id}" data-teacher-name="${t.name}">
                                                 <i data-lucide="bell" style="width:12px;height:12px;"></i> Remind
                                             </button>
                                         </div>` : ''}
                                     </div>
-                                `).join('')}
+                                `; }).join('')}
                             </div>
                         </div>
                     `).join('') : '<div class="si-empty-state"><div class="si-empty-state__text">No submission monitoring data available</div></div>'}
@@ -16413,6 +16435,10 @@ export const UI = {
                 remindAll.addEventListener('click', async () => {
                     let count = 0;
                     for (const [tid, t] of Object.entries(teacherMap)) {
+                        if (isTeacher && isFormTeacher) {
+                            const hasFormClassMatch = Array.from(t.classes || []).some(cls => myFormClassesLower.includes(String(cls).toLowerCase().trim()));
+                            if (!hasFormClassMatch) continue;
+                        }
                         const pct = t.totalExpected > 0 ? (t.totalEntered / t.totalExpected) : 0;
                         if (pct < 0.95) {
                             try {
