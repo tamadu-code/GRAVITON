@@ -15443,46 +15443,52 @@ export const UI = {
                     .si-teacher-row__progress { width: 120px; }
                 }
                 @media (max-width: 768px) {
-                    .si-container { padding: 1rem 0.75rem; }
+                    /* === CRITICAL: Mobile overflow containment === */
+                    .si-container { padding: 1rem 0.5rem; box-sizing: border-box; max-width: 100%; overflow-x: hidden; width: 100% !important; }
+                    .si-container * { box-sizing: border-box; max-width: 100%; }
                     .si-kpi-grid { grid-template-columns: 1fr; gap: 12px; }
                     .si-page-header { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
                     .si-page-title { font-size: 22px; line-height: 28px; }
                     .si-page-subtitle { font-size: 13px; }
                     .si-header-actions { width: 100%; }
                     .si-header-actions .si-btn-secondary,
-                    .si-header-actions .si-btn-primary { flex: 1; justify-content: center; padding: 10px 12px; }
+                    .si-header-actions .si-btn-primary { flex: 1; justify-content: center; padding: 10px 12px; font-size: 11px; }
                     .si-kpi-card { padding: 16px; min-height: 100px; }
                     .si-kpi-card__value { font-size: 32px; line-height: 40px; }
                     .si-kpi-card__label { font-size: 11px; }
-                    .si-chart-card { padding: 16px; min-height: auto; }
+                    .si-chart-card { padding: 12px; min-height: auto; overflow: hidden; }
                     .si-chart-header { flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 16px; }
                     .si-chart-title { font-size: 16px; }
                     .si-chart-legend { flex-wrap: wrap; gap: 8px; }
-                    .si-chart-bars { padding: 0 4px; height: 160px; gap: 4px; }
+                    .si-chart-bars { padding: 0 4px; height: 160px; gap: 4px; overflow-x: auto; }
                     .si-bar-track { height: 120px; }
-                    .si-bar-group { width: 32px; gap: 8px; }
+                    .si-bar-group { width: 32px; gap: 8px; flex-shrink: 0; }
                     .si-bar-label { font-size: 9px; letter-spacing: 0; word-break: break-all; text-align: center; }
                     .si-tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
                     .si-tab-bar::-webkit-scrollbar { display: none; }
                     .si-tab-btn { font-size: 12px; padding: 8px 12px; }
-                    .si-table-card { border-radius: 6px; }
+                    /* === Table mobile: wrap in scrollable container === */
+                    .si-table-card { border-radius: 6px; overflow: hidden; }
+                    .si-table-card .si-table-scroll-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
                     .si-table-header { padding: 12px; flex-direction: column; align-items: flex-start; gap: 8px; }
                     .si-table-title { font-size: 16px; }
+                    .si-table { min-width: 500px; }
                     .si-table th { padding: 8px 10px; font-size: 11px; }
                     .si-table td { padding: 10px; font-size: 12px; word-break: break-word; }
                     .si-table__progress-bar { width: 60px; }
                     .si-table__progress-count { font-size: 11px; }
-                    .si-alert-card { padding: 16px; }
+                    .si-alert-card { padding: 12px; overflow: hidden; }
                     .si-alert-header { flex-wrap: wrap; gap: 8px; }
                     .si-alert-title { font-size: 16px; }
-                    .si-alert-item { padding: 12px; gap: 10px; }
+                    .si-alert-item { padding: 10px; gap: 8px; }
                     .si-alert-item__title { font-size: 12px; word-break: break-word; }
-                    .si-alert-item__desc { font-size: 12px; word-break: break-word; }
+                    .si-alert-item__desc { font-size: 12px; word-break: break-word; overflow-wrap: anywhere; }
                     .si-alert-item__content { min-width: 0; overflow: hidden; }
-                    .si-activity-card { padding: 16px; }
+                    .si-activity-card { padding: 12px; overflow: hidden; }
                     .si-activity-title { font-size: 16px; }
-                    .si-activity-text { font-size: 13px; word-break: break-word; }
-                    .si-teacher-row { flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px 16px; }
+                    .si-activity-text { font-size: 13px; word-break: break-word; overflow-wrap: anywhere; }
+                    .si-activity-item { padding-left: 32px; }
+                    .si-teacher-row { flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px; }
                     .si-teacher-row__info { width: 100%; }
                     .si-teacher-row__progress { width: 100%; margin: 0; }
                     .si-teacher-row__pct { text-align: left; }
@@ -15491,10 +15497,10 @@ export const UI = {
                     .si-filters { flex-direction: column; gap: 10px; }
                     .si-filter-select { width: 100%; min-width: unset; }
                     .si-filter-group { width: 100%; }
-                    .si-completion-stats { flex-direction: column; gap: 12px; padding: 12px 16px; }
+                    .si-completion-stats { flex-direction: column; gap: 12px; padding: 12px; }
                     .si-completion-stats > div[style*="margin-left:auto"] { margin-left: 0 !important; width: 100%; }
                     .si-completion-stats .si-btn-remind-all { width: 100%; justify-content: center; }
-                    .si-summary-bar { flex-direction: row; flex-wrap: wrap; gap: 12px; padding: 12px 16px; justify-content: space-around; }
+                    .si-summary-bar { flex-direction: row; flex-wrap: wrap; gap: 12px; padding: 12px; justify-content: space-around; }
                     .si-summary-item { min-width: 60px; }
                     .si-summary-item__value { font-size: 16px; }
                     .si-summary-item__label { font-size: 10px; }
@@ -15505,12 +15511,16 @@ export const UI = {
                     .si-subject-stat { padding: 8px 4px; }
                     .si-subject-stat__value { font-size: 16px; }
                     .si-subject-stat__label { font-size: 10px; }
+                    .si-dept-group { overflow: hidden; }
                     .si-dept-header { padding: 10px 12px; }
                     .si-dept-header__title { font-size: 13px; }
+                    .si-dept-body { overflow: hidden; }
                     .si-at-risk-row { padding: 10px 12px; flex-wrap: wrap; gap: 4px; }
                     .si-at-risk-row__name { font-size: 13px; }
                     .si-at-risk-row__class { font-size: 11px; }
                     .si-distribution-bar { height: 24px; }
+                    .si-bento-grid { gap: 12px; }
+                    .si-alert-list { max-height: 300px; }
                     .si-modal { padding: 20px; width: calc(100vw - 24px); max-width: 100%; }
                     .si-modal__title { font-size: 18px; }
                     .si-modal__desc { font-size: 13px; margin-bottom: 16px; }
