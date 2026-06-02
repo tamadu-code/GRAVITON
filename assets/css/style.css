@@ -2419,6 +2419,9 @@ label {
 
     .top-bar {
         padding-left: 1.5rem;
+        position: sticky;
+        top: 0;
+        z-index: 990;
     }
 }
 
