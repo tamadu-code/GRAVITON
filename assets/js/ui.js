@@ -5712,8 +5712,23 @@ export const UI = {
                 if (failEl) failEl.textContent = fails;
             };
 
+            const resetStatsUI = () => {
+                const avgEl = document.getElementById('stat-class-avg');
+                const peakEl = document.getElementById('stat-peak-perf');
+                const failEl = document.getElementById('stat-fail-count');
+                if (avgEl) avgEl.textContent = '0%';
+                if (peakEl) peakEl.textContent = '0';
+                if (failEl) failEl.textContent = '0';
+                
+                const topBarExtra = document.getElementById('top-bar-extra');
+                if (topBarExtra) topBarExtra.innerHTML = '';
+            };
+
             if (!cls || !subId) {
                 gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">Please select a Stream and Course to begin grading</td></tr>`;
+                const mobileContainer = document.getElementById('mobile-score-entry');
+                if (mobileContainer) mobileContainer.innerHTML = '';
+                resetStatsUI();
                 return;
             }
 
@@ -5744,6 +5759,9 @@ export const UI = {
 
             if (targetStudents.length === 0) {
                 gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">No students matching track <strong>"${subSpecialization.toUpperCase()}"</strong> found in <strong>${cls}</strong>.</td></tr>`;
+                const mobileContainer = document.getElementById('mobile-score-entry');
+                if (mobileContainer) mobileContainer.innerHTML = '';
+                resetStatsUI();
                 return;
             }
             
@@ -6040,6 +6058,21 @@ export const UI = {
             if (!cls) {
                 subjectFilter.innerHTML = '<option value="">Select Stream First</option>';
                 gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">Please select a Stream and Course to begin grading</td></tr>`;
+                const mobileContainer = document.getElementById('mobile-score-entry');
+                if (mobileContainer) mobileContainer.innerHTML = '';
+                
+                const avgEl = document.getElementById('stat-class-avg');
+                const peakEl = document.getElementById('stat-peak-perf');
+                const failEl = document.getElementById('stat-fail-count');
+                if (avgEl) avgEl.textContent = '0%';
+                if (peakEl) peakEl.textContent = '0';
+                if (failEl) failEl.textContent = '0';
+                
+                const topBarExtra = document.getElementById('top-bar-extra');
+                if (topBarExtra) topBarExtra.innerHTML = '';
+                
+                const activeSubName = document.getElementById('active-subject-name');
+                if (activeSubName) activeSubName.textContent = 'Select Course';
                 return;
             }
             
@@ -6060,13 +6093,28 @@ export const UI = {
                 .filter(s => assignedIds.has(s.id))
                 .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             
-
+ 
             if (availableSubjects.length > 0) {
                 subjectFilter.innerHTML = availableSubjects.map(s => `<option value="${s.id}" ${(preSubject && String(s.id) === String(preSubject)) ? 'selected' : ''}>${s.name}</option>`).join('');
                 loadAcademicLedger(); // Auto-load first subject
             } else {
                 subjectFilter.innerHTML = '<option value="">No Courses Assigned</option>';
                 gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">No courses have been assigned to ${cls} yet. Please check the Academic Setup.</td></tr>`;
+                const mobileContainer = document.getElementById('mobile-score-entry');
+                if (mobileContainer) mobileContainer.innerHTML = '';
+                
+                const avgEl = document.getElementById('stat-class-avg');
+                const peakEl = document.getElementById('stat-peak-perf');
+                const failEl = document.getElementById('stat-fail-count');
+                if (avgEl) avgEl.textContent = '0%';
+                if (peakEl) peakEl.textContent = '0';
+                if (failEl) failEl.textContent = '0';
+                
+                const topBarExtra = document.getElementById('top-bar-extra');
+                if (topBarExtra) topBarExtra.innerHTML = '';
+                
+                const activeSubName = document.getElementById('active-subject-name');
+                if (activeSubName) activeSubName.textContent = 'No Courses Assigned';
             }
         });
 
