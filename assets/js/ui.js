@@ -9820,14 +9820,41 @@ export const UI = {
             activeExams = exams.filter(e => e.status === 'Active');
             archivedExams = exams.filter(e => e.status === 'Archived');
         } else if (isTeacher) {
-            // Teachers see exams they created OR exams for their assigned classes
+            // Teachers see exams they created OR exams for their assigned subjects in those classes
             const myAssignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
-            const myForms = await db.form_teachers.where('teacher_id').equals(teacherId).toArray();
-            const myClasses = new Set([...myAssignments.map(a => a.class_name), ...myForms.map(f => f.class_name)]);
             
-            activeExams = exams.filter(e => 
-                (e.teacher_id === teacherId || myClasses.has(e.class_name)) && e.status === 'Active'
-            );
+            // Pre-load unified exam sections to filter unified exams by teacher subject assignments
+            const allSections = await db.cbt_exam_sections.toArray();
+            const examSectionsMap = {};
+            allSections.forEach(sec => {
+                if (!examSectionsMap[sec.exam_id]) {
+                    examSectionsMap[sec.exam_id] = new Set();
+                }
+                if (sec.subject_id) {
+                    examSectionsMap[sec.exam_id].add(sec.subject_id);
+                }
+            });
+
+            activeExams = exams.filter(e => {
+                if (e.status !== 'Active') return false;
+                
+                // Always show if the teacher is the creator
+                if (e.teacher_id === teacherId) return true;
+                
+                if (e.is_unified) {
+                    // For unified composite exams, check if teacher is assigned to any of the section subjects in that class
+                    const examSubjects = examSectionsMap[e.id];
+                    if (!examSubjects) return false;
+                    return myAssignments.some(a => 
+                        a.class_name === e.class_name && examSubjects.has(a.subject_id)
+                    );
+                } else {
+                    // For standard single-subject exams, check if teacher is assigned to the specific subject in that class
+                    return myAssignments.some(a => 
+                        a.class_name === e.class_name && a.subject_id === e.subject_id
+                    );
+                }
+            });
         } else if (isStudent) {
             const now = new Date();
             const student = await db.students.get(this.currentUser.assigned_id || this.currentUser.id);
