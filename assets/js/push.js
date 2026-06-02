@@ -73,6 +73,32 @@ export async function initPushNotifications(userId, customVapidKey = null) {
             }
         }
 
+        // Check if there is an existing subscription
+        const existingSubscription = await registration.pushManager.getSubscription();
+        if (existingSubscription) {
+            // Compare VAPID keys to ensure they match
+            const targetKey = urlBase64ToUint8Array(vapidKey);
+            const currentKey = existingSubscription.options?.applicationServerKey;
+            
+            let keyMatches = false;
+            if (currentKey) {
+                const currentArray = new Uint8Array(currentKey);
+                if (currentArray.length === targetKey.length) {
+                    keyMatches = currentArray.every((val, i) => val === targetKey[i]);
+                }
+            }
+            
+            if (keyMatches) {
+                console.log('[Push] Existing browser subscription active. Reusing...');
+                const success = await saveSubscriptionToCloud(userId, existingSubscription);
+                if (success) {
+                    return { success: true, subscription: existingSubscription };
+                }
+            } else {
+                console.log('[Push] VAPID key changed, updating subscription...');
+            }
+        }
+
         // Subscribe or update subscription
         return await subscribeUser(registration, userId, vapidKey);
     } catch (err) {
@@ -92,7 +118,7 @@ async function subscribeUser(registration, userId, vapidKey) {
         };
 
         const subscription = await registration.pushManager.subscribe(subscribeOptions);
-        console.log('[Push] Browser subscription created:', subscription);
+        console.log('[Push] New browser subscription created:', subscription);
 
         // Send to Supabase
         const success = await saveSubscriptionToCloud(userId, subscription);

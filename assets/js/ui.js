@@ -9831,28 +9831,35 @@ export const UI = {
                     examSectionsMap[sec.exam_id] = new Set();
                 }
                 if (sec.subject_id) {
-                    examSectionsMap[sec.exam_id].add(sec.subject_id);
+                    examSectionsMap[sec.exam_id].add(String(sec.subject_id).toLowerCase().trim());
                 }
             });
 
             activeExams = exams.filter(e => {
                 if (e.status !== 'Active') return false;
                 
-                // Always show if the teacher is the creator
-                if (e.teacher_id === teacherId) return true;
+                // Always show if the teacher is the creator (ensure both exist and match case-insensitively)
+                if (e.teacher_id && teacherId && String(e.teacher_id).toLowerCase().trim() === String(teacherId).toLowerCase().trim()) return true;
+                
+                const examClassNorm = String(e.class_name || '').toLowerCase().trim();
                 
                 if (e.is_unified) {
                     // For unified composite exams, check if teacher is assigned to any of the section subjects in that class
                     const examSubjects = examSectionsMap[e.id];
                     if (!examSubjects) return false;
-                    return myAssignments.some(a => 
-                        a.class_name === e.class_name && examSubjects.has(a.subject_id)
-                    );
+                    return myAssignments.some(a => {
+                        const asgClassNorm = String(a.class_name || '').toLowerCase().trim();
+                        const asgSubNorm = String(a.subject_id || '').toLowerCase().trim();
+                        return asgClassNorm === examClassNorm && examSubjects.has(asgSubNorm);
+                    });
                 } else {
                     // For standard single-subject exams, check if teacher is assigned to the specific subject in that class
-                    return myAssignments.some(a => 
-                        a.class_name === e.class_name && a.subject_id === e.subject_id
-                    );
+                    const examSubNorm = String(e.subject_id || '').toLowerCase().trim();
+                    return myAssignments.some(a => {
+                        const asgClassNorm = String(a.class_name || '').toLowerCase().trim();
+                        const asgSubNorm = String(a.subject_id || '').toLowerCase().trim();
+                        return asgClassNorm === examClassNorm && asgSubNorm === examSubNorm;
+                    });
                 }
             });
         } else if (isStudent) {
@@ -15482,15 +15489,32 @@ export const UI = {
         const myFormClassesLower = myFormClasses.map(c => String(c || '').toLowerCase().trim());
         const isFormTeacher = isTeacher && myFormClasses.length > 0;
 
+        // Block non-form teachers from accessing Score Insights
+        if (isTeacher && !isFormTeacher) {
+            this.contentArea.innerHTML = `
+                <div class="view-container animate-fade-in" style="display: flex; align-items: center; justify-content: center; height: 70vh;">
+                    <div class="text-center" style="max-width: 400px; padding: 2rem; background: white; border-radius: 24px; box-shadow: var(--shadow-lg);">
+                        <div style="background: #fee2e2; color: #ef4444; width: 80px; height: 80px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; transform: rotate(-10deg);">
+                            <i data-lucide="shield-alert" style="width: 40px; height: 40px;"></i>
+                        </div>
+                        <h2 style="font-weight: 900; font-size: 1.5rem; color: #1e293b; margin-bottom: 0.5rem;">Access Restricted</h2>
+                        <p style="color: #64748b; font-size: 0.9rem; line-height: 1.6;">Score Insights is only available for <strong>Form Teachers</strong> and <strong>Administrators</strong>.</p>
+                        <button class="btn btn-primary" onclick="UI.renderView('dashboard')" style="margin-top: 2rem; border-radius: 12px; height: 48px; padding: 0 2rem; font-weight: 700;">Back to Universe</button>
+                    </div>
+                </div>
+            `;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            return;
+        }
+
         // Role scoping
         let targetAssignments = assignments;
         if (isTeacher) {
+            // Form teachers can only view data for their assigned form classes
             targetAssignments = assignments.filter(a => 
-                String(a.teacher_id) === String(teacherId) || 
-                (a.class_name && myFormClassesLower.includes(String(a.class_name).toLowerCase().trim()))
+                a.class_name && myFormClassesLower.includes(String(a.class_name).toLowerCase().trim())
             );
-            const myTaughtClasses = assignments.filter(a => String(a.teacher_id) === String(teacherId)).map(a => a.class_name);
-            const allowedClassesLower = [...new Set([...myTaughtClasses, ...myFormClasses])].map(c => String(c || '').toLowerCase().trim());
+            const allowedClassesLower = myFormClassesLower;
             const allowedSubjectIds = new Set(targetAssignments.map(a => a.subject_id));
             
             subjects = subjects.filter(s => allowedSubjectIds.has(s.id));
@@ -15498,12 +15522,7 @@ export const UI = {
             scores = scores.filter(sc => {
                 if (!sc.class_name) return false;
                 const scClassLower = String(sc.class_name).toLowerCase().trim();
-                if (myFormClassesLower.includes(scClassLower)) return true;
-                return assignments.some(a => 
-                    String(a.teacher_id) === String(teacherId) &&
-                    String(a.class_name).toLowerCase().trim() === scClassLower &&
-                    a.subject_id === sc.subject_id
-                );
+                return myFormClassesLower.includes(scClassLower);
             });
         }
 
