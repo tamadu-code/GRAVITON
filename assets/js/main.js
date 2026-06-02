@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v26.2 (BUILD v301) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v26.3 (BUILD v302) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -486,8 +486,10 @@ async function loadAuthenticatedApp(authUser) {
     await patchBankClassNames();
 
     // Handle initial route
-    const hash = window.location.hash.substring(1) || 'dashboard';
-    const activeNav = document.querySelector(`.nav-item[data-view="${hash}"]`);
+    const initialHash = window.location.hash.substring(1) || 'dashboard';
+    // Set initial browser history state so popstate has something to work with
+    history.replaceState({ view: initialHash }, '', `#${initialHash}`);
+    const activeNav = document.querySelector(`.nav-item[data-view="${initialHash}"]`);
     if (activeNav) {
         activeNav.click();
     } else {
@@ -791,9 +793,6 @@ navItems.forEach(item => {
 
         // Render View
         UI.renderView(view);
-
-        // Update URL hash without jumping
-        history.pushState(null, null, `#${view}`);
     });
 });
 
@@ -937,3 +936,69 @@ if ('serviceWorker' in navigator) {
             });
     });
 }
+
+// ─── PWA Back Button Navigation ───
+// Tracks consecutive rapid back presses; 3 within 1.5s closes the PWA.
+let _backPressTimestamps = [];
+const BACK_PRESS_WINDOW_MS = 1500;
+const BACK_PRESSES_TO_CLOSE = 3;
+
+window.addEventListener('popstate', (e) => {
+    // Track rapid back presses for close-on-triple-tap
+    const now = Date.now();
+    _backPressTimestamps.push(now);
+    // Keep only presses within the time window
+    _backPressTimestamps = _backPressTimestamps.filter(t => now - t < BACK_PRESS_WINDOW_MS);
+
+    if (_backPressTimestamps.length >= BACK_PRESSES_TO_CLOSE) {
+        _backPressTimestamps = [];
+        // Close the PWA / minimize to home screen
+        if (window.Notifications) {
+            Notifications.show('Closing app...', 'info');
+        }
+        // Small delay so the toast is visible, then close
+        setTimeout(() => {
+            window.close();
+            // Fallback: if window.close() doesn't work (some browsers block it),
+            // navigate to a blank page which effectively "exits" the PWA.
+            if (!window.closed) {
+                window.location.href = 'about:blank';
+            }
+        }, 300);
+        return;
+    }
+
+    // Normal back navigation: go to the previous view in the app's history stack
+    const prevView = UI._navigationHistory.pop();
+    if (prevView) {
+        UI._isPopstateNav = true;
+        UI.renderView(prevView);
+        UI._isPopstateNav = false;
+
+        // Update the active sidebar nav highlight
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(ni => ni.classList.remove('active'));
+        const activeItem = document.querySelector(`.nav-item[data-view="${prevView}"]`);
+        if (activeItem) activeItem.classList.add('active');
+    } else {
+        // No more app history. If already on dashboard, push a state so
+        // the next back press still fires popstate (for the triple-tap check).
+        if (UI.currentView === 'dashboard') {
+            history.pushState({ view: 'dashboard' }, '', '#dashboard');
+            if (window.Notifications) {
+                Notifications.show('Press back 2 more times to exit', 'info');
+            }
+        } else {
+            // Go to dashboard as a fallback
+            UI._isPopstateNav = true;
+            UI.renderView('dashboard');
+            UI._isPopstateNav = false;
+            history.pushState({ view: 'dashboard' }, '', '#dashboard');
+
+            const navItems = document.querySelectorAll('.nav-item');
+            navItems.forEach(ni => ni.classList.remove('active'));
+            const dashItem = document.querySelector('.nav-item[data-view="dashboard"]');
+            if (dashItem) dashItem.classList.add('active');
+        }
+    }
+});

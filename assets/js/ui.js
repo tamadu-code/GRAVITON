@@ -93,6 +93,8 @@ export const UI = {
     get viewTitle() { return document.getElementById('view-title'); },
     lastOpenedBankCategory: null,
     lastBankScrollPos: 0,
+    _navigationHistory: [],
+    _isPopstateNav: false,
     
     getActiveStudentId() {
         if (this.currentUser && this.currentUser.role === 'Parent') {
@@ -529,7 +531,17 @@ export const UI = {
                 return;
             }
 
+            // Track navigation history for back button support
+            const previousView = this.currentView;
             this.currentView = viewName;
+
+            if (!this._isPopstateNav) {
+                // Push to browser history so back button works
+                if (previousView && previousView !== viewName) {
+                    this._navigationHistory.push(previousView);
+                }
+                history.pushState({ view: viewName }, '', `#${viewName}`);
+            }
 
             // Show live announcement ticker only on dashboard
             const announcementBar = document.getElementById('top-announcement-bar');
