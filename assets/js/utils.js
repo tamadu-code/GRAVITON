@@ -71,13 +71,25 @@ export const ScoringEngine = {
             };
         }
 
-        const schoolAtt = attendance.filter(a => !a.is_subject_based);
-        const subjectAtt = attendance.filter(a => a.is_subject_based);
+        // Robust check for daily school attendance vs subject-based attendance
+        const isSchoolRecord = (a) => {
+            const isSubj = a.is_subject_based;
+            if (isSubj === true || isSubj === 1 || String(isSubj).trim().toLowerCase() === 'true' || String(isSubj).trim() === '1') {
+                return false;
+            }
+            return true;
+        };
+
+        const schoolAtt = attendance.filter(a => isSchoolRecord(a));
+        const subjectAtt = attendance.filter(a => !isSchoolRecord(a));
+
+        // Case-insensitive status mapper
+        const getStatus = (a) => (a.status || '').trim().toLowerCase();
 
         // 1. Punctuality: % of On-Time arrivals
         const totalSchool = schoolAtt.length;
-        const onTime = schoolAtt.filter(a => a.status === 'Present').length;
-        const late = schoolAtt.filter(a => a.status === 'Late').length;
+        const onTime = schoolAtt.filter(a => getStatus(a) === 'present').length;
+        const late = schoolAtt.filter(a => getStatus(a) === 'late').length;
         const punctPct = totalSchool > 0 ? (onTime / totalSchool) * 100 : 60;
 
         // Overall Attendance Rate: % of days present or late
