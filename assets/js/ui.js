@@ -18,6 +18,76 @@ const normalizeTerm = (t) => {
     return t;
 };
 
+const isDateInTermAndSession = (dateStr, term, session) => {
+    if (!dateStr) return false;
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return false;
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    
+    let startYear, endYear;
+    if (session && session.includes('/')) {
+        const years = session.split('/').map(x => parseInt(x.trim(), 10));
+        startYear = years[0];
+        endYear = years[1] || (years[0] + 1);
+    } else {
+        startYear = parseInt(session || '2026', 10);
+        endYear = startYear;
+    }
+    
+    if (isNaN(y) || isNaN(m) || isNaN(startYear) || isNaN(endYear)) return false;
+    
+    const t = normalizeTerm(term).toLowerCase();
+    if (t.includes('1st') || t.includes('first')) {
+        return (y === startYear && m >= 8 && m <= 12) || (y === endYear && m === 1);
+    } else if (t.includes('2nd') || t.includes('second')) {
+        return (y === endYear && m >= 1 && m <= 4);
+    } else if (t.includes('3rd') || t.includes('third')) {
+        return (y === endYear && m >= 5 && m <= 8) || (y === endYear && m === 9);
+    }
+    return false;
+};
+
+const getCombinedAttendance = async (studentIds, term, session) => {
+    const loadedAttendance = [];
+    
+    // 1. Fetch detailed records from db.attendance_records
+    for (const sid of studentIds) {
+        const studentAtt = await db.attendance_records
+            .where('[student_id+term+session]')
+            .equals([sid, term, session])
+            .toArray();
+        loadedAttendance.push(...studentAtt);
+    }
+    
+    // 2. Fetch daily attendance from db.attendance
+    for (const sid of studentIds) {
+        const dailyAtt = await db.attendance.where('student_id').equals(sid).toArray();
+        const filteredDaily = dailyAtt.filter(d => isDateInTermAndSession(d.date, term, session));
+        
+        const mappedDaily = filteredDaily.map(d => ({
+            id: d.id,
+            student_id: d.student_id,
+            date: d.date,
+            status: d.status,
+            term: term,
+            session: session,
+            is_subject_based: false
+        }));
+        
+        for (const record of mappedDaily) {
+            const hasDuplicate = loadedAttendance.some(
+                a => a.student_id === record.student_id && a.date === record.date && !a.is_subject_based
+            );
+            if (!hasDuplicate) {
+                loadedAttendance.push(record);
+            }
+        }
+    }
+    
+    return loadedAttendance;
+};
+
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
     get viewTitle() { return document.getElementById('view-title'); },
@@ -1944,19 +2014,7 @@ export const UI = {
                 score.subject_name = subjectMap.get(score.subject_id) || 'Unknown Subject';
             }
 
-            const studentAttendance = await db.attendance_records.where('student_id').equals(student.student_id).toArray();
-            const sAtt = studentAttendance.filter(att => {
-                const dbSessionNorm = normalizeSession(att.session);
-                const dbTermNorm = normalizeTerm(att.term);
-
-                const sesMatch = dbSessionNorm === targetSessionNorm || 
-                    (dbSessionNorm && targetSessionNorm && (dbSessionNorm.includes(targetSessionNorm) || targetSessionNorm.includes(dbSessionNorm)));
-                
-                const termMatch = dbTermNorm === targetTermNorm || 
-                    (dbTermNorm && targetTermNorm && (dbTermNorm.includes(targetTermNorm) || targetTermNorm.includes(dbTermNorm)));
-
-                return sesMatch && termMatch;
-            });
+            const sAtt = await getCombinedAttendance([student.student_id], targetTerm, targetSession);
 
             const formTeacherEntry = await db.form_teachers.where('class_name').equals(student.class_name).first();
             let teacherName = 'Class Teacher';
@@ -8322,15 +8380,8 @@ export const UI = {
                 }
                 // --- END AUTO-FINALIZE ---
                 
-                // Fetch attendance for these students specifically
-                loadedAttendance = [];
-                for (const sid of studentIds) {
-                    const studentAtt = await db.attendance_records
-                        .where('[student_id+term+session]')
-                        .equals([sid, term, session])
-                        .toArray();
-                    loadedAttendance.push(...studentAtt);
-                }
+                // Fetch attendance for these students specifically (combined detailed & daily biometric/CSV records)
+                loadedAttendance = await getCombinedAttendance(studentIds, term, session);
 
                 const subjectIds = [...new Set(loadedScores.map(s => s.subject_id))];
                 loadedSubjects = [];
