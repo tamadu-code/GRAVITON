@@ -15326,7 +15326,7 @@ export const UI = {
                 .si-alert-list { display: flex; flex-direction: column; gap: 8px; }
                 .si-alert-item { display: flex; gap: 16px; padding: 16px; background: #f6f3f5; border-radius: 8px; border-left: 4px solid #ba1a1a; }
                 .si-alert-item__icon { flex-shrink: 0; width: 20px; height: 20px; color: #ba1a1a; display: flex; align-items: flex-start; padding-top: 2px; }
-                .si-alert-item__content { flex: 1; }
+                .si-alert-item__content { flex: 1; min-width: 0; overflow-wrap: break-word; }
                 .si-alert-item__title { font-size: 12px; font-weight: 600; color: #1b1b1d; line-height: 16px; }
                 .si-alert-item__desc { font-size: 14px; font-weight: 400; color: #45464d; line-height: 20px; margin-top: 2px; }
                 .si-alert-link { display: block; text-align: center; color: #0058be; font-size: 12px; font-weight: 600; padding: 8px; cursor: pointer; margin-top: 8px; }
@@ -15347,7 +15347,7 @@ export const UI = {
                 .si-table { width: 100%; text-align: left; border-collapse: collapse; }
                 .si-table thead { background: #fcf8fa; }
                 .si-table th { font-size: 12px; font-weight: 600; color: #45464d; text-transform: uppercase; letter-spacing: .05em; padding: 12px 24px; border-bottom: 1px solid #c6c6cd; white-space: nowrap; }
-                .si-table td { padding: 14px 24px; font-size: 14px; font-weight: 400; color: #1b1b1d; border-bottom: 1px solid #e4e2e4; }
+                .si-table td { padding: 14px 24px; font-size: 14px; font-weight: 400; color: #1b1b1d; border-bottom: 1px solid #e4e2e4; overflow-wrap: break-word; }
                 .si-table tr:hover td { background: rgba(33,112,228,.04); }
                 .si-table__progress { display: inline-flex; align-items: center; gap: 8px; }
                 .si-table__progress-bar { width: 96px; height: 6px; background: #eae7e9; border-radius: 99px; overflow: hidden; }
@@ -15409,8 +15409,8 @@ export const UI = {
                 .si-teacher-row__info { display: flex; gap: 12px; align-items: center; flex: 1; min-width: 0; }
                 .si-teacher-row__avatar { width: 40px; height: 40px; border-radius: 50%; background: #d8e2ff; color: #0058be; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
                 .si-teacher-row__details { min-width: 0; }
-                .si-teacher-row__name { font-size: 14px; font-weight: 600; color: #1b1b1d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                .si-teacher-row__classes { font-size: 12px; color: #76777d; margin-top: 2px; }
+                .si-teacher-row__name { font-size: 14px; font-weight: 600; color: #1b1b1d; overflow: hidden; text-overflow: ellipsis; }
+                .si-teacher-row__classes { font-size: 12px; color: #76777d; margin-top: 2px; overflow-wrap: break-word; word-break: break-word; }
                 .si-teacher-row__progress { width: 200px; flex-shrink: 0; margin: 0 16px; }
                 .si-teacher-row__progress-track { height: 8px; background: #eae7e9; border-radius: 99px; overflow: hidden; }
                 .si-teacher-row__progress-fill { height: 100%; border-radius: 99px; transition: width 1s cubic-bezier(.4,0,.2,1); }
@@ -15443,23 +15443,102 @@ export const UI = {
                     .si-teacher-row__progress { width: 120px; }
                 }
                 @media (max-width: 768px) {
-                    .si-container { padding: 1rem; }
-                    .si-kpi-grid { grid-template-columns: 1fr; }
-                    .si-page-header { flex-direction: column; align-items: flex-start; }
-                    .si-page-title { font-size: 24px; line-height: 32px; }
-                    .si-chart-bars { padding: 0 8px; height: 180px; }
-                    .si-bar-track { height: 140px; }
-                    .si-bar-group { width: 40px; }
-                    .si-tab-bar { overflow-x: auto; }
+                    .si-container { padding: 1rem 0.75rem; }
+                    .si-kpi-grid { grid-template-columns: 1fr; gap: 12px; }
+                    .si-page-header { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+                    .si-page-title { font-size: 22px; line-height: 28px; }
+                    .si-page-subtitle { font-size: 13px; }
+                    .si-header-actions { width: 100%; }
+                    .si-header-actions .si-btn-secondary,
+                    .si-header-actions .si-btn-primary { flex: 1; justify-content: center; padding: 10px 12px; }
+                    .si-kpi-card { padding: 16px; min-height: 100px; }
+                    .si-kpi-card__value { font-size: 32px; line-height: 40px; }
+                    .si-kpi-card__label { font-size: 11px; }
+                    .si-chart-card { padding: 16px; min-height: auto; }
+                    .si-chart-header { flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 16px; }
+                    .si-chart-title { font-size: 16px; }
+                    .si-chart-legend { flex-wrap: wrap; gap: 8px; }
+                    .si-chart-bars { padding: 0 4px; height: 160px; gap: 4px; }
+                    .si-bar-track { height: 120px; }
+                    .si-bar-group { width: 32px; gap: 8px; }
+                    .si-bar-label { font-size: 9px; letter-spacing: 0; word-break: break-all; text-align: center; }
+                    .si-tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+                    .si-tab-bar::-webkit-scrollbar { display: none; }
                     .si-tab-btn { font-size: 12px; padding: 8px 12px; }
-                    .si-table th, .si-table td { padding: 10px 12px; font-size: 13px; }
-                    .si-teacher-row { flex-direction: column; align-items: flex-start; gap: 12px; }
+                    .si-table-card { border-radius: 6px; }
+                    .si-table-header { padding: 12px; flex-direction: column; align-items: flex-start; gap: 8px; }
+                    .si-table-title { font-size: 16px; }
+                    .si-table th { padding: 8px 10px; font-size: 11px; }
+                    .si-table td { padding: 10px; font-size: 12px; word-break: break-word; }
+                    .si-table__progress-bar { width: 60px; }
+                    .si-table__progress-count { font-size: 11px; }
+                    .si-alert-card { padding: 16px; }
+                    .si-alert-header { flex-wrap: wrap; gap: 8px; }
+                    .si-alert-title { font-size: 16px; }
+                    .si-alert-item { padding: 12px; gap: 10px; }
+                    .si-alert-item__title { font-size: 12px; word-break: break-word; }
+                    .si-alert-item__desc { font-size: 12px; word-break: break-word; }
+                    .si-alert-item__content { min-width: 0; overflow: hidden; }
+                    .si-activity-card { padding: 16px; }
+                    .si-activity-title { font-size: 16px; }
+                    .si-activity-text { font-size: 13px; word-break: break-word; }
+                    .si-teacher-row { flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px 16px; }
+                    .si-teacher-row__info { width: 100%; }
                     .si-teacher-row__progress { width: 100%; margin: 0; }
-                    .si-filters { flex-direction: column; }
-                    .si-filter-select { width: 100%; }
-                    .si-completion-stats { flex-direction: column; gap: 16px; }
-                    .si-summary-bar { flex-direction: column; gap: 12px; }
+                    .si-teacher-row__pct { text-align: left; }
+                    .si-teacher-row__actions { width: 100%; }
+                    .si-teacher-row__actions .si-btn-remind { width: 100%; justify-content: center; }
+                    .si-filters { flex-direction: column; gap: 10px; }
+                    .si-filter-select { width: 100%; min-width: unset; }
+                    .si-filter-group { width: 100%; }
+                    .si-completion-stats { flex-direction: column; gap: 12px; padding: 12px 16px; }
+                    .si-completion-stats > div[style*="margin-left:auto"] { margin-left: 0 !important; width: 100%; }
+                    .si-completion-stats .si-btn-remind-all { width: 100%; justify-content: center; }
+                    .si-summary-bar { flex-direction: row; flex-wrap: wrap; gap: 12px; padding: 12px 16px; justify-content: space-around; }
+                    .si-summary-item { min-width: 60px; }
+                    .si-summary-item__value { font-size: 16px; }
+                    .si-summary-item__label { font-size: 10px; }
                     .si-side-panel { width: 100%; right: -100%; }
+                    .si-subject-grid { grid-template-columns: 1fr; gap: 12px; }
+                    .si-subject-card { padding: 16px; }
+                    .si-subject-card__stats { gap: 6px; }
+                    .si-subject-stat { padding: 8px 4px; }
+                    .si-subject-stat__value { font-size: 16px; }
+                    .si-subject-stat__label { font-size: 10px; }
+                    .si-dept-header { padding: 10px 12px; }
+                    .si-dept-header__title { font-size: 13px; }
+                    .si-at-risk-row { padding: 10px 12px; flex-wrap: wrap; gap: 4px; }
+                    .si-at-risk-row__name { font-size: 13px; }
+                    .si-at-risk-row__class { font-size: 11px; }
+                    .si-distribution-bar { height: 24px; }
+                    .si-modal { padding: 20px; width: calc(100vw - 24px); max-width: 100%; }
+                    .si-modal__title { font-size: 18px; }
+                    .si-modal__desc { font-size: 13px; margin-bottom: 16px; }
+                    .si-modal__actions { flex-direction: column-reverse; gap: 8px; }
+                    .si-modal__cancel, .si-modal__apply { width: 100%; text-align: center; }
+                    .si-alert-list-modal { gap: 8px; }
+                    .si-alert-list-modal .si-alert-item { flex-direction: column; gap: 8px; margin-bottom: 8px !important; }
+                    .si-alert-list-modal .si-btn-remind { width: 100%; justify-content: center; padding: 8px 12px !important; font-size: 12px !important; }
+                    .si-mock-banner { font-size: 11px; padding: 8px 12px; }
+                }
+                @media (max-width: 480px) {
+                    .si-container { padding: 0.75rem 0.5rem; }
+                    .si-kpi-card__value { font-size: 28px; line-height: 36px; }
+                    .si-chart-bars { height: 140px; }
+                    .si-bar-track { height: 100px; }
+                    .si-bar-group { width: 24px; gap: 6px; }
+                    .si-bar-label { font-size: 8px; }
+                    .si-tab-btn { font-size: 11px; padding: 6px 8px; gap: 4px; }
+                    .si-tab-btn i, .si-tab-btn .lucide { width: 12px !important; height: 12px !important; }
+                    .si-table th { font-size: 10px; padding: 6px 8px; }
+                    .si-table td { font-size: 11px; padding: 8px; }
+                    .si-table__progress-bar { width: 48px; }
+                    .si-page-title { font-size: 20px; line-height: 26px; }
+                    .si-summary-bar { padding: 10px 12px; }
+                    .si-summary-item__value { font-size: 14px; }
+                    .si-completion-stat__value { font-size: 20px; }
+                    .si-teacher-row__avatar { width: 32px; height: 32px; font-size: 12px; }
+                    .si-subject-card__stats { grid-template-columns: repeat(3, 1fr); gap: 4px; }
                 }
                 .si-modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 2000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px); animation: siFadeIn .2s ease; }
                 .si-modal { background: #fff; border-radius: 12px; padding: 32px; width: 420px; max-width: 92vw; box-shadow: 0 20px 60px rgba(15,23,42,.18); animation: siFadeIn .25s ease; }
