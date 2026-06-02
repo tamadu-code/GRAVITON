@@ -189,6 +189,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     let currentQP = 0;
     let currentCredits = 0;
     for (const sc of scores) {
+        if (sc.total === null || sc.total === undefined || sc.total === '') continue;
         const gp = getGradePoint(sc.total);
         const credits = getSubjectCredits(sc.subject_id);
         currentQP += gp * credits;
@@ -362,7 +363,8 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     const midX = 85;
     const rightX = 145;
     
-    const avg = scores.length > 0 ? (scores.reduce((a, b) => a + (b.total || 0), 0) / scores.length).toFixed(2) : 0;
+    const scoredEntries = scores.filter(s => s.total !== null && s.total !== undefined && s.total !== '');
+    const avg = scoredEntries.length > 0 ? (scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0) / scoredEntries.length).toFixed(2) : 0;
     
     // Row 1
     doc.setTextColor(0, 0, 0);
@@ -374,7 +376,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     // Dynamic SEX position: push it past the name with a minimum gap
     const sexX = Math.max(midX, leftX + nameWidth + 5);
     doc.text(`SEX: ${student.gender || 'N/A'}`, sexX, y);
-    doc.text(`TOTAL MARKS: ${scores.reduce((a, b) => a + (b.total || 0), 0)}`, rightX, y);
+    doc.text(`TOTAL MARKS: ${scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0)}`, rightX, y);
     
     y += 7;
     // Row 2
@@ -411,13 +413,33 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     const sortedScores = [...scores].sort((a, b) => (a.subject_name || '').localeCompare(b.subject_name || ''));
     
     const tableHead = [['SUBJECTS', 'ASS', 'T1', 'T2', 'PROJ', 'CA', 'EXAM', 'TOTAL', 'GRADE', 'REMARK']];
+    // Helper: treat null/undefined/'' as "no score entered" -> display blank
+    const _scVal = (v) => (v !== null && v !== undefined && v !== '' && v !== 0) ? v : (v === 0 ? 0 : '');
+    const _scNum = (v) => (v !== null && v !== undefined && v !== '') ? (parseFloat(v) || 0) : null;
+
     const tableBody = sortedScores.map(s => {
-        const ass = s.assignment || s.ass || 0;
-        const t1 = s.test1 || s.t1 || 0;
-        const t2 = s.test2 || s.t2 || 0;
-        const proj = s.project || s.proj || 0;
-        const ca = (parseFloat(ass) || 0) + (parseFloat(t1) || 0) + (parseFloat(t2) || 0) + (parseFloat(proj) || 0);
-        const exam = s.exam || 0;
+        const assRaw = s.assignment ?? s.ass ?? '';
+        const t1Raw = s.test1 ?? s.t1 ?? '';
+        const t2Raw = s.test2 ?? s.t2 ?? '';
+        const projRaw = s.project ?? s.proj ?? '';
+        const examRaw = s.exam ?? '';
+
+        const ass = _scVal(assRaw);
+        const t1 = _scVal(t1Raw);
+        const t2 = _scVal(t2Raw);
+        const proj = _scVal(projRaw);
+        const exam = _scVal(examRaw);
+
+        // CA: sum only entered components; blank if none entered
+        const caComponents = [assRaw, t1Raw, t2Raw, projRaw].map(_scNum).filter(v => v !== null);
+        const ca = caComponents.length > 0 ? caComponents.reduce((a, b) => a + b, 0) : '';
+
+        // Total, grade, remark: use the stored total if it exists, else blank
+        const hasTotal = s.total !== null && s.total !== undefined && s.total !== '';
+        const total = hasTotal ? s.total : '';
+        const grade = hasTotal ? (s.grade || ScoringEngine.getGrade(s.total)) : '';
+        const remark = hasTotal ? (s.remark || ScoringEngine.getRemark(s.total)) : '';
+
         return [
             s.subject_name,
             ass,
@@ -426,9 +448,9 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
             proj,
             ca,
             exam,
-            s.total,
-            s.grade || ScoringEngine.getGrade(s.total),
-            s.remark || ScoringEngine.getRemark(s.total)
+            total,
+            grade,
+            remark
         ];
     });
     
@@ -542,7 +564,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     }
 
     const qrLines = [
-        `NAME: ${student.name.toUpperCase()} SEX: ${student.gender || 'N/A'} TOTAL MARKS: ${scores.reduce((a, b) => a + (b.total || 0), 0)}`,
+        `NAME: ${student.name.toUpperCase()} SEX: ${student.gender || 'N/A'} TOTAL MARKS: ${scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0)}`,
         `CLASS: ${displayClass} SESSION: ${scores[0]?.session || '2025/2026'} ${gpaCgpaDetails.split('\n')[0]}`,
     ];
     
