@@ -77,13 +77,17 @@ export const ScoringEngine = {
         // 1. Punctuality: % of On-Time arrivals
         const totalSchool = schoolAtt.length;
         const onTime = schoolAtt.filter(a => a.status === 'Present').length;
+        const late = schoolAtt.filter(a => a.status === 'Late').length;
         const punctPct = totalSchool > 0 ? (onTime / totalSchool) * 100 : 60;
+
+        // Overall Attendance Rate: % of days present or late
+        const attPct = totalSchool > 0 ? ((onTime + late) / totalSchool) * 100 : 75;
         
         // 2. Participation: Ratio of Subject Attendance to School Attendance
         // If they attend subjects whenever they are in school, Participation is high.
         const schoolDays = new Set(schoolAtt.map(a => a.date)).size || 1;
         const subjectsPerDay = subjectAtt.length / schoolDays;
-        const participationPct = (subjectsPerDay / 6) * 100; // Assuming 6 subjects a day average
+        const participationPct = Math.min(100, (subjectsPerDay / 6) * 100); // Assuming 6 subjects a day average
 
         // 3. Compliance: Are they skipping subjects while in school?
         // Discrepancy between school presence and subject presence
@@ -98,22 +102,34 @@ export const ScoringEngine = {
             return 1;
         };
 
-        // Stable Seeded Qualitative traits (to avoid pure randomness)
+        // Stable Seeded Qualitative traits (to maintain individual uniqueness baseline)
         const getSeedRating = (str, offset = 0) => {
             let hash = 0;
             for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
             return 3 + (Math.abs(hash + offset) % 3); // Returns 3, 4, or 5
         };
 
+        const baseNeatness = getSeedRating(student.name, 20);
+        const baseCreativity = getSeedRating(student.name, 10);
+        const baseCourage = getSeedRating(student.name, 30);
+        const baseSelfControl = getSeedRating(student.name, 40);
+        const baseHonesty = getSeedRating(student.name, 50);
+
+        // Blending dynamic attendance metrics with seeded baseline (70% attendance metric, 30% seed)
+        const blendScore = (metricPct, baseSeed) => {
+            const metricScore = mapTo5(metricPct);
+            return Math.max(1, Math.min(5, Math.round((metricScore * 0.7) + (baseSeed * 0.3))));
+        };
+
         return {
             punctuality: mapTo5(punctPct),
             participation: mapTo5(participationPct),
             compliance: mapTo5(compliancePct),
-            self_control: mapTo5(punctPct),
-            honesty: mapTo5(compliancePct > 80 ? 100 : 60), 
-            creativity: getSeedRating(student.name, 10),
-            neatness: getSeedRating(student.name, 20),
-            courage: getSeedRating(student.name, 30)
+            self_control: blendScore((punctPct * 0.6) + (attPct * 0.4), baseSelfControl),
+            honesty: blendScore(compliancePct > 80 ? 100 : 60, baseHonesty),
+            creativity: blendScore((participationPct * 0.7) + (attPct * 0.3), baseCreativity),
+            neatness: blendScore((punctPct * 0.6) + (attPct * 0.4), baseNeatness),
+            courage: blendScore((participationPct * 0.8) + (punctPct * 0.2), baseCourage)
         };
     }
 };
@@ -513,7 +529,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.setTextColor(100, 116, 139);
     doc.text("Punctuality: Based on daily attendance sign-in times | Participation: Frequency of class engagement | Compliance: Adherence to school rules", pageWidth / 2, currentY, { align: 'center' });
     currentY += 3;
-    doc.text("Honesty/Self-Control: Behavioural compliance record | Neatness/Creativity/Courage: Teacher-seeded performance indicators", pageWidth / 2, currentY, { align: 'center' });
+    doc.text("Honesty/Self-Control: Behavioural compliance record | Neatness/Creativity/Courage: Attendance & engagement-derived indicators", pageWidth / 2, currentY, { align: 'center' });
     doc.setTextColor(0, 0, 0);
     
     currentY += 10;
