@@ -83,15 +83,21 @@ export const ScoringEngine = {
         // Overall Attendance Rate: % of days present or late
         const attPct = totalSchool > 0 ? ((onTime + late) / totalSchool) * 100 : 75;
         
-        // 2. Participation: Ratio of Subject Attendance to School Attendance
-        // If they attend subjects whenever they are in school, Participation is high.
-        const schoolDays = new Set(schoolAtt.map(a => a.date)).size || 1;
-        const subjectsPerDay = subjectAtt.length / schoolDays;
-        const participationPct = Math.min(100, (subjectsPerDay / 6) * 100); // Assuming 6 subjects a day average
+        // 2. Participation & Compliance
+        let participationPct;
+        let compliancePct;
 
-        // 3. Compliance: Are they skipping subjects while in school?
-        // Discrepancy between school presence and subject presence
-        const compliancePct = Math.min(100, participationPct + 20); 
+        if (subjectAtt.length > 0) {
+            // If they have subject-based attendance, use the ratio of Subject Attendance to School Attendance
+            const schoolDays = new Set(schoolAtt.map(a => a.date)).size || 1;
+            const subjectsPerDay = subjectAtt.length / schoolDays;
+            participationPct = Math.min(100, (subjectsPerDay / 6) * 100); // Assuming 6 subjects a day average
+            compliancePct = Math.min(100, participationPct + 20);
+        } else {
+            // Fallback: If no subject-based attendance is recorded, derive from daily attendance
+            participationPct = attPct;
+            compliancePct = (attPct * 0.6) + (punctPct * 0.4);
+        }
 
         // Mapping function 0-100 to 1-5
         const mapTo5 = (pct) => {
