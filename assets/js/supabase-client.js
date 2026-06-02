@@ -739,7 +739,7 @@ export async function updateUserPassword(email, newPassword) {
     // [SECURITY] auth.updateUser only updates the CURRENTLY LOGGED IN user.
     // We should only call this if we are sure we want to change the active session's password.
     const { data: { user } } = await client.auth.getUser();
-    if (user && user.email !== email) {
+    if (email && user && user.email !== email) {
         console.warn('[Auth] Attempted to change password for a different user. This is blocked to prevent admin lockout.');
         return { error: { message: 'Cannot reset other users passwords from the frontend. Use Supabase Dashboard or an Edge Function.' } };
     }

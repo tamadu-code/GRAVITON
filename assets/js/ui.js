@@ -12260,7 +12260,7 @@ export const UI = {
                         <aside class="jamb-sidebar" style="width: 260px;">
                             <div style="padding: 1rem; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; text-align: center;">
                                 <div style="width: 60px; height: 60px; border-radius: 50%; overflow: hidden; border: 2px solid white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin: 0 auto 0.5rem;">
-                                    <img src="${this.currentUser.passport_photo || 'assets/img/default-avatar.png'}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='assets/img/default-avatar.png'">
+                                    <img src="${this.currentUser.passport || this.currentUser.passport_url || 'assets/img/default-avatar.png'}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='assets/img/default-avatar.png'">
                                 </div>
                                 <div style="font-weight: 800; color: #1e293b; font-size: 0.7rem; text-transform: uppercase;">${studentName}</div>
                                 <div style="font-weight: 600; color: #64748b; font-size: 0.65rem;">${studentId}</div>
@@ -17354,9 +17354,8 @@ export const UI = {
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader" class="spin"></i> Updating...';
             if (typeof lucide !== 'undefined') lucide.createIcons();
-
             try {
-                const { error } = await updateUserPassword(null, newPw);
+                const { error } = await updateUserPassword(this.currentUser?.email, newPw);
                 if (error) {
                     Notifications.show(error.message, 'error');
                 } else {
@@ -22308,6 +22307,25 @@ export const UI = {
                 
                 if (result.success) {
                     Notifications.show('Photo updated successfully!', 'success');
+                    
+                    // Update current user passport if they are the one who uploaded it
+                    if (this.currentUser && (this.currentUser.id === id || this.currentUser.assigned_id === id)) {
+                        this.currentUser.passport = result.url;
+                        
+                        // Dynamically update topbar & sidebar avatars
+                        const footerAvatarEl = document.querySelector('.user-avatar-small');
+                        const headerAvatarImg = document.querySelector('.user-avatar img');
+                        
+                        if (footerAvatarEl) {
+                            footerAvatarEl.innerHTML = `<img src="${result.url}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+                            footerAvatarEl.style.padding = '0';
+                            footerAvatarEl.style.overflow = 'hidden';
+                        }
+                        if (headerAvatarImg) {
+                            headerAvatarImg.src = result.url;
+                        }
+                    }
+                    
                     // Refresh current view to show new image
                     this.renderView(this.currentView);
                 } else {

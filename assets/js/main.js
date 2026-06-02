@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v26.3 (BUILD v302) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v26.4 (BUILD v303) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -192,6 +192,22 @@ async function loadAuthenticatedApp(authUser) {
     let profile = null;
     try {
         profile = await getUserProfile(authUser.id);
+        if (profile) {
+            // [PASSPORT SUPPORT] Fetch student passport photo from students table
+            if (profile.role === 'Student' || (profile.email && profile.email.toLowerCase().includes('@student.school'))) {
+                const identifier = profile.assigned_id || (profile.email && profile.email.split('@')[0].toUpperCase());
+                if (identifier) {
+                    let sourceData = await db.students.get(identifier);
+                    if (!sourceData && client) {
+                        const { data } = await client.from('students').select('*').eq('student_id', identifier).maybeSingle();
+                        sourceData = data;
+                    }
+                    if (sourceData) {
+                        profile.passport = sourceData.passport_url || sourceData.passport || null;
+                    }
+                }
+            }
+        }
         
         // --- AUTO-REPAIR / PROVISIONING ---
         // If not found in profiles, we need to recover from the respective source table
@@ -219,11 +235,20 @@ async function loadAuthenticatedApp(authUser) {
                         assigned_id: sourceData.student_id,
                         email: authUser.email,
                         status: 'Active',
+                        passport: sourceData.passport_url || sourceData.passport || null,
                         updated_at: new Date().toISOString()
                     };
                     
                     // Force save to profiles table
-                    if (client) await client.from('profiles').upsert(profile);
+                    if (client) await client.from('profiles').upsert({
+                        id: profile.id,
+                        full_name: profile.full_name,
+                        role: profile.role,
+                        assigned_id: profile.assigned_id,
+                        email: profile.email,
+                        status: profile.status,
+                        updated_at: profile.updated_at
+                    });
                     console.log('[AutoRepair] Successfully re-provisioned student profile:', identifier);
                 }
             }
@@ -284,7 +309,8 @@ async function loadAuthenticatedApp(authUser) {
         email: authUser.email,
         role: currentRole,
         name: currentName,
-        assigned_id: profile.assigned_id || null
+        assigned_id: profile.assigned_id || null,
+        passport: profile.passport || null
     };
 
     // Initialize Push Notifications asynchronously
@@ -299,12 +325,31 @@ async function loadAuthenticatedApp(authUser) {
     const footerNameEl = document.getElementById('footer-user-name');
     const footerRoleEl = document.getElementById('footer-user-role');
     const footerAvatarEl = document.querySelector('.user-avatar-small');
+    const headerAvatarImg = document.querySelector('.user-avatar img');
 
     if (userNameEl) userNameEl.textContent = currentName;
     if (userRoleEl) userRoleEl.textContent = currentRole;
     if (footerNameEl) footerNameEl.textContent = currentName;
     if (footerRoleEl) footerRoleEl.textContent = currentRole;
-    if (footerAvatarEl) footerAvatarEl.textContent = currentName.charAt(0).toUpperCase();
+
+    if (footerAvatarEl) {
+        if (profile.passport) {
+            footerAvatarEl.innerHTML = `<img src="${profile.passport}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+            footerAvatarEl.style.padding = '0';
+            footerAvatarEl.style.overflow = 'hidden';
+        } else {
+            footerAvatarEl.textContent = currentName.charAt(0).toUpperCase();
+            footerAvatarEl.style.padding = '';
+        }
+    }
+
+    if (headerAvatarImg) {
+        if (profile.passport) {
+            headerAvatarImg.src = profile.passport;
+        } else {
+            headerAvatarImg.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentName || 'User'}`;
+        }
+    }
 
     const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights', 'profile'];
     const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances'];
