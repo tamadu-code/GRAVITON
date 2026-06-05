@@ -1332,6 +1332,13 @@ export async function generateTimetablePDF(className, classes, subjects, schoolI
         }
     }
 
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+    if (isMobile) {
+        doc.save(`Timetable_Report_${className || 'General'}.pdf`);
+        Notifications.show('Timetable downloaded successfully!', 'success');
+        return;
+    }
+
     const pdfBlob = doc.output('blob');
     const pdfUrl = URL.createObjectURL(pdfBlob);
     
@@ -1505,7 +1512,7 @@ export async function generatePinSlipPDF(pinData, schoolInfo = {}) {
  * Generate General School Timetable (Single-page Landscape A4 PDF)
  * Groups all classes by day with BREAK, FASTING AND PRAYERS, and SPORTS columns.
  */
-export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoolInfo = {}, currentUser = {}) {
+export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoolInfo = {}, currentUser = {}, entriesOverride = null) {
     const { jsPDF } = window.jspdf;
     
     // Set up Landscape A4 document
@@ -1540,7 +1547,7 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
     doc.text(`TIME TABLE FOR ${schoolInfo.currentSession || '2025/2026'} ACADEMIC SESSION`, pageWidth / 2, 18, { align: 'center' });
     
     // Fetch all timetable records from DB
-    const allEntries = await db.timetable.toArray();
+    const allEntries = entriesOverride || await db.timetable.toArray();
     const subjectMap = subjects.reduce((m, s) => { m[s.id] = s.name; return m; }, {});
     
     // Target classes configuration
@@ -1636,105 +1643,132 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
     for (const day of daysList) {
         const isThursday = day.toLowerCase() === 'thursday';
         const isFriday = day.toLowerCase() === 'friday';
-        
         const dayEntries = allEntries.filter(e => (e.day_of_week || '').toLowerCase() === day.toLowerCase());
         
-        for (let rIdx = 0; rIdx < rowsConfig.length; rIdx++) {
-            const rc = rowsConfig[rIdx];
+        // Initialize 8 rows x 11 columns grid for this day
+        const grid = Array.from({ length: 8 }, () => Array.from({ length: 11 }, () => null));
+        
+        // 1. DAYS Column (Column 0, spans all 8 class rows)
+        grid[0][0] = {
+            content: day.toUpperCase(),
+            isDayCell: true,
+            rowSpan: 8,
+            colSpan: 1
+        };
+        
+        // 2. CLASS Column (Column 1)
+        for (let r = 0; r < 8; r++) {
+            grid[r][1] = {
+                content: rowsConfig[r].label,
+                isClassCell: true,
+                rowSpan: 1,
+                colSpan: 1
+            };
+        }
+        
+        // 3. BREAK Column (Column 7, spans all 8 class rows, 11:30 - 12:00)
+        grid[0][7] = {
+            content: toVerticalText('BREAK'),
+            isBreakCell: true,
+            rowSpan: 8,
+            colSpan: 1
+        };
+        
+        // 4. Special Column: Thursday FASTING AND PRAYERS (Column 6, spans all 8 rows, replaces Period 5)
+        if (isThursday) {
+            grid[0][6] = {
+                content: 'FASTING & PRAYER',
+                isFastingCell: true,
+                rowSpan: 8,
+                colSpan: 1
+            };
+        }
+        
+        // 5. Special Column: Friday SPORTS ACTIVITIES (Column 4, spans all 8 rows, spans Columns 4 and 5 (Period 3 & 4))
+        if (isFriday) {
+            grid[0][4] = {
+                content: 'SPORTS ACTIVITIES',
+                isSportsCell: true,
+                rowSpan: 8,
+                colSpan: 2
+            };
+        }
+        
+        // Define which periods map to which columns for this day
+        const periodsToQuery = [];
+        if (isThursday) {
+            periodsToQuery.push(
+                { p: 1, col: 2 },
+                { p: 2, col: 3 },
+                { p: 3, col: 4 },
+                { p: 4, col: 5 },
+                // Period 5 is FASTING AND PRAYERS (Col 6)
+                { p: 6, col: 8 },
+                { p: 7, col: 9 },
+                { p: 8, col: 10 }
+            );
+        } else if (isFriday) {
+            periodsToQuery.push(
+                { p: 1, col: 2 },
+                { p: 2, col: 3 },
+                // Period 3 & 4 are SPORTS ACTIVITIES (Col 4 & 5)
+                { p: 5, col: 6 },
+                { p: 6, col: 8 },
+                { p: 7, col: 9 },
+                { p: 8, col: 10 }
+            );
+        } else {
+            periodsToQuery.push(
+                { p: 1, col: 2 },
+                { p: 2, col: 3 },
+                { p: 3, col: 4 },
+                { p: 4, col: 5 },
+                { p: 5, col: 6 },
+                { p: 6, col: 8 },
+                { p: 7, col: 9 },
+                { p: 8, col: 10 }
+            );
+        }
+        
+        // Populate period cells in grid
+        for (let r = 0; r < 8; r++) {
+            const rc = rowsConfig[r];
+            for (const pf of periodsToQuery) {
+                const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, pf.p);
+                const text = entry ? getShortSubjectName(entry.subject_id, subjectMap) : '';
+                grid[r][pf.col] = {
+                    content: text,
+                    isLessonCell: true,
+                    rowSpan: 1,
+                    colSpan: 1
+                };
+            }
+        }
+        
+        // Merge general subjects for SSS 2 & SSS 3 (Arts & Science rows)
+        // SSS 2 Arts is row 4, Science is row 5
+        // SSS 3 Arts is row 6, Science is row 7
+        const sssPairs = [[4, 5], [6, 7]];
+        for (const [rArts, rSci] of sssPairs) {
+            for (const pf of periodsToQuery) {
+                const col = pf.col;
+                const cellArts = grid[rArts][col];
+                const cellSci = grid[rSci][col];
+                if (cellArts && cellSci && cellArts.content && cellArts.content === cellSci.content) {
+                    cellArts.rowSpan = 2;
+                    grid[rSci][col] = null; // Omit Science cell since it is vertically merged
+                }
+            }
+        }
+        
+        // Push non-null cells to table body
+        for (let r = 0; r < 8; r++) {
             const rowData = [];
-            
-            // 1. Day Column (spanned vertically across all 8 classes)
-            if (rIdx === 0) {
-                rowData.push({
-                    content: day.toUpperCase(),
-                    rowSpan: 8,
-                    styles: { 
-                        valign: 'middle', 
-                        halign: 'center', 
-                        fontStyle: 'bold', 
-                        fillColor: [248, 250, 252], 
-                        textColor: [30, 41, 59],
-                        fontSize: 8.5
-                    }
-                });
-            }
-            
-            // 2. Class Column
-            rowData.push({
-                content: rc.label,
-                styles: { 
-                    fontStyle: 'bold', 
-                    fillColor: [241, 245, 249], 
-                    textColor: [30, 41, 59],
-                    halign: 'center',
-                    fontSize: 8
-                }
-            });
-            
-            // 3. Periods / Special Columns
-            if (isFriday) {
-                // Period 1, 2, 3
-                for (let p = 1; p <= 3; p++) {
-                    const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, p);
-                    rowData.push(entry ? getShortSubjectName(entry.subject_id, subjectMap) : '');
-                }
-                
-                // Sports column (spans Friday period 4)
-                if (rIdx === 0) {
-                    rowData.push({
-                        content: toVerticalText('SPORTS ACTIVITIES'),
-                        rowSpan: 8,
-                        styles: { 
-                            valign: 'middle', 
-                            halign: 'center', 
-                            fontStyle: 'bold', 
-                            fillColor: [239, 246, 255], 
-                            textColor: [37, 99, 235],
-                            fontSize: 6.5,
-                            cellPadding: 0.5
-                        }
-                    });
-                }
-                
-                // Period 4 to 8 (in DB) -> Friday Columns 5 to 9 (after sports)
-                for (let p = 4; p <= 8; p++) {
-                    const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, p);
-                    rowData.push(entry ? getShortSubjectName(entry.subject_id, subjectMap) : '');
-                }
-            } else {
-                // Period 1 to 5
-                for (let p = 1; p <= 5; p++) {
-                    const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, p);
-                    rowData.push(entry ? getShortSubjectName(entry.subject_id, subjectMap) : '');
-                }
-                
-                // Break or Fasting column
-                if (rIdx === 0) {
-                    const cellText = isThursday ? 'FASTING AND PRAYERS' : 'BREAK';
-                    const isFasting = isThursday;
-                    
-                    rowData.push({
-                        content: toVerticalText(cellText),
-                        rowSpan: 8,
-                        styles: { 
-                            valign: 'middle', 
-                            halign: 'center', 
-                            fontStyle: 'bold', 
-                            fillColor: isFasting ? [254, 242, 242] : [254, 252, 232], 
-                            textColor: isFasting ? [220, 38, 38] : [161, 98, 7],
-                            fontSize: isFasting ? 5.5 : 8,
-                            cellPadding: 0.5
-                        }
-                    });
-                }
-                
-                // Period 6 to 8
-                for (let p = 6; p <= 8; p++) {
-                    const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, p);
-                    rowData.push(entry ? getShortSubjectName(entry.subject_id, subjectMap) : '');
+            for (let c = 0; c < 11; c++) {
+                if (grid[r][c] !== null) {
+                    rowData.push(grid[r][c]);
                 }
             }
-            
             body.push(rowData);
         }
     }
@@ -1784,13 +1818,75 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
             10: { cellWidth: 28.5 }
         },
         margin: { left: 5, right: 5 },
-        didParseCell: function(data) {
-            // Apply text centering and custom aesthetics to cell texts
+        willDrawCell: function(data) {
             if (data.section === 'body') {
-                if (data.column.index > 1 && data.column.index !== 7 && typeof data.cell.raw === 'string' && data.cell.raw !== '') {
-                    // Accentuate lessons inside the grid
-                    data.cell.styles.fontStyle = 'bold';
-                    data.cell.styles.textColor = [15, 23, 42];
+                const raw = data.cell.raw;
+                if (raw && (raw.isDayCell || raw.isFastingCell || raw.isSportsCell)) {
+                    data.cell.text = []; // Clear text so autoTable doesn't draw it
+                }
+            }
+        },
+        didDrawCell: function(data) {
+            if (data.section === 'body') {
+                const raw = data.cell.raw;
+                if (raw) {
+                    const centerX = data.cell.x + data.cell.width / 2;
+                    const centerY = data.cell.y + data.cell.height / 2;
+                    
+                    if (raw.isDayCell) {
+                        doc.saveGraphicsState();
+                        doc.setFontSize(8);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(30, 41, 59);
+                        doc.text(raw.content, centerX, centerY, { angle: -90, align: 'center', baseline: 'middle' });
+                        doc.restoreGraphicsState();
+                    } else if (raw.isFastingCell) {
+                        doc.saveGraphicsState();
+                        doc.setFontSize(6.5);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(220, 38, 38);
+                        const lines = ["FASTING &", "PRAYER"];
+                        doc.text(lines, centerX, centerY, { angle: -60, align: 'center', baseline: 'middle' });
+                        doc.restoreGraphicsState();
+                    } else if (raw.isSportsCell) {
+                        doc.saveGraphicsState();
+                        doc.setFontSize(7);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(37, 99, 235);
+                        const lines = ["SPORTS", "ACTIVITIES"];
+                        doc.text(lines, centerX, centerY, { angle: -60, align: 'center', baseline: 'middle' });
+                        doc.restoreGraphicsState();
+                    }
+                }
+            }
+        },
+        didParseCell: function(data) {
+            if (data.section === 'body') {
+                const raw = data.cell.raw;
+                if (raw) {
+                    if (raw.isDayCell) {
+                        data.cell.styles.fillColor = [248, 250, 252];
+                    } else if (raw.isClassCell) {
+                        data.cell.styles.fillColor = [241, 245, 249];
+                        data.cell.styles.textColor = [30, 41, 59];
+                        data.cell.styles.fontStyle = 'bold';
+                    } else if (raw.isBreakCell) {
+                        data.cell.styles.fillColor = [254, 252, 232];
+                        data.cell.styles.textColor = [161, 98, 7];
+                        data.cell.styles.fontStyle = 'bold';
+                        data.cell.styles.fontSize = 8;
+                    } else if (raw.isFastingCell) {
+                        data.cell.styles.fillColor = [254, 242, 242];
+                    } else if (raw.isSportsCell) {
+                        data.cell.styles.fillColor = [239, 246, 255];
+                    } else if (raw.isLessonCell) {
+                        if (raw.content) {
+                            data.cell.styles.fontStyle = 'bold';
+                            data.cell.styles.textColor = [15, 23, 42];
+                        } else {
+                            data.cell.styles.textColor = [148, 163, 184];
+                        }
+                    }
                 }
             }
         }
@@ -1835,6 +1931,13 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
     }
     
     // Open in preview tab or download
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+    if (isMobile) {
+        doc.save(`General_School_Timetable_${schoolInfo.currentSession || '2025_2026'}.pdf`);
+        Notifications.show('General Timetable downloaded successfully!', 'success');
+        return;
+    }
+
     const pdfBlob = doc.output('blob');
     const pdfUrl = URL.createObjectURL(pdfBlob);
     

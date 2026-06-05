@@ -104,12 +104,9 @@ export const UI = {
     },
     
     showPDFPreview(doc, filename = 'document.pdf') {
-        const isMobile = window.innerWidth <= 768;
-        const role = (this.currentUser?.role || '').toLowerCase();
-        const isParentOrStudent = role === 'parent' || role === 'student';
-
-        if (isMobile && isParentOrStudent && filename.toLowerCase().startsWith('report_')) {
-            Notifications.show('Downloading report card PDF...', 'success');
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+        if (isMobile) {
+            Notifications.show(`Downloading ${filename}...`, 'success');
             doc.save(filename);
             return;
         }
@@ -14439,6 +14436,9 @@ export const UI = {
                             <button id="btn-auto-timetable" class="btn" style="height: 52px; border-radius: 12px; padding: 0 1.5rem; background: #f59e0b; color: white; border: none; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                                 <i data-lucide="cpu"></i> Auto-Generate
                             </button>
+                            <button id="btn-preview-audit-tt" class="btn" style="height: 52px; border-radius: 12px; padding: 0 1.5rem; background: #0f172a; color: white; border: none; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <i data-lucide="eye"></i> Preview & Audit
+                            </button>
                             <button id="btn-print-class-tt" class="btn" style="height: 52px; border-radius: 12px; padding: 0 1.5rem; background: #10b981; color: white; border: none; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                                 <i data-lucide="printer"></i> Print Class
                             </button>
@@ -14507,6 +14507,7 @@ export const UI = {
         
         const printClassBtn = document.getElementById('btn-print-class-tt');
         const printGeneralBtn = document.getElementById('btn-print-general-tt');
+        const previewAuditBtn = document.getElementById('btn-preview-audit-tt');
         const autoGenerateBtn = document.getElementById('btn-auto-timetable');
         
         // Timetable Solver function (Backtracking Constraint Satisfaction)
@@ -14617,6 +14618,19 @@ export const UI = {
                     }
                     if (consecutive > maxConsecutive) {
                         return false;
+                    }
+                }
+
+                // 4. Part-time teacher availability check
+                if (assignment.teacher_id && constraints.partTimeConstraints) {
+                    const ct = constraints.partTimeConstraints.find(c => String(c.teacher_id) === String(assignment.teacher_id));
+                    if (ct) {
+                        if (!ct.days.includes(day)) {
+                            return false;
+                        }
+                        if (period < ct.start_period || period > ct.end_period) {
+                            return false;
+                        }
                     }
                 }
                 
@@ -14780,7 +14794,7 @@ export const UI = {
                 const schoolInfo = {};
                 settings.forEach(s => schoolInfo[s.key] = s.value);
                 try {
-                    await generateGeneralSchoolTimetablePDF(classes, subjects, schoolInfo, this.currentUser);
+                    await generateGeneralSchoolTimetablePDF(classes, subjects, schoolInfo, this.currentUser, UI.tempTimetableState);
                 } catch (err) {
                     console.error("General timetable print error:", err);
                     Notifications.show('Failed to generate general timetable: ' + err.message, 'error');
@@ -14788,10 +14802,21 @@ export const UI = {
             };
         }
         
+        if (previewAuditBtn) {
+            previewAuditBtn.onclick = async () => {
+                await this.showTimetablePreviewAuditModal(subjects);
+            };
+        }
+        
         if (autoGenerateBtn) {
-            autoGenerateBtn.onclick = () => {
+            autoGenerateBtn.onclick = async () => {
+                const teachers = await db.profiles.filter(p => (p.role || '').toLowerCase() === 'teacher').toArray();
+                const teachersOptionHtml = teachers.map(t => `<option value="${t.id}">${t.full_name || t.name || 'Unknown'}</option>`).join('');
+                
+                let ptConstraints = [];
+                
                 const modalHtml = `
-                    <div style="padding: 0.5rem;">
+                    <div style="padding: 0.5rem; max-height: 70vh; overflow-y: auto;">
                         <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem;">Configure the scheduling algorithm constraints. The solver will generate a conflict-free schedule for the entire school.</p>
                         
                         <div style="margin-bottom: 1.25rem;">
@@ -14818,6 +14843,51 @@ export const UI = {
                             <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600; margin-top: 0.25rem; display: block;">Used for subjects that do not have custom credits/hours defined.</span>
                         </div>
                         
+                        <div style="margin-bottom: 1.5rem; border-top: 1px solid #e2e8f0; padding-top: 1.5rem;">
+                            <h4 style="margin-bottom: 1rem; color: #1e293b; font-weight: 800; font-size: 0.85rem; text-transform: uppercase;">Part-Time Teacher Availability Constraints</h4>
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+                                <div class="form-group" style="margin-bottom: 0.75rem;">
+                                    <label style="font-size: 0.7rem; font-weight: 700; color: #475569;">Select Teacher</label>
+                                    <select id="pt-teacher-select" class="input" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: white;">
+                                        <option value="">-- Choose Teacher --</option>
+                                        ${teachersOptionHtml}
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0.75rem;">
+                                    <label style="font-size: 0.7rem; font-weight: 700; color: #475569; display: block; margin-bottom: 0.25rem;">Available Days</label>
+                                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                        ${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => `
+                                            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer;">
+                                                <input type="checkbox" class="pt-day-checkbox" value="${day}" checked> ${day.substring(0,3)}
+                                            </label>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+                                    <div class="form-group">
+                                        <label style="font-size: 0.7rem; font-weight: 700; color: #475569;">Start Period</label>
+                                        <select id="pt-start-period" class="input" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: white;">
+                                            ${[1,2,3,4,5,6,7,8].map(p => `<option value="${p}">${p}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.7rem; font-weight: 700; color: #475569;">End Period</label>
+                                        <select id="pt-end-period" class="input" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: white;">
+                                            ${[1,2,3,4,5,6,7,8].map(p => `<option value="${p}" ${p === 8 ? 'selected' : ''}>${p}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+                                <button type="button" id="btn-add-pt" class="btn" style="width: 100%; height: 38px; border-radius: 8px; background: #2563eb; color: white; border: none; font-weight: 700; font-size: 0.75rem; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;">
+                                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Add Constraint
+                                </button>
+                            </div>
+                            
+                            <div style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem;">Active Constraints</div>
+                            <div id="pt-constraints-list" style="max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 0.5rem;">
+                                <div style="color: #94a3b8; font-style: italic; font-size: 0.75rem; text-align: center; padding: 0.5rem;">No active constraints defined.</div>
+                            </div>
+                        </div>
+                        
                         <div style="background: #fef3c7; color: #d97706; padding: 1rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; line-height: 1.4; display: flex; gap: 8px; align-items: start;">
                             <i data-lucide="alert-triangle" style="width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px;"></i>
                             <div>Running the solver will place the system into <strong>Preview Mode</strong>. You can view, verify, and manually modify the schedule. Click "Save Schedule" to commit changes, or reload the page to discard.</div>
@@ -14835,7 +14905,8 @@ export const UI = {
                     const result = await solveSchoolTimetable({
                         maxPerDay,
                         maxConsecutive,
-                        defaultFrequency
+                        defaultFrequency,
+                        partTimeConstraints: ptConstraints
                     });
                     
                     UI.tempTimetableState = result.entries;
@@ -14846,9 +14917,88 @@ export const UI = {
                         Notifications.show('Timetable generated with relaxed constraints.', 'warning');
                     }
                     
+                    // Auto-select first class if none selected
+                    if (!classSelect.value && classSelect.options.length > 1) {
+                        classSelect.value = classSelect.options[1].value;
+                    }
+                    
                     // Trigger a change in classSelect to reload and display preview
                     classSelect.dispatchEvent(new Event('change'));
                 }, 'Run Solver', 'cpu');
+                
+                // Active constraints rendering and addition event handlers
+                const renderPtConstraints = () => {
+                    const listContainer = document.getElementById('pt-constraints-list');
+                    if (!listContainer) return;
+                    if (ptConstraints.length === 0) {
+                        listContainer.innerHTML = `<div style="color: #94a3b8; font-style: italic; font-size: 0.75rem; text-align: center; padding: 0.5rem;">No active constraints defined.</div>`;
+                        return;
+                    }
+                    listContainer.innerHTML = ptConstraints.map((c, idx) => `
+                        <div style="display: flex; align-items: center; justify-content: space-between; background: white; padding: 0.5rem 0.75rem; border-radius: 8px; border-left: 3px solid #2563eb; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+                            <div style="flex: 1; min-width: 0; padding-right: 8px; text-align: left;">
+                                <div style="font-weight: 700; color: #334155; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.teacher_name}</div>
+                                <div style="font-size: 0.65rem; color: #64748b; margin-top: 1px;">
+                                    Days: ${c.days.map(d => d.substring(0,3)).join(', ')} | Periods: ${c.start_period}-${c.end_period}
+                                </div>
+                            </div>
+                            <button type="button" class="btn-remove-pt" data-index="${idx}" style="background: transparent; color: #ef4444; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
+                        </div>
+                    `).join('');
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                    
+                    // Bind deletes
+                    document.querySelectorAll('.btn-remove-pt').forEach(btn => {
+                        btn.onclick = () => {
+                            const index = parseInt(btn.dataset.index);
+                            ptConstraints.splice(index, 1);
+                            renderPtConstraints();
+                        };
+                    });
+                };
+                
+                const btnAddPt = document.getElementById('btn-add-pt');
+                if (btnAddPt) {
+                    btnAddPt.onclick = () => {
+                        const ptTeacherSelect = document.getElementById('pt-teacher-select');
+                        const tId = ptTeacherSelect.value;
+                        const tName = ptTeacherSelect.options[ptTeacherSelect.selectedIndex]?.text;
+                        if (!tId) {
+                            return Notifications.show('Please select a teacher', 'warning');
+                        }
+                        
+                        const checkedDays = [];
+                        document.querySelectorAll('.pt-day-checkbox:checked').forEach(cb => {
+                            checkedDays.push(cb.value);
+                        });
+                        if (checkedDays.length === 0) {
+                            return Notifications.show('Please select at least one day', 'warning');
+                        }
+                        
+                        const startP = parseInt(document.getElementById('pt-start-period').value);
+                        const endP = parseInt(document.getElementById('pt-end-period').value);
+                        if (startP > endP) {
+                            return Notifications.show('Start period cannot be after End period', 'warning');
+                        }
+                        
+                        const existingIdx = ptConstraints.findIndex(c => c.teacher_id === tId);
+                        const newConstraint = {
+                            teacher_id: tId,
+                            teacher_name: tName,
+                            days: checkedDays,
+                            start_period: startP,
+                            end_period: endP
+                        };
+                        if (existingIdx >= 0) {
+                            ptConstraints[existingIdx] = newConstraint;
+                        } else {
+                            ptConstraints.push(newConstraint);
+                        }
+                        
+                        renderPtConstraints();
+                        Notifications.show(`Added availability constraint for ${tName}`, 'success');
+                    };
+                }
             };
         }
 
@@ -14857,6 +15007,13 @@ export const UI = {
 
         const loadTimetable = async () => {
             const cls = classSelect.value;
+            const isSssSenior = cls && (cls.includes('SSS 2') || cls.includes('SSS 3'));
+            if (isSssSenior) {
+                streamSelect.parentElement.style.display = 'block';
+            } else {
+                streamSelect.value = "";
+                streamSelect.parentElement.style.display = 'none';
+            }
             const stream = streamSelect.value;
             if (!cls) {
                 gridContainer.style.display = 'none';
@@ -15059,6 +15216,494 @@ export const UI = {
             Notifications.show(`Timetable for ${cls} (${stream || 'General'}) successfully deployed!`, 'success');
             this.debouncedSync();
         };
+    },
+
+    async showTimetablePreviewAuditModal(subjects) {
+        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        const profiles = await db.profiles.toArray();
+        const assignments = await db.subject_assignments.toArray();
+        const entries = UI.tempTimetableState || await db.timetable.toArray();
+
+        const profileMap = profiles.reduce((m, p) => { m[p.id] = p.full_name || p.name || 'Unknown'; return m; }, {});
+        const subjectMap = subjects.reduce((m, s) => { m[s.id] = s.name; return m; }, {});
+
+        // 1. Audit: Teacher conflicts (double bookings)
+        const teacherCollisions = [];
+        const scheduleMap = {};
+        
+        entries.forEach(e => {
+            if (!e.teacher_id || !e.subject_id) return;
+            const key = `${e.day_of_week}_P${e.period_number}_${e.teacher_id}`;
+            const classLabel = `${e.class_name}${e.sub_class ? ` (${e.sub_class})` : ''}`;
+            if (!scheduleMap[key]) {
+                scheduleMap[key] = [];
+            }
+            scheduleMap[key].push({
+                class_name: e.class_name,
+                sub_class: e.sub_class || '',
+                classLabel,
+                subject_id: e.subject_id,
+                subjectName: subjectMap[e.subject_id] || e.subject_id,
+                teacher_id: e.teacher_id
+            });
+        });
+
+        for (const [key, list] of Object.entries(scheduleMap)) {
+            if (list.length > 1) {
+                const [day, periodStr, teacherId] = key.split('_');
+                const periodNum = parseInt(periodStr.substring(1));
+                const teacherName = profileMap[teacherId] || 'Unknown';
+                teacherCollisions.push({
+                    day,
+                    period: periodNum,
+                    teacherId,
+                    teacherName,
+                    classes: list
+                });
+            }
+        }
+
+        const hasTeacherConflict = (day, period, className, stream) => {
+            const collision = teacherCollisions.find(c => 
+                c.day.toLowerCase() === day.toLowerCase() && 
+                c.period === period &&
+                c.classes.some(cl => 
+                    cl.class_name.toLowerCase() === className.toLowerCase() && 
+                    (cl.sub_class || '').toLowerCase() === (stream || '').toLowerCase()
+                )
+            );
+            return collision ? collision.teacherName : null;
+        };
+
+        // 2. Audit: Subject frequency
+        const targetRows = [
+            { name: 'JSS 1', stream: null, label: 'JSS 1' },
+            { name: 'JSS 2', stream: null, label: 'JSS 2' },
+            { name: 'JSS 3', stream: null, label: 'JSS 3' },
+            { name: 'SSS 1', stream: null, label: 'SSS 1' },
+            { name: 'SSS 2', stream: 'Arts', label: 'SSS 2 (A)' },
+            { name: 'SSS 2', stream: 'Science', label: 'SSS 2 (S)' },
+            { name: 'SSS 3', stream: 'Arts', label: 'SSS 3 (A)' },
+            { name: 'SSS 3', stream: 'Science', label: 'SSS 3 (S)' }
+        ];
+
+        const underScheduled = [];
+        const overScheduled = [];
+
+        for (const tr of targetRows) {
+            const classLabel = tr.label;
+            
+            const classAss = tr.stream 
+                ? assignments.filter(a => a.class_name === tr.name && (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === tr.stream.toLowerCase()))
+                : assignments.filter(a => a.class_name === tr.name);
+
+            classAss.forEach(a => {
+                const subObj = subjects.find(s => s.id === a.subject_id);
+                const expected = (subObj && subObj.credits) ? parseInt(subObj.credits) : 3;
+                
+                const actual = entries.filter(e => 
+                    e.class_name === tr.name && 
+                    (e.sub_class || '') === (tr.stream || '') && 
+                    e.subject_id === a.subject_id
+                ).length;
+
+                const detail = {
+                    className: tr.name,
+                    stream: tr.stream || '',
+                    classLabel,
+                    subject_id: a.subject_id,
+                    subjectName: subObj ? subObj.name : a.subject_id,
+                    expected,
+                    actual
+                };
+
+                if (actual < expected) {
+                    underScheduled.push(detail);
+                } else if (actual > expected) {
+                    overScheduled.push(detail);
+                }
+            });
+        }
+
+        const generateDayGridHTML = (day) => {
+            const isThursday = day.toLowerCase() === 'thursday';
+            const isFriday = day.toLowerCase() === 'friday';
+            
+            const dayEntries = entries.filter(e => (e.day_of_week || '').toLowerCase() === day.toLowerCase());
+
+            const getShortName = (subjectId) => {
+                const fullName = subjectMap[subjectId] || subjectId || '';
+                if (!fullName) return '';
+                
+                const lower = fullName.toLowerCase().trim();
+                if (lower.includes('christian religious knowledge') || lower === 'crk' || lower === 'c.r.k') return 'C.R.K';
+                if (lower.includes('business studies') || lower.includes('bus std')) return 'BUS. STD';
+                if (lower.includes('literature in english') || lower.includes('lit in eng')) return 'LIT-IN-ENG';
+                if (lower.includes('english language') || lower.includes('english')) return 'ENGLISH';
+                if (lower.includes('mathematics') || lower.includes('maths')) return 'MATHS';
+                if (lower.includes('basic science')) return 'BASIC SCI';
+                if (lower.includes('agricultural science') || lower === 'agricultural sci' || lower === 'agric') return 'AGRIC. SCI';
+                if (lower.includes('creative and cultural art') || lower.includes('cca')) return 'C.C.A';
+                if (lower.includes('physical and health') || lower === 'phe' || lower === 'p.h.e') return 'P.H.E';
+                if (lower.includes('social studies')) return 'SOC. STD';
+                if (lower.includes('civic education') || lower === 'civic') return 'CIVIC';
+                if (lower.includes('home economics') || lower === 'home ec') return 'HOME ECON';
+                if (lower.includes('digital technology') || lower.includes('dig tech')) return 'DIG. TECH';
+                if (lower.includes('financial accounting') || lower === 'accounting' || lower === 'account') return 'ACCOUNT';
+                if (lower.includes('history')) return 'HISTORY';
+                if (lower.includes('geography')) return 'GEOGRAPHY';
+                if (lower.includes('biology')) return 'BIOLOGY';
+                if (lower.includes('chemistry')) return 'CHEMISTRY';
+                if (lower.includes('physics')) return 'PHYSICS';
+                if (lower.includes('economics') || lower === 'econs') return 'ECONS';
+                if (lower.includes('commerce')) return 'COMMERCE';
+                if (lower.includes('government') || lower === 'govt') return 'GOVT';
+                if (lower.includes('marketing') || lower === 'mkt') return 'MARKETING';
+                if (lower.includes('science practical')) return 'SCI. PRACT';
+                if (lower.includes('fine art') || lower.includes('fine arts')) return 'FINE ART';
+
+                if (fullName.length > 12) {
+                    const words = fullName.split(/\s+/);
+                    if (words.length > 1) {
+                        return words.map(w => w[0].toUpperCase()).join('.');
+                    }
+                    return fullName.substring(0, 10) + '.';
+                }
+                return fullName;
+            };
+
+            const grid = Array.from({ length: 8 }, () => Array.from({ length: 10 }, () => null));
+
+            for (let r = 0; r < 8; r++) {
+                grid[r][0] = {
+                    content: targetRows[r].label,
+                    style: 'font-weight: 800; background: #f8fafc; color: #334155; border: 1px solid #e2e8f0; padding: 0.5rem; text-align: left;'
+                };
+            }
+
+            grid[0][6] = {
+                content: 'BREAK',
+                rowSpan: 8,
+                style: 'font-weight: 900; color: #1e3a8a; background: #dbeafe; border: 1px solid #cbd5e1; width: 40px; writing-mode: vertical-lr; text-orientation: mixed; padding: 0.5rem; font-size: 0.8rem; letter-spacing: 2px;'
+            };
+
+            if (isThursday) {
+                grid[0][5] = {
+                    content: 'FASTING & PRAYER',
+                    rowSpan: 8,
+                    style: 'font-weight: 900; color: #5b21b6; background: #ede9fe; border: 1px solid #ddd6fe; writing-mode: vertical-lr; text-orientation: mixed; padding: 0.5rem; font-size: 0.75rem; letter-spacing: 1px;'
+                };
+            }
+
+            if (isFriday) {
+                grid[0][3] = {
+                    content: 'SPORTS ACTIVITIES',
+                    rowSpan: 8,
+                    colSpan: 2,
+                    style: 'font-weight: 900; color: #075985; background: #e0f2fe; border: 1px solid #bae6fd; padding: 0.5rem; font-size: 0.8rem; letter-spacing: 1px;'
+                };
+            }
+
+            const periodsToQuery = [];
+            if (isThursday) {
+                periodsToQuery.push(
+                    { p: 1, col: 1 },
+                    { p: 2, col: 2 },
+                    { p: 3, col: 3 },
+                    { p: 4, col: 4 },
+                    { p: 6, col: 7 },
+                    { p: 7, col: 8 },
+                    { p: 8, col: 9 }
+                );
+            } else if (isFriday) {
+                periodsToQuery.push(
+                    { p: 1, col: 1 },
+                    { p: 2, col: 2 },
+                    { p: 5, col: 5 },
+                    { p: 6, col: 7 },
+                    { p: 7, col: 8 },
+                    { p: 8, col: 9 }
+                );
+            } else {
+                periodsToQuery.push(
+                    { p: 1, col: 1 },
+                    { p: 2, col: 2 },
+                    { p: 3, col: 3 },
+                    { p: 4, col: 4 },
+                    { p: 5, col: 5 },
+                    { p: 6, col: 7 },
+                    { p: 7, col: 8 },
+                    { p: 8, col: 9 }
+                );
+            }
+
+            for (let r = 0; r < 8; r++) {
+                const tr = targetRows[r];
+                for (const pf of periodsToQuery) {
+                    const entry = dayEntries.find(e => 
+                        (e.class_name || '').replace(/\s+/g, '').toLowerCase() === tr.name.replace(/\s+/g, '').toLowerCase() &&
+                        (e.sub_class || '').toLowerCase() === (tr.stream || '').toLowerCase() &&
+                        e.period_number === pf.p
+                    );
+
+                    if (entry) {
+                        const conflictTeacherName = hasTeacherConflict(day, pf.p, tr.name, tr.stream);
+                        const subjectName = getShortName(entry.subject_id);
+                        const teacherName = profileMap[entry.teacher_id] || '';
+                        
+                        let cellStyle = 'border: 1px solid #e2e8f0; padding: 0.5rem; vertical-align: middle; position: relative;';
+                        let cellContent = `
+                            <div style="font-weight: 700; color: #1e293b; font-size: 0.75rem;">${subjectName}</div>
+                            <div style="font-size: 0.65rem; color: #64748b; margin-top: 2px; font-weight: 500;">${teacherName}</div>
+                        `;
+                        
+                        if (conflictTeacherName) {
+                            cellStyle += ' background: #fef2f2; border: 1px solid #fecaca;';
+                            cellContent += `
+                                <div style="color: #ef4444; font-size: 0.6rem; font-weight: 800; margin-top: 4px; display: inline-flex; align-items: center; gap: 2px; background: #fee2e2; padding: 1px 4px; border-radius: 4px;">
+                                    <i data-lucide="alert-triangle" style="width: 10px; height: 10px;"></i> CONFLICT
+                                </div>
+                            `;
+                        }
+
+                        grid[r][pf.col] = {
+                            content: cellContent,
+                            style: cellStyle
+                        };
+                    } else {
+                        grid[r][pf.col] = {
+                            content: '<span style="color: #cbd5e1; font-style: italic; font-weight: 500;">--</span>',
+                            style: 'border: 1px solid #e2e8f0; padding: 0.5rem; background: #f8fafc; vertical-align: middle;'
+                        };
+                    }
+                }
+            }
+
+            const sssPairs = [[4, 5], [6, 7]];
+            for (const [rArts, rSci] of sssPairs) {
+                for (const pf of periodsToQuery) {
+                    const col = pf.col;
+                    const cellArts = grid[rArts][col];
+                    const cellSci = grid[rSci][col];
+                    if (cellArts && cellSci && cellArts.content && cellArts.content === cellSci.content) {
+                        cellArts.rowSpan = 2;
+                        grid[rSci][col] = null;
+                    }
+                }
+            }
+
+            let rowsHtml = '';
+            for (let r = 0; r < 8; r++) {
+                rowsHtml += '<tr>';
+                for (let c = 0; c < 10; c++) {
+                    const cell = grid[r][c];
+                    if (cell) {
+                        let attrs = `style="${cell.style || ''}"`;
+                        if (cell.rowSpan) attrs += ` rowspan="${cell.rowSpan}"`;
+                        if (cell.colSpan) attrs += ` colspan="${cell.colSpan}"`;
+                        rowsHtml += `<td ${attrs}>${cell.content}</td>`;
+                    }
+                }
+                rowsHtml += '</tr>';
+            }
+
+            return `
+                <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 0.75rem; min-width: 800px;">
+                    <thead>
+                        <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                            <th style="padding: 0.75rem 0.5rem; border: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; text-align: left; width: 90px;">CLASS</th>
+                            <th style="padding: 0.75rem 0.5rem; border: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; width: 80px;">8:00-8:40<br><span style="font-size: 0.6rem; color: #64748b; font-weight: 600;">Period 1</span></th>
+                            <th style="padding: 0.75rem 0.5rem; border: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; width: 80px;">8:40-9:20<br><span style="font-size: 0.6rem; color: #64748b; font-weight: 600;">Period 2</span></th>
+                            <th style="padding: 0.75rem 0.5rem; border: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; width: 80px;">9:20-10:00<br><span style="font-size: 0.6rem; color: #64748b; font-weight: 600;">Period 3</span></th>
+                            <th style="padding: 0.75rem 0.5rem; border: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; width: 80px;">10:00-10:40<br><span style="font-size: 0.6rem; color: #64748b; font-weight: 600;">Period 4</span></th>
+                            <th style="padding: 0.75rem 0.5rem; border: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; width: 80px;">10:40-11:30<br><span style="font-size: 0.6rem; color: #64748b; font-weight: 600;">Period 5</span></th>
+                            <th style="padding: 0.75rem 0.5rem; border: 1px solid #e2e8f0; font-weight: 800; color: #2563eb; background: #eff6ff; width: 40px;">11:30-12:00<br><span style="font-size: 0.6rem; color: #2563eb; font-weight: 700;">BREAK</span></th>
+                            <th style="padding: 0.75rem 0.5rem; border: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; width: 80px;">12:00-12:40<br><span style="font-size: 0.6rem; color: #64748b; font-weight: 600;">Period 6</span></th>
+                            <th style="padding: 0.75rem 0.5rem; border: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; width: 80px;">12:40-1:20<br><span style="font-size: 0.6rem; color: #64748b; font-weight: 600;">Period 7</span></th>
+                            <th style="padding: 0.75rem 0.5rem; border: 1px solid #e2e8f0; font-weight: 800; color: #1e293b; width: 80px;">1:20-2:00<br><span style="font-size: 0.6rem; color: #64748b; font-weight: 600;">Period 8</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            `;
+        };
+
+        const modalHtml = `
+            <div style="padding: 0.5rem; max-height: 75vh; display: flex; flex-direction: column;">
+                <div style="display: flex; border-bottom: 2px solid #e2e8f0; margin-bottom: 1.5rem; gap: 1rem;">
+                    <button id="tab-audit-summary" style="padding: 0.75rem 1.25rem; font-weight: 800; font-size: 0.85rem; border: none; background: transparent; cursor: pointer; border-bottom: 3px solid #2563eb; color: #2563eb; outline: none; display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="shield-alert" style="width: 16px; height: 16px;"></i> Audit Report
+                        ${teacherCollisions.length > 0 ? `<span style="background: #ef4444; color: white; border-radius: 9999px; padding: 2px 6px; font-size: 0.65rem; font-weight: 800; line-height: 1;">${teacherCollisions.length}</span>` : ''}
+                    </button>
+                    <button id="tab-general-preview" style="padding: 0.75rem 1.25rem; font-weight: 700; font-size: 0.85rem; border: none; background: transparent; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; outline: none; display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="grid" style="width: 16px; height: 16px;"></i> School Grid Preview
+                    </button>
+                </div>
+                
+                <div id="content-audit-summary" style="overflow-y: auto; max-height: 55vh; padding-right: 4px;">
+                    <!-- Stats summary cards -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; text-align: center;">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">Teacher Conflicts</div>
+                            <div style="font-size: 1.75rem; font-weight: 900; color: ${teacherCollisions.length > 0 ? '#ef4444' : '#10b981'}; margin-top: 0.25rem;">
+                                ${teacherCollisions.length}
+                            </div>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; text-align: center;">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">Under-Scheduled</div>
+                            <div style="font-size: 1.75rem; font-weight: 900; color: ${underScheduled.length > 0 ? '#f59e0b' : '#10b981'}; margin-top: 0.25rem;">
+                                ${underScheduled.length}
+                            </div>
+                        </div>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; text-align: center;">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">Over-Scheduled</div>
+                            <div style="font-size: 1.75rem; font-weight: 900; color: ${overScheduled.length > 0 ? '#3b82f6' : '#10b981'}; margin-top: 0.25rem;">
+                                ${overScheduled.length}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Teacher Conflicts Section -->
+                    <div style="margin-bottom: 1.5rem;">
+                        ${teacherCollisions.length > 0 ? `
+                            <div style="background: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+                                <h3 style="color: #991b1b; font-size: 0.85rem; font-weight: 800; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 6px; text-transform: uppercase;">
+                                    <i data-lucide="alert-triangle" style="width: 16px; height: 16px; color: #ef4444;"></i> Teacher Conflicts Detected (${teacherCollisions.length})
+                                </h3>
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    ${teacherCollisions.map(c => `
+                                        <div style="font-size: 0.8rem; color: #7f1d1d; background: rgba(239, 68, 68, 0.03); padding: 0.5rem 0.75rem; border-radius: 8px; border-left: 4px solid #ef4444; border-top: 1px solid #fecaca; border-right: 1px solid #fecaca; border-bottom: 1px solid #fecaca;">
+                                            <strong>${c.teacherName}</strong> is scheduled in multiple classes at the same time on <strong>${c.day} Period ${c.period}</strong>:
+                                            <ul style="margin: 0.25rem 0 0 1.25rem; padding: 0; font-size: 0.75rem; color: #991b1b;">
+                                                ${c.classes.map(cl => `<li>${cl.classLabel} &mdash; Subject: ${cl.subjectName}</li>`).join('')}
+                                            </ul>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : `
+                            <div style="background: #f0fdf4; border: 1px solid #dcfce7; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 10px; color: #166534;">
+                                <i data-lucide="check-circle-2" style="width: 24px; height: 24px; color: #15803d; flex-shrink: 0;"></i>
+                                <div>
+                                    <strong style="font-size: 0.85rem; display: block;">No Teacher Collisions</strong>
+                                    <span style="font-size: 0.75rem; color: #166534; opacity: 0.9;">All scheduled periods are conflict-free. No teacher is scheduled to teach two classes simultaneously.</span>
+                                </div>
+                            </div>
+                        `}
+                    </div>
+
+                    <!-- Subject Allotments -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+                        <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px; padding: 1rem;">
+                            <h4 style="color: #92400e; font-size: 0.8rem; font-weight: 800; margin-bottom: 0.75rem; text-transform: uppercase; display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="alert-circle" style="width: 14px; height: 14px;"></i> Under-Scheduled (${underScheduled.length})
+                            </h4>
+                            <div style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; padding-right: 4px;">
+                                ${underScheduled.length === 0 ? '<div style="font-size: 0.75rem; color: #b45309; font-style: italic; padding: 0.5rem 0;">All subject hours fully met.</div>' : underScheduled.map(item => `
+                                    <div style="font-size: 0.75rem; color: #78350f; background: rgba(245, 158, 11, 0.03); padding: 0.4rem 0.6rem; border-radius: 6px; border-left: 3px solid #f59e0b; border-top: 1px solid #fef3c7; border-right: 1px solid #fef3c7; border-bottom: 1px solid #fef3c7;">
+                                        <strong>${item.classLabel}</strong>: ${item.subjectName} (${item.actual}/${item.expected} periods)
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        
+                        <div style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 12px; padding: 1rem;">
+                            <h4 style="color: #1e40af; font-size: 0.8rem; font-weight: 800; margin-bottom: 0.75rem; text-transform: uppercase; display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="info" style="width: 14px; height: 14px;"></i> Over-Scheduled (${overScheduled.length})
+                            </h4>
+                            <div style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; padding-right: 4px;">
+                                ${overScheduled.length === 0 ? '<div style="font-size: 0.75rem; color: #1d4ed8; font-style: italic; padding: 0.5rem 0;">No subjects over-scheduled.</div>' : overScheduled.map(item => `
+                                    <div style="font-size: 0.75rem; color: #1e3a8a; background: rgba(59, 130, 246, 0.03); padding: 0.4rem 0.6rem; border-radius: 6px; border-left: 3px solid #3b82f6; border-top: 1px solid #dbeafe; border-right: 1px solid #dbeafe; border-bottom: 1px solid #dbeafe;">
+                                        <strong>${item.classLabel}</strong>: ${item.subjectName} (${item.actual}/${item.expected} periods)
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="content-general-preview" style="display: none; flex-direction: column; max-height: 55vh;">
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; flex-wrap: wrap;">
+                        ${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day, idx) => `
+                            <button class="preview-day-btn" data-day="${day}" style="padding: 0.5rem 1rem; font-weight: 700; font-size: 0.75rem; border: none; border-radius: 8px; background: ${idx === 0 ? '#eff6ff' : 'transparent'}; color: ${idx === 0 ? '#2563eb' : '#64748b'}; cursor: pointer; outline: none; transition: all 0.2s;">
+                                ${day}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <div id="preview-grid-container" style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px; background: white; max-height: 45vh; overflow-y: auto;">
+                        <!-- Day Grid Table -->
+                    </div>
+                </div>
+            </div>
+        `;
+
+        this.showModal('Timetable Preview & Audit', modalHtml, async () => {
+            // Close modal
+        }, 'Close', 'check-circle');
+
+        // Tabs Toggle
+        const btnAudit = document.getElementById('tab-audit-summary');
+        const btnPreview = document.getElementById('tab-general-preview');
+        const divAudit = document.getElementById('content-audit-summary');
+        const divPreview = document.getElementById('content-general-preview');
+
+        if (btnAudit && btnPreview && divAudit && divPreview) {
+            btnAudit.onclick = () => {
+                btnAudit.style.borderBottom = '3px solid #2563eb';
+                btnAudit.style.color = '#2563eb';
+                btnAudit.style.fontWeight = '800';
+                
+                btnPreview.style.borderBottom = '3px solid transparent';
+                btnPreview.style.color = '#64748b';
+                btnPreview.style.fontWeight = '700';
+
+                divAudit.style.display = 'block';
+                divPreview.style.display = 'none';
+            };
+
+            btnPreview.onclick = () => {
+                btnPreview.style.borderBottom = '3px solid #2563eb';
+                btnPreview.style.color = '#2563eb';
+                btnPreview.style.fontWeight = '800';
+                
+                btnAudit.style.borderBottom = '3px solid transparent';
+                btnAudit.style.color = '#64748b';
+                btnAudit.style.fontWeight = '700';
+
+                divAudit.style.display = 'none';
+                divPreview.style.display = 'flex';
+                
+                // Render Monday
+                const gridContainer = document.getElementById('preview-grid-container');
+                if (gridContainer && !gridContainer.innerHTML.trim()) {
+                    gridContainer.innerHTML = generateDayGridHTML('Monday');
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        }
+
+        // Day Buttons Toggle
+        const dayButtons = document.querySelectorAll('.preview-day-btn');
+        dayButtons.forEach(btn => {
+            btn.onclick = () => {
+                dayButtons.forEach(b => {
+                    b.style.background = 'transparent';
+                    b.style.color = '#64748b';
+                });
+                btn.style.background = '#eff6ff';
+                btn.style.color = '#2563eb';
+                
+                const selectedDay = btn.dataset.day;
+                const gridContainer = document.getElementById('preview-grid-container');
+                if (gridContainer) {
+                    gridContainer.innerHTML = generateDayGridHTML(selectedDay);
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        });
     },
 
     async renderSettings() {
