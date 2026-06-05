@@ -145,26 +145,54 @@ async function saveSubscriptionToCloud(userId, subscription) {
         const subData = subscription.toJSON();
         const endpoint = subData.endpoint;
         const p256dh = subData.keys?.p256dh;
-        const auth = subData.keys?.auth;
+        const authKey = subData.keys?.auth;
 
-        if (!endpoint || !p256dh || !auth) {
+        if (!endpoint || !p256dh || !authKey) {
             console.error('[Push] Invalid subscription keys.');
             return false;
         }
 
-        // Store subscription in public.push_subscriptions table
-        // We upsert by endpoint to prevent duplicate entries for the same device
-        const { error } = await client.from('push_subscriptions').upsert({
-            user_id: String(userId),
+        // Resolve the actual auth UID from the active session to guarantee
+        // it matches what Supabase RLS sees via auth.uid()
+        let resolvedUserId = String(userId);
+        try {
+            const { data: sessionData } = await client.auth.getSession();
+            if (sessionData?.session?.user?.id) {
+                resolvedUserId = sessionData.session.user.id;
+            }
+        } catch (e) {
+            console.warn('[Push] Could not resolve session UID, using provided userId.');
+        }
+
+        const payload = {
+            user_id: resolvedUserId,
             endpoint: endpoint,
             p256dh: p256dh,
-            auth: auth,
+            auth: authKey,
             updated_at: new Date().toISOString()
-        }, { onConflict: 'endpoint' });
+        };
+
+        // Attempt upsert — retry once after a short delay if RLS fails
+        // (handles race condition where profile is still being provisioned)
+        let { error } = await client.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
 
         if (error) {
-            console.error('[Push] Supabase upsert error:', error.message);
-            return false;
+            console.warn('[Push] First upsert attempt failed:', error.message, '— retrying in 2s...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Refresh the session token before retry
+            try {
+                const { data: refreshed } = await client.auth.getSession();
+                if (refreshed?.session?.user?.id) {
+                    payload.user_id = refreshed.session.user.id;
+                }
+            } catch (_) { /* keep existing */ }
+
+            const retry = await client.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
+            if (retry.error) {
+                console.error('[Push] Supabase upsert error (after retry):', retry.error.message);
+                return false;
+            }
         }
         return true;
     } catch (e) {

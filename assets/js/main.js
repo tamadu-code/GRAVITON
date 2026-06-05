@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v26.4 (BUILD v307) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v26.4 (BUILD v308) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -278,13 +278,16 @@ async function loadAuthenticatedApp(authUser) {
             updated_at: new Date().toISOString()
         };
 
-        // Self-provision the missing profile row in Supabase
+        // Self-provision the missing profile row in Supabase (await to prevent race with push subscriptions)
         const client = getSupabase();
         if (client) {
-            client.from('profiles').upsert(profile).then(({ error }) => {
+            try {
+                const { error } = await client.from('profiles').upsert(profile);
                 if (error) console.warn('Automatic profile provisioning deferred:', error.message);
                 else console.log('Profile successfully self-provisioned for:', authUser.email);
-            });
+            } catch (provisionErr) {
+                console.warn('Profile provisioning error:', provisionErr);
+            }
         }
     }
 
