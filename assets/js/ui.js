@@ -5,7 +5,7 @@
 console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
-import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet } from './utils.js';
+import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
 import { initPushNotifications, unsubscribeUser } from './push.js';
 
@@ -375,6 +375,17 @@ export const UI = {
                         await client.from('parent_links').delete().eq('student_id', id);
                         await client.from('student_analytics').delete().eq('student_id', id);
                         await client.from('profiles').delete().eq('assigned_id', id);
+
+                        // Notify external Attendance System (biometric) about the deletion
+                        try {
+                            console.log(`[SafeDelete] Invoking delete-student-attendance edge function for: ${id}`);
+                            await client.functions.invoke('delete-student-attendance', {
+                                body: { student_id: id }
+                            });
+                            console.log(`[SafeDelete] External Attendance System notified for student: ${id}`);
+                        } catch (attErr) {
+                            console.warn(`[SafeDelete] External Attendance System notification failed (non-blocking):`, attErr.message || attErr);
+                        }
                     }
 
                     const { error: delError } = await client.from(table).delete().eq(pk, id);
@@ -1890,6 +1901,35 @@ export const UI = {
             
             await this.verifyResultPin(pinCode, term, session);
         }, 'Unlock Report Card', 'key');
+    },
+
+    async printPinSlip(pinCode, serial, studentId, usageLimit) {
+        try {
+            Notifications.show('Generating PIN slip...', 'info');
+            
+            const student = await db.students.get(studentId);
+            const settings = await db.settings.toArray();
+            const schoolInfo = {};
+            settings.forEach(s => schoolInfo[s.key] = s.value);
+            
+            const pinData = {
+                pinCode: pinCode,
+                serial: serial,
+                studentName: student?.name || 'N/A',
+                studentId: studentId,
+                className: student?.class_name || 'N/A',
+                usageLimit: usageLimit || 5,
+                status: 'Active'
+            };
+            
+            const doc = await generatePinSlipPDF(pinData, schoolInfo);
+            if (doc) {
+                this.showPDFPreview(doc, `PIN_Slip_${serial}.pdf`);
+            }
+        } catch (err) {
+            console.error('Failed to generate PIN slip:', err);
+            Notifications.show('Failed to generate PIN slip', 'error');
+        }
     },
 
     async verifyResultPin(pinCode, selectedTerm, selectedSession) {
@@ -6300,7 +6340,12 @@ export const UI = {
 
             // Find all subjects for this class and their assigned teachers
             const allAssignments = await db.subject_assignments.toArray();
-            const classAssignments = allAssignments.filter(a => a.class_name === className);
+            let classAssignments = allAssignments.filter(a => a.class_name === className);
+
+            // Teachers should only print blank sheets for their own assigned subjects
+            if (isTeacher) {
+                classAssignments = classAssignments.filter(a => a.teacher_id === teacherId);
+            }
             const subjectIds = classAssignments.map(a => a.subject_id);
             const classSubjects = (await db.subjects.toArray()).filter(s => subjectIds.includes(s.id));
 
@@ -14391,6 +14436,9 @@ export const UI = {
                             <button id="btn-save-timetable" class="btn btn-primary" style="height: 52px; border-radius: 12px; padding: 0 1.5rem; background: #2563eb;">
                                 <i data-lucide="save"></i> Save Schedule
                             </button>
+                            <button id="btn-auto-timetable" class="btn" style="height: 52px; border-radius: 12px; padding: 0 1.5rem; background: #f59e0b; color: white; border: none; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <i data-lucide="cpu"></i> Auto-Generate
+                            </button>
                             <button id="btn-print-class-tt" class="btn" style="height: 52px; border-radius: 12px; padding: 0 1.5rem; background: #10b981; color: white; border: none; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                                 <i data-lucide="printer"></i> Print Class
                             </button>
@@ -14459,6 +14507,255 @@ export const UI = {
         
         const printClassBtn = document.getElementById('btn-print-class-tt');
         const printGeneralBtn = document.getElementById('btn-print-general-tt');
+        const autoGenerateBtn = document.getElementById('btn-auto-timetable');
+        
+        // Timetable Solver function (Backtracking Constraint Satisfaction)
+        const solveSchoolTimetable = async (constraints) => {
+            const classes = await db.classes.toArray();
+            const assignments = await db.subject_assignments.toArray();
+            
+            // Target classes configuration matching school structure
+            const targetRows = [
+                { name: 'JSS 1', stream: null },
+                { name: 'JSS 2', stream: null },
+                { name: 'JSS 3', stream: null },
+                { name: 'SSS 1', stream: null },
+                { name: 'SSS 2', stream: 'Arts' },
+                { name: 'SSS 2', stream: 'Science' },
+                { name: 'SSS 3', stream: 'Arts' },
+                { name: 'SSS 3', stream: 'Science' }
+            ];
+            
+            const getDbClassName = (targetName, dbClasses) => {
+                const targetNormalized = targetName.replace(/\s+/g, '').toLowerCase();
+                const match = dbClasses.find(c => (c.name || '').replace(/\s+/g, '').toLowerCase() === targetNormalized);
+                return match ? match.name : targetName;
+            };
+            
+            const rowsConfig = targetRows.map(tr => ({
+                dbName: getDbClassName(tr.name, classes),
+                stream: tr.stream,
+                label: tr.name
+            }));
+            
+            // Compile subject assignments per class key
+            const classAssignments = {};
+            for (const rc of rowsConfig) {
+                const classKey = `${rc.dbName}_${rc.stream || ''}`;
+                const filtered = rc.stream 
+                    ? assignments.filter(a => a.class_name === rc.dbName && (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === rc.stream.toLowerCase()))
+                    : assignments.filter(a => a.class_name === rc.dbName);
+                    
+                classAssignments[classKey] = filtered.map(a => {
+                    const subObj = subjects.find(s => s.id === a.subject_id);
+                    const freq = (subObj && subObj.credits) ? parseInt(subObj.credits) : constraints.defaultFrequency;
+                    return {
+                        subject_id: a.subject_id,
+                        teacher_id: a.teacher_id,
+                        frequency: freq,
+                        remaining: freq
+                    };
+                });
+            }
+            
+            // Slots to assign: Day -> Period -> Class (sequential to prevent collisions)
+            const slotsToFill = [];
+            const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+            for (const day of days) {
+                for (let period = 1; period <= 8; period++) {
+                    for (const rc of rowsConfig) {
+                        const classKey = `${rc.dbName}_${rc.stream || ''}`;
+                        slotsToFill.push({ classKey, rc, day, period });
+                    }
+                }
+            }
+            
+            // Initialize board
+            const board = {};
+            for (const rc of rowsConfig) {
+                const classKey = `${rc.dbName}_${rc.stream || ''}`;
+                board[classKey] = {};
+                for (const day of days) {
+                    board[classKey][day] = {};
+                    for (let period = 1; period <= 8; period++) {
+                        board[classKey][day][period] = null;
+                    }
+                }
+            }
+            
+            // Trackers for constraint checking
+            const teacherSchedule = {}; 
+            const subjectDayCount = {}; 
+            
+            const checkValid = (classKey, day, period, assignment, maxPerDay, maxConsecutive) => {
+                if (assignment.remaining <= 0) return false;
+                
+                // 1. Teacher conflict check
+                if (assignment.teacher_id) {
+                    if (teacherSchedule[assignment.teacher_id] && teacherSchedule[assignment.teacher_id][day] && teacherSchedule[assignment.teacher_id][day][period]) {
+                        return false;
+                    }
+                }
+                
+                // 2. Max per day check
+                const currentDayCount = (subjectDayCount[classKey] && subjectDayCount[classKey][day] && subjectDayCount[classKey][day][assignment.subject_id]) || 0;
+                if (currentDayCount >= maxPerDay) {
+                    return false;
+                }
+                
+                // 3. Consecutive periods check
+                if (assignment.teacher_id && maxConsecutive) {
+                    let consecutive = 1;
+                    let p = period - 1;
+                    while (p >= 1) {
+                        if (teacherSchedule[assignment.teacher_id] && teacherSchedule[assignment.teacher_id][day] && teacherSchedule[assignment.teacher_id][day][p]) {
+                            consecutive++;
+                            p--;
+                        } else {
+                            break;
+                        }
+                    }
+                    if (consecutive > maxConsecutive) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            };
+            
+            const assign = (classKey, day, period, assignment) => {
+                board[classKey][day][period] = assignment;
+                assignment.remaining--;
+                
+                if (assignment.teacher_id) {
+                    if (!teacherSchedule[assignment.teacher_id]) teacherSchedule[assignment.teacher_id] = {};
+                    if (!teacherSchedule[assignment.teacher_id][day]) teacherSchedule[assignment.teacher_id][day] = {};
+                    teacherSchedule[assignment.teacher_id][day][period] = true;
+                }
+                
+                if (!subjectDayCount[classKey]) subjectDayCount[classKey] = {};
+                if (!subjectDayCount[classKey][day]) subjectDayCount[classKey][day] = {};
+                subjectDayCount[classKey][day][assignment.subject_id] = (subjectDayCount[classKey][day][assignment.subject_id] || 0) + 1;
+            };
+            
+            const unassign = (classKey, day, period, assignment) => {
+                board[classKey][day][period] = null;
+                assignment.remaining++;
+                
+                if (assignment.teacher_id) {
+                    teacherSchedule[assignment.teacher_id][day][period] = false;
+                }
+                
+                subjectDayCount[classKey][day][assignment.subject_id]--;
+            };
+            
+            let steps = 0;
+            const maxSteps = 30000;
+            
+            const backtrack = (slotIndex, maxPerDay, maxConsecutive) => {
+                steps++;
+                if (steps > maxSteps) return false;
+                if (slotIndex >= slotsToFill.length) return true;
+                
+                const { classKey, rc, day, period } = slotsToFill[slotIndex];
+                const assignments = classAssignments[classKey] || [];
+                
+                // Sort by highest remaining frequency (Heuristics)
+                const sortedAssignments = [...assignments]
+                    .filter(a => a.remaining > 0)
+                    .sort((a, b) => b.remaining - a.remaining);
+                    
+                const totalRemaining = sortedAssignments.reduce((sum, a) => sum + a.remaining, 0);
+                
+                // Count remaining slots for this classKey
+                let slotsLeft = 0;
+                for (let i = slotIndex; i < slotsToFill.length; i++) {
+                    if (slotsToFill[i].classKey === classKey) slotsLeft++;
+                }
+                
+                // If there are more slots than subject hours remaining, we can leave slot free
+                if (slotsLeft > totalRemaining) {
+                    board[classKey][day][period] = null;
+                    if (backtrack(slotIndex + 1, maxPerDay, maxConsecutive)) return true;
+                }
+                
+                for (const assignment of sortedAssignments) {
+                    if (checkValid(classKey, day, period, assignment, maxPerDay, maxConsecutive)) {
+                        assign(classKey, day, period, assignment);
+                        if (backtrack(slotIndex + 1, maxPerDay, maxConsecutive)) return true;
+                        unassign(classKey, day, period, assignment);
+                    }
+                }
+                
+                return false;
+            };
+            
+            // Pass 1: Try strict constraints
+            let success = backtrack(0, constraints.maxPerDay, constraints.maxConsecutive);
+            
+            // Pass 2: Fallback to relaxed constraints if strict search fails
+            if (!success) {
+                console.warn("[Timetable Solver] Strict constraint matching failed. Attempting relaxation...");
+                steps = 0;
+                
+                // Clear the board
+                for (const rc of rowsConfig) {
+                    const classKey = `${rc.dbName}_${rc.stream || ''}`;
+                    for (const day of days) {
+                        for (let p = 1; p <= 8; p++) {
+                            board[classKey][day][p] = null;
+                        }
+                    }
+                }
+                // Clear trackers
+                for (const t in teacherSchedule) {
+                    for (const d in teacherSchedule[t]) {
+                        for (const p in teacherSchedule[t][d]) {
+                            teacherSchedule[t][d][p] = false;
+                        }
+                    }
+                }
+                for (const ck in subjectDayCount) {
+                    for (const d in subjectDayCount[ck]) {
+                        for (const s in subjectDayCount[ck][d]) {
+                            subjectDayCount[ck][d][s] = 0;
+                        }
+                    }
+                }
+                // Reset assignment counters
+                for (const classKey in classAssignments) {
+                    for (const a of classAssignments[classKey]) {
+                        a.remaining = a.frequency;
+                    }
+                }
+                
+                // Relax consecutive limits and allow up to 2 per day
+                success = backtrack(0, Math.max(constraints.maxPerDay, 2), 99);
+            }
+            
+            // Convert board to database format output
+            const output = [];
+            for (const rc of rowsConfig) {
+                const classKey = `${rc.dbName}_${rc.stream || ''}`;
+                for (const day of days) {
+                    for (let period = 1; period <= 8; period++) {
+                        const entry = board[classKey][day][period];
+                        if (entry) {
+                            output.push({
+                                class_name: rc.dbName,
+                                sub_class: rc.stream || null,
+                                day_of_week: day,
+                                period_number: period,
+                                subject_id: entry.subject_id,
+                                teacher_id: entry.teacher_id
+                            });
+                        }
+                    }
+                }
+            }
+            
+            return { success, entries: output };
+        };
         
         if (printClassBtn) {
             printClassBtn.onclick = async () => {
@@ -14477,12 +14774,81 @@ export const UI = {
         
         if (printGeneralBtn) {
             printGeneralBtn.onclick = async () => {
+                Notifications.show('Generating general school timetable...', 'info');
                 const classes = await db.classes.toArray();
                 const settings = await db.settings.toArray();
                 const schoolInfo = {};
                 settings.forEach(s => schoolInfo[s.key] = s.value);
-                const { generateTimetablePDF } = await import('./utils.js');
-                await generateTimetablePDF('all', classes, subjects, schoolInfo, this.currentUser);
+                try {
+                    await generateGeneralSchoolTimetablePDF(classes, subjects, schoolInfo, this.currentUser);
+                } catch (err) {
+                    console.error("General timetable print error:", err);
+                    Notifications.show('Failed to generate general timetable: ' + err.message, 'error');
+                }
+            };
+        }
+        
+        if (autoGenerateBtn) {
+            autoGenerateBtn.onclick = () => {
+                const modalHtml = `
+                    <div style="padding: 0.5rem;">
+                        <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem;">Configure the scheduling algorithm constraints. The solver will generate a conflict-free schedule for the entire school.</p>
+                        
+                        <div style="margin-bottom: 1.25rem;">
+                            <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Max periods per subject per day</label>
+                            <select id="auto-tt-max-day" class="input" style="width: 100%; height: 48px; border-radius: 10px; background: #f8fafc; font-weight: 700;">
+                                <option value="1" selected>1 Period per Day (Standard)</option>
+                                <option value="2">Up to 2 Periods per Day (Double Periods)</option>
+                            </select>
+                        </div>
+                        
+                        <div style="margin-bottom: 1.25rem;">
+                            <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Max consecutive periods per teacher</label>
+                            <select id="auto-tt-max-consec" class="input" style="width: 100%; height: 48px; border-radius: 10px; background: #f8fafc; font-weight: 700;">
+                                <option value="2">Max 2 Periods consecutive</option>
+                                <option value="3" selected>Max 3 Periods consecutive (Default)</option>
+                                <option value="4">Max 4 Periods consecutive</option>
+                                <option value="5">Max 5 Periods consecutive</option>
+                            </select>
+                        </div>
+                        
+                        <div style="margin-bottom: 1.5rem;">
+                            <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Default subject weekly frequency</label>
+                            <input id="auto-tt-freq" type="number" class="input" value="3" min="1" max="10" style="width: 100%; height: 48px; border-radius: 10px; background: #f8fafc; font-weight: 700; padding: 0 1rem;">
+                            <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600; margin-top: 0.25rem; display: block;">Used for subjects that do not have custom credits/hours defined.</span>
+                        </div>
+                        
+                        <div style="background: #fef3c7; color: #d97706; padding: 1rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; line-height: 1.4; display: flex; gap: 8px; align-items: start;">
+                            <i data-lucide="alert-triangle" style="width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px;"></i>
+                            <div>Running the solver will place the system into <strong>Preview Mode</strong>. You can view, verify, and manually modify the schedule. Click "Save Schedule" to commit changes, or reload the page to discard.</div>
+                        </div>
+                    </div>
+                `;
+                
+                this.showModal('Auto-Scheduling Solver', modalHtml, async () => {
+                    const maxPerDay = parseInt(document.getElementById('auto-tt-max-day').value);
+                    const maxConsecutive = parseInt(document.getElementById('auto-tt-max-consec').value);
+                    const defaultFrequency = parseInt(document.getElementById('auto-tt-freq').value);
+                    
+                    Notifications.show('Solving timetable constraints...', 'info');
+                    
+                    const result = await solveSchoolTimetable({
+                        maxPerDay,
+                        maxConsecutive,
+                        defaultFrequency
+                    });
+                    
+                    UI.tempTimetableState = result.entries;
+                    
+                    if (result.success) {
+                        Notifications.show('Conflict-free timetable generated! Review in grid.', 'success');
+                    } else {
+                        Notifications.show('Timetable generated with relaxed constraints.', 'warning');
+                    }
+                    
+                    // Trigger a change in classSelect to reload and display preview
+                    classSelect.dispatchEvent(new Event('change'));
+                }, 'Run Solver', 'cpu');
             };
         }
 
@@ -14511,10 +14877,18 @@ export const UI = {
             // Show/Hide save button and status message
             if (canEdit) {
                 saveBtn.style.display = 'inline-flex';
-                if (isTeacher) {
-                    editStatusMsg.innerHTML = `<span style="color: #10b981; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 4px;"><i data-lucide="check-circle" style="width: 16px; height: 16px;"></i> Editable (Your Form Class)</span>`;
+                if (UI.tempTimetableState) {
+                    saveBtn.innerHTML = '<i data-lucide="check"></i> Save Full Timetable';
+                    saveBtn.style.background = '#10b981'; // green for saving all
+                    editStatusMsg.innerHTML = `<span style="color: #f59e0b; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 4px;"><i data-lucide="sparkles" style="width: 16px; height: 16px;"></i> Timetable Preview Mode (Unsaved)</span>`;
                 } else {
-                    editStatusMsg.innerHTML = '';
+                    saveBtn.innerHTML = '<i data-lucide="save"></i> Save Schedule';
+                    saveBtn.style.background = '#2563eb'; // blue
+                    if (isTeacher) {
+                        editStatusMsg.innerHTML = `<span style="color: #10b981; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 4px;"><i data-lucide="check-circle" style="width: 16px; height: 16px;"></i> Editable (Your Form Class)</span>`;
+                    } else {
+                        editStatusMsg.innerHTML = '';
+                    }
                 }
             } else {
                 saveBtn.style.display = 'none';
@@ -14555,11 +14929,48 @@ export const UI = {
             });
 
             // Load existing timetable for this class and stream
-            const existing = await db.timetable.where('class_name').equals(cls).toArray();
+            const existing = UI.tempTimetableState 
+                ? UI.tempTimetableState.filter(entry => entry.class_name === cls)
+                : await db.timetable.where('class_name').equals(cls).toArray();
+                
             const filteredExisting = existing.filter(entry => (entry.sub_class || '') === stream);
             filteredExisting.forEach(entry => {
                 const select = document.querySelector(`.tt-slot-select[data-day="${entry.day_of_week}"][data-period="${entry.period_number}"]`);
                 if (select) select.value = entry.subject_id;
+            });
+
+            // Wire up select change listeners in preview mode to update UI.tempTimetableState immediately
+            slots.forEach(select => {
+                select.onchange = () => {
+                    if (UI.tempTimetableState) {
+                        const day = select.dataset.day;
+                        const period = parseInt(select.dataset.period);
+                        const val = select.value;
+                        
+                        const idx = UI.tempTimetableState.findIndex(e => e.class_name === cls && (e.sub_class || '') === (stream || '') && e.day_of_week === day && e.period_number === period);
+                        
+                        if (val) {
+                            const assignment = assignments.find(a => String(a.subject_id) === String(val));
+                            const entry = {
+                                class_name: cls,
+                                sub_class: stream || null,
+                                day_of_week: day,
+                                period_number: period,
+                                subject_id: val,
+                                teacher_id: assignment ? assignment.teacher_id : null
+                            };
+                            if (idx >= 0) {
+                                UI.tempTimetableState[idx] = entry;
+                            } else {
+                                UI.tempTimetableState.push(entry);
+                            }
+                        } else {
+                            if (idx >= 0) {
+                                UI.tempTimetableState.splice(idx, 1);
+                            }
+                        }
+                    }
+                };
             });
         };
 
@@ -14571,12 +14982,47 @@ export const UI = {
             const stream = streamSelect.value;
             if (!cls) return Notifications.show('Please select a class first', 'error');
 
-            if (isTeacher) {
+            if (isTeacher && !UI.tempTimetableState) {
                 const formTeacherRecords = await db.form_teachers.where('teacher_id').equals(this.currentUser.id).toArray();
                 const formClasses = formTeacherRecords.map(r => r.class_name);
                 if (!formClasses.includes(cls)) {
                     return Notifications.show('Access Denied: You can only edit your assigned form class timetable.', 'error');
                 }
+            }
+
+            if (UI.tempTimetableState) {
+                if (!confirm("This will save the auto-generated schedule for the entire school and overwrite all existing timetables. Proceed?")) {
+                    return;
+                }
+                
+                Notifications.show('Saving full school timetable...', 'info');
+                
+                await db.timetable.clear();
+                
+                const newEntries = UI.tempTimetableState.map(e => prepareForSync({
+                    id: `TT_${e.class_name}_${e.sub_class ? e.sub_class + '_' : ''}${e.day_of_week}_P${e.period_number}`,
+                    class_name: e.class_name,
+                    sub_class: e.sub_class,
+                    day_of_week: e.day_of_week,
+                    period_number: e.period_number,
+                    subject_id: e.subject_id,
+                    teacher_id: e.teacher_id,
+                    updated_at: new Date().toISOString()
+                }));
+                
+                if (newEntries.length > 0) {
+                    await db.timetable.bulkAdd(newEntries);
+                }
+                
+                UI.tempTimetableState = null;
+                Notifications.show('Full school timetable successfully saved and deployed!', 'success');
+                
+                saveBtn.innerHTML = '<i data-lucide="save"></i> Save Schedule';
+                saveBtn.style.background = '#2563eb';
+                
+                classSelect.dispatchEvent(new Event('change'));
+                this.debouncedSync();
+                return;
             }
 
             Notifications.show('Compiling academic schedule...', 'info');
@@ -17787,7 +18233,7 @@ export const UI = {
                                             <span class="text-xs text-slate-400">${p.used_count}/${p.usage_limit}</span>
                                         </td>
                                         <td style="text-align: right;">
-                                            <button class="btn btn-secondary btn-sm" onclick="Notifications.show('Printing single pin slip...', 'info')" style="background: #f1f5f9; color: #475569;">
+                                            <button class="btn btn-secondary btn-sm" onclick="UI.printPinSlip('${p.pin_code}', '${p.serial}', '${p.student_id || ''}', ${p.usage_limit})" style="background: #f1f5f9; color: #475569;" title="Print PIN Slip">
                                                 <i data-lucide="printer"></i>
                                             </button>
                                         </td>
@@ -18904,6 +19350,18 @@ export const UI = {
                         </div>
                     </div>
 
+                    <!-- My Access PINs Card -->
+                    <div style="grid-column: 1 / -1; padding: 0; border-radius: 28px; background: white; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; overflow: hidden;">
+                        <div style="padding: 1.5rem 2rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+                            <h3 style="font-weight: 900; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="key" style="width: 18px; color: #4f46e5;"></i> My Access PINs
+                            </h3>
+                        </div>
+                        <div id="parent-pins-container" style="padding: 1rem 2rem;">
+                            <p style="text-align: center; color: #94a3b8; padding: 2rem;">Loading PINs...</p>
+                        </div>
+                    </div>
+
                     <!-- History Card -->
                     <div style="padding: 0; border-radius: 28px; background: white; box-shadow: 0 4px 15px -5px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; overflow: hidden;">
                         <div style="padding: 1.5rem 2rem; border-bottom: 1px solid #f1f5f9;">
@@ -18935,6 +19393,39 @@ export const UI = {
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Populate My Access PINs
+        if (studentId) {
+            const myPins = await db.pins.where('student_id').equals(studentId).toArray();
+            const pinsContainer = document.getElementById('parent-pins-container');
+            if (pinsContainer) {
+                if (myPins.length === 0) {
+                    pinsContainer.innerHTML = `<p style="text-align: center; color: #94a3b8; padding: 2rem; font-weight: 600;">No PINs purchased yet. Buy one above to check your results.</p>`;
+                } else {
+                    pinsContainer.innerHTML = myPins.map(pin => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; margin-bottom: 0.75rem;">
+                            <div style="display: flex; align-items: center; gap: 1rem;">
+                                <div style="width: 40px; height: 40px; border-radius: 12px; background: ${pin.status === 'Active' ? 'rgba(79,70,229,0.1)' : 'rgba(239,68,68,0.1)'}; display: flex; align-items: center; justify-content: center;">
+                                    <i data-lucide="${pin.status === 'Active' ? 'key' : 'lock'}" style="width: 18px; color: ${pin.status === 'Active' ? '#4f46e5' : '#ef4444'};"></i>
+                                </div>
+                                <div>
+                                    <div style="font-family: monospace; font-size: 1.1rem; font-weight: 900; color: #1e293b; letter-spacing: 0.15em;">${pin.pin_code}</div>
+                                    <div style="display: flex; gap: 0.75rem; margin-top: 4px;">
+                                        <span style="font-size: 0.7rem; font-weight: 700; color: #64748b;">Serial: ${pin.serial}</span>
+                                        <span style="font-size: 0.7rem; font-weight: 800; color: ${pin.status === 'Active' ? '#16a34a' : '#ef4444'};">${pin.status || 'Active'}</span>
+                                        <span style="font-size: 0.7rem; font-weight: 700; color: #94a3b8;">Used: ${pin.used_count || 0}/${pin.usage_limit || 5}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button onclick="UI.printPinSlip('${pin.pin_code}', '${pin.serial}', '${studentId}', ${pin.usage_limit || 5})" style="padding: 0.5rem 1rem; border-radius: 10px; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; border: none; font-weight: 800; font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; box-shadow: 0 4px 10px -2px rgba(37,99,235,0.3);">
+                                <i data-lucide="printer" style="width: 14px;"></i> Print
+                            </button>
+                        </div>
+                    `).join('');
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            }
+        }
 
         const amountInput = document.getElementById('payment-amount');
         if (amountInput) {
@@ -19076,7 +19567,11 @@ export const UI = {
                             <div style="margin-top: 1rem; font-size: 0.8rem; font-weight: 700; color: #64748b;">Serial: ${serial}</div>
                         </div>
                         
-                        <p style="margin-top: 2rem; font-size: 0.75rem; color: #94a3b8; font-weight: 600;">You can find this pin anytime in your dashboard under "Access Pins".</p>
+                        <button onclick="UI.printPinSlip('${pinCode}', '${serial}', '${studentId}', ${pinLimit})" style="margin-top: 1.5rem; width: 100%; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; border: none; font-weight: 800; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem; box-shadow: 0 4px 12px -2px rgba(37,99,235,0.4);">
+                            <i data-lucide="printer" style="width: 18px;"></i> Print PIN Slip
+                        </button>
+                        
+                        <p style="margin-top: 1.5rem; font-size: 0.75rem; color: #94a3b8; font-weight: 600;">You can find this pin anytime in your dashboard under "Access Pins".</p>
                     </div>
                 `, null, 'Great!', 'key');
             } else {

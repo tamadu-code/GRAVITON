@@ -1343,3 +1343,507 @@ export async function generateTimetablePDF(className, classes, subjects, schoolI
         Notifications.show('Print Preview opened in a new tab!', 'success');
     }
 }
+
+/**
+ * Generate Result Checking PIN Slip (Receipt-style PDF)
+ * Allows parents/students to print out their PIN for offline reference
+ */
+export async function generatePinSlipPDF(pinData, schoolInfo = {}) {
+    const { jsPDF } = window.jspdf;
+    
+    const themeColor = schoolInfo.themeColor || '#060495';
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 6, g: 4, b: 149 };
+    };
+    const rgb = hexToRgb(themeColor);
+    
+    const pageHeight = 165;
+    const doc = new jsPDF('p', 'mm', [100, pageHeight]);
+    
+    // Border
+    doc.setDrawColor(rgb.r, rgb.g, rgb.b);
+    doc.setLineWidth(1);
+    doc.rect(2, 2, 96, pageHeight - 4);
+    
+    // Inner decorative line
+    doc.setLineWidth(0.3);
+    doc.rect(4, 4, 92, pageHeight - 8);
+    
+    let y = 14;
+    
+    // Logo
+    if (schoolInfo.schoolLogo) {
+        try {
+            doc.addImage(schoolInfo.schoolLogo, 'PNG', 42.5, y, 15, 15);
+            y += 18;
+        } catch (e) {
+            console.error("Failed to render school logo in PIN slip:", e);
+        }
+    }
+    
+    // School Name
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(rgb.r, rgb.g, rgb.b);
+    doc.text((schoolInfo.schoolName || schoolInfo.name || "GRAVITON ACADEMY").toUpperCase(), 50, y, { align: 'center' });
+    y += 4;
+    
+    // Motto
+    if (schoolInfo.schoolMotto) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(7);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`"${schoolInfo.schoolMotto}"`, 50, y, { align: 'center' });
+        y += 3.5;
+    }
+    
+    // Address
+    if (schoolInfo.schoolAddress) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(schoolInfo.schoolAddress, 50, y, { align: 'center' });
+        y += 3.5;
+    }
+    
+    // Phone
+    if (schoolInfo.schoolPhone) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.text(`Tel: ${schoolInfo.schoolPhone}`, 50, y, { align: 'center' });
+        y += 4;
+    }
+    
+    // Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(rgb.r, rgb.g, rgb.b);
+    doc.text("RESULT CHECKING PIN", 50, y, { align: 'center' });
+    y += 2;
+    
+    // Decorative line
+    doc.setDrawColor(rgb.r, rgb.g, rgb.b);
+    doc.setLineWidth(0.5);
+    doc.line(15, y, 85, y);
+    y += 6;
+    
+    // Student details
+    doc.setFontSize(8);
+    doc.setTextColor(15, 23, 42);
+    
+    const row = (label, value) => {
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, 12, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(String(value || 'N/A'), 88, y, { align: 'right' });
+        y += 5.5;
+    };
+    
+    row("Student Name:", pinData.studentName || 'N/A');
+    row("Student ID:", pinData.studentId || 'N/A');
+    row("Class:", pinData.className || 'N/A');
+    row("Date Issued:", new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }));
+    
+    y += 2;
+    
+    // PIN Code box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(rgb.r, rgb.g, rgb.b);
+    doc.setLineWidth(1);
+    doc.roundedRect(10, y, 80, 28, 3, 3, 'FD');
+    
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(rgb.r, rgb.g, rgb.b);
+    doc.text("PIN CODE", 50, y + 6, { align: 'center' });
+    
+    doc.setFontSize(16);
+    doc.setFont('courier', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(pinData.pinCode || '0000000000', 50, y + 16, { align: 'center' });
+    
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Serial: ${pinData.serial || 'N/A'}`, 50, y + 23, { align: 'center' });
+    
+    y += 33;
+    
+    // Usage info
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Usage Limit: ${pinData.usageLimit || 5} times`, 50, y, { align: 'center' });
+    y += 4;
+    doc.text(`Status: ${pinData.status || 'Active'}`, 50, y, { align: 'center' });
+    
+    y += 8;
+    
+    // Footer
+    doc.setDrawColor(226, 232, 240);
+    doc.line(15, y, 85, y);
+    y += 5;
+    
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text("Keep this slip safe. Use the PIN code above", 50, y, { align: 'center' });
+    y += 3;
+    doc.text("to check your result on the school portal.", 50, y, { align: 'center' });
+    y += 5;
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(rgb.r, rgb.g, rgb.b);
+    doc.text("POWERED BY GRAVITON CMS", 50, y, { align: 'center' });
+    
+    return doc;
+}
+
+/**
+ * Generate General School Timetable (Single-page Landscape A4 PDF)
+ * Groups all classes by day with BREAK, FASTING AND PRAYERS, and SPORTS columns.
+ */
+export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoolInfo = {}, currentUser = {}) {
+    const { jsPDF } = window.jspdf;
+    
+    // Set up Landscape A4 document
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width; // 297mm
+    const pageHeight = doc.internal.pageSize.height; // 210mm
+    
+    const themeColor = schoolInfo.themeColor || '#060495';
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 6, g: 4, b: 149 };
+    };
+    const rgb = hexToRgb(themeColor);
+    
+    // Draw outer boundary and top background block
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+    
+    // Top banner
+    doc.setFillColor(rgb.r, rgb.g, rgb.b);
+    doc.rect(5, 5, pageWidth - 10, 22, 'F');
+    
+    // Title text
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text((schoolInfo.schoolName || schoolInfo.name || "NEW KINGS AND QUEENS MONTESSORI SCHOOL").toUpperCase(), pageWidth / 2, 12, { align: 'center' });
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(226, 232, 240);
+    doc.text(`TIME TABLE FOR ${schoolInfo.currentSession || '2025/2026'} ACADEMIC SESSION`, pageWidth / 2, 18, { align: 'center' });
+    
+    // Fetch all timetable records from DB
+    const allEntries = await db.timetable.toArray();
+    const subjectMap = subjects.reduce((m, s) => { m[s.id] = s.name; return m; }, {});
+    
+    // Target classes configuration
+    const targetRows = [
+        { name: 'JSS 1', stream: null, label: 'JSS1' },
+        { name: 'JSS 2', stream: null, label: 'JSS2' },
+        { name: 'JSS 3', stream: null, label: 'JSS3' },
+        { name: 'SSS 1', stream: null, label: 'SSS1' },
+        { name: 'SSS 2', stream: 'Arts', label: 'SSS2 (A)' },
+        { name: 'SSS 2', stream: 'Science', label: 'SSS2 (S)' },
+        { name: 'SSS 3', stream: 'Arts', label: 'SSS3 (A)' },
+        { name: 'SSS 3', stream: 'Science', label: 'SSS3 (S)' }
+    ];
+    
+    const getDbClassName = (targetName, dbClasses) => {
+        const targetNormalized = targetName.replace(/\s+/g, '').toLowerCase();
+        const match = dbClasses.find(c => (c.name || '').replace(/\s+/g, '').toLowerCase() === targetNormalized);
+        return match ? match.name : targetName;
+    };
+    
+    const rowsConfig = targetRows.map(tr => ({
+        dbName: getDbClassName(tr.name, classes),
+        stream: tr.stream,
+        label: tr.label
+    }));
+    
+    const getShortSubjectName = (subjectId, subMap) => {
+        const fullName = subMap[subjectId] || subjectId || '';
+        if (!fullName) return '';
+        
+        const lower = fullName.toLowerCase().trim();
+        if (lower.includes('christian religious knowledge') || lower === 'crk' || lower === 'c.r.k') return 'C.R.K';
+        if (lower.includes('business studies') || lower.includes('bus std')) return 'BUS. STD';
+        if (lower.includes('literature in english') || lower.includes('lit in eng')) return 'LIT-IN-ENG';
+        if (lower.includes('english language') || lower.includes('english')) return 'ENGLISH';
+        if (lower.includes('mathematics') || lower.includes('maths')) return 'MATHS';
+        if (lower.includes('basic science')) return 'BASIC SCI';
+        if (lower.includes('agricultural science') || lower === 'agricultural sci' || lower === 'agric') return 'AGRIC. SCI';
+        if (lower.includes('creative and cultural art') || lower.includes('cca')) return 'C.C.A';
+        if (lower.includes('physical and health') || lower === 'phe' || lower === 'p.h.e') return 'P.H.E';
+        if (lower.includes('social studies')) return 'SOC. STD';
+        if (lower.includes('civic education') || lower === 'civic') return 'CIVIC';
+        if (lower.includes('home economics') || lower === 'home ec') return 'HOME ECON';
+        if (lower.includes('digital technology') || lower.includes('dig tech')) return 'DIG. TECH';
+        if (lower.includes('financial accounting') || lower === 'accounting' || lower === 'account') return 'ACCOUNT';
+        if (lower.includes('history')) return 'HISTORY';
+        if (lower.includes('geography')) return 'GEOGRAPHY';
+        if (lower.includes('biology')) return 'BIOLOGY';
+        if (lower.includes('chemistry')) return 'CHEMISTRY';
+        if (lower.includes('physics')) return 'PHYSICS';
+        if (lower.includes('economics') || lower === 'econs') return 'ECONS';
+        if (lower.includes('commerce')) return 'COMMERCE';
+        if (lower.includes('government') || lower === 'govt') return 'GOVT';
+        if (lower.includes('marketing') || lower === 'mkt') return 'MARKETING';
+        if (lower.includes('science practical')) return 'SCI. PRACT';
+        if (lower.includes('fine art') || lower.includes('fine arts')) return 'FINE ART';
+        if (lower.includes('shs') || lower.includes('s.h.s')) return 'S.H.S';
+        if (lower.includes('chs') || lower.includes('c.h.s')) return 'C.H.S';
+        
+        if (fullName.length > 12) {
+            const words = fullName.split(/\s+/);
+            if (words.length > 1) {
+                return words.map(w => w[0].toUpperCase()).join('.');
+            }
+            return fullName.substring(0, 10) + '.';
+        }
+        return fullName;
+    };
+    
+    const matchEntry = (entries, day, className, stream, periodNum) => {
+        return entries.find(e => {
+            const entryDay = (e.day_of_week || '').toLowerCase();
+            const entryClass = (e.class_name || '').replace(/\s+/g, '').toLowerCase();
+            const targetClass = className.replace(/\s+/g, '').toLowerCase();
+            const entryStream = (e.sub_class || '').toLowerCase();
+            const targetStream = (stream || '').toLowerCase();
+            
+            return entryDay === day.toLowerCase() &&
+                   entryClass === targetClass &&
+                   (entryStream === targetStream || (!entryStream && !targetStream)) &&
+                   e.period_number === periodNum;
+        });
+    };
+    
+    const toVerticalText = (str) => {
+        return str.split('').map(c => c === ' ' ? '\n' : c).join('\n');
+    };
+    
+    // Build Table Body
+    const body = [];
+    const daysList = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    
+    for (const day of daysList) {
+        const isThursday = day.toLowerCase() === 'thursday';
+        const isFriday = day.toLowerCase() === 'friday';
+        
+        const dayEntries = allEntries.filter(e => (e.day_of_week || '').toLowerCase() === day.toLowerCase());
+        
+        for (let rIdx = 0; rIdx < rowsConfig.length; rIdx++) {
+            const rc = rowsConfig[rIdx];
+            const rowData = [];
+            
+            // 1. Day Column (spanned vertically across all 8 classes)
+            if (rIdx === 0) {
+                rowData.push({
+                    content: day.toUpperCase(),
+                    rowSpan: 8,
+                    styles: { 
+                        valign: 'middle', 
+                        halign: 'center', 
+                        fontStyle: 'bold', 
+                        fillColor: [248, 250, 252], 
+                        textColor: [30, 41, 59],
+                        fontSize: 8.5
+                    }
+                });
+            }
+            
+            // 2. Class Column
+            rowData.push({
+                content: rc.label,
+                styles: { 
+                    fontStyle: 'bold', 
+                    fillColor: [241, 245, 249], 
+                    textColor: [30, 41, 59],
+                    halign: 'center',
+                    fontSize: 8
+                }
+            });
+            
+            // 3. Periods / Special Columns
+            if (isFriday) {
+                // Period 1, 2, 3
+                for (let p = 1; p <= 3; p++) {
+                    const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, p);
+                    rowData.push(entry ? getShortSubjectName(entry.subject_id, subjectMap) : '');
+                }
+                
+                // Sports column (spans Friday period 4)
+                if (rIdx === 0) {
+                    rowData.push({
+                        content: toVerticalText('SPORTS ACTIVITIES'),
+                        rowSpan: 8,
+                        styles: { 
+                            valign: 'middle', 
+                            halign: 'center', 
+                            fontStyle: 'bold', 
+                            fillColor: [239, 246, 255], 
+                            textColor: [37, 99, 235],
+                            fontSize: 6.5,
+                            cellPadding: 0.5
+                        }
+                    });
+                }
+                
+                // Period 4 to 8 (in DB) -> Friday Columns 5 to 9 (after sports)
+                for (let p = 4; p <= 8; p++) {
+                    const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, p);
+                    rowData.push(entry ? getShortSubjectName(entry.subject_id, subjectMap) : '');
+                }
+            } else {
+                // Period 1 to 5
+                for (let p = 1; p <= 5; p++) {
+                    const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, p);
+                    rowData.push(entry ? getShortSubjectName(entry.subject_id, subjectMap) : '');
+                }
+                
+                // Break or Fasting column
+                if (rIdx === 0) {
+                    const cellText = isThursday ? 'FASTING AND PRAYERS' : 'BREAK';
+                    const isFasting = isThursday;
+                    
+                    rowData.push({
+                        content: toVerticalText(cellText),
+                        rowSpan: 8,
+                        styles: { 
+                            valign: 'middle', 
+                            halign: 'center', 
+                            fontStyle: 'bold', 
+                            fillColor: isFasting ? [254, 242, 242] : [254, 252, 232], 
+                            textColor: isFasting ? [220, 38, 38] : [161, 98, 7],
+                            fontSize: isFasting ? 5.5 : 8,
+                            cellPadding: 0.5
+                        }
+                    });
+                }
+                
+                // Period 6 to 8
+                for (let p = 6; p <= 8; p++) {
+                    const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, p);
+                    rowData.push(entry ? getShortSubjectName(entry.subject_id, subjectMap) : '');
+                }
+            }
+            
+            body.push(rowData);
+        }
+    }
+    
+    // Column Header Definitions
+    const head = [[
+        'DAYS', 'CLASS', 
+        '8:00 - 8:40', '8:40 - 9:20', '9:20 - 10:00', 
+        '10:00 - 10:40', '10:40 - 11:30', '11:30 - 12:00', 
+        '12:00 - 12:40', '12:40 - 1:20', '1:20 - 2:00'
+    ]];
+    
+    // Render AutoTable on the document
+    doc.autoTable({
+        startY: 30,
+        head: head,
+        body: body,
+        theme: 'grid',
+        styles: { 
+            fontSize: 7.5, 
+            cellPadding: 0.8, 
+            minCellHeight: 3.5, 
+            lineColor: [148, 163, 184], 
+            lineWidth: 0.1,
+            halign: 'center',
+            valign: 'middle'
+        },
+        headStyles: { 
+            fillColor: [rgb.r, rgb.g, rgb.b], 
+            textColor: [255, 255, 255], 
+            halign: 'center', 
+            valign: 'middle', 
+            fontSize: 8, 
+            fontStyle: 'bold' 
+        },
+        columnStyles: {
+            0: { cellWidth: 16 }, // DAYS
+            1: { cellWidth: 18 }, // CLASS
+            2: { cellWidth: 28.5 },
+            3: { cellWidth: 28.5 },
+            4: { cellWidth: 28.5 },
+            5: { cellWidth: 28.5 },
+            6: { cellWidth: 28.5 },
+            7: { cellWidth: 15 },  // BREAK/FASTING
+            8: { cellWidth: 28.5 },
+            9: { cellWidth: 28.5 },
+            10: { cellWidth: 28.5 }
+        },
+        margin: { left: 5, right: 5 },
+        didParseCell: function(data) {
+            // Apply text centering and custom aesthetics to cell texts
+            if (data.section === 'body') {
+                if (data.column.index > 1 && data.column.index !== 7 && typeof data.cell.raw === 'string' && data.cell.raw !== '') {
+                    // Accentuate lessons inside the grid
+                    data.cell.styles.fontStyle = 'bold';
+                    data.cell.styles.textColor = [15, 23, 42];
+                }
+            }
+        }
+    });
+    
+    // Footer Warning message
+    const footerY = pageHeight - 12;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(239, 68, 68); // Red color warning
+    doc.text("THIS TIME TABLE SHOULD NOT BE ALTERED BY ANYONE FOR ANY REASON", pageWidth / 2, footerY, { align: 'center' });
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(30, 41, 59);
+    doc.text("SIGN: MANAGEMENT", pageWidth - 15, footerY + 4, { align: 'right' });
+    
+    // Audit log trail and branding
+    const auditId = crypto.randomUUID().substring(0, 8).toUpperCase();
+    const timestamp = new Date().toISOString();
+    const userName = currentUser.name || "Administrator";
+    const userId = currentUser.id || "Admin";
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`AUDIT ID: NKQMS-${auditId} | GENERATED BY: ${userName} (${userId}) | DATE: ${new Date(timestamp).toLocaleString()} | SYSTEM: GRAVITON CORE`, 10, pageHeight - 5);
+    
+    // Write Audit Log
+    try {
+        await db.audit_logs.add({
+            id: crypto.randomUUID(),
+            operation: 'print',
+            table: 'timetable',
+            record_id: 'general_school_timetable',
+            timestamp: timestamp,
+            user_id: userId,
+            is_synced: 0
+        });
+    } catch (e) {
+        console.error("Failed to write general timetable print audit log:", e);
+    }
+    
+    // Open in preview tab or download
+    const pdfBlob = doc.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    
+    const printWindow = window.open(pdfUrl, '_blank');
+    if (!printWindow) {
+        doc.save(`General_School_Timetable_${schoolInfo.currentSession || '2025_2026'}.pdf`);
+        Notifications.show('Timetable printed! Check downloads.', 'success');
+    } else {
+        Notifications.show('Print Preview opened in a new tab!', 'success');
+    }
+}
+
