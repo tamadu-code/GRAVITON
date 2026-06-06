@@ -14510,7 +14510,7 @@ export const UI = {
         const previewAuditBtn = document.getElementById('btn-preview-audit-tt');
         const autoGenerateBtn = document.getElementById('btn-auto-timetable');
         
-        // Timetable Solver function (Backtracking Constraint Satisfaction)
+        // Timetable Solver function (Greedy Constraint Satisfaction with multi-pass fill)
         const solveSchoolTimetable = async (constraints) => {
             const classes = await db.classes.toArray();
             const assignments = await db.subject_assignments.toArray();
@@ -14559,17 +14559,7 @@ export const UI = {
                 });
             }
             
-            // Slots to assign: Day -> Period -> Class (sequential to prevent collisions)
-            const slotsToFill = [];
             const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-            for (const day of days) {
-                for (let period = 1; period <= 8; period++) {
-                    for (const rc of rowsConfig) {
-                        const classKey = `${rc.dbName}_${rc.stream || ''}`;
-                        slotsToFill.push({ classKey, rc, day, period });
-                    }
-                }
-            }
             
             // Initialize board
             const board = {};
@@ -14584,60 +14574,60 @@ export const UI = {
                 }
             }
             
-            // Trackers for constraint checking
-            const teacherSchedule = {}; 
-            const subjectDayCount = {}; 
+            // Teacher schedule tracker: teacherSchedule[teacherId][day][period] = true/false
+            const teacherSchedule = {};
+            // Subject-per-day counter: subjectDayCount[classKey][day][subjectId] = count
+            const subjectDayCount = {};
             
-            const checkValid = (classKey, day, period, assignment, maxPerDay, maxConsecutive) => {
+            const isTeacherFree = (teacherId, day, period) => {
+                if (!teacherId) return true;
+                return !(teacherSchedule[teacherId] && teacherSchedule[teacherId][day] && teacherSchedule[teacherId][day][period]);
+            };
+            
+            const countConsecutive = (teacherId, day, period) => {
+                if (!teacherId) return 0;
+                let count = 0;
+                // Look backwards
+                let p = period - 1;
+                while (p >= 1 && teacherSchedule[teacherId]?.[day]?.[p]) { count++; p--; }
+                // Look forwards
+                p = period + 1;
+                while (p <= 8 && teacherSchedule[teacherId]?.[day]?.[p]) { count++; p++; }
+                return count; // total surrounding consecutive periods (excluding current)
+            };
+            
+            const checkPartTime = (teacherId, day, period) => {
+                if (!teacherId || !constraints.partTimeConstraints) return true;
+                const ct = constraints.partTimeConstraints.find(c => String(c.teacher_id) === String(teacherId));
+                if (!ct) return true;
+                if (!ct.days.includes(day)) return false;
+                if (period < ct.start_period || period > ct.end_period) return false;
+                return true;
+            };
+            
+            const canAssign = (classKey, day, period, assignment, maxPerDay, maxConsecutive) => {
                 if (assignment.remaining <= 0) return false;
+                if (board[classKey][day][period] !== null) return false;
                 
-                // 1. Teacher conflict check
-                if (assignment.teacher_id) {
-                    if (teacherSchedule[assignment.teacher_id] && teacherSchedule[assignment.teacher_id][day] && teacherSchedule[assignment.teacher_id][day][period]) {
-                        return false;
-                    }
-                }
+                // Teacher conflict
+                if (!isTeacherFree(assignment.teacher_id, day, period)) return false;
                 
-                // 2. Max per day check
-                const currentDayCount = (subjectDayCount[classKey] && subjectDayCount[classKey][day] && subjectDayCount[classKey][day][assignment.subject_id]) || 0;
-                if (currentDayCount >= maxPerDay) {
-                    return false;
-                }
+                // Max per day
+                const dayCount = subjectDayCount[classKey]?.[day]?.[assignment.subject_id] || 0;
+                if (dayCount >= maxPerDay) return false;
                 
-                // 3. Consecutive periods check
+                // Consecutive check
                 if (assignment.teacher_id && maxConsecutive) {
-                    let consecutive = 1;
-                    let p = period - 1;
-                    while (p >= 1) {
-                        if (teacherSchedule[assignment.teacher_id] && teacherSchedule[assignment.teacher_id][day] && teacherSchedule[assignment.teacher_id][day][p]) {
-                            consecutive++;
-                            p--;
-                        } else {
-                            break;
-                        }
-                    }
-                    if (consecutive > maxConsecutive) {
-                        return false;
-                    }
+                    if (countConsecutive(assignment.teacher_id, day, period) >= maxConsecutive) return false;
                 }
-
-                // 4. Part-time teacher availability check
-                if (assignment.teacher_id && constraints.partTimeConstraints) {
-                    const ct = constraints.partTimeConstraints.find(c => String(c.teacher_id) === String(assignment.teacher_id));
-                    if (ct) {
-                        if (!ct.days.includes(day)) {
-                            return false;
-                        }
-                        if (period < ct.start_period || period > ct.end_period) {
-                            return false;
-                        }
-                    }
-                }
+                
+                // Part-time availability
+                if (!checkPartTime(assignment.teacher_id, day, period)) return false;
                 
                 return true;
             };
             
-            const assign = (classKey, day, period, assignment) => {
+            const doAssign = (classKey, day, period, assignment) => {
                 board[classKey][day][period] = assignment;
                 assignment.remaining--;
                 
@@ -14652,99 +14642,92 @@ export const UI = {
                 subjectDayCount[classKey][day][assignment.subject_id] = (subjectDayCount[classKey][day][assignment.subject_id] || 0) + 1;
             };
             
-            const unassign = (classKey, day, period, assignment) => {
-                board[classKey][day][period] = null;
-                assignment.remaining++;
-                
-                if (assignment.teacher_id) {
-                    teacherSchedule[assignment.teacher_id][day][period] = false;
-                }
-                
-                subjectDayCount[classKey][day][assignment.subject_id]--;
-            };
+            // ── GREEDY PASS: Distribute subjects across days evenly ──
+            // For each class, spread subject hours across the 5 days as evenly as possible
+            let success = true;
             
-            let steps = 0;
-            const maxSteps = 30000;
-            
-            const backtrack = (slotIndex, maxPerDay, maxConsecutive) => {
-                steps++;
-                if (steps > maxSteps) return false;
-                if (slotIndex >= slotsToFill.length) return true;
+            for (const rc of rowsConfig) {
+                const classKey = `${rc.dbName}_${rc.stream || ''}`;
+                const subjectsList = classAssignments[classKey] || [];
+                if (subjectsList.length === 0) continue;
                 
-                const { classKey, rc, day, period } = slotsToFill[slotIndex];
-                const assignments = classAssignments[classKey] || [];
+                // Build a list of all hours to assign, sorted by frequency descending
+                // so high-frequency subjects get spread first
+                const sortedSubjects = [...subjectsList].sort((a, b) => b.frequency - a.frequency);
                 
-                // Sort by highest remaining frequency (Heuristics)
-                const sortedAssignments = [...assignments]
-                    .filter(a => a.remaining > 0)
-                    .sort((a, b) => b.remaining - a.remaining);
+                // Round-robin distribute across days
+                // For each subject, spread its hours across available days
+                for (const assignment of sortedSubjects) {
+                    let hoursLeft = assignment.remaining;
+                    if (hoursLeft <= 0) continue;
                     
-                const totalRemaining = sortedAssignments.reduce((sum, a) => sum + a.remaining, 0);
-                
-                // Count remaining slots for this classKey
-                let slotsLeft = 0;
-                for (let i = slotIndex; i < slotsToFill.length; i++) {
-                    if (slotsToFill[i].classKey === classKey) slotsLeft++;
-                }
-                
-                // If there are more slots than subject hours remaining, we can leave slot free
-                if (slotsLeft > totalRemaining) {
-                    board[classKey][day][period] = null;
-                    if (backtrack(slotIndex + 1, maxPerDay, maxConsecutive)) return true;
-                }
-                
-                for (const assignment of sortedAssignments) {
-                    if (checkValid(classKey, day, period, assignment, maxPerDay, maxConsecutive)) {
-                        assign(classKey, day, period, assignment);
-                        if (backtrack(slotIndex + 1, maxPerDay, maxConsecutive)) return true;
-                        unassign(classKey, day, period, assignment);
+                    // Shuffle days to avoid always starting Monday
+                    const dayOrder = [...days].sort(() => Math.random() - 0.5);
+                    
+                    // First pass: try to place one per day (spread evenly)
+                    for (const day of dayOrder) {
+                        if (hoursLeft <= 0) break;
+                        
+                        // Find first available period on this day for this class
+                        for (let period = 1; period <= 8; period++) {
+                            if (canAssign(classKey, day, period, assignment, constraints.maxPerDay, constraints.maxConsecutive)) {
+                                doAssign(classKey, day, period, assignment);
+                                hoursLeft--;
+                                break; // One per day in first pass
+                            }
+                        }
                     }
+                    
+                    // Second pass: fill remaining hours wherever possible
+                    if (hoursLeft > 0) {
+                        for (const day of dayOrder) {
+                            if (hoursLeft <= 0) break;
+                            for (let period = 1; period <= 8; period++) {
+                                if (hoursLeft <= 0) break;
+                                if (canAssign(classKey, day, period, assignment, constraints.maxPerDay, constraints.maxConsecutive)) {
+                                    doAssign(classKey, day, period, assignment);
+                                    hoursLeft--;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (assignment.remaining > 0) success = false;
                 }
-                
-                return false;
-            };
+            }
             
-            // Pass 1: Try strict constraints
-            let success = backtrack(0, constraints.maxPerDay, constraints.maxConsecutive);
-            
-            // Pass 2: Fallback to relaxed constraints if strict search fails
+            // ── RELAXED PASS: If first pass left gaps, retry with relaxed constraints ──
             if (!success) {
                 console.warn("[Timetable Solver] Strict constraint matching failed. Attempting relaxation...");
-                steps = 0;
                 
-                // Clear the board
+                // Try to fill remaining assignments with relaxed constraints
+                const relaxedMaxPerDay = Math.max(constraints.maxPerDay, 2);
+                const relaxedMaxConsecutive = 99; // effectively unlimited
+                
                 for (const rc of rowsConfig) {
                     const classKey = `${rc.dbName}_${rc.stream || ''}`;
-                    for (const day of days) {
-                        for (let p = 1; p <= 8; p++) {
-                            board[classKey][day][p] = null;
+                    const subjectsList = classAssignments[classKey] || [];
+                    
+                    for (const assignment of subjectsList) {
+                        if (assignment.remaining <= 0) continue;
+                        
+                        for (const day of days) {
+                            if (assignment.remaining <= 0) break;
+                            for (let period = 1; period <= 8; period++) {
+                                if (assignment.remaining <= 0) break;
+                                if (canAssign(classKey, day, period, assignment, relaxedMaxPerDay, relaxedMaxConsecutive)) {
+                                    doAssign(classKey, day, period, assignment);
+                                }
+                            }
                         }
-                    }
-                }
-                // Clear trackers
-                for (const t in teacherSchedule) {
-                    for (const d in teacherSchedule[t]) {
-                        for (const p in teacherSchedule[t][d]) {
-                            teacherSchedule[t][d][p] = false;
-                        }
-                    }
-                }
-                for (const ck in subjectDayCount) {
-                    for (const d in subjectDayCount[ck]) {
-                        for (const s in subjectDayCount[ck][d]) {
-                            subjectDayCount[ck][d][s] = 0;
-                        }
-                    }
-                }
-                // Reset assignment counters
-                for (const classKey in classAssignments) {
-                    for (const a of classAssignments[classKey]) {
-                        a.remaining = a.frequency;
                     }
                 }
                 
-                // Relax consecutive limits and allow up to 2 per day
-                success = backtrack(0, Math.max(constraints.maxPerDay, 2), 99);
+                // Check if relaxed pass fixed everything
+                const stillRemaining = Object.values(classAssignments).flat().filter(a => a.remaining > 0);
+                if (stillRemaining.length === 0) {
+                    success = true; // relaxed pass fully resolved
+                }
             }
             
             // Convert board to database format output
@@ -15294,16 +15277,16 @@ export const UI = {
             const classLabel = tr.label;
             
             const classAss = tr.stream 
-                ? assignments.filter(a => a.class_name === tr.name && (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === tr.stream.toLowerCase()))
-                : assignments.filter(a => a.class_name === tr.name);
+                ? assignments.filter(a => (a.class_name || '').replace(/\s+/g, '').toLowerCase() === tr.name.replace(/\s+/g, '').toLowerCase() && (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === tr.stream.toLowerCase()))
+                : assignments.filter(a => (a.class_name || '').replace(/\s+/g, '').toLowerCase() === tr.name.replace(/\s+/g, '').toLowerCase());
 
             classAss.forEach(a => {
                 const subObj = subjects.find(s => s.id === a.subject_id);
                 const expected = (subObj && subObj.credits) ? parseInt(subObj.credits) : 3;
                 
                 const actual = entries.filter(e => 
-                    e.class_name === tr.name && 
-                    (e.sub_class || '') === (tr.stream || '') && 
+                    (e.class_name || '').replace(/\s+/g, '').toLowerCase() === tr.name.replace(/\s+/g, '').toLowerCase() && 
+                    (e.sub_class || '').toLowerCase() === (tr.stream || '').toLowerCase() && 
                     e.subject_id === a.subject_id
                 ).length;
 
