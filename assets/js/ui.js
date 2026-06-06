@@ -14625,6 +14625,7 @@ export const UI = {
             for (const rc of rowsConfig) {
                 const classKey = `${rc.dbName}_${rc.stream || ''}`;
                 board[classKey] = {};
+                const baseClassLower = getBaseClassName(rc.dbName).toLowerCase();
                 for (const day of days) {
                     board[classKey][day] = {};
                     for (let period = 1; period <= 8; period++) {
@@ -14634,6 +14635,18 @@ export const UI = {
                             board[classKey][day][period] = { subject_id: 'FASTING', teacher_id: null, isSpecialSlot: true };
                         } else if (isFriday && (period === 3 || period === 4)) {
                             board[classKey][day][period] = { subject_id: 'SPORTS', teacher_id: null, isSpecialSlot: true };
+                        } else if (isThursday && baseClassLower === 'jss 1' && period === 6) {
+                            board[classKey][day][period] = { subject_id: 'COMP. PRACT.', teacher_id: null, isSpecialSlot: true };
+                        } else if (isThursday && baseClassLower === 'jss 2' && period === 7) {
+                            board[classKey][day][period] = { subject_id: 'COMP. PRACT.', teacher_id: null, isSpecialSlot: true };
+                        } else if (isThursday && baseClassLower === 'jss 3' && period === 8) {
+                            board[classKey][day][period] = { subject_id: 'COMP. PRACT.', teacher_id: null, isSpecialSlot: true };
+                        } else if (isFriday && baseClassLower === 'sss 1' && period === 6) {
+                            board[classKey][day][period] = { subject_id: 'COMP. PRACT.', teacher_id: null, isSpecialSlot: true };
+                        } else if (isFriday && baseClassLower === 'sss 2' && period === 7) {
+                            board[classKey][day][period] = { subject_id: 'COMP. PRACT.', teacher_id: null, isSpecialSlot: true };
+                        } else if (isFriday && baseClassLower === 'sss 3' && period === 8) {
+                            board[classKey][day][period] = { subject_id: 'COMP. PRACT.', teacher_id: null, isSpecialSlot: true };
                         } else {
                             board[classKey][day][period] = null;
                         }
@@ -14688,11 +14701,20 @@ export const UI = {
             };
 
             // Auto-cap subject frequencies when total exceeds available slots
-            const AVAILABLE_SLOTS = 37; // 40 total - 3 blocked (Thu P5 + Fri P3,P4)
             for (const [ck, subs] of Object.entries(classAssignments)) {
+                // Count available slots for this class
+                let availableSlots = 0;
+                for (const day of days) {
+                    for (let period = 1; period <= 8; period++) {
+                        if (board[ck] && board[ck][day] && board[ck][day][period] === null) {
+                            availableSlots++;
+                        }
+                    }
+                }
+                
                 const totalNeeded = subs.reduce((sum, s) => sum + s.frequency, 0);
-                if (totalNeeded > AVAILABLE_SLOTS) {
-                    let excess = totalNeeded - AVAILABLE_SLOTS;
+                if (totalNeeded > availableSlots) {
+                    let excess = totalNeeded - availableSlots;
                     // Reduce specific subjects first, preserve general subject frequencies
                     const reductionOrder = [...subs].sort((a, b) => {
                         const aGen = isGeneralSubject(a) ? 1 : 0;
@@ -14708,7 +14730,7 @@ export const UI = {
                             excess--;
                         }
                     }
-                    console.warn(`[Timetable Solver] Auto-capped frequencies for ${ck}: ${totalNeeded} → ${subs.reduce((sum, s) => sum + s.frequency, 0)} periods`);
+                    console.warn(`[Timetable Solver] Auto-capped frequencies for ${ck}: ${totalNeeded} → ${subs.reduce((sum, s) => sum + s.frequency, 0)} periods (Available: ${availableSlots})`);
                 }
             }
 
@@ -15767,42 +15789,61 @@ export const UI = {
 
             for (let r = 0; r < 8; r++) {
                 const tr = targetRows[r];
+                const baseClassLower = getBaseClassName(tr.name).toLowerCase();
                 for (const pf of periodsToQuery) {
-                    const entry = dayEntries.find(e => 
-                        getBaseClassName(e.class_name).toLowerCase() === getBaseClassName(tr.name).toLowerCase() &&
-                        (e.sub_class || '').toLowerCase() === (tr.stream || '').toLowerCase() &&
-                        e.period_number === pf.p
-                    );
-
-                    if (entry) {
-                        const conflictTeacherName = hasTeacherConflict(day, pf.p, tr.name, tr.stream);
-                        const subjectName = getShortName(entry.subject_id);
-                        const teacherName = profileMap[entry.teacher_id] || '';
-                        
-                        let cellStyle = 'border: 1px solid #e2e8f0; padding: 0.5rem; vertical-align: middle; position: relative;';
-                        let cellContent = `
-                            <div style="font-weight: 700; color: #1e293b; font-size: 0.75rem;">${subjectName}</div>
-                            <div style="font-size: 0.65rem; color: #64748b; margin-top: 2px; font-weight: 500;">${teacherName}</div>
-                        `;
-                        
-                        if (conflictTeacherName) {
-                            cellStyle += ' background: #fef2f2; border: 1px solid #fecaca;';
-                            cellContent += `
-                                <div style="color: #ef4444; font-size: 0.6rem; font-weight: 800; margin-top: 4px; display: inline-flex; align-items: center; gap: 2px; background: #fee2e2; padding: 1px 4px; border-radius: 4px;">
-                                    <i data-lucide="alert-triangle" style="width: 10px; height: 10px;"></i> CONFLICT
-                                </div>
-                            `;
-                        }
-
+                    const isCompPract = 
+                        (isThursday && baseClassLower === 'jss 1' && pf.p === 6) ||
+                        (isThursday && baseClassLower === 'jss 2' && pf.p === 7) ||
+                        (isThursday && baseClassLower === 'jss 3' && pf.p === 8) ||
+                        (isFriday && baseClassLower === 'sss 1' && pf.p === 6) ||
+                        (isFriday && baseClassLower === 'sss 2' && pf.p === 7) ||
+                        (isFriday && baseClassLower === 'sss 3' && pf.p === 8);
+                    
+                    if (isCompPract) {
                         grid[r][pf.col] = {
-                            content: cellContent,
-                            style: cellStyle
+                            content: `
+                                <div style="font-weight: 900; color: #0369a1; font-size: 0.75rem;">COMP. PRACT.</div>
+                                <div style="font-size: 0.65rem; color: #0284c7; margin-top: 2px; font-weight: 500;">Special Slot</div>
+                            `,
+                            style: 'border: 1px solid #bae6fd; padding: 0.5rem; background: #e0f2fe; vertical-align: middle; position: relative;'
                         };
                     } else {
-                        grid[r][pf.col] = {
-                            content: '<span style="color: #cbd5e1; font-style: italic; font-weight: 500;">--</span>',
-                            style: 'border: 1px solid #e2e8f0; padding: 0.5rem; background: #f8fafc; vertical-align: middle;'
-                        };
+                        const entry = dayEntries.find(e => 
+                            getBaseClassName(e.class_name).toLowerCase() === getBaseClassName(tr.name).toLowerCase() &&
+                            (e.sub_class || '').toLowerCase() === (tr.stream || '').toLowerCase() &&
+                            e.period_number === pf.p
+                        );
+
+                        if (entry) {
+                            const conflictTeacherName = hasTeacherConflict(day, pf.p, tr.name, tr.stream);
+                            const subjectName = getShortName(entry.subject_id);
+                            const teacherName = profileMap[entry.teacher_id] || '';
+                            
+                            let cellStyle = 'border: 1px solid #e2e8f0; padding: 0.5rem; vertical-align: middle; position: relative;';
+                            let cellContent = `
+                                <div style="font-weight: 700; color: #1e293b; font-size: 0.75rem;">${subjectName}</div>
+                                <div style="font-size: 0.65rem; color: #64748b; margin-top: 2px; font-weight: 500;">${teacherName}</div>
+                            `;
+                            
+                            if (conflictTeacherName) {
+                                cellStyle += ' background: #fef2f2; border: 1px solid #fecaca;';
+                                cellContent += `
+                                    <div style="color: #ef4444; font-size: 0.6rem; font-weight: 800; margin-top: 4px; display: inline-flex; align-items: center; gap: 2px; background: #fee2e2; padding: 1px 4px; border-radius: 4px;">
+                                        <i data-lucide="alert-triangle" style="width: 10px; height: 10px;"></i> CONFLICT
+                                    </div>
+                                `;
+                            }
+
+                            grid[r][pf.col] = {
+                                content: cellContent,
+                                style: cellStyle
+                            };
+                        } else {
+                            grid[r][pf.col] = {
+                                content: '<span style="color: #cbd5e1; font-style: italic; font-weight: 500;">--</span>',
+                                style: 'border: 1px solid #e2e8f0; padding: 0.5rem; background: #f8fafc; vertical-align: middle;'
+                            };
+                        }
                     }
                 }
             }

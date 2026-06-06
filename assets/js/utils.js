@@ -1280,36 +1280,104 @@ export async function generateTimetablePDF(className, classes, subjects, schoolI
             
             periods.forEach((p, pIndex) => {
                 const x = 10 + dayColWidth + (pIndex * periodColWidth);
-                const entry = entries.find(e => (e.day_of_week || '').toLowerCase() === day.toLowerCase() && e.period_number === p);
+                const isThursday = day.toLowerCase() === 'thursday';
+                const isFriday = day.toLowerCase() === 'friday';
+                const baseClassLower = getBaseClassName(c.name).toLowerCase();
                 
-                doc.setFillColor(255, 255, 255);
-                doc.rect(x, currentY, periodColWidth, 22, 'F');
-                doc.rect(x, currentY, periodColWidth, 22);
+                let isSpecial = false;
+                let specialText = '';
+                let specialBg = [255, 255, 255];
+                let specialFg = [15, 23, 42];
                 
-                if (entry) {
-                    const subName = subjectMap[entry.subject_id] || entry.subject_id || '';
+                if (isThursday && p === 5) {
+                    isSpecial = true;
+                    specialText = 'FASTING & PRAYER';
+                    specialBg = [237, 233, 254]; // #ede9fe
+                    specialFg = [91, 33, 182]; // #5b21b6
+                } else if (isFriday && (p === 3 || p === 4)) {
+                    isSpecial = true;
+                    specialText = 'SPORTS';
+                    specialBg = [224, 242, 254]; // #e0f2fe
+                    specialFg = [3, 105, 161]; // #0369a1
+                } else if (isThursday && baseClassLower === 'jss 1' && p === 6) {
+                    isSpecial = true;
+                    specialText = 'COMP. PRACT.';
+                    specialBg = [224, 242, 254]; // Light blue
+                    specialFg = [3, 105, 161];
+                } else if (isThursday && baseClassLower === 'jss 2' && p === 7) {
+                    isSpecial = true;
+                    specialText = 'COMP. PRACT.';
+                    specialBg = [224, 242, 254];
+                    specialFg = [3, 105, 161];
+                } else if (isThursday && baseClassLower === 'jss 3' && p === 8) {
+                    isSpecial = true;
+                    specialText = 'COMP. PRACT.';
+                    specialBg = [224, 242, 254];
+                    specialFg = [3, 105, 161];
+                } else if (isFriday && baseClassLower === 'sss 1' && p === 6) {
+                    isSpecial = true;
+                    specialText = 'COMP. PRACT.';
+                    specialBg = [224, 242, 254];
+                    specialFg = [3, 105, 161];
+                } else if (isFriday && baseClassLower === 'sss 2' && p === 7) {
+                    isSpecial = true;
+                    specialText = 'COMP. PRACT.';
+                    specialBg = [224, 242, 254];
+                    specialFg = [3, 105, 161];
+                } else if (isFriday && baseClassLower === 'sss 3' && p === 8) {
+                    isSpecial = true;
+                    specialText = 'COMP. PRACT.';
+                    specialBg = [224, 242, 254];
+                    specialFg = [3, 105, 161];
+                }
+                
+                if (isSpecial) {
+                    doc.setFillColor(specialBg[0], specialBg[1], specialBg[2]);
+                    doc.rect(x, currentY, periodColWidth, 22, 'F');
+                    doc.rect(x, currentY, periodColWidth, 22);
+                    
                     doc.setFont('helvetica', 'bold');
-                    doc.setFontSize(8.5);
-                    doc.setTextColor(15, 23, 42);
+                    doc.setFontSize(8);
+                    doc.setTextColor(specialFg[0], specialFg[1], specialFg[2]);
                     
-                    const splitSub = doc.splitTextToSize(subName, periodColWidth - 4);
-                    let textY = currentY + 7;
-                    splitSub.slice(0, 2).forEach(line => {
+                    const splitText = doc.splitTextToSize(specialText, periodColWidth - 4);
+                    let textY = currentY + 11 - ((splitText.length - 1) * 2.2);
+                    splitText.forEach(line => {
                         doc.text(line, x + periodColWidth/2, textY, { align: 'center' });
-                        textY += 4.5;
+                        textY += 4;
                     });
-                    
-                    if (entry.teacher_id) {
-                        doc.setFont('helvetica', 'italic');
-                        doc.setFontSize(7);
-                        doc.setTextColor(100, 116, 139);
-                        doc.text(entry.teacher_id, x + periodColWidth/2, currentY + 18, { align: 'center' });
-                    }
                 } else {
-                    doc.setFont('helvetica', 'normal');
-                    doc.setFontSize(7.5);
-                    doc.setTextColor(203, 213, 225);
-                    doc.text("FREE", x + periodColWidth/2, currentY + 12.5, { align: 'center' });
+                    const entry = entries.find(e => (e.day_of_week || '').toLowerCase() === day.toLowerCase() && e.period_number === p);
+                    
+                    doc.setFillColor(255, 255, 255);
+                    doc.rect(x, currentY, periodColWidth, 22, 'F');
+                    doc.rect(x, currentY, periodColWidth, 22);
+                    
+                    if (entry) {
+                        const subName = subjectMap[entry.subject_id] || entry.subject_id || '';
+                        doc.setFont('helvetica', 'bold');
+                        doc.setFontSize(8.5);
+                        doc.setTextColor(15, 23, 42);
+                        
+                        const splitSub = doc.splitTextToSize(subName, periodColWidth - 4);
+                        let textY = currentY + 7;
+                        splitSub.slice(0, 2).forEach(line => {
+                            doc.text(line, x + periodColWidth/2, textY, { align: 'center' });
+                            textY += 4.5;
+                        });
+                        
+                        if (entry.teacher_id) {
+                            doc.setFont('helvetica', 'italic');
+                            doc.setFontSize(7);
+                            doc.setTextColor(100, 116, 139);
+                            doc.text(entry.teacher_id, x + periodColWidth/2, currentY + 18, { align: 'center' });
+                        }
+                    } else {
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(7.5);
+                        doc.setTextColor(203, 213, 225);
+                        doc.text("FREE", x + periodColWidth/2, currentY + 12.5, { align: 'center' });
+                    }
                 }
             });
             currentY += 22;
@@ -1742,15 +1810,33 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
         // Populate period cells in grid
         for (let r = 0; r < 8; r++) {
             const rc = rowsConfig[r];
+            const baseClassLower = getBaseClassName(rc.dbName).toLowerCase();
             for (const pf of periodsToQuery) {
-                const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, pf.p);
-                const text = entry ? getShortSubjectName(entry.subject_id, subjectMap) : '';
-                grid[r][pf.col] = {
-                    content: text,
-                    isLessonCell: true,
-                    rowSpan: 1,
-                    colSpan: 1
-                };
+                const isCompPract = 
+                    (isThursday && baseClassLower === 'jss 1' && pf.p === 6) ||
+                    (isThursday && baseClassLower === 'jss 2' && pf.p === 7) ||
+                    (isThursday && baseClassLower === 'jss 3' && pf.p === 8) ||
+                    (isFriday && baseClassLower === 'sss 1' && pf.p === 6) ||
+                    (isFriday && baseClassLower === 'sss 2' && pf.p === 7) ||
+                    (isFriday && baseClassLower === 'sss 3' && pf.p === 8);
+                
+                if (isCompPract) {
+                    grid[r][pf.col] = {
+                        content: 'COMP. PRACT.',
+                        isCompPractCell: true,
+                        rowSpan: 1,
+                        colSpan: 1
+                    };
+                } else {
+                    const entry = matchEntry(dayEntries, day, rc.dbName, rc.stream, pf.p);
+                    const text = entry ? getShortSubjectName(entry.subject_id, subjectMap) : '';
+                    grid[r][pf.col] = {
+                        content: text,
+                        isLessonCell: true,
+                        rowSpan: 1,
+                        colSpan: 1
+                    };
+                }
             }
         }
         
@@ -1888,6 +1974,10 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
                         data.cell.styles.fillColor = [254, 242, 242];
                     } else if (raw.isSportsCell) {
                         data.cell.styles.fillColor = [239, 246, 255];
+                    } else if (raw.isCompPractCell) {
+                        data.cell.styles.fillColor = [224, 242, 254];
+                        data.cell.styles.textColor = [3, 105, 161];
+                        data.cell.styles.fontStyle = 'bold';
                     } else if (raw.isLessonCell) {
                         if (raw.content) {
                             data.cell.styles.fontStyle = 'bold';
