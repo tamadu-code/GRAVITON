@@ -88,6 +88,12 @@ const getCombinedAttendance = async (studentIds, term, session) => {
     return loadedAttendance;
 };
 
+const getBaseClassName = (name) => {
+    if (!name) return '';
+    let base = name.split(' (')[0];
+    return base.replace(/([0-9])\s*[A-Z]$/i, '$1').trim();
+};
+
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
     get viewTitle() { return document.getElementById('view-title'); },
@@ -14545,8 +14551,8 @@ export const UI = {
             ];
             
             const getDbClassName = (targetName, dbClasses) => {
-                const targetNormalized = targetName.replace(/\s+/g, '').toLowerCase();
-                const match = dbClasses.find(c => (c.name || '').replace(/\s+/g, '').toLowerCase() === targetNormalized);
+                const targetNormalized = getBaseClassName(targetName).toLowerCase();
+                const match = dbClasses.find(c => getBaseClassName(c.name).toLowerCase() === targetNormalized);
                 return match ? match.name : targetName;
             };
             
@@ -14560,9 +14566,17 @@ export const UI = {
             const classAssignments = {};
             for (const rc of rowsConfig) {
                 const classKey = `${rc.dbName}_${rc.stream || ''}`;
-                const filtered = rc.stream 
-                    ? assignments.filter(a => a.class_name === rc.dbName && (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === rc.stream.toLowerCase()))
-                    : assignments.filter(a => a.class_name === rc.dbName);
+                let filtered = rc.stream 
+                    ? assignments.filter(a => getBaseClassName(a.class_name).toLowerCase() === getBaseClassName(rc.dbName).toLowerCase() && (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === rc.stream.toLowerCase()))
+                    : assignments.filter(a => getBaseClassName(a.class_name).toLowerCase() === getBaseClassName(rc.dbName).toLowerCase());
+                
+                // Unique by subject_id to avoid duplicates from multiple arms
+                const seen = new Set();
+                filtered = filtered.filter(a => {
+                    if (seen.has(a.subject_id)) return false;
+                    seen.add(a.subject_id);
+                    return true;
+                });
                     
                 classAssignments[classKey] = filtered.map(a => {
                     const subObj = subjects.find(s => s.id === a.subject_id);
@@ -14571,7 +14585,8 @@ export const UI = {
                         subject_id: a.subject_id,
                         teacher_id: a.teacher_id,
                         frequency: freq,
-                        remaining: freq
+                        remaining: freq,
+                        specialization: a.specialization || null
                     };
                 });
             }
@@ -14622,10 +14637,50 @@ export const UI = {
                 return true;
             };
             
+            const getParallelClassKey = (classKey) => {
+                if (classKey.endsWith('_Arts')) {
+                    return classKey.replace('_Arts', '_Science');
+                }
+                if (classKey.endsWith('_Science')) {
+                    return classKey.replace('_Science', '_Arts');
+                }
+                return null;
+            };
+
+            const isGeneralSubject = (assignment) => {
+                return !assignment.specialization || assignment.specialization === 'Common Subject';
+            };
+
             const canAssign = (classKey, day, period, assignment, maxPerDay, maxConsecutive) => {
                 if (assignment.remaining <= 0) return false;
                 if (board[classKey][day][period] !== null) return false;
                 
+                // Parallel stream constraints
+                const isGeneral = isGeneralSubject(assignment);
+                const parallelKey = getParallelClassKey(classKey);
+                if (parallelKey) {
+                    const parallelEntry = board[parallelKey]?.[day]?.[period];
+                    if (parallelEntry) {
+                        const pIsGeneral = isGeneralSubject(parallelEntry);
+                        if (isGeneral && !pIsGeneral) return false;
+                        if (!isGeneral && pIsGeneral) return false;
+                        if (isGeneral && pIsGeneral && parallelEntry.subject_id !== assignment.subject_id) return false;
+                    }
+                    if (isGeneral) {
+                        if (board[parallelKey][day][period] !== null) return false;
+                        const parallelAssList = classAssignments[parallelKey] || [];
+                        const parallelAss = parallelAssList.find(a => a.subject_id === assignment.subject_id);
+                        if (!parallelAss || parallelAss.remaining <= 0) return false;
+                        
+                        const t2 = parallelAss.teacher_id;
+                        if (t2 && t2 !== assignment.teacher_id) {
+                            if (!isTeacherFree(t2, day, period)) return false;
+                            if (maxConsecutive && countConsecutive(t2, day, period) >= maxConsecutive) return false;
+                            if (!checkPartTime(t2, day, period)) return false;
+                        }
+                    }
+                }
+
                 // Teacher conflict
                 if (!isTeacherFree(assignment.teacher_id, day, period)) return false;
                 
@@ -14657,40 +14712,182 @@ export const UI = {
                 if (!subjectDayCount[classKey]) subjectDayCount[classKey] = {};
                 if (!subjectDayCount[classKey][day]) subjectDayCount[classKey][day] = {};
                 subjectDayCount[classKey][day][assignment.subject_id] = (subjectDayCount[classKey][day][assignment.subject_id] || 0) + 1;
+                
+                // Joint assignment propagation
+                const isGeneral = isGeneralSubject(assignment);
+                if (isGeneral) {
+                    const parallelKey = getParallelClassKey(classKey);
+                    if (parallelKey && board[parallelKey][day][period] === null) {
+                        const parallelAssList = classAssignments[parallelKey] || [];
+                        const parallelAss = parallelAssList.find(a => a.subject_id === assignment.subject_id);
+                        if (parallelAss && parallelAss.remaining > 0) {
+                            board[parallelKey][day][period] = parallelAss;
+                            parallelAss.remaining--;
+                            
+                            const t2 = parallelAss.teacher_id;
+                            if (t2) {
+                                if (!teacherSchedule[t2]) teacherSchedule[t2] = {};
+                                if (!teacherSchedule[t2][day]) teacherSchedule[t2][day] = {};
+                                teacherSchedule[t2][day][period] = true;
+                            }
+                            
+                            if (!subjectDayCount[parallelKey]) subjectDayCount[parallelKey] = {};
+                            if (!subjectDayCount[parallelKey][day]) subjectDayCount[parallelKey][day] = {};
+                            subjectDayCount[parallelKey][day][parallelAss.subject_id] = (subjectDayCount[parallelKey][day][parallelAss.subject_id] || 0) + 1;
+                        }
+                    }
+                }
+            };
+
+            const canAssignJoint = (classKey1, classKey2, day, period, a1, a2, maxPerDay, maxConsecutive) => {
+                if (a1.remaining <= 0 || a2.remaining <= 0) return false;
+                if (board[classKey1][day][period] !== null || board[classKey2][day][period] !== null) return false;
+                
+                const t1 = a1.teacher_id;
+                const t2 = a2.teacher_id;
+                
+                if (t1 === t2) {
+                    if (!isTeacherFree(t1, day, period)) return false;
+                    if (maxConsecutive) {
+                        if (countConsecutive(t1, day, period) >= maxConsecutive) return false;
+                    }
+                    if (!checkPartTime(t1, day, period)) return false;
+                } else {
+                    if (t1 && !isTeacherFree(t1, day, period)) return false;
+                    if (t2 && !isTeacherFree(t2, day, period)) return false;
+                    
+                    if (t1 && maxConsecutive) {
+                        if (countConsecutive(t1, day, period) >= maxConsecutive) return false;
+                    }
+                    if (t2 && maxConsecutive) {
+                        if (countConsecutive(t2, day, period) >= maxConsecutive) return false;
+                    }
+                    
+                    if (t1 && !checkPartTime(t1, day, period)) return false;
+                    if (t2 && !checkPartTime(t2, day, period)) return false;
+                }
+                
+                const dayCount1 = subjectDayCount[classKey1]?.[day]?.[a1.subject_id] || 0;
+                const dayCount2 = subjectDayCount[classKey2]?.[day]?.[a2.subject_id] || 0;
+                if (dayCount1 >= maxPerDay || dayCount2 >= maxPerDay) return false;
+                
+                return true;
+            };
+
+            const doAssignJoint = (classKey1, classKey2, day, period, a1, a2) => {
+                board[classKey1][day][period] = a1;
+                board[classKey2][day][period] = a2;
+                a1.remaining--;
+                a2.remaining--;
+                
+                const t1 = a1.teacher_id;
+                const t2 = a2.teacher_id;
+                
+                if (t1) {
+                    if (!teacherSchedule[t1]) teacherSchedule[t1] = {};
+                    if (!teacherSchedule[t1][day]) teacherSchedule[t1][day] = {};
+                    teacherSchedule[t1][day][period] = true;
+                }
+                if (t2 && t2 !== t1) {
+                    if (!teacherSchedule[t2]) teacherSchedule[t2] = {};
+                    if (!teacherSchedule[t2][day]) teacherSchedule[t2][day] = {};
+                    teacherSchedule[t2][day][period] = true;
+                }
+                
+                if (!subjectDayCount[classKey1]) subjectDayCount[classKey1] = {};
+                if (!subjectDayCount[classKey1][day]) subjectDayCount[classKey1][day] = {};
+                subjectDayCount[classKey1][day][a1.subject_id] = (subjectDayCount[classKey1][day][a1.subject_id] || 0) + 1;
+                
+                if (!subjectDayCount[classKey2]) subjectDayCount[classKey2] = {};
+                if (!subjectDayCount[classKey2][day]) subjectDayCount[classKey2][day] = {};
+                subjectDayCount[classKey2][day][a2.subject_id] = (subjectDayCount[classKey2][day][a2.subject_id] || 0) + 1;
             };
             
+            // Identify parallel stream classes (e.g. SSS 2, SSS 3 split into Arts & Science)
+            const parallelClassPairs = [];
+            const dbNames = [...new Set(rowsConfig.map(rc => rc.dbName))];
+            for (const dbName of dbNames) {
+                const configs = rowsConfig.filter(rc => rc.dbName === dbName);
+                if (configs.length > 1) {
+                    const artsConfig = configs.find(c => (c.stream || '').toLowerCase() === 'arts');
+                    const sciConfig = configs.find(c => (c.stream || '').toLowerCase() === 'science');
+                    if (artsConfig && sciConfig) {
+                        parallelClassPairs.push({
+                            dbName,
+                            classKey1: `${artsConfig.dbName}_${artsConfig.stream}`,
+                            classKey2: `${sciConfig.dbName}_${sciConfig.stream}`
+                        });
+                    }
+                }
+            }
+
+            // ── JOINT PASS FOR PARALLEL GENERAL SUBJECTS ──
+            for (const pair of parallelClassPairs) {
+                const assignments1 = classAssignments[pair.classKey1] || [];
+                const assignments2 = classAssignments[pair.classKey2] || [];
+                
+                const general1 = assignments1.filter(isGeneralSubject).sort((a,b) => b.frequency - a.frequency);
+                
+                for (const a1 of general1) {
+                    const a2 = assignments2.find(a => a.subject_id === a1.subject_id && isGeneralSubject(a));
+                    if (!a2) continue;
+                    
+                    let hoursLeft = Math.min(a1.remaining, a2.remaining);
+                    if (hoursLeft <= 0) continue;
+                    
+                    const dayOrder = [...days].sort(() => Math.random() - 0.5);
+                    
+                    // Pass 1: Try to place one per day
+                    for (const day of dayOrder) {
+                        if (hoursLeft <= 0) break;
+                        for (let period = 1; period <= 8; period++) {
+                            if (canAssignJoint(pair.classKey1, pair.classKey2, day, period, a1, a2, constraints.maxPerDay, constraints.maxConsecutive)) {
+                                doAssignJoint(pair.classKey1, pair.classKey2, day, period, a1, a2);
+                                hoursLeft--;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Pass 2: Place remaining hours
+                    if (hoursLeft > 0) {
+                        for (const day of dayOrder) {
+                            if (hoursLeft <= 0) break;
+                            for (let period = 1; period <= 8; period++) {
+                                if (hoursLeft <= 0) break;
+                                if (canAssignJoint(pair.classKey1, pair.classKey2, day, period, a1, a2, constraints.maxPerDay, constraints.maxConsecutive)) {
+                                    doAssignJoint(pair.classKey1, pair.classKey2, day, period, a1, a2);
+                                    hoursLeft--;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── GREEDY PASS: Distribute subjects across days evenly ──
-            // For each class, spread subject hours across the 5 days as evenly as possible
             let success = true;
-            
             for (const rc of rowsConfig) {
                 const classKey = `${rc.dbName}_${rc.stream || ''}`;
                 const subjectsList = classAssignments[classKey] || [];
                 if (subjectsList.length === 0) continue;
                 
-                // Build a list of all hours to assign, sorted by frequency descending
-                // so high-frequency subjects get spread first
                 const sortedSubjects = [...subjectsList].sort((a, b) => b.frequency - a.frequency);
                 
-                // Round-robin distribute across days
-                // For each subject, spread its hours across available days
                 for (const assignment of sortedSubjects) {
                     let hoursLeft = assignment.remaining;
                     if (hoursLeft <= 0) continue;
                     
-                    // Shuffle days to avoid always starting Monday
                     const dayOrder = [...days].sort(() => Math.random() - 0.5);
                     
                     // First pass: try to place one per day (spread evenly)
                     for (const day of dayOrder) {
                         if (hoursLeft <= 0) break;
-                        
-                        // Find first available period on this day for this class
                         for (let period = 1; period <= 8; period++) {
                             if (canAssign(classKey, day, period, assignment, constraints.maxPerDay, constraints.maxConsecutive)) {
                                 doAssign(classKey, day, period, assignment);
                                 hoursLeft--;
-                                break; // One per day in first pass
+                                break;
                             }
                         }
                     }
@@ -14717,10 +14914,35 @@ export const UI = {
             if (!success) {
                 console.warn("[Timetable Solver] Strict constraint matching failed. Attempting relaxation...");
                 
-                // Try to fill remaining assignments with relaxed constraints
                 const relaxedMaxPerDay = Math.max(constraints.maxPerDay, 2);
                 const relaxedMaxConsecutive = 99; // effectively unlimited
                 
+                // Relaxed Joint Pass first
+                for (const pair of parallelClassPairs) {
+                    const assignments1 = classAssignments[pair.classKey1] || [];
+                    const assignments2 = classAssignments[pair.classKey2] || [];
+                    for (const a1 of assignments1) {
+                        if (!isGeneralSubject(a1)) continue;
+                        const a2 = assignments2.find(a => a.subject_id === a1.subject_id && isGeneralSubject(a));
+                        if (!a2) continue;
+                        
+                        let hoursLeft = Math.min(a1.remaining, a2.remaining);
+                        if (hoursLeft <= 0) continue;
+                        
+                        for (const day of days) {
+                            if (hoursLeft <= 0) break;
+                            for (let period = 1; period <= 8; period++) {
+                                if (hoursLeft <= 0) break;
+                                if (canAssignJoint(pair.classKey1, pair.classKey2, day, period, a1, a2, relaxedMaxPerDay, relaxedMaxConsecutive)) {
+                                    doAssignJoint(pair.classKey1, pair.classKey2, day, period, a1, a2);
+                                    hoursLeft--;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Standard Relaxed Pass for remaining individual subjects
                 for (const rc of rowsConfig) {
                     const classKey = `${rc.dbName}_${rc.stream || ''}`;
                     const subjectsList = classAssignments[classKey] || [];
@@ -14773,32 +14995,13 @@ export const UI = {
         
         if (printClassBtn) {
             printClassBtn.onclick = async () => {
-                const cls = classSelect.value;
-                if (!cls) {
-                    return Notifications.show('Please select a class first!', 'warning');
-                }
-                const classes = await db.classes.toArray();
-                const settings = await db.settings.toArray();
-                const schoolInfo = {};
-                settings.forEach(s => schoolInfo[s.key] = s.value);
-                const { generateTimetablePDF } = await import('./utils.js');
-                await generateTimetablePDF(cls, classes, subjects, schoolInfo, this.currentUser);
+                await this.showTimetablePreviewAuditModal(subjects);
             };
         }
         
         if (printGeneralBtn) {
             printGeneralBtn.onclick = async () => {
-                Notifications.show('Generating general school timetable...', 'info');
-                const classes = await db.classes.toArray();
-                const settings = await db.settings.toArray();
-                const schoolInfo = {};
-                settings.forEach(s => schoolInfo[s.key] = s.value);
-                try {
-                    await generateGeneralSchoolTimetablePDF(classes, subjects, schoolInfo, this.currentUser, UI.tempTimetableState);
-                } catch (err) {
-                    console.error("General timetable print error:", err);
-                    Notifications.show('Failed to generate general timetable: ' + err.message, 'error');
-                }
+                await this.showTimetablePreviewAuditModal(subjects);
             };
         }
         
@@ -15268,7 +15471,7 @@ export const UI = {
                 c.day.toLowerCase() === day.toLowerCase() && 
                 c.period === period &&
                 c.classes.some(cl => 
-                    cl.class_name.toLowerCase() === className.toLowerCase() && 
+                    getBaseClassName(cl.class_name).toLowerCase() === getBaseClassName(className).toLowerCase() && 
                     (cl.sub_class || '').toLowerCase() === (stream || '').toLowerCase()
                 )
             );
@@ -15293,16 +15496,24 @@ export const UI = {
         for (const tr of targetRows) {
             const classLabel = tr.label;
             
-            const classAss = tr.stream 
-                ? assignments.filter(a => (a.class_name || '').replace(/\s+/g, '').toLowerCase() === tr.name.replace(/\s+/g, '').toLowerCase() && (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === tr.stream.toLowerCase()))
-                : assignments.filter(a => (a.class_name || '').replace(/\s+/g, '').toLowerCase() === tr.name.replace(/\s+/g, '').toLowerCase());
+            let classAss = tr.stream 
+                ? assignments.filter(a => getBaseClassName(a.class_name).toLowerCase() === getBaseClassName(tr.name).toLowerCase() && (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === tr.stream.toLowerCase()))
+                : assignments.filter(a => getBaseClassName(a.class_name).toLowerCase() === getBaseClassName(tr.name).toLowerCase());
+
+            // Unique by subject_id to avoid duplicates from multiple arms
+            const seen = new Set();
+            classAss = classAss.filter(a => {
+                if (seen.has(a.subject_id)) return false;
+                seen.add(a.subject_id);
+                return true;
+            });
 
             classAss.forEach(a => {
                 const subObj = subjects.find(s => s.id === a.subject_id);
                 const expected = (subObj && subObj.credits) ? parseInt(subObj.credits) : 3;
                 
                 const actual = entries.filter(e => 
-                    (e.class_name || '').replace(/\s+/g, '').toLowerCase() === tr.name.replace(/\s+/g, '').toLowerCase() && 
+                    getBaseClassName(e.class_name).toLowerCase() === getBaseClassName(tr.name).toLowerCase() && 
                     (e.sub_class || '').toLowerCase() === (tr.stream || '').toLowerCase() && 
                     e.subject_id === a.subject_id
                 ).length;
@@ -15441,7 +15652,7 @@ export const UI = {
                 const tr = targetRows[r];
                 for (const pf of periodsToQuery) {
                     const entry = dayEntries.find(e => 
-                        (e.class_name || '').replace(/\s+/g, '').toLowerCase() === tr.name.replace(/\s+/g, '').toLowerCase() &&
+                        getBaseClassName(e.class_name).toLowerCase() === getBaseClassName(tr.name).toLowerCase() &&
                         (e.sub_class || '').toLowerCase() === (tr.stream || '').toLowerCase() &&
                         e.period_number === pf.p
                     );
@@ -15532,14 +15743,24 @@ export const UI = {
 
         const modalHtml = `
             <div style="padding: 0.5rem; max-height: 75vh; display: flex; flex-direction: column;">
-                <div style="display: flex; border-bottom: 2px solid #e2e8f0; margin-bottom: 1.5rem; gap: 1rem;">
-                    <button id="tab-audit-summary" style="padding: 0.75rem 1.25rem; font-weight: 800; font-size: 0.85rem; border: none; background: transparent; cursor: pointer; border-bottom: 3px solid #2563eb; color: #2563eb; outline: none; display: flex; align-items: center; gap: 6px;">
-                        <i data-lucide="shield-alert" style="width: 16px; height: 16px;"></i> Audit Report
-                        ${teacherCollisions.length > 0 ? `<span style="background: #ef4444; color: white; border-radius: 9999px; padding: 2px 6px; font-size: 0.65rem; font-weight: 800; line-height: 1;">${teacherCollisions.length}</span>` : ''}
-                    </button>
-                    <button id="tab-general-preview" style="padding: 0.75rem 1.25rem; font-weight: 700; font-size: 0.85rem; border: none; background: transparent; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; outline: none; display: flex; align-items: center; gap: 6px;">
-                        <i data-lucide="grid" style="width: 16px; height: 16px;"></i> School Grid Preview
-                    </button>
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 1rem;">
+                        <button id="tab-audit-summary" style="padding: 0.75rem 1.25rem; font-weight: 800; font-size: 0.85rem; border: none; background: transparent; cursor: pointer; border-bottom: 3px solid #2563eb; color: #2563eb; outline: none; display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="shield-alert" style="width: 16px; height: 16px;"></i> Audit Report
+                            ${teacherCollisions.length > 0 ? `<span style="background: #ef4444; color: white; border-radius: 9999px; padding: 2px 6px; font-size: 0.65rem; font-weight: 800; line-height: 1;">${teacherCollisions.length}</span>` : ''}
+                        </button>
+                        <button id="tab-general-preview" style="padding: 0.75rem 1.25rem; font-weight: 700; font-size: 0.85rem; border: none; background: transparent; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; outline: none; display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="grid" style="width: 16px; height: 16px;"></i> School Grid Preview
+                        </button>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.25rem;">
+                        <button id="modal-print-class-tt" class="btn" style="height: 38px; border-radius: 8px; padding: 0 1rem; background: #10b981; color: white; border: none; font-weight: 700; font-size: 0.75rem; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <i data-lucide="printer" style="width: 14px; height: 14px;"></i> Print Class Timetable
+                        </button>
+                        <button id="modal-print-general-tt" class="btn" style="height: 38px; border-radius: 8px; padding: 0 1rem; background: #7c3aed; color: white; border: none; font-weight: 700; font-size: 0.75rem; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <i data-lucide="layers" style="width: 14px; height: 14px;"></i> Print General School
+                        </button>
+                    </div>
                 </div>
                 
                 <div id="content-audit-summary" style="overflow-y: auto; max-height: 55vh; padding-right: 4px;">
@@ -15643,6 +15864,44 @@ export const UI = {
         this.showModal('Timetable Preview & Audit', modalHtml, async () => {
             // Close modal
         }, 'Close', 'check-circle');
+
+        // Bind Print Actions
+        const modalPrintClassBtn = document.getElementById('modal-print-class-tt');
+        const modalPrintGeneralBtn = document.getElementById('modal-print-general-tt');
+        
+        if (modalPrintClassBtn) {
+            modalPrintClassBtn.onclick = async () => {
+                const classSelect = document.getElementById('tt-class-select');
+                const cls = classSelect ? classSelect.value : '';
+                if (!cls) {
+                    return Notifications.show('Please select a class on the editor screen first!', 'warning');
+                }
+                const classes = await db.classes.toArray();
+                const settings = await db.settings.toArray();
+                const schoolInfo = {};
+                settings.forEach(s => schoolInfo[s.key] = s.value);
+                const { generateTimetablePDF } = await import('./utils.js');
+                
+                Notifications.show('Generating class timetable...', 'info');
+                await generateTimetablePDF(cls, classes, subjects, schoolInfo, this.currentUser, UI.tempTimetableState);
+            };
+        }
+        
+        if (modalPrintGeneralBtn) {
+            modalPrintGeneralBtn.onclick = async () => {
+                Notifications.show('Generating general school timetable...', 'info');
+                const classes = await db.classes.toArray();
+                const settings = await db.settings.toArray();
+                const schoolInfo = {};
+                settings.forEach(s => schoolInfo[s.key] = s.value);
+                try {
+                    await generateGeneralSchoolTimetablePDF(classes, subjects, schoolInfo, this.currentUser, UI.tempTimetableState);
+                } catch (err) {
+                    console.error("General timetable print error:", err);
+                    Notifications.show('Failed to generate general timetable: ' + err.message, 'error');
+                }
+            };
+        }
 
         // Tabs Toggle
         const btnAudit = document.getElementById('tab-audit-summary');

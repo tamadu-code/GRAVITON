@@ -5,6 +5,12 @@ import db from './db.js';
  * Logic for Scoring, PDF Reports, and Excel Imports
  */
 
+const getBaseClassName = (name) => {
+    if (!name) return '';
+    let base = name.split(' (')[0];
+    return base.replace(/([0-9])\s*[A-Z]$/i, '$1').trim();
+};
+
 /**
  * Scoring Engine
  */
@@ -1161,7 +1167,7 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
 /**
  * Generate PDF Timetable Landscape (A4) with Dynamic Branding, Audit Log, and print preview
  */
-export async function generateTimetablePDF(className, classes, subjects, schoolInfo, currentUser) {
+export async function generateTimetablePDF(className, classes, subjects, schoolInfo, currentUser, entriesOverride = null) {
     const { jsPDF } = window.jspdf;
     
     const doc = new jsPDF('l', 'mm', 'a4');
@@ -1178,13 +1184,16 @@ export async function generateTimetablePDF(className, classes, subjects, schoolI
     const subjectMap = subjects.reduce((m, s) => { m[s.id] = s.name; return m; }, {});
     
     const classesToPrint = className && className !== 'all' 
-        ? classes.filter(c => c.name === className)
+        ? classes.filter(c => getBaseClassName(c.name).toLowerCase() === getBaseClassName(className).toLowerCase())
         : classes;
 
+    const allDbEntries = entriesOverride ? null : await db.timetable.toArray();
     let isFirstPage = true;
 
     for (const c of classesToPrint) {
-        const entries = await db.timetable.where('class_name').equals(c.name).toArray();
+        const entries = entriesOverride
+            ? entriesOverride.filter(e => getBaseClassName(e.class_name).toLowerCase() === getBaseClassName(c.name).toLowerCase())
+            : allDbEntries.filter(e => getBaseClassName(e.class_name).toLowerCase() === getBaseClassName(c.name).toLowerCase());
         if (entries.length === 0 && className && className !== 'all') {
             continue;
         }
@@ -1271,7 +1280,7 @@ export async function generateTimetablePDF(className, classes, subjects, schoolI
             
             periods.forEach((p, pIndex) => {
                 const x = 10 + dayColWidth + (pIndex * periodColWidth);
-                const entry = entries.find(e => e.day_of_week === day && e.period_number === p);
+                const entry = entries.find(e => (e.day_of_week || '').toLowerCase() === day.toLowerCase() && e.period_number === p);
                 
                 doc.setFillColor(255, 255, 255);
                 doc.rect(x, currentY, periodColWidth, 22, 'F');
@@ -1563,8 +1572,8 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
     ];
     
     const getDbClassName = (targetName, dbClasses) => {
-        const targetNormalized = targetName.replace(/\s+/g, '').toLowerCase();
-        const match = dbClasses.find(c => (c.name || '').replace(/\s+/g, '').toLowerCase() === targetNormalized);
+        const targetNormalized = getBaseClassName(targetName).toLowerCase();
+        const match = dbClasses.find(c => getBaseClassName(c.name).toLowerCase() === targetNormalized);
         return match ? match.name : targetName;
     };
     
@@ -1620,8 +1629,8 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
     const matchEntry = (entries, day, className, stream, periodNum) => {
         return entries.find(e => {
             const entryDay = (e.day_of_week || '').toLowerCase();
-            const entryClass = (e.class_name || '').replace(/\s+/g, '').toLowerCase();
-            const targetClass = className.replace(/\s+/g, '').toLowerCase();
+            const entryClass = getBaseClassName(e.class_name).toLowerCase();
+            const targetClass = getBaseClassName(className).toLowerCase();
             const entryStream = (e.sub_class || '').toLowerCase();
             const targetStream = (stream || '').toLowerCase();
             
@@ -1835,10 +1844,10 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
                     
                     if (raw.isDayCell) {
                         doc.saveGraphicsState();
-                        doc.setFontSize(8);
+                        doc.setFontSize(10.5);
                         doc.setFont('helvetica', 'bold');
                         doc.setTextColor(30, 41, 59);
-                        doc.text(raw.content, centerX, centerY, { angle: -90, align: 'center', baseline: 'middle' });
+                        doc.text(raw.content, centerX, centerY, { angle: 270, align: 'center', baseline: 'middle' });
                         doc.restoreGraphicsState();
                     } else if (raw.isFastingCell) {
                         doc.saveGraphicsState();
