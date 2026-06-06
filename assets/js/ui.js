@@ -14687,6 +14687,47 @@ export const UI = {
                 return !spec || spec === 'common subject' || spec === 'general' || spec === 'common';
             };
 
+            // Auto-cap subject frequencies when total exceeds available slots
+            const AVAILABLE_SLOTS = 37; // 40 total - 3 blocked (Thu P5 + Fri P3,P4)
+            for (const [ck, subs] of Object.entries(classAssignments)) {
+                const totalNeeded = subs.reduce((sum, s) => sum + s.frequency, 0);
+                if (totalNeeded > AVAILABLE_SLOTS) {
+                    let excess = totalNeeded - AVAILABLE_SLOTS;
+                    // Reduce specific subjects first, preserve general subject frequencies
+                    const reductionOrder = [...subs].sort((a, b) => {
+                        const aGen = isGeneralSubject(a) ? 1 : 0;
+                        const bGen = isGeneralSubject(b) ? 1 : 0;
+                        if (aGen !== bGen) return aGen - bGen;
+                        return b.frequency - a.frequency;
+                    });
+                    for (const s of reductionOrder) {
+                        if (excess <= 0) break;
+                        while (s.frequency > 2 && excess > 0) {
+                            s.frequency--;
+                            s.remaining--;
+                            excess--;
+                        }
+                    }
+                    console.warn(`[Timetable Solver] Auto-capped frequencies for ${ck}: ${totalNeeded} → ${subs.reduce((sum, s) => sum + s.frequency, 0)} periods`);
+                }
+            }
+
+            // For parallel streams: check if a slot should be reserved for general subjects
+            // Prevents specific subjects from stealing slots that generals need for joint placement
+            const shouldReserveForGenerals = (classKey, day, period) => {
+                const parallelKey = getParallelClassKey(classKey);
+                if (!parallelKey) return false;
+                if (board[parallelKey]?.[day]?.[period] !== null) return false;
+                // Only reserve if there are general subjects needing placement in BOTH streams
+                const myGenerals = (classAssignments[classKey] || []).filter(a => isGeneralSubject(a) && a.remaining > 0);
+                if (myGenerals.length === 0) return false;
+                const parallelAssList = classAssignments[parallelKey] || [];
+                return myGenerals.some(a => {
+                    const pAss = parallelAssList.find(p => p.subject_id === a.subject_id && isGeneralSubject(p));
+                    return pAss && pAss.remaining > 0;
+                });
+            };
+
             const canAssign = (classKey, day, period, assignment, maxPerDay, maxConsecutive) => {
                 if (assignment.remaining <= 0) return false;
                 if (board[classKey][day][period] !== null) return false;
@@ -14908,18 +14949,30 @@ export const UI = {
                 const subjectsList = classAssignments[classKey] || [];
                 if (subjectsList.length === 0) continue;
                 
-                const sortedSubjects = [...subjectsList].sort((a, b) => b.frequency - a.frequency);
+                // For parallel stream classes, place general subjects FIRST
+                // to ensure they fill both streams before specific subjects can occupy slots
+                const sortedSubjects = [...subjectsList].sort((a, b) => {
+                    if (rc.stream) {
+                        const aGen = isGeneralSubject(a) ? 0 : 1;
+                        const bGen = isGeneralSubject(b) ? 0 : 1;
+                        if (aGen !== bGen) return aGen - bGen;
+                    }
+                    return b.frequency - a.frequency;
+                });
                 
                 for (const assignment of sortedSubjects) {
                     let hoursLeft = assignment.remaining;
                     if (hoursLeft <= 0) continue;
                     
                     const dayOrder = [...days].sort(() => Math.random() - 0.5);
+                    const isSpecificInParallel = rc.stream && !isGeneralSubject(assignment);
                     
                     // First pass: try to place one per day (spread evenly)
                     for (const day of dayOrder) {
                         if (hoursLeft <= 0) break;
                         for (let period = 1; period <= 8; period++) {
+                            // Reserve empty parallel slots for general subjects
+                            if (isSpecificInParallel && shouldReserveForGenerals(classKey, day, period)) continue;
                             if (canAssign(classKey, day, period, assignment, constraints.maxPerDay, constraints.maxConsecutive)) {
                                 doAssign(classKey, day, period, assignment);
                                 hoursLeft--;
@@ -14934,6 +14987,8 @@ export const UI = {
                             if (hoursLeft <= 0) break;
                             for (let period = 1; period <= 8; period++) {
                                 if (hoursLeft <= 0) break;
+                                // Reserve empty parallel slots for general subjects
+                                if (isSpecificInParallel && shouldReserveForGenerals(classKey, day, period)) continue;
                                 if (canAssign(classKey, day, period, assignment, constraints.maxPerDay, constraints.maxConsecutive)) {
                                     doAssign(classKey, day, period, assignment);
                                     hoursLeft--;
@@ -14983,7 +15038,17 @@ export const UI = {
                     const classKey = `${rc.dbName}_${rc.stream || ''}`;
                     const subjectsList = classAssignments[classKey] || [];
                     
-                    for (const assignment of subjectsList) {
+                    // Sort generals first even in relaxed pass (no slot reservation)
+                    const sortedRelaxed = [...subjectsList].sort((a, b) => {
+                        if (rc.stream) {
+                            const aGen = isGeneralSubject(a) ? 0 : 1;
+                            const bGen = isGeneralSubject(b) ? 0 : 1;
+                            if (aGen !== bGen) return aGen - bGen;
+                        }
+                        return b.remaining - a.remaining;
+                    });
+                    
+                    for (const assignment of sortedRelaxed) {
                         if (assignment.remaining <= 0) continue;
                         
                         for (const day of days) {
