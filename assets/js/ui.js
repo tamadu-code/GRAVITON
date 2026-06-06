@@ -1412,21 +1412,21 @@ export const UI = {
         const displayRank = hasFeeBalance ? '???' : analytics.rank || 'N/A';
 
         this.contentArea.innerHTML = `
-            <div class="view-container animate-fade-in student-universe-bg" style="padding: 1.5rem; min-height: 100vh; overflow-x: hidden;">
+            <div class="view-container animate-fade-in student-universe-bg" style="padding: clamp(1rem, 3vw, 1.5rem); min-height: 100vh; overflow-x: hidden; box-sizing: border-box; width: 100%; max-width: 100%;">
                 <!-- Live Broadcast Ticker -->
-                <div class="live-ticker-container" style="background: #1e1b4b; color: #818cf8; padding: 0.75rem 2rem; border-radius: 16px; margin-bottom: 1.5rem; font-size: 0.85rem; font-weight: 700; white-space: nowrap; overflow: hidden; position: relative; border: 1px solid rgba(129, 140, 248, 0.2); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
-                    <div>
+                <div class="live-ticker-container" style="background: #1e1b4b; color: #818cf8; padding: 0.75rem 2rem; border-radius: 16px; margin-bottom: 1.5rem; font-size: 0.85rem; font-weight: 700; white-space: nowrap; overflow: hidden; position: relative; border: 1px solid rgba(129, 140, 248, 0.2); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); width: 100%; max-width: 100%; box-sizing: border-box;">
+                    <div class="ticker-content">
                         ${liveTickerMsg}
                     </div>
                 </div>
 
-                <div class="student-dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 1.5rem; align-items: flex-start;">
+                <div class="student-dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 1.5rem; align-items: flex-start; width: 100%; max-width: 100%; box-sizing: border-box;">
                     
                     <!-- ─── Left Column: Academic Pulse ─── -->
-                    <div style="display: flex; flex-direction: column; gap: 2rem;">
+                    <div style="display: flex; flex-direction: column; gap: 2rem; min-width: 0; max-width: 100%; box-sizing: border-box;">
                         
                         <!-- Main Banner -->
-                        <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-radius: 30px; padding: 2rem; color: white; position: relative; overflow: hidden; box-shadow: 0 20px 40px -10px rgba(30, 27, 75, 0.3);">
+                        <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-radius: 30px; padding: clamp(1.25rem, 4vw, 2rem); color: white; position: relative; overflow: hidden; box-shadow: 0 20px 40px -10px rgba(30, 27, 75, 0.3); max-width: 100%; box-sizing: border-box;">
                             <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
                             
                             <div style="position: relative; z-index: 2; display: flex; flex-direction: column; gap: 1.5rem; align-items: center; text-align: center;">
@@ -1437,21 +1437,21 @@ export const UI = {
                                 
                                 <div style="width: 100%;">
                                     <h2 class="banner-title" style="font-size: clamp(1.8rem, 5vw, 2.8rem); font-weight: 900; margin: 0; letter-spacing: -1px;">Welcome, ${student?.name?.split(' ')[0] || 'Scholar'}!</h2>
-                                    <div style="display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; justify-content: center;">
-                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ID: ${student?.student_id || 'PENDING'}</span>
-                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">CLASS: ${student?.class_name || 'N/A'}</span>
-                                        <span style="background: #4f46e5; padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">CODE: ${student?.attendance_code || '---'}</span>
-                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;">ADMIT: ${student?.admission_year || 'N/A'}</span>
+                                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; justify-content: center;">
+                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; white-space: nowrap;">ID: ${student?.student_id || 'PENDING'}</span>
+                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; white-space: nowrap;">CLASS: ${student?.class_name || 'N/A'}</span>
+                                        <span style="background: #4f46e5; padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; white-space: nowrap;">CODE: ${student?.attendance_code || '---'}</span>
+                                        <span style="background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; white-space: nowrap;">ADMIT: ${student?.admission_year || 'N/A'}</span>
                                     </div>
                                     
                                     <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap; justify-content: center;">
-                                        <button class="btn btn-sm" onclick="UI.renderView('cbt')" style="background: #4f46e5; color: white; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.5rem;">
+                                        <button class="btn btn-sm" onclick="UI.renderView('cbt')" style="background: #4f46e5; color: white; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.25rem;">
                                             <i data-lucide="play-circle" style="width: 16px;"></i> Start CBT
                                         </button>
-                                        <button class="btn btn-sm" onclick="UI.openResultPinModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; font-weight: 800; padding: 0.5rem 1.5rem;" ${hasFeeBalance ? 'disabled' : ''}>
+                                        <button class="btn btn-sm" onclick="UI.openResultPinModal()" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; font-weight: 800; padding: 0.5rem 1.25rem;" ${hasFeeBalance ? 'disabled' : ''}>
                                             <i data-lucide="file-text" style="width: 16px;"></i> Grades
                                         </button>
-                                        <button class="btn btn-sm" onclick="UI.renderView('noticeboard')" style="background: white; color: #1e1b4b; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.5rem;">
+                                        <button class="btn btn-sm" onclick="UI.renderView('noticeboard')" style="background: white; color: #1e1b4b; border: none; border-radius: 10px; font-weight: 800; padding: 0.5rem 1.25rem;">
                                             <i data-lucide="bell" style="width: 16px;"></i> Bulletins
                                         </button>
                                     </div>
@@ -1461,8 +1461,8 @@ export const UI = {
 
 
                         <!-- KPI Visualization -->
-                        <div class="kpi-visualization-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1.5rem;">
-                            <div style="background: white; border-radius: 24px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1rem; transition: all 0.3s ease; cursor: pointer; position: relative;" onmouseover="this.style.borderColor='#4f46e5'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
+                        <div class="kpi-visualization-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr)); gap: 1rem; width: 100%; max-width: 100%; box-sizing: border-box;">
+                            <div style="background: white; border-radius: 24px; padding: 1.25rem 1rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 0.75rem; transition: all 0.3s ease; cursor: pointer; position: relative; max-width: 100%; box-sizing: border-box;" onmouseover="this.style.borderColor='#4f46e5'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
                                 <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(79, 70, 229, 0.1); color: #4f46e5; display: flex; align-items: center; justify-content: center;">
                                     <i data-lucide="award" style="width: 22px;"></i>
                                 </div>
@@ -1473,7 +1473,7 @@ export const UI = {
                                 ${hasFeeBalance ? `<div style="position: absolute; inset: 0; background: rgba(255,255,255,0.8); border-radius: 24px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);"><i data-lucide="lock" style="color: #ef4444; width: 24px;"></i></div>` : ''}
                             </div>
 
-                            <div style="background: white; border-radius: 24px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1rem; transition: all 0.3s ease; cursor: pointer; position: relative;" onmouseover="this.style.borderColor='#8b5cf6'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
+                            <div style="background: white; border-radius: 24px; padding: 1.25rem 1rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 0.75rem; transition: all 0.3s ease; cursor: pointer; position: relative; max-width: 100%; box-sizing: border-box;" onmouseover="this.style.borderColor='#8b5cf6'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
                                 <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; display: flex; align-items: center; justify-content: center;">
                                     <i data-lucide="trending-up" style="width: 22px;"></i>
                                 </div>
@@ -1484,7 +1484,7 @@ export const UI = {
                                 ${hasFeeBalance ? `<div style="position: absolute; inset: 0; background: rgba(255,255,255,0.8); border-radius: 24px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);"><i data-lucide="lock" style="color: #ef4444; width: 24px;"></i></div>` : ''}
                             </div>
 
-                            <div style="background: white; border-radius: 24px; padding: 1.5rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1rem; transition: all 0.3s ease; cursor: pointer;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
+                            <div style="background: white; border-radius: 24px; padding: 1.25rem 1rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 0.75rem; transition: all 0.3s ease; cursor: pointer; max-width: 100%; box-sizing: border-box;" onmouseover="this.style.borderColor='#10b981'; this.style.transform='translateY(-5px)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.transform='none'">
                                 <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center;">
                                     <i data-lucide="check-circle" style="width: 22px;"></i>
                                 </div>
@@ -1496,8 +1496,8 @@ export const UI = {
                         </div>
 
                         <!-- Timetable / Schedule (Collapsable on Mobile) -->
-                        <div class="card collapsable-section" style="background: white; border-radius: 30px; padding: 0; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm); overflow: hidden;">
-                            <label for="toggle-timetable" style="display: flex; justify-content: space-between; align-items: center; padding: 1.5rem 2rem; cursor: pointer; margin: 0;">
+                        <div class="card collapsable-section" style="background: white; border-radius: 30px; padding: 0; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm); overflow: hidden; max-width: 100%; box-sizing: border-box;">
+                            <label for="toggle-timetable" style="display: flex; justify-content: space-between; align-items: center; padding: 1.5rem 2rem; cursor: pointer; margin: 0; width: 100%; box-sizing: border-box;">
                                 <h3 style="font-weight: 900; color: #1e293b; display: flex; align-items: center; gap: 0.75rem; margin: 0; font-size: 1.1rem;">
                                     <i data-lucide="calendar" style="color: #4f46e5;"></i> My Learning Schedule
                                 </h3>
@@ -1507,9 +1507,9 @@ export const UI = {
                                 </div>
                             </label>
                             <input type="checkbox" id="toggle-timetable" class="collapse-toggle" style="display: none;" checked>
-                            <div class="collapse-content" style="padding: 0 2rem 2rem;">
-                                <div id="timetable-visualizer-container" style="min-height: 250px; background: #f8fafc; border-radius: 20px; display: flex; align-items: center; justify-content: center; border: 2px dashed #e2e8f0;">
-                                    <div style="text-align: center; color: #94a3b8;">
+                            <div class="collapse-content" style="padding: 0 2rem 2rem; width: 100%; box-sizing: border-box;">
+                                <div id="timetable-visualizer-container" style="min-height: 250px; background: #f8fafc; border-radius: 20px; display: flex; align-items: center; justify-content: center; border: 2px dashed #e2e8f0; width: 100%; box-sizing: border-box;">
+                                    <div style="text-align: center; color: #94a3b8; padding: 2rem 1rem;">
                                         <i data-lucide="loader" class="spin" style="width: 30px; height: 30px; margin-bottom: 1rem;"></i>
                                         <p style="font-weight: 600;">Assembling your timetable...</p>
                                     </div>
@@ -1520,21 +1520,21 @@ export const UI = {
                     </div>
 
                     <!-- ─── Right Column: Standings & Finance ─── -->
-                    <div style="display: flex; flex-direction: column; gap: 2rem;">
+                    <div style="display: flex; flex-direction: column; gap: 2rem; min-width: 0; max-width: 100%; box-sizing: border-box;">
                         
                         <!-- Financial Shield (Stacked Container) -->
-                        <div class="card" style="background: ${hasFeeBalance ? '#fef2f2' : '#ecfdf5'}; border-radius: 30px; padding: 2rem; border: 1px solid ${hasFeeBalance ? '#fee2e2' : '#d1fae5'}; display: flex; flex-direction: column; gap: 1rem; align-items: center; text-align: center; box-shadow: var(--shadow-md);">
+                        <div class="card" style="background: ${hasFeeBalance ? '#fef2f2' : '#ecfdf5'}; border-radius: 30px; padding: clamp(1.25rem, 5vw, 2rem); border: 1px solid ${hasFeeBalance ? '#fee2e2' : '#d1fae5'}; display: flex; flex-direction: column; gap: 1rem; align-items: center; text-align: center; box-shadow: var(--shadow-md); max-width: 100%; box-sizing: border-box;">
                             <div style="width: 60px; height: 60px; border-radius: 20px; background: ${hasFeeBalance ? '#ef4444' : '#10b981'}; color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 16px -4px ${hasFeeBalance ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'};">
                                 <i data-lucide="${hasFeeBalance ? 'alert-circle' : 'shield-check'}" style="width: 30px; height: 30px;"></i>
                             </div>
-                            <div>
+                            <div style="width: 100%;">
                                 <h4 style="font-weight: 900; color: ${hasFeeBalance ? '#991b1b' : '#065f46'}; margin: 0; font-size: 1.1rem;">Financial Status</h4>
-                                <div style="font-size: 2rem; font-weight: 900; color: #1e293b; margin-top: 0.5rem;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
+                                <div style="font-size: clamp(1.5rem, 6vw, 2.2rem); font-weight: 900; color: #1e293b; margin-top: 0.5rem; word-break: break-all;">₦${(analytics.fee_balance || 0).toLocaleString()}</div>
                                 <p style="font-size: 0.75rem; color: ${hasFeeBalance ? '#b91c1c' : '#065f46'}; font-weight: 700; margin-top: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em;">${hasFeeBalance ? 'Outstanding Balance' : 'Account Cleared'}</p>
                             </div>
                             
                             ${hasFeeBalance ? `
-                                <button class="btn btn-primary w-100" onclick="UI.handlePaystackPayment()" style="margin-top: 1rem; background: #ef4444; color: white; border: none; border-radius: 12px; height: 40px; font-weight: 800; font-size: 0.8rem;">
+                                <button class="btn btn-primary w-100" onclick="UI.handlePaystackPayment()" style="margin-top: 1rem; background: #ef4444; color: white; border: none; border-radius: 12px; height: 40px; font-weight: 800; font-size: 0.8rem; width: 100%;">
                                     Pay Now
                                 </button>
                             ` : ''}
@@ -1630,6 +1630,8 @@ export const UI = {
             <style>
                 .tt-wrapper {
                     width: 100%;
+                    max-width: 100%;
+                    box-sizing: border-box;
                 }
                 .tt-tabs {
                     display: none;
@@ -1663,14 +1665,16 @@ export const UI = {
                 }
                 .tt-grid {
                     display: grid;
-                    grid-template-columns: repeat(5, 1fr);
-                    gap: 1rem;
+                    grid-template-columns: repeat(5, minmax(0, 1fr));
+                    gap: 0.75rem;
                     width: 100%;
+                    box-sizing: border-box;
                 }
                 .tt-column {
                     display: flex;
                     flex-direction: column;
                     gap: 0.75rem;
+                    min-width: 0;
                 }
                 .tt-day-header {
                     font-weight: 900;
@@ -1682,10 +1686,13 @@ export const UI = {
                     text-align: center;
                     border-bottom: 2px solid #eef2ff;
                     padding-bottom: 6px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
                 .tt-card {
                     background: white;
-                    padding: 1rem;
+                    padding: 0.75rem;
                     border-radius: 16px;
                     border: 1px solid #f1f5f9;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.02);
@@ -1695,6 +1702,8 @@ export const UI = {
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
+                    min-width: 0;
+                    box-sizing: border-box;
                 }
                 .tt-card:hover {
                     transform: translateY(-2px);
@@ -1703,8 +1712,9 @@ export const UI = {
                 .tt-subject {
                     font-weight: 850;
                     color: #1e293b;
-                    font-size: 0.85rem;
+                    font-size: 0.8rem;
                     line-height: 1.3;
+                    word-break: break-word;
                 }
                 .tt-period {
                     font-size: 0.7rem;
@@ -1714,6 +1724,9 @@ export const UI = {
                     display: flex;
                     align-items: center;
                     gap: 0.25rem;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
                 .tt-teacher {
                     font-size: 0.65rem;
@@ -1722,11 +1735,14 @@ export const UI = {
                     margin-top: 6px;
                     border-top: 1px dashed #f1f5f9;
                     padding-top: 6px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
                 .tt-card-badge {
                     display: none;
                 }
-                @media (max-width: 767px) {
+                @media (max-width: 1200px) {
                     .tt-tabs {
                         display: flex;
                     }
@@ -1755,6 +1771,7 @@ export const UI = {
                     }
                     .tt-card-main {
                         flex: 1;
+                        min-width: 0;
                     }
                     .tt-card-badge {
                         display: block;
