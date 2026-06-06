@@ -94,6 +94,21 @@ const getBaseClassName = (name) => {
     return base.replace(/([0-9])\s*[A-Z]$/i, '$1').trim();
 };
 
+const doesAssignmentMatchStream = (className, stream) => {
+    if (!stream) return true;
+    const nameLower = (className || '').toLowerCase();
+    const streamLower = stream.toLowerCase();
+    
+    // If the class name contains another stream's name, it doesn't match
+    const otherStreams = ['arts', 'science', 'commercial'].filter(s => s !== streamLower);
+    for (const other of otherStreams) {
+        if (nameLower.includes(other)) {
+            return false;
+        }
+    }
+    return true;
+};
+
 export const UI = {
     get contentArea() { return document.getElementById('content-area'); },
     get viewTitle() { return document.getElementById('view-title'); },
@@ -14550,14 +14565,21 @@ export const UI = {
                 { name: 'SSS 3', stream: 'Science' }
             ];
             
-            const getDbClassName = (targetName, dbClasses) => {
+            const getDbClassName = (targetName, stream, dbClasses) => {
                 const targetNormalized = getBaseClassName(targetName).toLowerCase();
+                if (stream) {
+                    const match = dbClasses.find(c => 
+                        getBaseClassName(c.name).toLowerCase() === targetNormalized &&
+                        c.name.toLowerCase().includes(stream.toLowerCase())
+                    );
+                    if (match) return match.name;
+                }
                 const match = dbClasses.find(c => getBaseClassName(c.name).toLowerCase() === targetNormalized);
                 return match ? match.name : targetName;
             };
             
             const rowsConfig = targetRows.map(tr => ({
-                dbName: getDbClassName(tr.name, classes),
+                dbName: getDbClassName(tr.name, tr.stream, classes),
                 stream: tr.stream,
                 label: tr.name
             }));
@@ -14567,7 +14589,11 @@ export const UI = {
             for (const rc of rowsConfig) {
                 const classKey = `${rc.dbName}_${rc.stream || ''}`;
                 let filtered = rc.stream 
-                    ? assignments.filter(a => getBaseClassName(a.class_name).toLowerCase() === getBaseClassName(rc.dbName).toLowerCase() && (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === rc.stream.toLowerCase()))
+                    ? assignments.filter(a => 
+                        getBaseClassName(a.class_name).toLowerCase() === getBaseClassName(rc.dbName).toLowerCase() && 
+                        doesAssignmentMatchStream(a.class_name, rc.stream) &&
+                        (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === rc.stream.toLowerCase())
+                      )
                     : assignments.filter(a => getBaseClassName(a.class_name).toLowerCase() === getBaseClassName(rc.dbName).toLowerCase());
                 
                 // Unique by subject_id to avoid duplicates from multiple arms
@@ -14648,7 +14674,8 @@ export const UI = {
             };
 
             const isGeneralSubject = (assignment) => {
-                return !assignment.specialization || assignment.specialization === 'Common Subject';
+                const spec = (assignment.specialization || '').trim().toLowerCase();
+                return !spec || spec === 'common subject' || spec === 'general' || spec === 'common';
             };
 
             const canAssign = (classKey, day, period, assignment, maxPerDay, maxConsecutive) => {
@@ -15261,9 +15288,10 @@ export const UI = {
             
             // Filter assignments based on selected stream/specialization
             const classAssignments = stream ? assignments.filter(a => 
-                !a.specialization || 
-                a.specialization === 'Common Subject' || 
-                a.specialization.toLowerCase() === stream.toLowerCase()
+                doesAssignmentMatchStream(a.class_name, stream) &&
+                (!a.specialization || 
+                 a.specialization === 'Common Subject' || 
+                 a.specialization.toLowerCase() === stream.toLowerCase())
             ) : assignments;
 
             const classSubjectIds = new Set(classAssignments.map(a => a.subject_id));
@@ -15453,6 +15481,17 @@ export const UI = {
 
         for (const [key, list] of Object.entries(scheduleMap)) {
             if (list.length > 1) {
+                // Ignore joint/merged classes: same base class and same subject taught by the same teacher
+                const firstBase = getBaseClassName(list[0].class_name).toLowerCase();
+                const firstSub = list[0].subject_id;
+                const isJointClass = list.every(item => 
+                    getBaseClassName(item.class_name).toLowerCase() === firstBase && 
+                    item.subject_id === firstSub
+                );
+                if (isJointClass) {
+                    continue;
+                }
+
                 const [day, periodStr, teacherId] = key.split('_');
                 const periodNum = parseInt(periodStr.substring(1));
                 const teacherName = profileMap[teacherId] || 'Unknown';
@@ -15497,7 +15536,11 @@ export const UI = {
             const classLabel = tr.label;
             
             let classAss = tr.stream 
-                ? assignments.filter(a => getBaseClassName(a.class_name).toLowerCase() === getBaseClassName(tr.name).toLowerCase() && (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === tr.stream.toLowerCase()))
+                ? assignments.filter(a => 
+                    getBaseClassName(a.class_name).toLowerCase() === getBaseClassName(tr.name).toLowerCase() && 
+                    doesAssignmentMatchStream(a.class_name, tr.stream) &&
+                    (!a.specialization || a.specialization === 'Common Subject' || a.specialization.toLowerCase() === tr.stream.toLowerCase())
+                  )
                 : assignments.filter(a => getBaseClassName(a.class_name).toLowerCase() === getBaseClassName(tr.name).toLowerCase());
 
             // Unique by subject_id to avoid duplicates from multiple arms
