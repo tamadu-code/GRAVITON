@@ -14606,7 +14606,8 @@ export const UI = {
                     
                 classAssignments[classKey] = filtered.map(a => {
                     const subObj = subjects.find(s => s.id === a.subject_id);
-                    const freq = (subObj && subObj.credits) ? parseInt(subObj.credits) : constraints.defaultFrequency;
+                    let freq = (subObj && subObj.credits) ? parseInt(subObj.credits) : constraints.defaultFrequency;
+                    if (freq < 2) freq = 2; // Force at least 2 times a week
                     return {
                         subject_id: a.subject_id,
                         teacher_id: a.teacher_id,
@@ -14627,7 +14628,15 @@ export const UI = {
                 for (const day of days) {
                     board[classKey][day] = {};
                     for (let period = 1; period <= 8; period++) {
-                        board[classKey][day][period] = null;
+                        const isThursday = day.toLowerCase() === 'thursday';
+                        const isFriday = day.toLowerCase() === 'friday';
+                        if (isThursday && period === 5) {
+                            board[classKey][day][period] = { subject_id: 'FASTING', teacher_id: null, isSpecialSlot: true };
+                        } else if (isFriday && (period === 3 || period === 4)) {
+                            board[classKey][day][period] = { subject_id: 'SPORTS', teacher_id: null, isSpecialSlot: true };
+                        } else {
+                            board[classKey][day][period] = null;
+                        }
                     }
                 }
             }
@@ -15003,7 +15012,7 @@ export const UI = {
                 for (const day of days) {
                     for (let period = 1; period <= 8; period++) {
                         const entry = board[classKey][day][period];
-                        if (entry) {
+                        if (entry && !entry.isSpecialSlot) {
                             output.push({
                                 class_name: rc.dbName,
                                 sub_class: rc.stream || null,
@@ -15069,8 +15078,8 @@ export const UI = {
                         
                         <div style="margin-bottom: 1.5rem;">
                             <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Default subject weekly frequency</label>
-                            <input id="auto-tt-freq" type="number" class="input" value="3" min="1" max="10" style="width: 100%; height: 48px; border-radius: 10px; background: #f8fafc; font-weight: 700; padding: 0 1rem;">
-                            <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600; margin-top: 0.25rem; display: block;">Used for subjects that do not have custom credits/hours defined.</span>
+                            <input id="auto-tt-freq" type="number" class="input" value="3" min="2" max="10" style="width: 100%; height: 48px; border-radius: 10px; background: #f8fafc; font-weight: 700; padding: 0 1rem;">
+                            <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600; margin-top: 0.25rem; display: block;">Used for subjects that do not have custom credits/hours defined. (Must be at least 2).</span>
                         </div>
                         
                         <div style="margin-bottom: 1.5rem; border-top: 1px solid #e2e8f0; padding-top: 1.5rem;">
