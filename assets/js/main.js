@@ -266,7 +266,12 @@ async function loadAuthenticatedApp(authUser) {
         else if (authUser.email.toLowerCase().includes('parent')) detectedRole = 'Parent';
         
         const allowedRoles = ['Admin', 'Teacher', 'Student', 'Parent', 'Staff'];
-        if (!allowedRoles.includes(detectedRole)) detectedRole = 'Student';
+        const matchedRole = allowedRoles.find(r => r.toLowerCase() === detectedRole.toLowerCase());
+        if (matchedRole) {
+            detectedRole = matchedRole;
+        } else {
+            detectedRole = 'Student';
+        }
 
         profile = {
             id: authUser.id,
@@ -279,15 +284,28 @@ async function loadAuthenticatedApp(authUser) {
         };
 
         // Self-provision the missing profile row in Supabase (await to prevent race with push subscriptions)
+        let isSynced = 0;
         const client = getSupabase();
         if (client) {
             try {
                 const { error } = await client.from('profiles').upsert(profile);
-                if (error) console.warn('Automatic profile provisioning deferred:', error.message);
-                else console.log('Profile successfully self-provisioned for:', authUser.email);
+                if (error) {
+                    console.warn('Automatic profile provisioning deferred:', error.message);
+                } else {
+                    console.log('Profile successfully self-provisioned for:', authUser.email);
+                    isSynced = 1;
+                }
             } catch (provisionErr) {
                 console.warn('Profile provisioning error:', provisionErr);
             }
+        }
+
+        // Cache in local IndexedDB so it's available offline immediately
+        try {
+            await db.profiles.put({ ...profile, is_synced: isSynced });
+            console.log('Profile cached locally in IndexedDB.');
+        } catch (dbErr) {
+            console.warn('Failed to cache self-provisioned profile locally:', dbErr);
         }
     }
 

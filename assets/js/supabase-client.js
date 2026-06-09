@@ -78,7 +78,7 @@ export async function syncToCloud() {
                 
                 // Table-level field whitelists
                 const whitelist = {
-                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'employment_type', 'assigned_id', 'updated_at'],
+                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'employment_type', 'assigned_id', 'passport', 'phone', 'department', 'qualification', 'updated_at'],
                     students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'passport_url', 'updated_at'],
                     classes: ['id', 'name', 'level', 'updated_at'],
                     subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
@@ -129,6 +129,12 @@ export async function syncToCloud() {
                             } else {
                                 sanitized.role = 'Student'; // Default to safest
                             }
+
+                            // Map IndexedDB 'qualifications' (plural) to DB 'qualification' (singular)
+                            if (sanitized.qualifications !== undefined && sanitized.qualification === undefined) {
+                                sanitized.qualification = sanitized.qualifications;
+                            }
+                            delete sanitized.qualifications;
                         }
 
                         // Sanitize duty_assignments 'NONE' staff_id to null
@@ -397,6 +403,15 @@ export async function syncFromCloud(forceAll = false) {
                             }
                             
                         let processedData = validData;
+
+                            // --- Profile field mapping (cloud → local) ---
+                            // Map DB 'qualification' (singular) to IndexedDB 'qualifications' (plural)
+                            if (table === 'profiles') {
+                                processedData = validData.map(p => ({
+                                    ...p,
+                                    qualifications: p.qualification || p.qualifications || null
+                                }));
+                            }
 
                             // --- 1A: API-layer null normalisation for cbt_questions ---
                             // Coerce null option fields to '' before writing to IndexedDB
@@ -686,9 +701,33 @@ export async function getCurrentSession() {
 
 export async function getUserProfile(userId) {
     const client = getSupabase();
-    if (!client) return null;
-    const { data } = await client.from('profiles').select('*').eq('id', userId).maybeSingle();
-    return data;
+    if (client && navigator.onLine) {
+        try {
+            const { data, error } = await client.from('profiles').select('*').eq('id', userId).maybeSingle();
+            if (!error && data) {
+                // Cache the fetched profile locally in Dexie
+                await db.profiles.put({ ...data, is_synced: 1 });
+                return data;
+            } else if (error) {
+                console.warn('[Auth] Supabase profile fetch returned error, trying local DB:', error);
+            }
+        } catch (err) {
+            console.warn('[Auth] Supabase profile fetch failed, trying local DB:', err);
+        }
+    }
+    
+    // Offline fallback: Fetch from local Dexie database
+    try {
+        const localProfile = await db.profiles.get(userId);
+        if (localProfile) {
+            console.log('[Auth] Retrieved user profile from local IndexedDB:', localProfile);
+            return localProfile;
+        }
+    } catch (dbErr) {
+        console.warn('[Auth] IndexedDB profile lookup failed:', dbErr);
+    }
+    
+    return null;
 }
 
 export async function registerUser(email, password, fullName, role) {

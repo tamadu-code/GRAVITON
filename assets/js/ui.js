@@ -5338,7 +5338,7 @@ export const UI = {
                 <label for="toggle-std-${s.student_id}" class="glass-collapse-header" style="padding: 1rem;">
                     <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1; overflow: hidden;">
                         <div style="width: 44px; height: 44px; border-radius: 12px; background: ${s.is_active !== false ? '#eff6ff' : '#fee2e2'}; display: flex; align-items: center; justify-content: center; border: 1px solid ${s.is_active !== false ? '#dbeafe' : '#fecaca'}; flex-shrink: 0;">
-                             <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${s.name}" style="width: 34px; height: 34px;" alt="${s.name}">
+                             <img src="${s.passport_url || s.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.name}`}" style="width: 34px; height: 34px; object-fit: cover; border-radius: 8px;" alt="${s.name}">
                         </div>
                         <div style="flex: 1; overflow: hidden;">
                             <div style="font-weight: 800; color: #1e293b; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.name}</div>
@@ -8869,7 +8869,7 @@ export const UI = {
                         <div class="faculty-card" data-name="${(t.full_name || '').toLowerCase()}" data-email="${(t.email || '').toLowerCase()}" onclick="UI.renderStaffDetail('${t.id}')" style="cursor: pointer; background: white; border-radius: 20px; padding: 1.75rem; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm); transition: all 0.3s ease; position: relative; overflow: hidden;">
                             <div style="display: flex; gap: 1.25rem; align-items: flex-start;">
                                 <div style="width: 60px; height: 60px; border-radius: 18px; overflow: hidden; background: #f1f5f9; flex-shrink: 0; border: 3px solid #e0e7ff;">
-                                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${t.full_name || t.id}" alt="${t.full_name}" style="width: 100%; height: 100%; object-fit: cover;">
+                                    <img src="${t.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${t.full_name || t.id}`}" alt="${t.full_name}" style="width: 100%; height: 100%; object-fit: cover;">
                                 </div>
                                 <div style="flex: 1; min-width: 0;">
                                     <h3 style="font-weight: 800; color: #1e293b; font-size: 1.1rem; margin: 0 0 0.25rem 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.full_name || 'Unnamed Staff'}</h3>
@@ -8904,7 +8904,7 @@ export const UI = {
                                 <div style="background: #f8fafc; border-radius: 16px; padding: 1.25rem; border: 1px solid #e2e8f0; opacity: 0.7;">
                                     <div style="display: flex; align-items: center; gap: 1rem;">
                                         <div style="width: 40px; height: 40px; border-radius: 12px; overflow: hidden; background: #e2e8f0;">
-                                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${t.full_name || t.id}" style="width: 100%; height: 100%;">
+                                            <img src="${t.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${t.full_name || t.id}`}" style="width: 100%; height: 100%; object-fit: cover;">
                                         </div>
                                         <div>
                                             <div style="font-weight: 700; color: #64748b;">${t.full_name || 'Unknown'}</div>
@@ -15106,7 +15106,8 @@ export const UI = {
                                 day_of_week: day,
                                 period_number: period,
                                 subject_id: entry.subject_id,
-                                teacher_id: entry.teacher_id
+                                teacher_id: entry.teacher_id,
+                                is_locked: entry.isLocked ? 1 : 0
                             });
                         }
                     }
@@ -15139,7 +15140,16 @@ export const UI = {
                 const teachers = await db.profiles.filter(p => (p.role || '').toLowerCase() === 'teacher').toArray();
                 const teachersOptionHtml = teachers.map(t => `<option value="${t.id}">${t.full_name || t.name || 'Unknown'}</option>`).join('');
                 
-                let ptConstraints = [];
+                const allSettings = await db.settings.toArray();
+                const dbSettings = {};
+                allSettings.forEach(s => dbSettings[s.key] = s.value);
+                
+                const savedMaxDay = parseInt(dbSettings.timetable_maxPerDay || '1');
+                const savedMaxConsec = parseInt(dbSettings.timetable_maxConsecutive || '3');
+                const savedFreq = parseInt(dbSettings.timetable_defaultFrequency || '3');
+                const savedPtConstraints = JSON.parse(dbSettings.timetable_partTimeConstraints || '[]');
+                
+                let ptConstraints = [...savedPtConstraints];
                 
                 const modalHtml = `
                     <div style="padding: 0.5rem; max-height: 70vh; overflow-y: auto;">
@@ -15148,24 +15158,24 @@ export const UI = {
                         <div style="margin-bottom: 1.25rem;">
                             <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Max periods per subject per day</label>
                             <select id="auto-tt-max-day" class="input" style="width: 100%; height: 48px; border-radius: 10px; background: #f8fafc; font-weight: 700;">
-                                <option value="1" selected>1 Period per Day (Standard)</option>
-                                <option value="2">Up to 2 Periods per Day (Double Periods)</option>
+                                <option value="1" ${savedMaxDay === 1 ? 'selected' : ''}>1 Period per Day (Standard)</option>
+                                <option value="2" ${savedMaxDay === 2 ? 'selected' : ''}>Up to 2 Periods per Day (Double Periods)</option>
                             </select>
                         </div>
                         
                         <div style="margin-bottom: 1.25rem;">
                             <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Max consecutive periods per teacher</label>
                             <select id="auto-tt-max-consec" class="input" style="width: 100%; height: 48px; border-radius: 10px; background: #f8fafc; font-weight: 700;">
-                                <option value="2">Max 2 Periods consecutive</option>
-                                <option value="3" selected>Max 3 Periods consecutive (Default)</option>
-                                <option value="4">Max 4 Periods consecutive</option>
-                                <option value="5">Max 5 Periods consecutive</option>
+                                <option value="2" ${savedMaxConsec === 2 ? 'selected' : ''}>Max 2 Periods consecutive</option>
+                                <option value="3" ${savedMaxConsec === 3 ? 'selected' : ''}>Max 3 Periods consecutive (Default)</option>
+                                <option value="4" ${savedMaxConsec === 4 ? 'selected' : ''}>Max 4 Periods consecutive</option>
+                                <option value="5" ${savedMaxConsec === 5 ? 'selected' : ''}>Max 5 Periods consecutive</option>
                             </select>
                         </div>
                         
                         <div style="margin-bottom: 1.5rem;">
                             <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Default subject weekly frequency</label>
-                            <input id="auto-tt-freq" type="number" class="input" value="3" min="2" max="10" style="width: 100%; height: 48px; border-radius: 10px; background: #f8fafc; font-weight: 700; padding: 0 1rem;">
+                            <input id="auto-tt-freq" type="number" class="input" value="${savedFreq}" min="2" max="10" style="width: 100%; height: 48px; border-radius: 10px; background: #f8fafc; font-weight: 700; padding: 0 1rem;">
                             <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 600; margin-top: 0.25rem; display: block;">Used for subjects that do not have custom credits/hours defined. (Must be at least 2).</span>
                         </div>
                         
@@ -15325,6 +15335,8 @@ export const UI = {
                         Notifications.show(`Added availability constraint for ${tName}`, 'success');
                     };
                 }
+                
+                renderPtConstraints();
             };
         }
 
@@ -16129,6 +16141,9 @@ export const UI = {
         const settings = {};
         allSettings.forEach(s => settings[s.key] = s.value);
 
+        const teachers = await db.profiles.filter(p => (p.role || '').toLowerCase() === 'teacher').toArray();
+        const teachersOptionHtml = teachers.map(t => `<option value="${t.id}">${t.full_name || t.name || 'Unknown'}</option>`).join('');
+
         // Default values if not set
         const config = {
             schoolName: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
@@ -16146,8 +16161,14 @@ export const UI = {
             themeColor: settings.themeColor || '#060495',
             holidays: settings.holidays || '',
             termStatus: settings.termStatus || 'Active',
-            vapidPublicKey: settings.vapid_public_key || localStorage.getItem('vapid_public_key') || ''
+            vapidPublicKey: settings.vapid_public_key || localStorage.getItem('vapid_public_key') || '',
+            ttMaxDay: parseInt(settings.timetable_maxPerDay || '1'),
+            ttMaxConsec: parseInt(settings.timetable_maxConsecutive || '3'),
+            ttFreq: parseInt(settings.timetable_defaultFrequency || '3'),
+            ttPartTimeConstraints: settings.timetable_partTimeConstraints || '[]'
         };
+
+        this.timetablePartTimeConstraints = JSON.parse(config.ttPartTimeConstraints);
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="max-width: 900px; margin: 0 auto;">
@@ -16393,6 +16414,83 @@ export const UI = {
                         </button>
                     </div>
 
+                <!-- Section: Timetable Auto-Generation Settings -->
+                <div class="glass-collapse-card">
+                    <input type="checkbox" id="toggle-settings-timetable" class="glass-collapse-checkbox" checked>
+                    <label for="toggle-settings-timetable" class="glass-collapse-header">
+                        <span class="glass-collapse-title"><i data-lucide="cpu" style="width: 18px; color: #f59e0b;"></i> Timetable Auto-Generation Settings</span>
+                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                    </label>
+                    <div class="glass-collapse-content">
+                        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.5rem;">Configure the institutional-wide constraints for the timetable solver engine.</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
+                            <div class="form-group">
+                                <label>Max Periods per Subject per Day</label>
+                                <select id="set-tt-max-day" class="input" style="font-weight: 700;">
+                                    <option value="1" ${config.ttMaxDay === 1 ? 'selected' : ''}>1 Period per Day (Standard)</option>
+                                    <option value="2" ${config.ttMaxDay === 2 ? 'selected' : ''}>Up to 2 Periods per Day (Double Periods)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Max Consecutive Periods per Teacher</label>
+                                <select id="set-tt-max-consec" class="input" style="font-weight: 700;">
+                                    <option value="2" ${config.ttMaxConsec === 2 ? 'selected' : ''}>Max 2 Periods</option>
+                                    <option value="3" ${config.ttMaxConsec === 3 ? 'selected' : ''}>Max 3 Periods (Default)</option>
+                                    <option value="4" ${config.ttMaxConsec === 4 ? 'selected' : ''}>Max 4 Periods</option>
+                                    <option value="5" ${config.ttMaxConsec === 5 ? 'selected' : ''}>Max 5 Periods</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Default Subject Weekly Frequency</label>
+                                <input type="number" id="set-tt-freq" class="input" value="${config.ttFreq}" min="2" max="10" style="font-weight: 700;">
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 1.5rem; border-top: 1px solid #e2e8f0; padding-top: 1.5rem;">
+                            <h4 style="margin-bottom: 1rem; color: #1e293b; font-weight: 800; font-size: 0.85rem; text-transform: uppercase;">Part-Time Teacher Availability Constraints</h4>
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+                                <div class="form-group" style="margin-bottom: 0.75rem;">
+                                    <label style="font-size: 0.7rem; font-weight: 700; color: #475569;">Select Teacher</label>
+                                    <select id="pt-teacher-select-config" class="input" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: white;">
+                                        <option value="">-- Choose Teacher --</option>
+                                        ${teachersOptionHtml}
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0.75rem;">
+                                    <label style="font-size: 0.7rem; font-weight: 700; color: #475569; display: block; margin-bottom: 0.25rem;">Available Days</label>
+                                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                        ${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => `
+                                            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer;">
+                                                <input type="checkbox" class="pt-day-checkbox-config" value="${day}" checked> ${day.substring(0,3)}
+                                            </label>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+                                    <div class="form-group">
+                                        <label style="font-size: 0.7rem; font-weight: 700; color: #475569;">Start Period</label>
+                                        <select id="pt-start-period-config" class="input" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: white;">
+                                            ${[1,2,3,4,5,6,7,8].map(p => `<option value="${p}">${p}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.7rem; font-weight: 700; color: #475569;">End Period</label>
+                                        <select id="pt-end-period-config" class="input" style="width: 100%; height: 40px; border-radius: 8px; font-weight: 700; background: white;">
+                                            ${[1,2,3,4,5,6,7,8].map(p => `<option value="${p}" ${p === 8 ? 'selected' : ''}>${p}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+                                <button type="button" id="btn-add-pt-config" class="btn" style="width: 100%; height: 38px; border-radius: 8px; background: #2563eb; color: white; border: none; font-weight: 700; font-size: 0.75rem; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;">
+                                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Add Constraint
+                                </button>
+                            </div>
+                            
+                            <div style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem;">Active Constraints</div>
+                            <div id="pt-constraints-list-config" style="max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 0.5rem;">
+                                <div style="color: #94a3b8; font-style: italic; font-size: 0.75rem; text-align: center; padding: 0.5rem;">No active constraints defined.</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -16541,6 +16639,82 @@ export const UI = {
                 }
             };
         }
+
+        // Part-Time Availability Constraints Wiring in System Configuration
+        const renderPtConstraintsConfig = () => {
+            const listContainer = document.getElementById('pt-constraints-list-config');
+            if (!listContainer) return;
+            if (this.timetablePartTimeConstraints.length === 0) {
+                listContainer.innerHTML = `<div style="color: #94a3b8; font-style: italic; font-size: 0.75rem; text-align: center; padding: 0.5rem;">No active constraints defined.</div>`;
+                return;
+            }
+            listContainer.innerHTML = this.timetablePartTimeConstraints.map((c, idx) => `
+                <div style="display: flex; align-items: center; justify-content: space-between; background: white; padding: 0.5rem 0.75rem; border-radius: 8px; border-left: 3px solid #f59e0b; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+                    <div style="flex: 1; min-width: 0; padding-right: 8px; text-align: left;">
+                        <div style="font-weight: 700; color: #334155; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.teacher_name}</div>
+                        <div style="font-size: 0.65rem; color: #64748b; margin-top: 1px;">
+                            Days: ${c.days.map(d => d.substring(0,3)).join(', ')} | Periods: ${c.start_period}-${c.end_period}
+                        </div>
+                    </div>
+                    <button type="button" class="btn-remove-pt-config" data-index="${idx}" style="background: transparent; color: #ef4444; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
+                </div>
+            `).join('');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            
+            // Bind deletes
+            document.querySelectorAll('.btn-remove-pt-config').forEach(btn => {
+                btn.onclick = () => {
+                    const index = parseInt(btn.dataset.index);
+                    this.timetablePartTimeConstraints.splice(index, 1);
+                    renderPtConstraintsConfig();
+                };
+            });
+        };
+
+        const btnAddPtConfig = document.getElementById('btn-add-pt-config');
+        if (btnAddPtConfig) {
+            btnAddPtConfig.onclick = () => {
+                const ptTeacherSelect = document.getElementById('pt-teacher-select-config');
+                const tId = ptTeacherSelect.value;
+                const tName = ptTeacherSelect.options[ptTeacherSelect.selectedIndex]?.text;
+                if (!tId) {
+                    return Notifications.show('Please select a teacher', 'warning');
+                }
+                
+                const checkedDays = [];
+                document.querySelectorAll('.pt-day-checkbox-config:checked').forEach(cb => {
+                    checkedDays.push(cb.value);
+                });
+                if (checkedDays.length === 0) {
+                    return Notifications.show('Please select at least one day', 'warning');
+                }
+                
+                const startP = parseInt(document.getElementById('pt-start-period-config').value);
+                const endP = parseInt(document.getElementById('pt-end-period-config').value);
+                if (startP > endP) {
+                    return Notifications.show('Start period cannot be after End period', 'warning');
+                }
+                
+                const existingIdx = this.timetablePartTimeConstraints.findIndex(c => c.teacher_id === tId);
+                const newConstraint = {
+                    teacher_id: tId,
+                    teacher_name: tName,
+                    days: checkedDays,
+                    start_period: startP,
+                    end_period: endP
+                };
+                if (existingIdx >= 0) {
+                    this.timetablePartTimeConstraints[existingIdx] = newConstraint;
+                } else {
+                    this.timetablePartTimeConstraints.push(newConstraint);
+                }
+                
+                renderPtConstraintsConfig();
+                Notifications.show(`Added availability constraint for ${tName}`, 'success');
+            };
+        }
+
+        renderPtConstraintsConfig();
     },
 
     addClosedDay() {
@@ -16655,7 +16829,11 @@ export const UI = {
             { key: 'holidays', value: document.getElementById('set-school-holidays').value },
             { key: 'termStatus', value: document.getElementById('set-term-status').value },
             { key: 'termClosure', value: document.getElementById('set-term-closure').value },
-            { key: 'nextTermBegins', value: document.getElementById('set-next-term').value }
+            { key: 'nextTermBegins', value: document.getElementById('set-next-term').value },
+            { key: 'timetable_maxPerDay', value: document.getElementById('set-tt-max-day').value },
+            { key: 'timetable_maxConsecutive', value: document.getElementById('set-tt-max-consec').value },
+            { key: 'timetable_defaultFrequency', value: document.getElementById('set-tt-freq').value },
+            { key: 'timetable_partTimeConstraints', value: JSON.stringify(this.timetablePartTimeConstraints || []) }
         ];
 
         if (this.pendingSignature) {
