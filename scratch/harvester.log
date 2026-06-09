@@ -538,3 +538,6 @@
 2026-06-05 13:00:01 [INFO] Starting robust sync to Attendance System...
 2026-06-05 13:00:01 [INFO] Latest CSV: C:\Users\ELECTRO-TECH\Downloads\attendance_report_2026-05-20 (1).csv
 2026-06-05 13:00:03 [INFO] Loaded 212 students from cloud.
+2026-06-08 12:03:30 [INFO] Starting robust sync to Attendance System...
+2026-06-08 12:03:30 [INFO] Latest CSV: C:\Users\ELECTRO-TECH\Downloads\attendance_report_2026-05-20 (1).csv
+2026-06-08 12:03:30 [ERROR] Failed to load students: HTTPSConnectionPool(host='wuzliodvddzmhehffqfx.supabase.co', port=443): Max retries exceeded with url: /rest/v1/students?select=id,code&is_active=eq.true (Caused by NameResolutionError("HTTPSConnection(host='wuzliodvddzmhehffqfx.supabase.co', port=443): Failed to resolve 'wuzliodvddzmhehffqfx.supabase.co' ([Errno 11001] getaddrinfo failed)"))

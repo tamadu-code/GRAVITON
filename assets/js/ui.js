@@ -10773,6 +10773,7 @@ export const UI = {
 
         const q = {
             id: `Q${Math.random().toString(36).substr(2,7).toUpperCase()}`,
+            type: document.getElementById('q-type').value === 'fill' ? 'fill' : 'mcq',
             question_text: text,
             passage_text: document.getElementById('q-passage').value.trim(),
             option_a: document.getElementById('opt-a').value.trim(),
@@ -10995,19 +10996,31 @@ export const UI = {
                     });
                     await db.cbt_question_bank.put(bankQuestion);
 
-                    const opts = [
-                        { label: 'A', text: q.option_a, correct: q.correct_option === 'A' },
-                        { label: 'B', text: q.option_b, correct: q.correct_option === 'B' },
-                        { label: 'C', text: q.option_c, correct: q.correct_option === 'C' },
-                        { label: 'D', text: q.option_d, correct: q.correct_option === 'D' },
-                        { label: 'E', text: q.option_e, correct: q.correct_option === 'E' }
-                    ].filter(o => o.text).map(o => prepareForSync({
-                        id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
-                        question_id: qId,
-                        option_label: o.label,
-                        option_text: o.text,
-                        is_correct: o.correct ? 1 : 0
-                    }));
+                    let opts = [];
+                    const isFIB = q.type === 'fill' || q.question_type === 'fill_in_blank' || q.question_type === 'text' || ![q.option_a, q.option_b, q.option_c, q.option_d, q.option_e].some(o => o && o.toString().trim().length > 0);
+                    if (isFIB) {
+                        opts.push(prepareForSync({
+                            id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                            question_id: qId,
+                            option_label: 'A',
+                            option_text: q.fill_answer || q.correct_option || '',
+                            is_correct: 1
+                        }));
+                    } else {
+                        opts = [
+                            { label: 'A', text: q.option_a, correct: q.correct_option === 'A' },
+                            { label: 'B', text: q.option_b, correct: q.correct_option === 'B' },
+                            { label: 'C', text: q.option_c, correct: q.correct_option === 'C' },
+                            { label: 'D', text: q.option_d, correct: q.correct_option === 'D' },
+                            { label: 'E', text: q.option_e, correct: q.correct_option === 'E' }
+                        ].filter(o => o.text).map(o => prepareForSync({
+                            id: `OPT${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                            question_id: qId,
+                            option_label: o.label,
+                            option_text: o.text,
+                            is_correct: o.correct ? 1 : 0
+                        }));
+                    }
                     await db.cbt_options.where('question_id').equals(qId).delete();
                     await db.cbt_options.bulkPut(opts);
 
@@ -11337,7 +11350,7 @@ export const UI = {
                         option_d: isMCQ ? (options.find(o => o.option_label === 'D')?.option_text || '') : '',
                         option_e: isMCQ ? (options.find(o => o.option_label === 'E')?.option_text || '') : '',
                         correct_option: isMCQ 
-                            ? (options.find(o => o.is_correct === 1)?.option_label || 'A')
+                            ? (options.find(o => o.is_correct === 1 || o.is_correct === true || o.is_correct === '1' || o.is_correct === 'true')?.option_label || 'A')
                             : (options.find(o => o.option_label === 'A')?.option_text || 'TEXT')
                     });
                 }
@@ -11633,10 +11646,33 @@ export const UI = {
                 // --- RESUME MODE: Load Locked Questions ---
                 console.log(`[CBT] Resuming session with ${lockedIds.length} locked IDs.`);
                 
-                const { data: bankData } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').in('id', lockedIds);
+                let bankData = null;
+                if (supabase) {
+                    try {
+                        const { data } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').in('id', lockedIds);
+                        bankData = data;
+                    } catch (e) {}
+                }
+                
+                // Offline / local fallback for bank questions
+                if (!bankData || bankData.length === 0) {
+                    console.log(`[CBT Resume] Cloud bank empty or offline, fetching ${lockedIds.length} question(s) locally...`);
+                    const localQuestions = await db.cbt_question_bank.where('id').anyOf(lockedIds).toArray();
+                    const localData = [];
+                    for (const q of localQuestions) {
+                        const opts = await db.cbt_options.where('question_id').equals(q.id).toArray();
+                        localData.push({
+                            ...q,
+                            cbt_options: opts
+                        });
+                    }
+                    bankData = localData;
+                }
+
                 const legacyData = await db.cbt_questions.where('exam_id').equals(examId).toArray();
                 
                 const qMap = {};
+                const isOptionCorrect = (o) => o.is_correct === 1 || o.is_correct === true || o.is_correct === '1' || o.is_correct === 'true';
                 (bankData || []).forEach(q => {
                     const opts = q.cbt_options || [];
                     qMap[q.id] = {
@@ -11647,7 +11683,7 @@ export const UI = {
                         option_c: (opts.find(o => o.option_label === 'C') || {}).option_text || '',
                         option_d: (opts.find(o => o.option_label === 'D') || {}).option_text || '',
                         option_e: (opts.find(o => o.option_label === 'E') || {}).option_text || '',
-                        correct_option: (opts.find(o => o.is_correct) || {}).option_label || 'A'
+                        correct_option: (opts.find(isOptionCorrect) || {}).option_label || 'A'
                     };
                 });
                 legacyData.forEach(q => qMap[q.id] = q);
@@ -11657,10 +11693,12 @@ export const UI = {
                 if (exam.is_unified) {
                     console.log('[CBT] Unified exam detected. Loading sections...');
                     let sections = null;
-                    try {
-                        const { data } = await supabase.from('cbt_exam_sections').select('*').eq('exam_id', examId);
-                        sections = data;
-                    } catch (e) {}
+                    if (supabase) {
+                        try {
+                            const { data } = await supabase.from('cbt_exam_sections').select('*').eq('exam_id', examId);
+                            sections = data;
+                        } catch (e) {}
+                    }
                     // Local fallback for sections
                     if (!sections || sections.length === 0) {
                         sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
@@ -11700,10 +11738,12 @@ export const UI = {
 
                         // Try cloud first
                         let bankPool = [];
-                        try {
-                            const { data } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').eq('subject_id', sec.subject_id);
-                            bankPool = data || [];
-                        } catch (e) {}
+                        if (supabase) {
+                            try {
+                                const { data } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').eq('subject_id', sec.subject_id);
+                                bankPool = data || [];
+                            } catch (e) {}
+                        }
 
                         // Local fallback if cloud returned nothing
                         if (bankPool.length === 0) {
@@ -11740,6 +11780,7 @@ export const UI = {
                             console.log(`[CBT] Selected ${selected.length}/${bankPool.length} for ${secSubjectName}`);
                             finalQuestions.push(...selected.map(q => {
                                 const opts = q.cbt_options || [];
+                                const isOptionCorrect = (o) => o.is_correct === 1 || o.is_correct === true || o.is_correct === '1' || o.is_correct === 'true';
                                 return {
                                     ...q,
                                     subject_name: secSubjectName,
@@ -11749,18 +11790,31 @@ export const UI = {
                                     option_c: (opts.find(o => o.option_label === 'C') || {}).option_text || '',
                                     option_d: (opts.find(o => o.option_label === 'D') || {}).option_text || '',
                                     option_e: (opts.find(o => o.option_label === 'E') || {}).option_text || '',
-                                    correct_option: (opts.find(o => o.is_correct) || {}).option_label || 'A'
+                                    correct_option: (opts.find(isOptionCorrect) || {}).option_label || 'A'
                                 };
                             }));
                         }
                     }
                 } else {
                     let pool = [];
-                    const { data: relMap } = await supabase.from('cbt_exam_questions').select('question_id').eq('exam_id', examId);
+                    let relMap = null;
+                    if (supabase) {
+                        try {
+                            const { data } = await supabase.from('cbt_exam_questions').select('question_id').eq('exam_id', examId);
+                            relMap = data;
+                        } catch (e) {}
+                    }
                     if (relMap && relMap.length > 0) {
-                        const { data: bankData } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').in('id', relMap.map(m => m.question_id));
+                        let bankData = null;
+                        if (supabase) {
+                            try {
+                                const { data } = await supabase.from('cbt_question_bank').select('*, cbt_options(*)').in('id', relMap.map(m => m.question_id));
+                                bankData = data;
+                            } catch (e) {}
+                        }
                         pool = (bankData || []).map(q => {
                             const opts = q.cbt_options || [];
+                            const isOptionCorrect = (o) => o.is_correct === 1 || o.is_correct === true || o.is_correct === '1' || o.is_correct === 'true';
                             return {
                                 ...q,
                                 option_a: (opts.find(o => o.option_label === 'A') || {}).option_text || '',
@@ -11768,7 +11822,7 @@ export const UI = {
                                 option_c: (opts.find(o => o.option_label === 'C') || {}).option_text || '',
                                 option_d: (opts.find(o => o.option_label === 'D') || {}).option_text || '',
                                 option_e: (opts.find(o => o.option_label === 'E') || {}).option_text || '',
-                                correct_option: (opts.find(o => o.is_correct) || {}).option_label || 'A'
+                                correct_option: (opts.find(isOptionCorrect) || {}).option_label || 'A'
                             };
                         });
                     } else {
@@ -13020,7 +13074,7 @@ export const UI = {
                 const sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
                 
                 for (const sec of sections) {
-                    const secQuestions = this.currentQuestions.filter(q => q.section_id === sec.id);
+                    const secQuestions = this.currentQuestions.filter(q => q.section_id === sec.id || q.subject_id === sec.subject_id);
                     if (secQuestions.length === 0) continue;
 
                     let secRawScore = 0;
@@ -13501,7 +13555,7 @@ export const UI = {
                         q.option_c = (opts.find(o => o.option_label === 'C') || {}).option_text || '';
                         q.option_d = (opts.find(o => o.option_label === 'D') || {}).option_text || '';
                         q.option_e = (opts.find(o => o.option_label === 'E') || {}).option_text || '';
-                        q.correct_option = (opts.find(o => o.is_correct) || {}).option_label || 'A';
+                        q.correct_option = (opts.find(o => o.is_correct === 1 || o.is_correct === true || o.is_correct === '1' || o.is_correct === 'true') || {}).option_label || 'A';
                     }
                     
                     const qMap = {};
@@ -13675,8 +13729,8 @@ export const UI = {
             matches.push({ index: m.index, markerLength: m[0].length, number: m[1], type: 'question' });
         }
 
-        // 2. Find all passage markers
-        const passageRegex = /(?:\n|^)\s*(?:PASSAGE|READ THE PASSAGE|\[PASSAGE\])(?:\s+\d+)?\s*:?\s*/gi;
+        // 2. Find all passage markers (expanded to match common headers and question ranges)
+        const passageRegex = /(?:\n|^)\s*(?:PASSAGE|READ THE PASSAGE|\[PASSAGE\]|COMPREHENSION|DIAGRAM|FIGURE|GRAPH|MAP|Study the|Read the|Use the|Based on the|Questions?\s+\d+\s*(?:to|and|-)\s*\d+)(?:\s+\d+)?\s*:?\s*/gi;
         let pm;
         let passageMatches = [];
         while ((pm = passageRegex.exec(text)) !== null) {
@@ -13688,6 +13742,16 @@ export const UI = {
 
         let blocks = [];
         if (allMarkers.length > 0) {
+            // Prepend leading text/image before first marker if it contains content
+            const firstMarkerIndex = allMarkers[0].index;
+            const leadingContent = text.substring(0, firstMarkerIndex).trim();
+            if (leadingContent.length > 0) {
+                blocks.push({
+                    type: 'passage',
+                    content: leadingContent
+                });
+            }
+
             for (let i = 0; i < allMarkers.length; i++) {
                 const current = allMarkers[i];
                 const start = current.index + current.markerLength;
@@ -13696,26 +13760,47 @@ export const UI = {
                 
                 blocks.push({
                     type: current.type,
-                    content: blockContent
+                    content: blockContent,
+                    number: current.number || null
                 });
             }
         } else {
             // Fallback: split by empty double lines
             const rawBlocks = text.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
-            blocks = rawBlocks.map(b => ({ type: 'question', content: b }));
+            blocks = rawBlocks.map(b => ({ type: 'question', content: b, number: null }));
         }
 
         const parsedQuestions = [];
         let currentPassageText = null;
+        let passageEndQuestion = null;
 
         for (let blockObj of blocks) {
             if (blockObj.type === 'passage') {
-                currentPassageText = blockObj.content || null;
+                const content = (blockObj.content || '').trim();
+                if (/^(?:NONE|CLEAR|NO PASSAGE|END PASSAGE|\[NO PASSAGE\]|\[END PASSAGE\])$/i.test(content)) {
+                    currentPassageText = null;
+                    passageEndQuestion = null;
+                } else {
+                    currentPassageText = content || null;
+                    passageEndQuestion = null;
+                    if (currentPassageText) {
+                        const rangeMatch = /questions?\s+\d+\s*(?:to|and|-)\s*(\d+)/i.exec(currentPassageText);
+                        if (rangeMatch) {
+                            passageEndQuestion = parseInt(rangeMatch[1]);
+                        }
+                    }
+                }
                 continue;
             }
 
             let block = blockObj.content;
             if (!block) continue;
+
+            const qNum = parseInt(blockObj.number);
+            if (passageEndQuestion && qNum && qNum > passageEndQuestion) {
+                currentPassageText = null;
+                passageEndQuestion = null;
+            }
 
             // Remove any starting number prefix (like "1. ", "43) ", "A 43. ") if it bled into the content
             block = block.replace(/^\s*(?:[A-Za-z]\s+)?\d+[\.\)]\s*/i, '').trim();
@@ -14036,7 +14121,7 @@ export const UI = {
                                 option_c: (opts.find(o => o.option_label === 'C') || {}).option_text || '',
                                 option_d: (opts.find(o => o.option_label === 'D') || {}).option_text || '',
                                 option_e: (opts.find(o => o.option_label === 'E') || {}).option_text || '',
-                                correct_option: (opts.find(o => o.is_correct === 1) || {}).option_label || 'A'
+                                correct_option: (opts.find(o => o.is_correct === 1 || o.is_correct === true || o.is_correct === '1' || o.is_correct === 'true') || {}).option_label || 'A'
                             });
                         }
                     }
