@@ -16639,10 +16639,13 @@ export const UI = {
                 </div>
 
 
-                <div style="display: flex; gap: 1rem; margin-bottom: 5rem;">
-                    <button class="btn btn-primary" style="flex: 1; height: 56px; border-radius: 16px; font-weight: 900; font-size: 1.1rem; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);" onclick="UI.saveSettings()">
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; margin-bottom: 5rem;">
+                    <button class="btn btn-primary" style="width: 100%; height: 56px; border-radius: 16px; font-weight: 900; font-size: 1.1rem; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);" onclick="UI.saveSettings()">
                         Save All Configuration
                     </button>
+                    <span style="font-size: 0.8rem; color: #10b981; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                        <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i> Settings automatically save on change
+                    </span>
                 </div>
             </div>
         `;
@@ -16654,9 +16657,10 @@ export const UI = {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = (re) => {
+                reader.onload = async (re) => {
                     document.getElementById('sig-preview').innerHTML = `<img src="${re.target.result}" style="max-height: 100%;">`;
                     this.pendingSignature = re.target.result;
+                    await this.saveSingleSetting('principalSignature', re.target.result);
                 };
                 reader.readAsDataURL(file);
             }
@@ -16666,13 +16670,53 @@ export const UI = {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = (re) => {
+                reader.onload = async (re) => {
                     document.getElementById('logo-preview').innerHTML = `<img src="${re.target.result}" style="width: 100%; height: 100%; object-fit: contain;">`;
                     this.pendingLogo = re.target.result;
+                    await this.saveSingleSetting('schoolLogo', re.target.result);
                 };
                 reader.readAsDataURL(file);
             }
         };
+
+        // Auto-save listeners for all standard configuration inputs
+        const autoSaveConfigs = [
+            { id: 'set-school-name', key: 'schoolName' },
+            { id: 'set-school-manager', key: 'schoolManager' },
+            { id: 'set-school-address', key: 'schoolAddress' },
+            { id: 'set-school-phone', key: 'schoolPhone' },
+            { id: 'set-school-email', key: 'schoolEmail' },
+            { id: 'set-principal-name', key: 'principalName' },
+            { id: 'set-school-motto', key: 'schoolMotto' },
+            { id: 'set-current-session', key: 'currentSession' },
+            { id: 'set-current-term', key: 'currentTerm' },
+            { id: 'set-grading-system', key: 'gradingSystem' },
+            { id: 'set-theme-color', key: 'themeColor' },
+            { id: 'set-term-status', key: 'termStatus' },
+            { id: 'set-term-closure', key: 'termClosure' },
+            { id: 'set-next-term', key: 'nextTermBegins' },
+            { id: 'set-tt-max-day', key: 'timetable_maxPerDay' },
+            { id: 'set-tt-max-consec', key: 'timetable_maxConsecutive' },
+            { id: 'set-tt-freq', key: 'timetable_defaultFrequency' },
+            { id: 'set-vapid-public-key', key: 'vapid_public_key' }
+        ];
+
+        autoSaveConfigs.forEach(cfg => {
+            const el = document.getElementById(cfg.id);
+            if (el) {
+                el.addEventListener('change', async () => {
+                    let val = el.value;
+                    if (cfg.id === 'set-term-status') {
+                        el.style.color = val === 'Active' ? '#10b981' : '#ef4444';
+                    }
+                    if (cfg.id === 'set-theme-color') {
+                        const span = el.nextElementSibling;
+                        if (span) span.textContent = val.toUpperCase();
+                    }
+                    await this.saveSingleSetting(cfg.key, val);
+                });
+            }
+        });
         
         // --- NEW: Global Class-Arm Repair Logic ---
         const repairBtn = document.getElementById('btn-bulk-repair-arms');
@@ -16775,17 +16819,18 @@ export const UI = {
             
             // Bind deletes
             document.querySelectorAll('.btn-remove-pt-config').forEach(btn => {
-                btn.onclick = () => {
+                btn.onclick = async () => {
                     const index = parseInt(btn.dataset.index);
                     this.timetablePartTimeConstraints.splice(index, 1);
                     renderPtConstraintsConfig();
+                    await this.saveSingleSetting('timetable_partTimeConstraints', JSON.stringify(this.timetablePartTimeConstraints || []));
                 };
             });
         };
 
         const btnAddPtConfig = document.getElementById('btn-add-pt-config');
         if (btnAddPtConfig) {
-            btnAddPtConfig.onclick = () => {
+            btnAddPtConfig.onclick = async () => {
                 const ptTeacherSelect = document.getElementById('pt-teacher-select-config');
                 const tId = ptTeacherSelect.value;
                 const tName = ptTeacherSelect.options[ptTeacherSelect.selectedIndex]?.text;
@@ -16823,6 +16868,7 @@ export const UI = {
                 
                 renderPtConstraintsConfig();
                 Notifications.show(`Added availability constraint for ${tName}`, 'success');
+                await this.saveSingleSetting('timetable_partTimeConstraints', JSON.stringify(this.timetablePartTimeConstraints || []));
             };
         }
 
@@ -16955,6 +17001,31 @@ export const UI = {
             }
         } catch (err) {
             Notifications.show(`Test failed: ${err.message}`, 'error');
+        }
+    },
+
+    async saveSingleSetting(key, value) {
+        try {
+            const s = { key, value };
+            const existing = await db.settings.where('key').equals(s.key).first();
+            if (existing) {
+                await db.settings.update(existing.id, prepareForSync(s));
+            } else {
+                await db.settings.add(prepareForSync({ id: `SET_${s.key.toUpperCase()}`, ...s }));
+            }
+            if (['schoolName', 'schoolLogo', 'themeColor'].includes(key)) {
+                await this.updateInstitutionalBranding();
+            }
+            if (key === 'vapid_public_key') {
+                localStorage.setItem('vapid_public_key', (value || '').trim());
+            }
+            Notifications.show(`Setting saved automatically.`, 'success');
+            if (typeof this.debouncedSync === 'function') {
+                this.debouncedSync();
+            }
+        } catch (e) {
+            console.error(`Error saving setting ${key}:`, e);
+            Notifications.show(`Failed to save setting ${key}.`, 'error');
         }
     },
 
