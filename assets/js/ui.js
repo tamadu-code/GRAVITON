@@ -13721,53 +13721,80 @@ export const UI = {
     parseBulkQuestions(text) {
         if (!text) return [];
 
-        // 1. Find all question markers
-        const numberRegex = /(?:\n|^)\s*(?:[A-Za-z]\s+)?(\d+)[\.\)]\s+/g;
-        let matches = [];
-        let m;
-        while ((m = numberRegex.exec(text)) !== null) {
-            matches.push({ index: m.index, markerLength: m[0].length, number: m[1], type: 'question' });
-        }
+        // ── Step 0: Normalize line endings (\r\n → \n, stray \r → \n)
+        text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-        // 2. Find all passage markers (expanded to match common headers and question ranges)
-        const passageRegex = /(?:\n|^)\s*(?:PASSAGE|READ THE PASSAGE|\[PASSAGE\]|COMPREHENSION|DIAGRAM|FIGURE|GRAPH|MAP|Study the|Read the|Use the|Based on the|Questions?\s+\d+\s*(?:to|and|-)\s*\d+)(?:\s+\d+)?\s*:?\s*/gi;
+        // ── Step 1: Find passage / comprehension markers FIRST ──
+        // Detect them first so numbers inside passage headers
+        // (e.g. "questions 1 to 10") are NOT confused for question markers.
+        const passageHeaders = 'Read the story|Read the passage|Read the text|Read the article|Read the poem|Read the extract|Read the information|Read the following|PASSAGE|READ THE PASSAGE|\\[PASSAGE\\]|COMPREHENSION|DIAGRAM|FIGURE|GRAPH|MAP|TABLE|CHART|Study the|Use the|Based on the|Look at the|Refer to the|Examine the';
+        const passageRegex = new RegExp(
+            '(?:^|\\n)\\s*((?:' + passageHeaders + ')[\\s\\S]*?' +
+            '(?=\\n\\s*(?:(?:Question|Q)\\s*)?\\d+\\s*[.)\\-:]\\s|$))',
+            'gim'
+        );
         let pm;
-        let passageMatches = [];
+        let passageRanges = [];
         while ((pm = passageRegex.exec(text)) !== null) {
-            passageMatches.push({ index: pm.index, markerLength: pm[0].length, type: 'passage' });
+            passageRanges.push({ start: pm.index, end: pm.index + pm[0].length, content: pm[1] });
         }
 
-        // 3. Combine and sort all markers by position
-        const allMarkers = [...matches, ...passageMatches].sort((a, b) => a.index - b.index);
+        // Helper: check if a position falls inside a passage range
+        const isInsidePassage = (pos) => passageRanges.some(r => pos >= r.start && pos < r.end);
 
+        // ── Step 2: Find question markers ──
+        // Patterns: "1.", "1)", "1-", "1:", "Q1.", "Q 1.", "Question 1."
+        const numberRegex = /(?:^|\n)[ \t]*(?:(?:Question|Q)\s*)?\s*(\d+)\s*[.)\-:]\s+/gim;
+        let matches = [];
+        let mx;
+        while ((mx = numberRegex.exec(text)) !== null) {
+            if (isInsidePassage(mx.index)) continue;
+            matches.push({ index: mx.index, markerLength: mx[0].length, number: mx[1], type: 'question' });
+        }
+
+        // ── Step 3: Build passage marker entries ──
+        let passageMarkers = passageRanges.map(r => ({
+            index: r.start, markerLength: 0, type: 'passage', passageContent: r.content.trim()
+        }));
+
+        // ── Step 4: Combine and sort all markers by position ──
+        const allMarkers = [...matches, ...passageMarkers].sort((a, b) => a.index - b.index);
+
+        // ── Step 5: Build blocks ──
         let blocks = [];
         if (allMarkers.length > 0) {
-            // Prepend leading text/image before first marker if it contains content
             const firstMarkerIndex = allMarkers[0].index;
             const leadingContent = text.substring(0, firstMarkerIndex).trim();
             if (leadingContent.length > 0) {
-                blocks.push({
-                    type: 'passage',
-                    content: leadingContent
-                });
+                blocks.push({ type: 'passage', content: leadingContent });
             }
 
             for (let i = 0; i < allMarkers.length; i++) {
                 const current = allMarkers[i];
+                if (current.type === 'passage') {
+                    blocks.push({ type: 'passage', content: current.passageContent, number: null });
+                    continue;
+                }
                 const start = current.index + current.markerLength;
                 const end = (i + 1 < allMarkers.length) ? allMarkers[i + 1].index : text.length;
-                const blockContent = text.substring(start, end).trim();
-                
-                blocks.push({
-                    type: current.type,
-                    content: blockContent,
-                    number: current.number || null
-                });
+                blocks.push({ type: 'question', content: text.substring(start, end).trim(), number: current.number || null });
             }
         } else {
-            // Fallback: split by empty double lines
+            // Fallback A: split by double-newlines
             const rawBlocks = text.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
-            blocks = rawBlocks.map(b => ({ type: 'question', content: b, number: null }));
+            if (rawBlocks.length > 1) {
+                blocks = rawBlocks.map(b => {
+                    const stripped = b.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '');
+                    return { type: 'question', content: stripped.trim() || b, number: null };
+                });
+            } else if (rawBlocks.length === 1) {
+                // Fallback B: line-by-line
+                const lines = rawBlocks[0].split('\n').map(l => l.trim()).filter(Boolean);
+                blocks = lines.map(l => {
+                    const stripped = l.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '');
+                    return { type: 'question', content: stripped.trim() || l, number: null };
+                });
+            }
         }
 
         const parsedQuestions = [];
@@ -13784,9 +13811,9 @@ export const UI = {
                     currentPassageText = content || null;
                     passageEndQuestion = null;
                     if (currentPassageText) {
-                        const rangeMatch = /questions?\s+\d+\s*(?:to|and|-)\s*(\d+)/i.exec(currentPassageText);
+                        const rangeMatch = /(?:questions?|nos?\.?)\s+(\d+)\s*(?:to|[-\u2013\u2014]|and|&)\s*(\d+)/i.exec(currentPassageText);
                         if (rangeMatch) {
-                            passageEndQuestion = parseInt(rangeMatch[1]);
+                            passageEndQuestion = parseInt(rangeMatch[2]);
                         }
                     }
                 }
@@ -13802,8 +13829,8 @@ export const UI = {
                 passageEndQuestion = null;
             }
 
-            // Remove any starting number prefix (like "1. ", "43) ", "A 43. ") if it bled into the content
-            block = block.replace(/^\s*(?:[A-Za-z]\s+)?\d+[\.\)]\s*/i, '').trim();
+            // Remove any residual leading number prefix that may have bled in
+            block = block.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '').trim();
 
             // Extract Explicit Type if defined: [Type: MCQ] or [Type: Fill] or [Type: FITB]
             let explicitType = null;
@@ -13826,12 +13853,12 @@ export const UI = {
             }
 
             // Detect if this block is MCQ or Fill
-            // Check for option tags: A), B), C), D) or A., B., C., D.
-            const optAReg = /(?:^|\s)[\(\[]?A[\)\]\.]/i;
-            const optBReg = /(?:^|\s)[\(\[]?B[\)\]\.]/i;
-            const optCReg = /(?:^|\s)[\(\[]?C[\)\]\.]/i;
-            const optDReg = /(?:^|\s)[\(\[]?D[\)\]\.]/i;
-            const optEReg = /(?:^|\s)[\(\[]?E[\)\]\.]/i;
+            // Use multiline so ^ matches after \n within the block
+            const optAReg = /(?:^|[\s\n])[\(\[]?A[\)\]\.]/im;
+            const optBReg = /(?:^|[\s\n])[\(\[]?B[\)\]\.]/im;
+            const optCReg = /(?:^|[\s\n])[\(\[]?C[\)\]\.]/im;
+            const optDReg = /(?:^|[\s\n])[\(\[]?D[\)\]\.]/im;
+            const optEReg = /(?:^|[\s\n])[\(\[]?E[\)\]\.]/im;
 
             const hasA = optAReg.test(block);
             const hasB = optBReg.test(block);
@@ -13855,11 +13882,11 @@ export const UI = {
                 ];
 
                 const foundOptions = [];
-                for (const m of markers) {
-                    const match = m.regex.exec(block);
+                for (const mk of markers) {
+                    const match = mk.regex.exec(block);
                     if (match) {
                         foundOptions.push({
-                            label: m.label,
+                            label: mk.label,
                             index: match.index,
                             length: match[0].length
                         });
@@ -16802,10 +16829,9 @@ export const UI = {
         renderPtConstraintsConfig();
     },
 
-    addClosedDay() {
+    async addClosedDay() {
         const input = document.getElementById('add-closed-day');
         const hidden = document.getElementById('set-school-holidays');
-        const list = document.getElementById('closed-days-list');
         const date = input.value;
         if (!date) return;
 
@@ -16814,18 +16840,54 @@ export const UI = {
         
         holidays.push(date);
         holidays.sort();
-        hidden.value = holidays.join(',');
+        const newValue = holidays.join(',');
+        hidden.value = newValue;
         
         this.refreshClosedDaysList();
         input.value = '';
+
+        try {
+            const s = { key: 'holidays', value: newValue };
+            const existing = await db.settings.where('key').equals(s.key).first();
+            if (existing) {
+                await db.settings.update(existing.id, prepareForSync(s));
+            } else {
+                await db.settings.add(prepareForSync({ id: `SET_${s.key.toUpperCase()}`, ...s }));
+            }
+            Notifications.show('Holiday added and saved successfully.', 'success');
+            if (typeof this.debouncedSync === 'function') {
+                this.debouncedSync();
+            }
+        } catch (err) {
+            console.error('Error saving holiday:', err);
+            Notifications.show('Failed to save holiday to database.', 'error');
+        }
     },
 
-    removeClosedDay(date) {
+    async removeClosedDay(date) {
         const hidden = document.getElementById('set-school-holidays');
         let holidays = hidden.value.split(/[\n,]+/).map(d => d.trim()).filter(d => d);
         holidays = holidays.filter(d => d !== date);
-        hidden.value = holidays.join(',');
+        const newValue = holidays.join(',');
+        hidden.value = newValue;
         this.refreshClosedDaysList();
+
+        try {
+            const s = { key: 'holidays', value: newValue };
+            const existing = await db.settings.where('key').equals(s.key).first();
+            if (existing) {
+                await db.settings.update(existing.id, prepareForSync(s));
+            } else {
+                await db.settings.add(prepareForSync({ id: `SET_${s.key.toUpperCase()}`, ...s }));
+            }
+            Notifications.show('Holiday removed and saved successfully.', 'success');
+            if (typeof this.debouncedSync === 'function') {
+                this.debouncedSync();
+            }
+        } catch (err) {
+            console.error('Error removing holiday:', err);
+            Notifications.show('Failed to save holiday update to database.', 'error');
+        }
     },
 
     refreshClosedDaysList() {
