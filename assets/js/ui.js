@@ -5,7 +5,7 @@
 console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
-import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF } from './utils.js';
+import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
 import { initPushNotifications, unsubscribeUser } from './push.js';
 
@@ -4276,7 +4276,7 @@ export const UI = {
         const teacherId = this.currentUser.id;
         
         let students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-        let classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+        let classes = (await db.classes.toArray()).sort(compareClasses);
         
         // --- Teacher Specific Filtering for Dropdowns ---
         if (isTeacher) {
@@ -5611,7 +5611,7 @@ export const UI = {
         const teacherId = this.currentUser.id;
         
         let students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-        let classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        let classes = (await db.classes.toArray()).sort(compareClasses);
         let subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         
         // --- Teacher Specific Filtering ---
@@ -6406,7 +6406,7 @@ export const UI = {
     },
 
     async renderAcademic() {
-        const classes = (await db.classes.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        const classes = (await db.classes.toArray()).sort(compareClasses);
         const subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         const assignments = await db.subject_assignments.toArray();
         const profiles = await db.profiles.toArray();
@@ -7990,7 +7990,7 @@ export const UI = {
                         <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select Class</label>
                         <select id="hist-class" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
                             <option value="">Choose Class...</option>
-                            ${(await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric: true})).map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                            ${(await db.classes.toArray()).sort(compareClasses).map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                         </select>
                     </div>
                     <div style="width: 180px;">
@@ -13721,118 +13721,79 @@ export const UI = {
     parseBulkQuestions(text) {
         if (!text) return [];
 
-        // ── Step 0: Normalize line endings (\r\n → \n, stray \r → \n)
+        // Normalize line endings
         text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-        // ── Step 1: Find passage / comprehension markers FIRST ──
-        // Detect them first so numbers inside passage headers
-        // (e.g. "questions 1 to 10") are NOT confused for question markers.
-        const passageHeaders = 'Read the story|Read the passage|Read the text|Read the article|Read the poem|Read the extract|Read the information|Read the following|PASSAGE|READ THE PASSAGE|\\[PASSAGE\\]|COMPREHENSION|DIAGRAM|FIGURE|GRAPH|MAP|TABLE|CHART|Study the|Use the|Based on the|Look at the|Refer to the|Examine the';
-        const passageRegex = new RegExp(
-            '(?:^|\\n)\\s*((?:' + passageHeaders + ')[\\s\\S]*?' +
-            '(?=\\n\\s*(?:(?:Question|Q)\\s*)?\\d+\\s*[.)\\-:]\\s|$))',
-            'gim'
-        );
-        let pm;
-        let passageRanges = [];
-        while ((pm = passageRegex.exec(text)) !== null) {
-            passageRanges.push({ start: pm.index, end: pm.index + pm[0].length, content: pm[1] });
-        }
-
-        // Helper: check if a position falls inside a passage range
-        const isInsidePassage = (pos) => passageRanges.some(r => pos >= r.start && pos < r.end);
-
-        // ── Step 2: Find question markers ──
-        // Patterns: "1.", "1)", "1-", "1:", "Q1.", "Q 1.", "Question 1."
-        const numberRegex = /(?:^|\n)[ \t]*(?:(?:Question|Q)\s*)?\s*(\d+)\s*[.)\-:]\s+/gim;
+        // Regex to find answer markers (e.g. [Ans: C], [Answer: Photosynthesis], Correct Option: C, etc.)
+        const ansRegex = /(?:\[\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\]|\(\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\)|(?:Correct|Correct\s+Option|Answer)\s*:\s*([^\n\r]*))/gi;
+        
         let matches = [];
-        let mx;
-        while ((mx = numberRegex.exec(text)) !== null) {
-            if (isInsidePassage(mx.index)) continue;
-            matches.push({ index: mx.index, markerLength: mx[0].length, number: mx[1], type: 'question' });
+        let match;
+        while ((match = ansRegex.exec(text)) !== null) {
+            matches.push({
+                index: match.index,
+                length: match[0].length,
+                fullMatch: match[0],
+                answer: (match[1] || match[2] || match[3] || '').trim()
+            });
         }
 
-        // ── Step 3: Build passage marker entries ──
-        let passageMarkers = passageRanges.map(r => ({
-            index: r.start, markerLength: 0, type: 'passage', passageContent: r.content.trim()
-        }));
-
-        // ── Step 4: Combine and sort all markers by position ──
-        const allMarkers = [...matches, ...passageMarkers].sort((a, b) => a.index - b.index);
-
-        // ── Step 5: Build blocks ──
-        let blocks = [];
-        if (allMarkers.length > 0) {
-            const firstMarkerIndex = allMarkers[0].index;
-            const leadingContent = text.substring(0, firstMarkerIndex).trim();
-            if (leadingContent.length > 0) {
-                blocks.push({ type: 'passage', content: leadingContent });
-            }
-
-            for (let i = 0; i < allMarkers.length; i++) {
-                const current = allMarkers[i];
-                if (current.type === 'passage') {
-                    blocks.push({ type: 'passage', content: current.passageContent, number: null });
-                    continue;
-                }
-                const start = current.index + current.markerLength;
-                const end = (i + 1 < allMarkers.length) ? allMarkers[i + 1].index : text.length;
-                blocks.push({ type: 'question', content: text.substring(start, end).trim(), number: current.number || null });
-            }
-        } else {
-            // Fallback A: split by double-newlines
-            const rawBlocks = text.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
-            if (rawBlocks.length > 1) {
-                blocks = rawBlocks.map(b => {
-                    const stripped = b.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '');
-                    return { type: 'question', content: stripped.trim() || b, number: null };
-                });
-            } else if (rawBlocks.length === 1) {
-                // Fallback B: line-by-line
-                const lines = rawBlocks[0].split('\n').map(l => l.trim()).filter(Boolean);
-                blocks = lines.map(l => {
-                    const stripped = l.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '');
-                    return { type: 'question', content: stripped.trim() || l, number: null };
-                });
-            }
+        if (matches.length === 0) {
+            return [];
         }
 
         const parsedQuestions = [];
         let currentPassageText = null;
-        let passageEndQuestion = null;
+        let lastIndex = 0;
 
-        for (let blockObj of blocks) {
-            if (blockObj.type === 'passage') {
-                const content = (blockObj.content || '').trim();
-                if (/^(?:NONE|CLEAR|NO PASSAGE|END PASSAGE|\[NO PASSAGE\]|\[END PASSAGE\])$/i.test(content)) {
-                    currentPassageText = null;
-                    passageEndQuestion = null;
-                } else {
-                    currentPassageText = content || null;
-                    passageEndQuestion = null;
-                    if (currentPassageText) {
-                        const rangeMatch = /(?:questions?|nos?\.?)\s+(\d+)\s*(?:to|[-\u2013\u2014]|and|&)\s*(\d+)/i.exec(currentPassageText);
-                        if (rangeMatch) {
-                            passageEndQuestion = parseInt(rangeMatch[2]);
-                        }
-                    }
+        for (let i = 0; i < matches.length; i++) {
+            const currentMatch = matches[i];
+            
+            // Extract the segment of text before this answer marker
+            const segment = text.substring(lastIndex, currentMatch.index);
+            lastIndex = currentMatch.index + currentMatch.length;
+
+            // Split the segment into paragraphs
+            let paragraphs = segment.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+
+            // Process any commands or clear/passage markers in the segment paragraphs
+            let passageParts = [];
+            let questionParagraphs = [];
+
+            // We determine which paragraphs belong to the question.
+            // By default, the last paragraph is the question paragraph.
+            // But if the last paragraph starts with option A, the question text is in the second to last.
+            let questionStartIndex = paragraphs.length - 1;
+            if (paragraphs.length >= 2) {
+                const lastPara = paragraphs[paragraphs.length - 1];
+                const startsWithOptionA = /^\s*[\(\[]?A[\)\]\.]/i.test(lastPara);
+                if (startsWithOptionA) {
+                    questionStartIndex = paragraphs.length - 2;
                 }
-                continue;
             }
 
-            let block = blockObj.content;
-            if (!block) continue;
-
-            const qNum = parseInt(blockObj.number);
-            if (passageEndQuestion && qNum && qNum > passageEndQuestion) {
-                currentPassageText = null;
-                passageEndQuestion = null;
+            for (let j = 0; j < paragraphs.length; j++) {
+                const para = paragraphs[j];
+                if (/^(?:NONE|CLEAR|NO PASSAGE|END PASSAGE|\[NO PASSAGE\]|\[END PASSAGE\])$/i.test(para)) {
+                    currentPassageText = null;
+                    passageParts = [];
+                } else if (j >= questionStartIndex) {
+                    questionParagraphs.push(para);
+                } else {
+                    passageParts.push(para);
+                }
             }
 
-            // Remove any residual leading number prefix that may have bled in
-            block = block.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '').trim();
+            // If there was a new passage defined in this segment, update currentPassageText
+            if (passageParts.length > 0) {
+                currentPassageText = passageParts.join('\n\n');
+            }
 
-            // Extract Explicit Type if defined: [Type: MCQ] or [Type: Fill] or [Type: FITB]
+            const questionBlock = questionParagraphs.join('\n\n');
+            if (!questionBlock) continue;
+
+            // Parse type (explicit fitb vs mcq)
+            let block = questionBlock;
             let explicitType = null;
             const typeMatch = /\[Type\s*:\s*(MCQ|Fill|FITB|Fill-in-the-blank)\]/i.exec(block);
             if (typeMatch) {
@@ -13841,19 +13802,7 @@ export const UI = {
                 block = block.replace(typeMatch[0], '').trim();
             }
 
-            // Extract Answer
-            // Search for: [Ans: ...], [Answer: ...], (Ans: ...), Correct: ..., Correct Option: ...
-            const ansRegex = /(?:\[\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\]|\(\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\)|(?:Correct|Correct\s+Option|Answer)\s*:\s*([^\n\r]*))/i;
-            const ansMatch = ansRegex.exec(block);
-            
-            let answerText = '';
-            if (ansMatch) {
-                answerText = (ansMatch[1] || ansMatch[2] || ansMatch[3] || '').trim();
-                block = block.replace(ansMatch[0], '').trim();
-            }
-
-            // Detect if this block is MCQ or Fill
-            // Use multiline so ^ matches after \n within the block
+            // Detect options
             const optAReg = /(?:^|[\s\n])[\(\[]?A[\)\]\.]/im;
             const optBReg = /(?:^|[\s\n])[\(\[]?B[\)\]\.]/im;
             const optCReg = /(?:^|[\s\n])[\(\[]?C[\)\]\.]/im;
@@ -13871,8 +13820,6 @@ export const UI = {
             }
 
             if (type === 'mcq') {
-                // MCQ Parser
-                // Find indices of all option markers to parse them cleanly
                 const markers = [
                     { label: 'A', regex: optAReg },
                     { label: 'B', regex: optBReg },
@@ -13893,7 +13840,6 @@ export const UI = {
                     }
                 }
 
-                // Sort by position in block
                 foundOptions.sort((x, y) => x.index - y.index);
 
                 let questionText = block;
@@ -13902,12 +13848,12 @@ export const UI = {
                 if (foundOptions.length > 0) {
                     questionText = block.substring(0, foundOptions[0].index).trim();
                     
-                    for (let i = 0; i < foundOptions.length; i++) {
-                        const start = foundOptions[i].index + foundOptions[i].length;
-                        const optValEnd = (i + 1 < foundOptions.length) ? foundOptions[i + 1].index : block.length;
+                    for (let j = 0; j < foundOptions.length; j++) {
+                        const start = foundOptions[j].index + foundOptions[j].length;
+                        const optValEnd = (j + 1 < foundOptions.length) ? foundOptions[j + 1].index : block.length;
                         const optVal = block.substring(start, optValEnd).trim();
                         
-                        switch (foundOptions[i].label) {
+                        switch (foundOptions[j].label) {
                             case 'A': optA = optVal; break;
                             case 'B': optB = optVal; break;
                             case 'C': optC = optVal; break;
@@ -13917,66 +13863,46 @@ export const UI = {
                     }
                 }
 
-                // Downgrade to Fill-in-the-blank if less than 2 options have any text
-                const nonEmptyOpts = [optA, optB, optC, optD, optE].filter(o => o.trim().length > 0);
-                if (nonEmptyOpts.length < 2) {
-                    let correctOpt = answerText || 'TEXT';
-                    correctOpt = correctOpt.replace(/[\]\)]+$/, '').trim();
-
-                    parsedQuestions.push({
-                        type: 'fill',
-                        question_text: questionText,
-                        passage_text: currentPassageText,
-                        option_a: '',
-                        option_b: '',
-                        option_c: '',
-                        option_d: '',
-                        option_e: '',
-                        correct_option: correctOpt,
-                        fill_answer: correctOpt,
-                        marks: 1
-                    });
-                } else {
-                    // Clean answer
-                    let correctOpt = 'A';
-                    if (answerText) {
-                        const letter = answerText.toUpperCase().trim().charAt(0);
-                        if (['A','B','C','D','E'].includes(letter)) {
-                            correctOpt = letter;
-                        }
+                let correctOpt = 'A';
+                if (currentMatch.answer) {
+                    const letter = currentMatch.answer.toUpperCase().trim().charAt(0);
+                    if (['A','B','C','D','E'].includes(letter)) {
+                        correctOpt = letter;
                     }
-
-                    parsedQuestions.push({
-                        type: 'mcq',
-                        question_text: questionText,
-                        passage_text: currentPassageText,
-                        option_a: optA,
-                        option_b: optB,
-                        option_c: optC,
-                        option_d: optD,
-                        option_e: optE,
-                        correct_option: correctOpt,
-                        fill_answer: '',
-                        marks: 1
-                    });
                 }
 
+                // Clean up any leading question number if present in questionText
+                questionText = questionText.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '').trim();
+
+                parsedQuestions.push({
+                    type: 'mcq',
+                    question_text: questionText,
+                    passage_text: currentPassageText,
+                    option_a: optA,
+                    option_b: optB,
+                    option_c: optC,
+                    option_d: optD,
+                    option_e: optE,
+                    correct_option: correctOpt,
+                    fill_answer: '',
+                    marks: 1
+                });
             } else {
-                // Fill in the Blank Parser
-                let correctOpt = answerText || 'TEXT';
-                correctOpt = correctOpt.replace(/[\]\)]+$/, '').trim();
+                let fillAnswer = currentMatch.answer || '';
+                // Clean up leading question number from block
+                let questionText = block.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '').trim();
 
                 parsedQuestions.push({
                     type: 'fill',
-                    question_text: block,
+                    question_text: questionText,
                     passage_text: currentPassageText,
                     option_a: '',
                     option_b: '',
                     option_c: '',
                     option_d: '',
                     option_e: '',
-                    correct_option: correctOpt,
-                    fill_answer: correctOpt,
+                    correct_option: fillAnswer,
+                    fill_answer: fillAnswer,
                     marks: 1
                 });
             }
@@ -14550,7 +14476,7 @@ export const UI = {
     },
 
     async renderTimetable() {
-        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        const classes = (await db.classes.toArray()).sort(compareClasses);
         const subjects = (await db.subjects.toArray()).sort((a,b) => a.name.localeCompare(b.name));
         
         this.contentArea.innerHTML = `
@@ -15670,7 +15596,7 @@ export const UI = {
     },
 
     async showTimetablePreviewAuditModal(subjects) {
-        const classes = (await db.classes.toArray()).sort((a,b) => a.name.localeCompare(b.name));
+        const classes = (await db.classes.toArray()).sort(compareClasses);
         const profiles = await db.profiles.toArray();
         const assignments = await db.subject_assignments.toArray();
         const entries = UI.tempTimetableState || await db.timetable.toArray();
@@ -22840,7 +22766,7 @@ export const UI = {
             return true;
         }).sort((a, b) => a.name.localeCompare(b.name));
 
-        const classes = (await db.classes.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
+        const classes = (await db.classes.toArray()).sort(compareClasses);
         const subMap = subjects.reduce((acc, s) => ({...acc, [s.id]: s.name}), {});
 
 
@@ -23032,7 +22958,7 @@ export const UI = {
             return true;
         }).sort((a, b) => a.name.localeCompare(b.name));
 
-        const classes = (await db.classes.toArray()).sort((a, b) => (a.name || '').trim().localeCompare((b.name || '').trim()));
+        const classes = (await db.classes.toArray()).sort(compareClasses);
 
 
         const modalHtml = `
@@ -23414,7 +23340,7 @@ export const UI = {
     async editBankCategory(tag) {
         const parts = tag.split('__');
         const subjects = (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name));
-        const classes = (await db.classes.toArray()).sort((a, b) => a.name.localeCompare(b.name));
+        const classes = (await db.classes.toArray()).sort(compareClasses);
 
         const currentSub = parts[0];
         const currentCls = parts[1];
@@ -24819,6 +24745,14 @@ export const UI = {
                     value: localVapid
                 }));
                 console.log('[HealthCheck] Automatically populated VAPID public key in settings table.');
+                this.debouncedSync();
+            }
+            
+            // 5. Force Holidays setting sync validation
+            const existingHolidays = await db.settings.where('key').equals('holidays').first();
+            if (existingHolidays) {
+                await db.settings.update(existingHolidays.id, { is_synced: 0 });
+                console.log('[HealthCheck] Marked holidays setting as unsynced to force cloud sync.');
                 this.debouncedSync();
             }
             

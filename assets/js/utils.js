@@ -2049,3 +2049,51 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
     }
 }
 
+export function getClassNameRank(name) {
+    const n = (name || '').trim().toLowerCase();
+    
+    // Define ordering groups
+    if (n.includes('pre-nursery') || n.includes('prenursery') || n.includes('playgroup') || n.includes('creche')) return 10;
+    if (n.includes('nursery 1') || n.includes('nursery1')) return 20;
+    if (n.includes('nursery 2') || n.includes('nursery2')) return 30;
+    if (n.includes('nursery 3') || n.includes('nursery3')) return 40;
+    if (n.includes('nursery') && !n.match(/\d/)) return 15; // default nursery
+    
+    // Primary 1 to 6
+    const primMatch = n.match(/primary\s*(\d)/) || n.match(/pri\s*(\d)/);
+    if (primMatch) {
+        return 100 + parseInt(primMatch[1]) * 10;
+    }
+    if (n.includes('primary') || n.includes('pri')) return 105; // default primary
+    
+    // JSS 1 to 3
+    const jssMatch = n.match(/jss\s*(\d)/) || n.match(/js\s*(\d)/);
+    if (jssMatch) {
+        return 1000 + parseInt(jssMatch[1]) * 10;
+    }
+    if (n.includes('jss') || n.includes('junior secondary')) return 1005; // default jss
+    
+    // SSS 1 to 3
+    const sssMatch = n.match(/sss\s*(\d)/) || n.match(/ss\s*(\d)/);
+    if (sssMatch) {
+        return 2000 + parseInt(sssMatch[1]) * 10;
+    }
+    if (n.includes('sss') || n.includes('senior secondary')) return 2005; // default sss
+    
+    // Fallback: alphabetical
+    return 10000;
+}
+
+export function compareClasses(a, b) {
+    const nameA = a?.name || '';
+    const nameB = b?.name || '';
+    const rankA = getClassNameRank(nameA);
+    const rankB = getClassNameRank(nameB);
+    
+    if (rankA !== rankB) {
+        return rankA - rankB;
+    }
+    
+    return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+}
+
