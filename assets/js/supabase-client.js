@@ -691,7 +691,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v26.8 (BUILD v322) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v26.8 (BUILD v328) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);
