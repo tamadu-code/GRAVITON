@@ -6,6 +6,19 @@ const ATTENDANCE_TOKEN = Deno.env.get('ATTENDANCE_TOKEN')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
+function parseJwt(token: string) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+}
+
 serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -18,6 +31,26 @@ serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get('Authorization') || ''
+    const token = authHeader.replace('Bearer ', '')
+    
+    let caller_tenant_id: string | null = null
+    let isSuperAdmin = false
+    
+    if (token && authHeader.includes('eyJhbGciOi')) {
+      try {
+        const claims = parseJwt(token)
+        if (claims) {
+          if (claims.user_role === 'SuperAdmin') {
+            isSuperAdmin = true;
+          }
+          if (claims.tenant_id) {
+            caller_tenant_id = claims.tenant_id
+          }
+        }
+      } catch (e) {}
+    }
+
     const { student_id } = await req.json()
     if (!student_id) {
       return new Response(JSON.stringify({ error: 'student_id is required' }), { status: 400, headers: corsHeaders })
@@ -28,9 +61,18 @@ serve(async (req) => {
     // 1. Get student details before deletion
     const { data: student, error: fetchError } = await supabase
       .from('students')
-      .select('attendance_code, legacy_student_id, name')
+      .select('attendance_code, legacy_student_id, name, tenant_id')
       .eq('student_id', student_id)
       .maybeSingle()
+
+    if (fetchError) throw fetchError
+
+    // Enforce tenant isolation
+    if (!isSuperAdmin) {
+      if (!caller_tenant_id || (student && student.tenant_id && student.tenant_id !== caller_tenant_id)) {
+        return new Response(JSON.stringify({ error: 'Forbidden: You do not have permission to delete this student' }), { status: 403, headers: corsHeaders })
+      }
+    }
 
     console.log(`[DeleteStudentAttendance] Processing deletion for: ${student_id}`, student)
 

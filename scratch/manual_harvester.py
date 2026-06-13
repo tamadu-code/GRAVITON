@@ -53,8 +53,69 @@ def find_latest_csv() -> str | None:
     log.info("Latest CSV: %s", latest)
     return latest
 
-def fetch_student_map(headers: dict) -> dict:
-    url = f"{SUPABASE_URL}/rest/v1/students?select=id,code&is_active=eq.true"
+def authenticate() -> tuple[dict, str | None]:
+    """
+    Tries to log in using device credentials to obtain a JWT.
+    Returns (headers, tenant_id).
+    """
+    import json
+    config = {}
+    config_path = Path(__file__).parent / "harvester_config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            log.info("Loaded config from harvester_config.json")
+        except Exception as e:
+            log.error("Failed to read harvester_config.json: %s", e)
+
+    url = config.get("SUPABASE_URL") or os.environ.get("SUPABASE_URL") or SUPABASE_URL
+    anon_key = config.get("ANON_KEY") or os.environ.get("ANON_KEY") or ANON_KEY
+    email = config.get("DEVICE_EMAIL") or os.environ.get("DEVICE_EMAIL") or os.environ.get("HARVESTER_EMAIL")
+    password = config.get("DEVICE_PASSWORD") or os.environ.get("DEVICE_PASSWORD") or os.environ.get("HARVESTER_PASSWORD")
+
+    headers = {
+        "apikey": anon_key,
+        "Content-Type": "application/json"
+    }
+
+    tenant_id = None
+    if email and password:
+        log.info("Attempting login as device profile: %s", email)
+        login_url = f"{url}/auth/v1/token?grant_type=password"
+        try:
+            payload = {"email": email, "password": password}
+            r = requests.post(login_url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
+            r.raise_for_status()
+            data = r.json()
+            access_token = data.get("access_token")
+            if access_token:
+                log.info("Login successful. Using authenticated session.")
+                headers["Authorization"] = f"Bearer {access_token}"
+                
+                # Fetch tenant_id from user's profile
+                profile_url = f"{url}/rest/v1/profiles?select=tenant_id"
+                pr = requests.get(profile_url, headers=headers, timeout=REQUEST_TIMEOUT)
+                pr.raise_for_status()
+                profiles = pr.json()
+                if profiles:
+                    tenant_id = profiles[0].get("tenant_id")
+                    log.info("Device associated with tenant_id: %s", tenant_id)
+            else:
+                log.error("Login response missing access_token.")
+        except Exception as e:
+            log.error("Authentication failed: %s. Falling back to legacy anonymous mode.", e)
+    
+    if not headers.get("Authorization"):
+        log.warning("No device credentials configured or login failed. Running in LEGACY ANONYMOUS mode.")
+        headers["Authorization"] = f"Bearer {anon_key}"
+        # Seed tenant ID for fallback/legacy mode
+        tenant_id = "00000000-0000-0000-0000-000000000001"
+
+    return headers, tenant_id
+
+def fetch_student_map(headers: dict, url_base: str) -> dict:
+    url = f"{url_base}/rest/v1/students?select=id,code&is_active=eq.true"
     try:
         r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         r.raise_for_status()
@@ -65,9 +126,9 @@ def fetch_student_map(headers: dict) -> dict:
         log.error("Failed to load students: %s", e)
         return {}
 
-def fetch_cloud_attendance(headers: dict, date_str: str) -> dict:
+def fetch_cloud_attendance(headers: dict, url_base: str, date_str: str) -> dict:
     """Fetch existing attendance records for a specific date to prevent overwriting with nulls."""
-    url = f"{SUPABASE_URL}/rest/v1/attendance?date=eq.{date_str}&select=student_id,sign_in,sign_out,is_late"
+    url = f"{url_base}/rest/v1/attendance?date=eq.{date_str}&select=student_id,sign_in,sign_out,is_late"
     try:
         r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         r.raise_for_status()
@@ -77,7 +138,7 @@ def fetch_cloud_attendance(headers: dict, date_str: str) -> dict:
         log.warn("Could not fetch existing cloud attendance: %s. Proceeding without merge.", e)
         return {}
 
-def parse_csv(csv_path: str, student_map: dict, headers: dict) -> list[dict]:
+def parse_csv(csv_path: str, student_map: dict, headers: dict, url_base: str, tenant_id: str | None) -> list[dict]:
     # We'll group records by date to fetch cloud data efficiently
     temp_records = []
     unique_dates = set()
@@ -102,7 +163,7 @@ def parse_csv(csv_path: str, student_map: dict, headers: dict) -> list[dict]:
     # Fetch cloud data for all relevant dates
     cloud_cache = {}
     for d in unique_dates:
-        cloud_cache[d] = fetch_cloud_attendance(headers, d)
+        cloud_cache[d] = fetch_cloud_attendance(headers, url_base, d)
 
     # Merge logic
     final_records = []
@@ -119,11 +180,12 @@ def parse_csv(csv_path: str, student_map: dict, headers: dict) -> list[dict]:
             "sign_out": r["out"],
             "is_late": r["late"]
         }
+        
+        if tenant_id:
+            merged["tenant_id"] = tenant_id
 
         if cloud_rec:
-            # ONLY update sign_in if CSV has a value and cloud doesn't, or CSV is newer (not applicable here)
-            # Actually, if cloud HAS a value and CSV has a value, we keep cloud if it looks like staggered signout?
-            # Better: If CSV is empty but cloud is NOT, keep cloud!
+            # ONLY update sign_in if CSV has a value and cloud doesn't, or CSV is newer
             if not merged["sign_in"] and cloud_rec.get("sign_in"):
                 merged["sign_in"] = cloud_rec["sign_in"]
             
@@ -143,19 +205,28 @@ def sync_data():
     csv_path = find_latest_csv()
     if not csv_path: return
 
-    headers = {
-        "apikey": ANON_KEY,
-        "Authorization": f"Bearer {ANON_KEY}",
-        "Content-Type": "application/json"
-    }
+    # Authenticate and get headers and tenant_id
+    headers, tenant_id = authenticate()
+    
+    # Resolve SUPABASE_URL dynamically from config/env if set
+    import json
+    config = {}
+    config_path = Path(__file__).parent / "harvester_config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception:
+            pass
+    url_base = config.get("SUPABASE_URL") or os.environ.get("SUPABASE_URL") or SUPABASE_URL
 
-    student_map = fetch_student_map(headers)
+    student_map = fetch_student_map(headers, url_base)
     if not student_map: return
 
-    records = parse_csv(csv_path, student_map, headers)
+    records = parse_csv(csv_path, student_map, headers, url_base, tenant_id)
     if not records: return
 
-    url = f"{SUPABASE_URL}/rest/v1/attendance?on_conflict=student_id,date"
+    url = f"{url_base}/rest/v1/attendance?on_conflict=student_id,date"
     upsert_headers = {**headers, "Prefer": "resolution=merge-duplicates"}
     
     success = 0

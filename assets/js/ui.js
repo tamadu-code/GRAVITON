@@ -444,6 +444,24 @@ export const UI = {
     
     async updateInstitutionalBranding() {
         try {
+            const role = (this.currentUser?.role || '').toLowerCase();
+            if (role === 'superadmin') {
+                const sidebarLogo = document.getElementById('sidebar-school-logo');
+                const sidebarName = document.getElementById('sidebar-school-name');
+                const desktopName = document.getElementById('desktop-school-name');
+                
+                if (sidebarLogo) {
+                    sidebarLogo.textContent = '⚙';
+                    sidebarLogo.style.color = '#4f46e5';
+                    sidebarLogo.innerHTML = '<span style="font-size: 1.25rem;">⚙</span>';
+                }
+                if (sidebarName) sidebarName.innerHTML = 'GRAVITON<br>PLATFORM ADMIN';
+                if (desktopName) desktopName.textContent = 'GRAVITON PLATFORM ADMIN';
+                
+                document.documentElement.style.setProperty('--school-theme-color', '#4f46e5');
+                return;
+            }
+
             const allSettings = await db.settings.toArray();
             const settings = {};
             allSettings.forEach(s => settings[s.key] = s.value);
@@ -542,6 +560,7 @@ export const UI = {
             if (isStudent && !allowedForStudents.includes(viewName)) isRestricted = true;
             if (isParent && !allowedForParents.includes(viewName)) isRestricted = true;
             if (isFinance && !allowedForFinance.includes(viewName)) isRestricted = true;
+            if (viewName === 'superadmin' && role !== 'superadmin') isRestricted = true;
 
             if (isRestricted) {
                 this.contentArea.innerHTML = `
@@ -608,6 +627,7 @@ export const UI = {
                 case 'noticeboard': await this.renderNoticeBoard(); break;
                 case 'profile': await this.renderProfile(); break;
                 case 'cbt_participants': await this.renderCBTParticipants(this.currentViewData); break;
+                case 'superadmin': await this.renderSuperAdmin(); break;
                 default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
             }
         } catch (error) {
@@ -662,9 +682,18 @@ export const UI = {
         // Modules allowed for finance officer
         const financeAllowedViews = ['dashboard', 'finances', 'pins', 'profile', 'noticeboard'];
         
+        // Modules allowed for superadmin
+        const superAdminAllowedViews = ['superadmin', 'profile'];
+        
         navItems.forEach(item => {
             const view = item.dataset.view;
-            if (role === 'parent') {
+            if (role === 'superadmin') {
+                if (!superAdminAllowedViews.includes(view)) {
+                    item.setAttribute('style', 'display: none !important');
+                } else {
+                    item.style.display = 'flex';
+                }
+            } else if (role === 'parent') {
                 if (!parentAllowedViews.includes(view)) {
                     item.setAttribute('style', 'display: none !important');
                 } else {
@@ -691,7 +720,9 @@ export const UI = {
         // Hide "ADMINISTRATION" section header if role is not admin or finance
         adminSectionHeaders.forEach(header => {
             const isFinRole = role === 'finance' || role === 'finance officer' || role === 'finance manager';
-            if (role !== 'admin' && !isFinRole) {
+            if (role === 'superadmin') {
+                header.setAttribute('style', 'display: none !important');
+            } else if (role !== 'admin' && !isFinRole) {
                 header.setAttribute('style', 'display: none !important');
             } else {
                 header.style.display = 'flex';
@@ -16174,6 +16205,24 @@ export const UI = {
     },
 
     async renderSettings() {
+        // Load settings and subscription details
+        const enrolledCount = await db.students.filter(s => s.is_active !== false).count();
+        const subStatus = localStorage.getItem('tenant_subscription_status') || 'trialing';
+        
+        let subStatusColor = '#10b981';
+        let subStatusText = 'Active';
+        
+        if (subStatus === 'trialing') {
+            subStatusColor = '#3b82f6';
+            subStatusText = 'Trialing';
+        } else if (subStatus === 'past_due') {
+            subStatusColor = '#f59e0b';
+            subStatusText = 'Past Due';
+        } else if (subStatus === 'canceled' || subStatus === 'suspended') {
+            subStatusColor = '#ef4444';
+            subStatusText = 'Canceled';
+        }
+
         // Load settings from DB
         const allSettings = await db.settings.toArray();
         const settings = {};
@@ -16564,6 +16613,45 @@ export const UI = {
                     </div>
                 </div>
 
+                <!-- Section: Subscription & Billing -->
+                <div class="glass-collapse-card">
+                    <input type="checkbox" id="toggle-settings-subscription" class="glass-collapse-checkbox" checked>
+                    <label for="toggle-settings-subscription" class="glass-collapse-header">
+                        <span class="glass-collapse-title"><i data-lucide="credit-card" style="width: 18px; color: #10b981;"></i> Subscription & Billing</span>
+                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                    </label>
+                    <div class="glass-collapse-content">
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.5rem;">
+                                <div>
+                                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Current Status</div>
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                                        <span class="badge" id="sub-status-badge" style="background: ${subStatusColor}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: 800; font-size: 0.75rem; text-transform: uppercase;">
+                                            ${subStatusText}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Student Limit</div>
+                                    <div style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-top: 4px;">
+                                        ${enrolledCount} / 200 Students
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="border-top: 1px solid #e2e8f0; padding-top: 1rem; margin-top: 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                                <div>
+                                    <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Billing Frequency</div>
+                                    <div style="font-size: 0.85rem; font-weight: 600; color: #334155; margin-top: 2px;">Monthly Billing / Standard Plan</div>
+                                </div>
+                                <button id="btn-manage-subscription" class="btn btn-primary" style="height: 44px; border-radius: 12px; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; background: #2563eb;">
+                                    <i data-lucide="external-link" style="width: 16px;"></i> Manage Subscription
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
 
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; margin-bottom: 5rem;">
                     <button class="btn btn-primary" style="width: 100%; height: 56px; border-radius: 16px; font-weight: 900; font-size: 1.1rem; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);" onclick="UI.saveSettings()">
@@ -16604,6 +16692,37 @@ export const UI = {
                 reader.readAsDataURL(file);
             }
         };
+
+        const manageSubBtn = document.getElementById('btn-manage-subscription');
+        if (manageSubBtn) {
+            manageSubBtn.onclick = async () => {
+                manageSubBtn.disabled = true;
+                const originalHtml = manageSubBtn.innerHTML;
+                manageSubBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Connecting...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                
+                try {
+                    const client = window.getSupabase ? window.getSupabase() : null;
+                    if (!client) throw new Error('Cloud connection not established');
+                    
+                    const { data, error } = await client.functions.invoke('create-portal-session');
+                    if (error) throw error;
+                    
+                    if (data && data.url) {
+                        window.location.href = data.url;
+                    } else {
+                        throw new Error('No redirect URL returned');
+                    }
+                } catch (err) {
+                    console.error('Subscription management error:', err);
+                    Notifications.show(`Failed to open billing portal: ${err.message}`, 'error');
+                } finally {
+                    manageSubBtn.disabled = false;
+                    manageSubBtn.innerHTML = originalHtml;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        }
 
         // Auto-save listeners for all standard configuration inputs
         const autoSaveConfigs = [
@@ -24865,6 +24984,374 @@ export const UI = {
 
         noticesContainer.innerHTML = html;
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async renderSuperAdmin() {
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in" style="padding: 2rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div>
+                        <h2 style="font-weight: 900; font-size: 1.8rem; color: #1e293b; letter-spacing: -0.02em;">Super Admin Console</h2>
+                        <p style="color: #64748b; font-size: 0.9rem; margin-top: 0.25rem;">Manage schools, subscription plans, and platform health.</p>
+                    </div>
+                </div>
+
+                <div class="metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                    <div class="card" style="padding: 1.5rem; border-radius: 20px; display: flex; align-items: center; gap: 1.5rem; background: white; border: 1px solid #cbd5e1;">
+                        <div style="width: 56px; height: 56px; border-radius: 16px; background: #e0f2fe; color: #0284c7; display: flex; align-items: center; justify-content: center;">
+                            <i data-lucide="building-2" style="width: 28px; height: 28px;"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.8rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Total Schools</div>
+                            <div style="font-size: 1.8rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;" id="super-stat-schools">-</div>
+                        </div>
+                    </div>
+                    <div class="card" style="padding: 1.5rem; border-radius: 20px; display: flex; align-items: center; gap: 1.5rem; background: white; border: 1px solid #cbd5e1;">
+                        <div style="width: 56px; height: 56px; border-radius: 16px; background: #e0fdf4; color: #0f766e; display: flex; align-items: center; justify-content: center;">
+                            <i data-lucide="check-circle" style="width: 28px; height: 28px;"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.8rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Active Subscriptions</div>
+                            <div style="font-size: 1.8rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;" id="super-stat-active">-</div>
+                        </div>
+                    </div>
+                    <div class="card" style="padding: 1.5rem; border-radius: 20px; display: flex; align-items: center; gap: 1.5rem; background: white; border: 1px solid #cbd5e1;">
+                        <div style="width: 56px; height: 56px; border-radius: 16px; background: #fff1f2; color: #be123c; display: flex; align-items: center; justify-content: center;">
+                            <i data-lucide="alert-circle" style="width: 28px; height: 28px;"></i>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.8rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Suspended/Delinquent</div>
+                            <div style="font-size: 1.8rem; font-weight: 900; color: #1e293b; margin-top: 0.25rem;" id="super-stat-suspended">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="border-radius: 24px; padding: 1.5rem; overflow: hidden; background: white; border: 1px solid #cbd5e1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <h3 style="font-weight: 800; font-size: 1.2rem; color: #1e293b;">Registered Tenants</h3>
+                        <button class="btn btn-secondary" id="btn-refresh-super-console" style="border-radius: 12px; height: 40px; padding: 0 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; background: #f1f5f9; border: 1px solid #cbd5e1; cursor: pointer;">
+                            <i data-lucide="refresh-cw" style="width: 14px;"></i> Refresh
+                        </button>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table class="table" style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid #cbd5e1; color: #64748b; font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                    <th style="padding: 1rem 1.5rem;">School Details</th>
+                                    <th style="padding: 1rem 1.5rem;">Plan Tier</th>
+                                    <th style="padding: 1rem 1.5rem;">Billing Status</th>
+                                    <th style="padding: 1rem 1.5rem;">Student Limit</th>
+                                    <th style="padding: 1rem 1.5rem;">Expiry Date</th>
+                                    <th style="padding: 1rem 1.5rem; text-align: right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="superadmin-tenants-list">
+                                <tr>
+                                    <td colspan="6" style="padding: 3rem; text-align: center; color: #94a3b8;">
+                                        <div class="loader" style="margin: 0 auto 1rem; width: 24px; height: 24px; border: 2px solid #3b82f6; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                                        Fetching schools and subscription models...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        const refreshBtn = document.getElementById('btn-refresh-super-console');
+        if (refreshBtn) {
+            refreshBtn.onclick = () => this.loadSuperAdminData();
+        }
+
+        await this.loadSuperAdminData();
+    },
+
+    async loadSuperAdminData() {
+        const listContainer = document.getElementById('superadmin-tenants-list');
+        if (!listContainer) return;
+
+        try {
+            const client = window.getSupabase ? window.getSupabase() : null;
+            if (!client) throw new Error('Cloud client connection unavailable');
+
+            // Fetch tenants
+            const { data: tenants, error: tenantError } = await client
+                .from('tenants')
+                .select('*')
+                .order('name');
+            if (tenantError) throw tenantError;
+
+            // Fetch subscriptions
+            const { data: subs, error: subError } = await client
+                .from('subscriptions')
+                .select('*');
+            if (subError) throw subError;
+
+            // Group subscriptions by tenant_id
+            const subMap = {};
+            subs.forEach(s => {
+                subMap[s.tenant_id] = s;
+            });
+
+            // Update stats
+            document.getElementById('super-stat-schools').textContent = tenants.length.toString();
+            const activeCount = subs.filter(s => s.status === 'active' || s.status === 'trialing').length;
+            const suspendedCount = tenants.filter(t => t.status !== 'active').length + subs.filter(s => s.status !== 'active' && s.status !== 'trialing').length;
+            document.getElementById('super-stat-active').textContent = activeCount.toString();
+            document.getElementById('super-stat-suspended').textContent = suspendedCount.toString();
+
+            if (tenants.length === 0) {
+                listContainer.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="padding: 3rem; text-align: center; color: #64748b; font-weight: 600;">
+                            No registered schools found on the platform.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            listContainer.innerHTML = tenants.map(t => {
+                const sub = subMap[t.id] || { plan_tier: 'none', status: 'canceled', max_student_limit: 0, expires_at: null };
+                
+                let statusBadgeColor = '#10b981';
+                if (t.status === 'suspended') statusBadgeColor = '#f59e0b';
+                else if (t.status === 'deleted') statusBadgeColor = '#ef4444';
+
+                let subBadgeColor = '#3b82f6';
+                if (sub.status === 'active') subBadgeColor = '#10b981';
+                else if (sub.status === 'past_due') subBadgeColor = '#f59e0b';
+                else if (sub.status === 'canceled') subBadgeColor = '#ef4444';
+
+                const expiryStr = sub.expires_at ? new Date(sub.expires_at).toLocaleDateString() : 'Never';
+
+                return `
+                    <tr style="border-bottom: 1px solid #cbd5e1; hover:background: #f8fafc;" class="tenant-row">
+                        <td style="padding: 1.25rem 1.5rem;">
+                            <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem;">${t.name}</div>
+                            <div style="font-size: 0.75rem; color: #94a3b8; font-family: monospace; margin-top: 2px;">Slug: ${t.slug} | Prefix: ${t.student_id_prefix || 'NKQMS'}</div>
+                        </td>
+                        <td style="padding: 1.25rem 1.5rem;">
+                            <span class="badge" style="background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 8px; font-weight: 700; font-size: 0.7rem; text-transform: uppercase;">
+                                ${sub.plan_tier}
+                            </span>
+                        </td>
+                        <td style="padding: 1.25rem 1.5rem;">
+                            <div style="display: flex; flex-direction: column; gap: 4px;">
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <span style="width: 8px; height: 8px; border-radius: 50%; background: ${statusBadgeColor};"></span>
+                                    <span style="font-size: 0.8rem; font-weight: 700; color: #334155; text-transform: capitalize;">School: ${t.status}</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <span style="width: 8px; height: 8px; border-radius: 50%; background: ${subBadgeColor};"></span>
+                                    <span style="font-size: 0.8rem; font-weight: 700; color: #334155; text-transform: capitalize;">Sub: ${sub.status}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td style="padding: 1.25rem 1.5rem; font-weight: 700; color: #475569; font-size: 0.85rem;">
+                            ${sub.max_student_limit} Students
+                        </td>
+                        <td style="padding: 1.25rem 1.5rem; font-weight: 600; color: #475569; font-size: 0.85rem;">
+                            ${expiryStr}
+                        </td>
+                        <td style="padding: 1.25rem 1.5rem; text-align: right;">
+                            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                                <button class="btn btn-secondary" onclick="UI.editTenantSubscription('${t.id}')" style="padding: 6px 12px; height: auto; border-radius: 8px; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 4px; border: 1px solid #cbd5e1; background: white; cursor: pointer;">
+                                    <i data-lucide="edit-3" style="width: 12px;"></i> Configure
+                                </button>
+                                ${t.status === 'active' ? `
+                                    <button class="btn" onclick="UI.toggleTenantStatus('${t.id}', 'suspended')" style="padding: 6px 12px; height: auto; border-radius: 8px; font-size: 0.75rem; font-weight: 700; background: #fff1f2; color: #be123c; border: none; cursor: pointer;">
+                                        Suspend
+                                    </button>
+                                ` : `
+                                    <button class="btn" onclick="UI.toggleTenantStatus('${t.id}', 'active')" style="padding: 6px 12px; height: auto; border-radius: 8px; font-size: 0.75rem; font-weight: 700; background: #f0fdf4; color: #166534; border: none; cursor: pointer;">
+                                        Activate
+                                    </button>
+                                `}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        } catch (err) {
+            console.error('Super Admin console load error:', err);
+            listContainer.innerHTML = `
+                <tr>
+                    <td colspan="6" style="padding: 3rem; text-align: center; color: #be123c; font-weight: 700;">
+                        Failed to load dashboard data: ${err.message}
+                    </td>
+                </tr>
+            `;
+        }
+    },
+
+    async toggleTenantStatus(tenantId, newStatus) {
+        if (!confirm(`Are you sure you want to change the school status to "${newStatus.toUpperCase()}"?`)) return;
+
+        try {
+            const client = window.getSupabase ? window.getSupabase() : null;
+            if (!client) throw new Error('Cloud client connection unavailable');
+
+            const { error } = await client
+                .from('tenants')
+                .update({ status: newStatus, updated_at: new Date().toISOString() })
+                .eq('id', tenantId);
+
+            if (error) throw error;
+            Notifications.show(`School status successfully updated to ${newStatus}.`, 'success');
+            await this.loadSuperAdminData();
+        } catch (err) {
+            console.error('Failed to toggle tenant status:', err);
+            Notifications.show(`Failed to update tenant: ${err.message}`, 'error');
+        }
+    },
+
+    async editTenantSubscription(tenantId) {
+        try {
+            const client = window.getSupabase ? window.getSupabase() : null;
+            if (!client) throw new Error('Cloud client connection unavailable');
+
+            // Fetch current tenant and subscription details
+            const { data: tenant } = await client.from('tenants').select('name, slug, student_id_prefix').eq('id', tenantId).single();
+            const { data: sub } = await client.from('subscriptions').select('*').eq('tenant_id', tenantId).maybeSingle();
+
+            const planTier = sub?.plan_tier || 'standard';
+            const status = sub?.status || 'active';
+            const limit = sub?.max_student_limit || 200;
+            const expiresAt = sub?.expires_at ? sub.expires_at.split('T')[0] : '';
+            const prefix = tenant?.student_id_prefix || 'NKQMS';
+
+            // Create simple edit overlay modal
+            const modalId = 'super-edit-sub-modal';
+            const existing = document.getElementById(modalId);
+            if (existing) existing.remove();
+
+            const modalHtml = `
+                <div id="${modalId}" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(8px); z-index: 99999; display: flex; align-items: center; justify-content: center; font-family: 'Outfit', sans-serif;">
+                    <div style="background: white; border-radius: 28px; width: 100%; max-width: 500px; padding: 2rem; box-shadow: var(--shadow-2xl); position: relative; border: 1px solid #cbd5e1; display: flex; flex-direction: column; gap: 1.5rem;" class="animate-scale-in">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h3 style="font-weight: 900; font-size: 1.35rem; color: #1e293b;">Configure School</h3>
+                                <p style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem;">Configuring: <strong>${tenant.name}</strong></p>
+                            </div>
+                            <button onclick="document.getElementById('${modalId}').remove()" style="background: #f1f5f9; color: #64748b; border: none; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
+                                <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+                            </button>
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase;">Student ID Prefix</label>
+                                <input type="text" id="edit-tenant-prefix" class="input" value="${prefix}" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 40px; border-radius: 10px; border: 1px solid #cbd5e1; padding: 0 10px;">
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase;">Plan Tier</label>
+                                <select id="edit-sub-tier" class="input" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 40px; border-radius: 10px; border: 1px solid #cbd5e1; padding: 0 10px;">
+                                    <option value="free" ${planTier === 'free' ? 'selected' : ''}>Free Trial</option>
+                                    <option value="standard" ${planTier === 'standard' ? 'selected' : ''}>Standard Plan</option>
+                                    <option value="premium" ${planTier === 'premium' ? 'selected' : ''}>Premium Plan</option>
+                                    <option value="custom" ${planTier === 'custom' ? 'selected' : ''}>Custom Enterprise</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase;">Subscription Status</label>
+                                <select id="edit-sub-status" class="input" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 40px; border-radius: 10px; border: 1px solid #cbd5e1; padding: 0 10px;">
+                                    <option value="trialing" ${status === 'trialing' ? 'selected' : ''}>Trialing</option>
+                                    <option value="active" ${status === 'active' ? 'selected' : ''}>Active</option>
+                                    <option value="past_due" ${status === 'past_due' ? 'selected' : ''}>Past Due</option>
+                                    <option value="canceled" ${status === 'canceled' ? 'selected' : ''}>Canceled</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase;">Max Student Enrollment Limit</label>
+                                <input type="number" id="edit-sub-limit" class="input" value="${limit}" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 40px; border-radius: 10px; border: 1px solid #cbd5e1; padding: 0 10px;">
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase;">Expiry Date</label>
+                                <input type="date" id="edit-sub-expiry" class="input" value="${expiresAt}" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 40px; border-radius: 10px; border: 1px solid #cbd5e1; padding: 0 10px;">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 1rem; border-top: 1px solid #cbd5e1; padding-top: 1.25rem; margin-top: 0.5rem;">
+                            <button onclick="document.getElementById('${modalId}').remove()" class="btn btn-secondary" style="border-radius: 12px; height: 44px; padding: 0 1.5rem; font-weight: 700; background: #cbd5e1; border: none; cursor: pointer;">Cancel</button>
+                            <button id="btn-save-sub-edit" class="btn btn-primary" style="border-radius: 12px; height: 44px; padding: 0 1.5rem; font-weight: 700; background: #2563eb; color: white; border: none; cursor: pointer;">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            const saveBtn = document.getElementById('btn-save-sub-edit');
+            if (saveBtn) {
+                saveBtn.onclick = async () => {
+                    saveBtn.disabled = true;
+                    saveBtn.textContent = 'Saving...';
+
+                    const newPrefix = document.getElementById('edit-tenant-prefix').value.trim();
+                    const newTier = document.getElementById('edit-sub-tier').value;
+                    const newStatus = document.getElementById('edit-sub-status').value;
+                    const newLimit = parseInt(document.getElementById('edit-sub-limit').value) || 200;
+                    const newExpiry = document.getElementById('edit-sub-expiry').value;
+
+                    try {
+                        // 1. Update tenant student_id_prefix
+                        const { error: tenantErr } = await client
+                            .from('tenants')
+                            .update({ student_id_prefix: newPrefix, updated_at: new Date().toISOString() })
+                            .eq('id', tenantId);
+                        if (tenantErr) throw tenantErr;
+
+                        // 2. Update/Insert subscription
+                        const subPayload = {
+                            tenant_id: tenantId,
+                            plan_tier: newTier,
+                            status: newStatus,
+                            max_student_limit: newLimit,
+                            expires_at: newExpiry ? new Date(newExpiry).toISOString() : null,
+                            updated_at: new Date().toISOString()
+                        };
+
+                        let subErr = null;
+                        if (sub?.id) {
+                            const { error } = await client
+                                .from('subscriptions')
+                                .update(subPayload)
+                                .eq('id', sub.id);
+                            subErr = error;
+                        } else {
+                            const { error } = await client
+                                .from('subscriptions')
+                                .insert(subPayload);
+                            subErr = error;
+                        }
+                        if (subErr) throw subErr;
+
+                        Notifications.show('School configuration saved successfully.', 'success');
+                        document.getElementById(modalId).remove();
+                        await this.loadSuperAdminData();
+                    } catch (err) {
+                        console.error('Failed to save configuration:', err);
+                        Notifications.show(`Failed to save configuration: ${err.message}`, 'error');
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = 'Save Changes';
+                    }
+                };
+            }
+
+        } catch (err) {
+            console.error('Failed to open configure modal:', err);
+            Notifications.show(`Failed to load school details: ${err.message}`, 'error');
+        }
     },
 
     async refreshLiveNotices() {

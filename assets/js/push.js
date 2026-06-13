@@ -155,13 +155,41 @@ async function saveSubscriptionToCloud(userId, subscription) {
         // Resolve the actual auth UID from the active session to guarantee
         // it matches what Supabase RLS sees via auth.uid()
         let resolvedUserId = String(userId);
+        let tenantId = localStorage.getItem('tenant_id');
+
         try {
             const { data: sessionData } = await client.auth.getSession();
             if (sessionData?.session?.user?.id) {
                 resolvedUserId = sessionData.session.user.id;
             }
+            if (sessionData?.session?.access_token && !tenantId) {
+                const parts = sessionData.session.access_token.split('.');
+                if (parts[1]) {
+                    const claims = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                    if (claims && claims.tenant_id) {
+                        tenantId = claims.tenant_id;
+                    }
+                }
+            }
         } catch (e) {
-            console.warn('[Push] Could not resolve session UID, using provided userId.');
+            console.warn('[Push] Could not resolve session UID or tenant ID, using provided userId.');
+        }
+
+        // Fallback to local IndexedDB if tenantId is still missing
+        if (!tenantId) {
+            try {
+                const profile = await db.profiles.get(resolvedUserId);
+                if (profile && profile.tenant_id) {
+                    tenantId = profile.tenant_id;
+                }
+            } catch (err) {
+                console.warn('[Push] Failed to resolve tenantId from local DB:', err);
+            }
+        }
+
+        // Final fallback to seed tenant to satisfy DB constraints
+        if (!tenantId) {
+            tenantId = '00000000-0000-0000-0000-000000000001';
         }
 
         const payload = {
@@ -169,28 +197,49 @@ async function saveSubscriptionToCloud(userId, subscription) {
             endpoint: endpoint,
             p256dh: p256dh,
             auth: authKey,
+            tenant_id: tenantId,
             updated_at: new Date().toISOString()
         };
 
-        // Attempt upsert — retry once after a short delay if RLS fails
-        // (handles race condition where profile is still being provisioned)
-        let { error } = await client.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
+        // Attempt registration via RPC function (bypasses RLS conflict issues for same device login transitions)
+        const { error } = await client.rpc('register_push_subscription', {
+            p_user_id: resolvedUserId,
+            p_endpoint: endpoint,
+            p_p256dh: p256dh,
+            p_auth: authKey,
+            p_tenant_id: tenantId
+        });
 
         if (error) {
-            console.warn('[Push] First upsert attempt failed:', error.message, '— retrying in 2s...');
+            console.warn('[Push] First registration attempt failed:', error.message, '— retrying in 2s...');
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             // Refresh the session token before retry
             try {
                 const { data: refreshed } = await client.auth.getSession();
                 if (refreshed?.session?.user?.id) {
-                    payload.user_id = refreshed.session.user.id;
+                    resolvedUserId = refreshed.session.user.id;
+                }
+                if (refreshed?.session?.access_token) {
+                    const parts = refreshed.session.access_token.split('.');
+                    if (parts[1]) {
+                        const claims = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                        if (claims && claims.tenant_id) {
+                            tenantId = claims.tenant_id;
+                        }
+                    }
                 }
             } catch (_) { /* keep existing */ }
 
-            const retry = await client.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
+            const retry = await client.rpc('register_push_subscription', {
+                p_user_id: resolvedUserId,
+                p_endpoint: endpoint,
+                p_p256dh: p256dh,
+                p_auth: authKey,
+                p_tenant_id: tenantId
+            });
             if (retry.error) {
-                console.error('[Push] Supabase upsert error (after retry):', retry.error.message);
+                console.error('[Push] Supabase registration error (after retry):', retry.error.message);
                 return false;
             }
         }

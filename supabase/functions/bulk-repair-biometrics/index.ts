@@ -11,21 +11,76 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+function parseJwt(token: string) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
+    const authHeader = req.headers.get('Authorization') || ''
+    const token = authHeader.replace('Bearer ', '')
+    
+    let caller_tenant_id: string | null = null
+    let isSuperAdmin = false
+    
+    if (token && authHeader.includes('eyJhbGciOi')) {
+      try {
+        const claims = parseJwt(token)
+        if (claims) {
+          if (claims.user_role === 'SuperAdmin') {
+            isSuperAdmin = true;
+          }
+          if (claims.tenant_id) {
+            caller_tenant_id = claims.tenant_id
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Unless SuperAdmin, we require a valid tenant claim
+    if (!isSuperAdmin && !caller_tenant_id) {
+      return new Response(JSON.stringify({ error: 'Unauthorized: Missing tenant context' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     
     console.log('Starting optimized bulk arm repair...')
 
-    // 1. Fetch all active students from SMS
-    const { data: students, error: fetchError } = await supabase
+    // 1. Fetch all active students from SMS (scoped to tenant)
+    let query = supabase
       .from('students')
-      .select('student_id, name, attendance_code, class_name, sub_class')
+      .select('student_id, name, attendance_code, class_name, sub_class, tenant_id')
       .eq('is_active', true)
+
+    if (!isSuperAdmin) {
+      query = query.eq('tenant_id', caller_tenant_id)
+    } else {
+      // SuperAdmin can optionally pass tenant_id in body
+      try {
+        const body = await req.json()
+        if (body && body.tenant_id) {
+          query = query.eq('tenant_id', body.tenant_id)
+        }
+      } catch (e) {}
+    }
+
+    const { data: students, error: fetchError } = await query
 
     if (fetchError) throw fetchError
 
@@ -75,18 +130,22 @@ serve(async (req) => {
             if (bioClass && bioClass !== student.class_name) {
               console.log(`Repairing ${student.name}: ${student.class_name} -> ${bioClass}`)
               
-              // 1. Ensure the new class exists in the 'classes' table
+              const studentTenantId = student.tenant_id || caller_tenant_id || '00000000-0000-0000-0000-000000000001'
+
+              // 1. Ensure the new class exists in the 'classes' table for this tenant
               const { data: existingClass } = await supabase
                 .from('classes')
                 .select('id')
                 .eq('name', bioClass)
+                .eq('tenant_id', studentTenantId)
                 .maybeSingle()
 
               if (!existingClass) {
-                console.log(`Creating new class: ${bioClass}`)
+                console.log(`Creating new class: ${bioClass} for tenant ${studentTenantId}`)
                 await supabase.from('classes').insert({
                   name: bioClass,
                   level: student.class_name.match(/\d+/) ? student.class_name.match(/\d+/)[0] : '1',
+                  tenant_id: studentTenantId,
                   updated_at: new Date().toISOString()
                 })
               }

@@ -4,14 +4,37 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
+function parseJwt(token: string) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+}
+
 serve(async (req) => {
   // Verify the request is from a trusted source (our Attendance System trigger)
   const authHeader = req.headers.get('Authorization') || ''
   const token = authHeader.replace('Bearer ', '')
   
   // Accept either the service_role key or check it matches what the trigger sends
+  let caller_tenant_id: string | null = null
   if (token !== SUPABASE_SERVICE_ROLE_KEY && !authHeader.includes('eyJhbGciOi')) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+  }
+
+  if (token && authHeader.includes('eyJhbGciOi')) {
+    try {
+      const claims = parseJwt(token)
+      if (claims && claims.tenant_id) {
+        caller_tenant_id = claims.tenant_id
+      }
+    } catch (e) {}
   }
 
   try {
@@ -50,7 +73,7 @@ serve(async (req) => {
       // If purely numeric, look up by attendance_code
       const { data: matched } = await supabase
         .from('students')
-        .select('student_id, name, is_active')
+        .select('student_id, name, is_active, tenant_id, parent_phone')
         .eq('attendance_code', numeric_code)
         .maybeSingle();
       student = matched;
@@ -58,7 +81,7 @@ serve(async (req) => {
       // If alphanumeric/UUID, look up by legacy_student_id
       const { data: matched } = await supabase
         .from('students')
-        .select('student_id, name, is_active')
+        .select('student_id, name, is_active, tenant_id, parent_phone')
         .eq('legacy_student_id', String(raw_student_identifier))
         .maybeSingle();
       student = matched;
@@ -112,7 +135,7 @@ serve(async (req) => {
           // Check if student already exists in SMS with this resolved code (but just without the legacy_student_id)
           const { data: existingStudent } = await supabase
             .from('students')
-            .select('student_id, name, is_active')
+            .select('student_id, name, is_active, tenant_id, parent_phone')
             .eq('attendance_code', resolvedCode)
             .maybeSingle();
 
@@ -130,9 +153,22 @@ serve(async (req) => {
             student = existingStudent;
             console.log(`Linked existing SMS student ${student.name} to legacy_student_id ${raw_student_identifier}`);
           } else {
+            // Resolve student prefix for the tenant
+            const resolvedTenantId = caller_tenant_id || '00000000-0000-0000-0000-000000000001';
+            let prefix = 'NKQMS';
+            if (resolvedTenantId) {
+              const { data: tenantData } = await supabase
+                .from('tenants')
+                .select('student_id_prefix')
+                .eq('id', resolvedTenantId)
+                .maybeSingle();
+              if (tenantData && tenantData.student_id_prefix) {
+                prefix = tenantData.student_id_prefix;
+              }
+            }
             // Create the student in SMS
             const year = new Date().getFullYear();
-            const new_student_id = `NKQMS-${year}-${resolvedCode}`;
+            const new_student_id = `${prefix}-${year}-${resolvedCode}`;
             
             const { data: newStudent, error: createError } = await supabase
               .from('students')
@@ -144,7 +180,8 @@ serve(async (req) => {
                 attendance_code: resolvedCode,
                 legacy_student_id: String(raw_student_identifier),
                 is_active: true,
-                admission_year: year
+                admission_year: year,
+                tenant_id: resolvedTenantId
               })
               .select()
               .single();
@@ -177,6 +214,8 @@ serve(async (req) => {
 
     const now = new Date().toISOString();
 
+    const tenant_id = student?.tenant_id || caller_tenant_id || '00000000-0000-0000-0000-000000000001';
+
     // Step 4A: Upsert into the `attendance` table (daily biometric sign-in/out)
     // This is the table that holds sign_in, sign_out, is_late as TEXT columns
     const attendancePayload: Record<string, unknown> = {
@@ -184,6 +223,7 @@ serve(async (req) => {
       date,
       status,
       is_late: !!is_late,
+      tenant_id,
       updated_at: now
     };
     // Only set sign_in/sign_out if provided, so a sign-out-only update doesn't blank sign_in
@@ -210,6 +250,7 @@ serve(async (req) => {
       subject_name: record.subject_name || record.subject_id || null,
       period_number: record.period_number || record.period_id || null,
       is_subject_based: isSubjectBased,
+      tenant_id,
       updated_at: now
     };
     if (sign_in) recordsPayload.check_in = `${date}T${sign_in}`;
@@ -227,6 +268,37 @@ serve(async (req) => {
     }
 
     console.log(`Attendance recorded: ${student.name} → ${status} (Out: ${sign_out || 'N/A'}) on ${date}`)
+
+    // Step 5: Dispatch SMS notification to parent if configured
+    if (student.parent_phone) {
+      try {
+        console.log(`Triggering SMS dispatch to parent phone: ${student.parent_phone}`)
+        const smsMessage = sign_out 
+          ? `Dear Parent, your child ${student.name} has signed out at ${sign_out} on ${date}.`
+          : `Dear Parent, your child ${student.name} has signed in at ${sign_in || 'N/A'} on ${date}. Status: ${status}.`;
+
+        const dispatchResponse = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+          },
+          body: JSON.stringify({
+            to: student.parent_phone,
+            message: smsMessage,
+            tenant_id: tenant_id
+          })
+        });
+        
+        if (!dispatchResponse.ok) {
+          console.error(`SMS dispatch failed: ${await dispatchResponse.text()}`);
+        } else {
+          console.log(`SMS dispatch triggered successfully.`);
+        }
+      } catch (smsErr) {
+        console.error(`Error triggering SMS dispatch:`, smsErr.message);
+      }
+    }
 
     return new Response(JSON.stringify({ 
       success: true, 

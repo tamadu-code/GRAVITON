@@ -55,6 +55,13 @@ export async function syncToCloud() {
     const client = getSupabase();
     if (!client) return { success: false, message: 'Supabase not configured' };
 
+    const userRole = localStorage.getItem('user_role');
+    const subStatus = localStorage.getItem('tenant_subscription_status');
+    if (subStatus && subStatus !== 'active' && subStatus !== 'trialing' && userRole !== 'SuperAdmin') {
+        console.warn(`[Sync] Background push blocked due to inactive subscription: ${subStatus}`);
+        return { success: false, message: 'Subscription inactive' };
+    }
+
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections', 'cbt_question_bank', 'cbt_options'];
     let syncCount = 0;
     const failedTables = new Set();
@@ -78,31 +85,31 @@ export async function syncToCloud() {
                 
                 // Table-level field whitelists
                 const whitelist = {
-                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'employment_type', 'assigned_id', 'passport', 'phone', 'department', 'qualification', 'updated_at'],
-                    students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'passport_url', 'updated_at'],
-                    classes: ['id', 'name', 'level', 'updated_at'],
-                    subjects: ['id', 'name', 'type', 'credits', 'updated_at'],
-                    subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'updated_at'],
-                    form_teachers: ['id', 'teacher_id', 'class_name', 'updated_at'],
-                    scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'updated_at'],
-                    attendance: ['id', 'student_id', 'date', 'status', 'sign_in', 'sign_out', 'is_late', 'updated_at'],
-                    attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'updated_at'],
-                    timetable: ['id', 'class_name', 'sub_class', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'updated_at'],
-                    notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'updated_at'],
-                    settings: ['id', 'key', 'value', 'updated_at'],
-                    pins: ['id', 'pin_code', 'serial', 'status', 'student_id', 'term', 'session', 'used_count', 'usage_limit', 'updated_at'],
-                    payments: ['id', 'student_id', 'amount', 'category', 'term', 'session', 'reference', 'status', 'date', 'updated_at'],
-                    fee_structures: ['id', 'class_name', 'amount', 'term', 'session', 'category', 'updated_at'],
-                    student_analytics: ['student_id', 'average', 'rank', 'fee_balance', 'attendance_rate', 'updated_at'],
-                    cbt_exams: ['id', 'title', 'subject_id', 'class_name', 'teacher_id', 'mode', 'term', 'session', 'score_field', 'date', 'start_time', 'end_time', 'duration', 'question_limit', 'status', 'is_unified', 'specialization', 'updated_at'],
-                    cbt_questions: ['id', 'exam_id', 'question_text', 'passage_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'updated_at'],
-                    cbt_results: ['id', 'exam_id', 'student_id', 'score', 'total_questions', 'total_marks', 'answers', 'warnings', 'violations', 'started_at', 'status', 'updated_at', 'question_ids'],
-                    cbt_exam_sections: ['id', 'exam_id', 'subject_id', 'class_name', 'score_field', 'question_count', 'target_mark', 'specialization', 'updated_at'],
-                    duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'updated_at'],
-                    audit_logs: ['operation', 'table', 'record_id', 'timestamp', 'user_id'],
-                    parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'updated_at'],
-                    cbt_question_bank: ['id', 'subject_id', 'class_name', 'question_text', 'passage_text', 'term', 'session', 'topic_area', 'difficulty_level', 'updated_at'],
-                    cbt_options: ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'updated_at']
+                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'employment_type', 'assigned_id', 'passport', 'phone', 'department', 'qualification', 'tenant_id', 'updated_at'],
+                    students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'passport_url', 'tenant_id', 'updated_at'],
+                    classes: ['id', 'name', 'level', 'tenant_id', 'updated_at'],
+                    subjects: ['id', 'name', 'type', 'credits', 'tenant_id', 'updated_at'],
+                    subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'tenant_id', 'updated_at'],
+                    form_teachers: ['id', 'teacher_id', 'class_name', 'tenant_id', 'updated_at'],
+                    scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'tenant_id', 'updated_at'],
+                    attendance: ['id', 'student_id', 'date', 'status', 'sign_in', 'sign_out', 'is_late', 'tenant_id', 'updated_at'],
+                    attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'tenant_id', 'updated_at'],
+                    timetable: ['id', 'class_name', 'sub_class', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'tenant_id', 'updated_at'],
+                    notices: ['id', 'title', 'content', 'category', 'target', 'author', 'is_active', 'tenant_id', 'updated_at'],
+                    settings: ['id', 'key', 'value', 'tenant_id', 'updated_at'],
+                    pins: ['id', 'pin_code', 'serial', 'status', 'student_id', 'term', 'session', 'used_count', 'usage_limit', 'tenant_id', 'updated_at'],
+                    payments: ['id', 'student_id', 'amount', 'category', 'term', 'session', 'reference', 'status', 'date', 'tenant_id', 'updated_at'],
+                    fee_structures: ['id', 'class_name', 'amount', 'term', 'session', 'category', 'tenant_id', 'updated_at'],
+                    student_analytics: ['student_id', 'average', 'rank', 'fee_balance', 'attendance_rate', 'tenant_id', 'updated_at'],
+                    cbt_exams: ['id', 'title', 'subject_id', 'class_name', 'teacher_id', 'mode', 'term', 'session', 'score_field', 'date', 'start_time', 'end_time', 'duration', 'question_limit', 'status', 'is_unified', 'specialization', 'tenant_id', 'updated_at'],
+                    cbt_questions: ['id', 'exam_id', 'question_text', 'passage_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'tenant_id', 'updated_at'],
+                    cbt_results: ['id', 'exam_id', 'student_id', 'score', 'total_questions', 'total_marks', 'answers', 'warnings', 'violations', 'started_at', 'status', 'tenant_id', 'updated_at', 'question_ids'],
+                    cbt_exam_sections: ['id', 'exam_id', 'subject_id', 'class_name', 'score_field', 'question_count', 'target_mark', 'specialization', 'tenant_id', 'updated_at'],
+                    duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'tenant_id', 'updated_at'],
+                    audit_logs: ['operation', 'table', 'record_id', 'timestamp', 'user_id', 'tenant_id'],
+                    parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'tenant_id', 'updated_at'],
+                    cbt_question_bank: ['id', 'subject_id', 'class_name', 'question_text', 'passage_text', 'term', 'session', 'topic_area', 'difficulty_level', 'tenant_id', 'updated_at'],
+                    cbt_options: ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'tenant_id', 'updated_at']
                 };
 
                 const CHUNK_SIZE = 50;
@@ -324,6 +331,13 @@ export async function syncFromCloud(forceAll = false) {
         return;
     }
 
+    const userRole = localStorage.getItem('user_role');
+    const subStatus = localStorage.getItem('tenant_subscription_status');
+    if (subStatus && subStatus !== 'active' && subStatus !== 'trialing' && userRole !== 'SuperAdmin') {
+        console.warn(`[Sync] Background pull blocked due to inactive subscription: ${subStatus}`);
+        return;
+    }
+
     // ── Clear stale lock (may persist across page reloads) ──
     if (window._isSyncingFromCloud && !forceAll) return;
     window._isSyncingFromCloud = true;
@@ -334,6 +348,9 @@ export async function syncFromCloud(forceAll = false) {
     const lastSync = (lastSyncTime && !forceAll)
         ? new Date(new Date(lastSyncTime).getTime() - 3600000).toISOString()
         : new Date(0).toISOString();
+
+    const tenantId = localStorage.getItem('tenant_id');
+    const isSuperAdmin = userRole === 'SuperAdmin';
 
     try {
         for (const table of tables) {
@@ -360,6 +377,10 @@ export async function syncFromCloud(forceAll = false) {
                         } else {
                             query = query.gt('updated_at', lastSync);
                         }
+                    }
+
+                    if (tenantId && !isSuperAdmin) {
+                        query = query.eq('tenant_id', tenantId);
                     }
 
                     const { data, error } = await query;

@@ -182,11 +182,73 @@ async function initApp() {
         });
     }
 }
+function parseJwt(token) {
+    try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        return JSON.parse(jsonPayload);
+    } catch (e) {
+        console.error('Failed to parse JWT:', e);
+        return null;
+    }
+}
 
 async function loadAuthenticatedApp(authUser) {
     console.log('Loading authenticated app for:', authUser.email);
     
     const client = getSupabase();
+    
+    // Extract tenant_id from current session JWT
+    const session = await getCurrentSession();
+    if (session && session.access_token) {
+        const claims = parseJwt(session.access_token);
+        if (claims) {
+            console.log('[Auth Hook] JWT Claims:', claims);
+            if (claims.tenant_id) {
+                localStorage.setItem('tenant_id', claims.tenant_id);
+                
+                // Fetch tenant configuration (e.g. prefix) and subscription status from database
+                if (navigator.onLine && client) {
+                    try {
+                        const { data: tenantData } = await client
+                            .from('tenants')
+                            .select('student_id_prefix')
+                            .eq('id', claims.tenant_id)
+                            .maybeSingle();
+                        if (tenantData && tenantData.student_id_prefix) {
+                            localStorage.setItem('tenant_student_id_prefix', tenantData.student_id_prefix);
+                            console.log(`[Auth Hook] Set tenant prefix: ${tenantData.student_id_prefix}`);
+                        }
+
+                        const { data: subData } = await client
+                            .from('subscriptions')
+                            .select('status')
+                            .eq('tenant_id', claims.tenant_id)
+                            .maybeSingle();
+                        if (subData) {
+                            localStorage.setItem('tenant_subscription_status', subData.status);
+                            console.log(`[Auth Hook] Set subscription status: ${subData.status}`);
+                        } else {
+                            localStorage.setItem('tenant_subscription_status', 'active');
+                        }
+                    } catch (tenantErr) {
+                        console.warn('Failed to fetch tenant prefix/subscription:', tenantErr);
+                    }
+                }
+            } else {
+                localStorage.removeItem('tenant_id');
+                localStorage.removeItem('tenant_student_id_prefix');
+                localStorage.removeItem('tenant_subscription_status');
+            }
+            
+            if (claims.user_role) {
+                localStorage.setItem('user_role', claims.user_role);
+            }
+        }
+    }
     
     // Fetch user profile from Supabase
     let profile = null;
@@ -376,10 +438,15 @@ async function loadAuthenticatedApp(authUser) {
     const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances'];
     const parentAllowed = ['dashboard'];
     const accountsAllowed = ['dashboard', 'finances', 'noticeboard'];
+    const superAdminAllowed = ['superadmin', 'profile'];
 
     document.querySelectorAll('.nav-item').forEach(item => {
         const view = item.getAttribute('data-view');
-        if (currentRole === 'Teacher' && !teacherAllowed.includes(view)) {
+        if (currentRole === 'SuperAdmin' && !superAdminAllowed.includes(view)) {
+            item.style.display = 'none';
+        } else if (view === 'superadmin' && currentRole !== 'SuperAdmin') {
+            item.style.display = 'none';
+        } else if (currentRole === 'Teacher' && !teacherAllowed.includes(view)) {
             item.style.display = 'none';
         } else if (currentRole === 'Student' && !studentAllowed.includes(view)) {
             item.style.display = 'none';
@@ -392,11 +459,21 @@ async function loadAuthenticatedApp(authUser) {
         }
     });
 
-    // Hide section headers for non-admin roles
-    if (currentRole !== 'Admin') {
+    // Hide section headers for non-admin roles (SuperAdmin has its own console)
+    if (currentRole !== 'Admin' && currentRole !== 'SuperAdmin') {
         document.querySelectorAll('.nav-section-header').forEach(h => {
             h.style.display = 'none';
         });
+    }
+    if (currentRole === 'SuperAdmin') {
+        document.querySelectorAll('.nav-section-header').forEach(h => {
+            h.style.display = 'none';
+        });
+        // Replace school branding with platform branding for SuperAdmin
+        const sidebarLogo = document.getElementById('sidebar-school-logo');
+        const sidebarName = document.getElementById('sidebar-school-name');
+        if (sidebarLogo) sidebarLogo.textContent = '⚙';
+        if (sidebarName) sidebarName.innerHTML = 'GRAVITON<br>PLATFORM ADMIN';
     }
 
     // Re-render icons
@@ -551,15 +628,16 @@ async function loadAuthenticatedApp(authUser) {
     }
     await patchBankClassNames();
 
-    // Handle initial route
-    const initialHash = window.location.hash.substring(1) || 'dashboard';
+    // Handle initial route — SuperAdmin goes straight to the console
+    const defaultView = currentRole === 'SuperAdmin' ? 'superadmin' : 'dashboard';
+    const initialHash = window.location.hash.substring(1) || defaultView;
     // Set initial browser history state so popstate has something to work with
     history.replaceState({ view: initialHash }, '', `#${initialHash}`);
     const activeNav = document.querySelector(`.nav-item[data-view="${initialHash}"]`);
     if (activeNav) {
         activeNav.click();
     } else {
-        UI.renderView('dashboard');
+        UI.renderView(defaultView);
     }
 }
 
@@ -814,7 +892,7 @@ if (logoutBtn) {
             const keysToRemove = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && (key.includes('supabase.auth.token') || key.startsWith('sb-') || key.includes('user_role'))) {
+                if (key && (key.includes('supabase.auth.token') || key.startsWith('sb-') || key.includes('user_role') || key.includes('tenant_'))) {
                     keysToRemove.push(key);
                 }
             }

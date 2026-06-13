@@ -110,9 +110,20 @@ serve(async (req) => {
 
     console.log(`Received biometric code: ${attendance_code}`)
 
-    // CALCULATE NEW ID: NKQMS-YEAR-CODE
+    // CALCULATE NEW ID: PREFIX-YEAR-CODE
+    let prefix = 'NKQMS';
+    if (record.tenant_id) {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('student_id_prefix')
+        .eq('id', record.tenant_id)
+        .maybeSingle();
+      if (tenantData && tenantData.student_id_prefix) {
+        prefix = tenantData.student_id_prefix;
+      }
+    }
     const year = record.admission_year || new Date().getFullYear()
-    const new_student_id = `NKQMS-${year}-${attendance_code}`
+    const new_student_id = `${prefix}-${year}-${attendance_code}`
 
     console.log(`Renaming student ID from ${record.student_id} to ${new_student_id}`)
 
