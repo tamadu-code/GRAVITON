@@ -466,7 +466,7 @@ export const UI = {
             const settings = {};
             allSettings.forEach(s => settings[s.key] = s.value);
             
-            const schoolName = (settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI') + '';
+            const schoolName = (settings.schoolName || localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI') + '';
             const schoolLogo = settings.schoolLogo;
             const themeColor = settings.themeColor || '#060495';
             
@@ -2165,7 +2165,7 @@ export const UI = {
             }
 
             const schoolInfo = {
-                name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
+                name: settings.schoolName || localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
                 address: settings.schoolAddress || '123 Education Street, Academic City',
                 phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
                 email: settings.schoolEmail || 'info@school.com',
@@ -8742,7 +8742,7 @@ export const UI = {
                         }
 
                         const schoolInfo = {
-                            name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
+                            name: settings.schoolName || localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
                             address: settings.schoolAddress || '123 Education Street, Academic City',
                             phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
                             email: settings.schoolEmail || 'info@school.com',
@@ -8793,7 +8793,7 @@ export const UI = {
                     }
 
                     const schoolInfoTemplate = {
-                        name: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
+                        name: settings.schoolName || localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
                         address: settings.schoolAddress || '123 Education Street, Academic City',
                         phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
                         email: settings.schoolEmail || 'info@school.com',
@@ -16256,7 +16256,7 @@ export const UI = {
 
         // Default values if not set
         const config = {
-            schoolName: settings.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
+            schoolName: settings.schoolName || localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
             schoolManager: settings.schoolManager || 'TAMADU CODE',
             schoolMotto: settings.schoolMotto || 'Knowledge is Power',
             schoolAddress: settings.schoolAddress || '123 Education Street, Academic City',
@@ -22322,7 +22322,7 @@ export const UI = {
         // Add School Header
         const settings = await db.settings.toArray();
         const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
-        const schoolName = getVal('schoolName', 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
+        const schoolName = getVal('schoolName', localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
         const schoolLogo = getVal('schoolLogo', null);
         const session = getVal('currentSession', '2025/2026');
         const term = getVal('currentTerm', '3rd Term');
@@ -22465,7 +22465,7 @@ export const UI = {
 
         const settings = await db.settings.toArray();
         const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
-        const schoolName = getVal('schoolName', 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
+        const schoolName = getVal('schoolName', localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
         const schoolLogo = getVal('schoolLogo', null);
         const currentSession = getVal('currentSession', '2025/2026');
         const currentTerm = getVal('currentTerm', '1st Term');

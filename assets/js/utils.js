@@ -782,7 +782,7 @@ export async function generateMastersheet(className, students, subjects, scores,
     const settings = await db.settings.toArray();
     const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
     
-    const sName = getVal('schoolName', 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
+    const sName = getVal('schoolName', localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
     const sAddress = getVal('schoolAddress', '123 Education Street, Academic City');
     const sPhone = getVal('schoolPhone', '08035461711, 08037316183, 08058134229');
     const sMotto = getVal('schoolMotto', 'Knowledge is Power');

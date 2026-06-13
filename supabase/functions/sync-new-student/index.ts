@@ -16,10 +16,12 @@ serve(async (req) => {
 
     // If the student already has an attendance_code, we update their class/arm in biometric system
     const isUpdate = !!record.attendance_code;
+    const tenantIdVal = record.tenant_id || '00000000-0000-0000-0000-000000000001';
     if (isUpdate) {
       console.log(`Updating student ${record.name} (Code: ${record.attendance_code}) to class ${classNameFull}`)
       
-      const updateUrl = `${baseUrl}/rest/v1/students?code=eq.${record.attendance_code}`
+      // Filter by code and tenant_id to update the correct tenant's student in the biometric database
+      const updateUrl = `${baseUrl}/rest/v1/students?code=eq.${record.attendance_code}&tenant_id=eq.${tenantIdVal}`
       const response = await fetch(updateUrl, {
         method: 'PATCH',
         headers: {
@@ -29,7 +31,8 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           name: record.name,
-          class: classNameFull
+          class: classNameFull,
+          tenant_id: tenantIdVal
         }),
       })
 
@@ -45,8 +48,8 @@ serve(async (req) => {
 
     console.log(`Syncing new student: ${record.name}`)
 
-    // SAFETY: Check if student already exists in Attendance System
-    const checkUrl = `${baseUrl}/rest/v1/students?name=eq.${encodeURIComponent(record.name)}&select=code`
+    // SAFETY: Check if student already exists in Attendance System (scoped to the same school/tenant)
+    const checkUrl = `${baseUrl}/rest/v1/students?name=eq.${encodeURIComponent(record.name)}&tenant_id=eq.${tenantIdVal}&select=code`
     const checkResponse = await fetch(checkUrl, {
       headers: {
         'apikey': ATTENDANCE_TOKEN,
@@ -89,7 +92,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         name: record.name,
-        class: record.sub_class ? `${record.class_name}${record.sub_class}` : record.class_name
+        class: record.sub_class ? `${record.class_name}${record.sub_class}` : record.class_name,
+        tenant_id: tenantIdVal
       }),
     })
 
