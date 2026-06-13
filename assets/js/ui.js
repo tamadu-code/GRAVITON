@@ -16231,6 +16231,8 @@ export const UI = {
         // Load settings and subscription details
         const enrolledCount = await db.students.filter(s => s.is_active !== false).count();
         const subStatus = localStorage.getItem('tenant_subscription_status') || 'trialing';
+        const planLimit = localStorage.getItem('tenant_max_student_limit') || '200';
+        const planTier = localStorage.getItem('tenant_plan_tier') || 'standard';
         
         let subStatusColor = '#10b981';
         let subStatusText = 'Active';
@@ -16657,7 +16659,7 @@ export const UI = {
                                 <div>
                                     <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Student Limit</div>
                                     <div style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-top: 4px;">
-                                        ${enrolledCount} / 200 Students
+                                        ${enrolledCount} / ${planLimit} Students
                                     </div>
                                 </div>
                             </div>
@@ -16665,7 +16667,7 @@ export const UI = {
                             <div style="border-top: 1px solid #e2e8f0; padding-top: 1rem; margin-top: 0.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
                                 <div>
                                     <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Billing Frequency</div>
-                                    <div style="font-size: 0.85rem; font-weight: 600; color: #334155; margin-top: 2px;">Monthly Billing / Standard Plan</div>
+                                    <div style="font-size: 0.85rem; font-weight: 600; color: #334155; margin-top: 2px;">${planTier.toUpperCase()} Plan</div>
                                 </div>
                                 <button id="btn-manage-subscription" class="btn btn-primary" style="height: 44px; border-radius: 12px; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; background: #2563eb;">
                                     <i data-lucide="external-link" style="width: 16px;"></i> Manage Subscription
@@ -16729,7 +16731,21 @@ export const UI = {
                     if (!client) throw new Error('Cloud connection not established');
                     
                     const { data, error } = await client.functions.invoke('create-portal-session');
-                    if (error) throw error;
+                    if (error) {
+                        let errMsg = error.message;
+                        if (error.context) {
+                            try {
+                                const body = await error.context.json();
+                                if (body && body.error) errMsg = body.error;
+                            } catch (_) {
+                                try {
+                                    const text = await error.context.text();
+                                    if (text) errMsg = text;
+                                } catch (__) {}
+                            }
+                        }
+                        throw new Error(errMsg);
+                    }
                     
                     if (data && data.url) {
                         window.location.href = data.url;

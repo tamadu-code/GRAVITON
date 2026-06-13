@@ -266,14 +266,18 @@ async function loadAuthenticatedApp(authUser) {
 
                         const { data: subData } = await client
                             .from('subscriptions')
-                            .select('status')
+                            .select('status, plan_tier, max_student_limit')
                             .eq('tenant_id', claims.tenant_id)
                             .maybeSingle();
                         if (subData) {
-                            localStorage.setItem('tenant_subscription_status', subData.status);
-                            console.log(`[Auth Hook] Set subscription status: ${subData.status}`);
+                            localStorage.setItem('tenant_subscription_status', subData.status || 'active');
+                            localStorage.setItem('tenant_plan_tier', subData.plan_tier || 'standard');
+                            localStorage.setItem('tenant_max_student_limit', subData.max_student_limit || '200');
+                            console.log(`[Auth Hook] Set subscription status: ${subData.status}, tier: ${subData.plan_tier}, limit: ${subData.max_student_limit}`);
                         } else {
                             localStorage.setItem('tenant_subscription_status', 'active');
+                            localStorage.setItem('tenant_plan_tier', 'standard');
+                            localStorage.setItem('tenant_max_student_limit', '200');
                         }
                     } catch (tenantErr) {
                         console.warn('Failed to fetch tenant prefix/subscription:', tenantErr);
@@ -283,6 +287,8 @@ async function loadAuthenticatedApp(authUser) {
                 localStorage.removeItem('tenant_id');
                 localStorage.removeItem('tenant_student_id_prefix');
                 localStorage.removeItem('tenant_subscription_status');
+                localStorage.removeItem('tenant_plan_tier');
+                localStorage.removeItem('tenant_max_student_limit');
                 localStorage.removeItem('tenant_school_name');
             }
             
