@@ -85,7 +85,7 @@ export async function syncToCloud() {
                 
                 // Table-level field whitelists
                 const whitelist = {
-                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'employment_type', 'assigned_id', 'passport', 'phone', 'department', 'qualification', 'tenant_id', 'updated_at'],
+                    profiles: ['id', 'full_name', 'role', 'email', 'status', 'employment_type', 'assigned_id', 'passport', 'phone', 'department', 'qualification', 'updated_at'],
                     students: ['student_id', 'name', 'gender', 'address', 'class_name', 'status', 'is_active', 'attendance_code', 'admission_year', 'sub_class', 'legacy_student_id', 'passport_url', 'tenant_id', 'updated_at'],
                     classes: ['id', 'name', 'level', 'tenant_id', 'updated_at'],
                     subjects: ['id', 'name', 'type', 'credits', 'tenant_id', 'updated_at'],
@@ -105,9 +105,9 @@ export async function syncToCloud() {
                     cbt_questions: ['id', 'exam_id', 'question_text', 'passage_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'tenant_id', 'updated_at'],
                     cbt_results: ['id', 'exam_id', 'student_id', 'score', 'total_questions', 'total_marks', 'answers', 'warnings', 'violations', 'started_at', 'status', 'tenant_id', 'updated_at', 'question_ids'],
                     cbt_exam_sections: ['id', 'exam_id', 'subject_id', 'class_name', 'score_field', 'question_count', 'target_mark', 'specialization', 'tenant_id', 'updated_at'],
-                    duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'tenant_id', 'updated_at'],
+                    duty_assignments: ['id', 'staff_id', 'week_start', 'week_end', 'duty_type', 'updated_at'],
                     audit_logs: ['operation', 'table', 'record_id', 'timestamp', 'user_id', 'tenant_id'],
-                    parent_links: ['id', 'parent_id', 'student_id', 'relationship', 'tenant_id', 'updated_at'],
+                    parent_links: ['id', 'parent_id', 'student_id', 'tenant_id', 'updated_at'],
                     cbt_question_bank: ['id', 'subject_id', 'class_name', 'question_text', 'passage_text', 'term', 'session', 'topic_area', 'difficulty_level', 'tenant_id', 'updated_at'],
                     cbt_options: ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'tenant_id', 'updated_at']
                 };
@@ -210,6 +210,7 @@ export async function syncToCloud() {
                                 let healError = error;
                                 let healedData = [...dataToSync];
                                 let attempts = 0;
+                                const strippedCols = new Set(); // Track already-stripped columns to prevent infinite loop
                                 while (healError && (healError.code === 'PGRST204' || healError.message.toLowerCase().includes('column') || healError.message.toLowerCase().includes('does not exist')) && attempts < 10) {
                                     attempts++;
                                     let missingCol = null;
@@ -229,6 +230,12 @@ export async function syncToCloud() {
                                     }
                                     
                                     if (missingCol) {
+                                        // Break infinite loop: if we already stripped this column, stop retrying
+                                        if (strippedCols.has(missingCol)) {
+                                            console.error(`[Sync Self-Heal] Column "${missingCol}" already stripped but error persists for ${table}. Aborting self-heal.`);
+                                            break;
+                                        }
+                                        strippedCols.add(missingCol);
                                         console.warn(`[Sync Self-Heal] Column "${missingCol}" not found in cloud table ${table}. Stripping and retrying (Attempt ${attempts})...`);
                                         healedData = healedData.map(item => {
                                             const cleaned = { ...item };
@@ -379,7 +386,9 @@ export async function syncFromCloud(forceAll = false) {
                         }
                     }
 
-                    if (tenantId && !isSuperAdmin) {
+                    // Skip tenant_id filter for tables that use RLS via auth.uid() instead
+                    const noTenantIdTables = ['profiles', 'cbt_exam_questions'];
+                    if (tenantId && !isSuperAdmin && !noTenantIdTables.includes(table)) {
                         query = query.eq('tenant_id', tenantId);
                     }
 

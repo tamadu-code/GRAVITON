@@ -221,6 +221,31 @@ async function loadAuthenticatedApp(authUser) {
             }
 
             if (claims.tenant_id) {
+                // ── TENANT SWITCH DETECTION ──
+                // If a different tenant is logging in on the same browser,
+                // clear all local IndexedDB data to prevent cross-tenant data leakage
+                const previousTenantId = localStorage.getItem('tenant_id');
+                if (previousTenantId && previousTenantId !== claims.tenant_id) {
+                    console.warn(`[Tenant Switch] Detected tenant change: ${previousTenantId} → ${claims.tenant_id}. Purging local database...`);
+                    try {
+                        const allTables = db.tables.map(t => t.name);
+                        for (const tableName of allTables) {
+                            await db[tableName].clear();
+                        }
+                        // Clear sync timestamp to force full re-pull
+                        localStorage.removeItem('last_sync_timestamp');
+                        console.log(`[Tenant Switch] Local database purged. ${allTables.length} tables cleared.`);
+                    } catch (purgeErr) {
+                        console.error('[Tenant Switch] Failed to purge local DB:', purgeErr);
+                        // Nuclear option: delete and recreate the entire database
+                        try {
+                            await db.delete();
+                            window.location.reload();
+                            return;
+                        } catch (e) { console.error('[Tenant Switch] Nuclear purge also failed:', e); }
+                    }
+                }
+
                 localStorage.setItem('tenant_id', claims.tenant_id);
                 
                 // Fetch tenant configuration (e.g. prefix) and subscription status from database
@@ -228,12 +253,15 @@ async function loadAuthenticatedApp(authUser) {
                     try {
                         const { data: tenantData } = await client
                             .from('tenants')
-                            .select('student_id_prefix')
+                            .select('student_id_prefix, name')
                             .eq('id', claims.tenant_id)
                             .maybeSingle();
                         if (tenantData && tenantData.student_id_prefix) {
                             localStorage.setItem('tenant_student_id_prefix', tenantData.student_id_prefix);
                             console.log(`[Auth Hook] Set tenant prefix: ${tenantData.student_id_prefix}`);
+                        }
+                        if (tenantData && tenantData.name) {
+                            localStorage.setItem('tenant_school_name', tenantData.name);
                         }
 
                         const { data: subData } = await client
@@ -255,6 +283,7 @@ async function loadAuthenticatedApp(authUser) {
                 localStorage.removeItem('tenant_id');
                 localStorage.removeItem('tenant_student_id_prefix');
                 localStorage.removeItem('tenant_subscription_status');
+                localStorage.removeItem('tenant_school_name');
             }
             
             if (claims.user_role) {
