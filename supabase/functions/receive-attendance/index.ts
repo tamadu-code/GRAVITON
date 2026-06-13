@@ -53,7 +53,7 @@ serve(async (req) => {
     console.log(JSON.stringify(record, null, 2))
     
     // Step 2: Map fields with maximum flexibility
-    // Raw student identifier can be a numeric code (e.g. 7456) or a string ID (e.g. "1776859939202bsvc2")
+    // Raw student identifier can be a numeric code (e.g. 7456) or a string ID (e.g. "NKQMS-2026-1057")
     const raw_student_identifier = record.student_code || record.code || record.attendance_code || record.student_id || record.id;
     const date = record.date || record.attendance_date || record.datetime?.split('T')[0]
     const sign_in = record.sign_in || record.check_in || record.time || record.in_time || record.entry
@@ -65,26 +65,93 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Missing student identifier or date' }), { status: 400 })
     }
 
-    // Step 2: Find student in SMS
+    // --- TENANT RESOLUTION LOGIC ---
+    // Extract tenant_id from query string parameters
+    const urlObj = new URL(req.url);
+    const queryTenantId = urlObj.searchParams.get('tenant_id') || urlObj.searchParams.get('tenant');
+    
+    // Extract tenant_id from HTTP headers
+    const headerTenantId = req.headers.get('x-tenant-id') || req.headers.get('x-tenant');
+    
+    // Extract tenant_id from request body/payload
+    const bodyTenantId = record.tenant_id || payload.tenant_id;
+    
+    // Autodetect tenant_id from full student_id prefix if present (e.g. "OAK-2026-1057" -> "OAK")
+    const studentIdRegex = /^([A-Za-z0-9]+)-\d{4}-\d+/i;
+    const prefixMatch = String(raw_student_identifier).match(studentIdRegex);
+    let resolvedTenantId: string | null = null;
+    if (prefixMatch) {
+      const idPrefix = prefixMatch[1].toUpperCase();
+      console.log(`Parsed student ID prefix: ${idPrefix} from identifier: ${raw_student_identifier}`);
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('student_id_prefix', idPrefix)
+        .maybeSingle();
+      if (tenantData) {
+        resolvedTenantId = tenantData.id;
+        console.log(`Resolved tenant ID: ${resolvedTenantId} from prefix: ${idPrefix}`);
+      }
+    }
+
+    const tenant_id = resolvedTenantId || queryTenantId || headerTenantId || bodyTenantId || caller_tenant_id;
+    console.log(`Resolved attendance tenant context: ${tenant_id || 'NONE'}`);
+
+    // Find student in SMS with tenant-isolation
     let student = null;
+    const isFullStudentId = studentIdRegex.test(String(raw_student_identifier));
     const numeric_code = /^\d+$/.test(String(raw_student_identifier)) ? parseInt(raw_student_identifier) : null;
 
-    if (numeric_code) {
-      // If purely numeric, look up by attendance_code
+    if (isFullStudentId) {
+      // Query by direct student_id match
       const { data: matched } = await supabase
         .from('students')
         .select('student_id, name, is_active, tenant_id, parent_phone')
-        .eq('attendance_code', numeric_code)
+        .eq('student_id', String(raw_student_identifier))
         .maybeSingle();
       student = matched;
+    } else if (numeric_code) {
+      // Query by attendance_code + tenant_id (if resolved)
+      let query = supabase
+        .from('students')
+        .select('student_id, name, is_active, tenant_id, parent_phone')
+        .eq('attendance_code', numeric_code);
+      
+      if (tenant_id) {
+        query = query.eq('tenant_id', tenant_id);
+      }
+      
+      const { data: matched } = await query;
+      if (matched && matched.length === 1) {
+        student = matched[0];
+      } else if (matched && matched.length > 1) {
+        const errorMsg = `Ambiguity: Multiple students found for attendance_code ${numeric_code}. Please specify tenant_id.`;
+        console.error(errorMsg);
+        return new Response(JSON.stringify({ error: errorMsg }), { status: 400 });
+      } else if (matched && matched.length === 0) {
+        student = null;
+      }
     } else {
-      // If alphanumeric/UUID, look up by legacy_student_id
-      const { data: matched } = await supabase
+      // Query by legacy_student_id + tenant_id (if resolved)
+      let query = supabase
         .from('students')
         .select('student_id, name, is_active, tenant_id, parent_phone')
-        .eq('legacy_student_id', String(raw_student_identifier))
-        .maybeSingle();
-      student = matched;
+        .eq('legacy_student_id', String(raw_student_identifier));
+      
+      if (tenant_id) {
+        query = query.eq('tenant_id', tenant_id);
+      }
+      
+      const { data: matched } = await query;
+      if (matched && matched.length === 1) {
+        student = matched[0];
+      } else if (matched && matched.length > 1) {
+        const errorMsg = `Ambiguity: Multiple students found for legacy_student_id ${raw_student_identifier}. Please specify tenant_id.`;
+        console.error(errorMsg);
+        return new Response(JSON.stringify({ error: errorMsg }), { status: 400 });
+      } else if (matched && matched.length === 0) {
+        student = null;
+      }
     }
 
     if (!student) {
