@@ -207,6 +207,19 @@ async function loadAuthenticatedApp(authUser) {
         const claims = parseJwt(session.access_token);
         if (claims) {
             console.log('[Auth Hook] JWT Claims:', claims);
+            
+            // Check for client-side impersonation overrides
+            const impTenantId = localStorage.getItem('impersonate_tenant_id');
+            const impRole = localStorage.getItem('impersonate_role');
+            if (impTenantId && impRole && (claims.user_role === 'SuperAdmin' || localStorage.getItem('original_user_role') === 'SuperAdmin')) {
+                console.log(`[Impersonation] Overriding claims with target tenant: ${impTenantId}, role: ${impRole}`);
+                if (!localStorage.getItem('original_user_role')) {
+                    localStorage.setItem('original_user_role', claims.user_role);
+                }
+                claims.tenant_id = impTenantId;
+                claims.user_role = impRole;
+            }
+
             if (claims.tenant_id) {
                 localStorage.setItem('tenant_id', claims.tenant_id);
                 
@@ -374,6 +387,15 @@ async function loadAuthenticatedApp(authUser) {
     // Update UI State
     const currentName = profile.full_name || authUser.email;
     let currentRole = profile.role || 'Admin';
+
+    // Impersonation Override for UI
+    const impRole = localStorage.getItem('impersonate_role');
+    const impTenantId = localStorage.getItem('impersonate_tenant_id');
+    if (impRole && impTenantId && (profile.role === 'SuperAdmin' || localStorage.getItem('original_user_role') === 'SuperAdmin')) {
+        currentRole = impRole;
+        profile.role = impRole;
+        profile.tenant_id = impTenantId;
+    }
 
     // Aggressive Role Correction: If email is @student.school, they MUST be a Student
     if (authUser.email.toLowerCase().includes('@student.school')) {
