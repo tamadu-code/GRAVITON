@@ -25824,21 +25824,35 @@ export const UI = {
 
             grid.innerHTML = plans.map(p => {
                 const feats = Object.entries(p.features || {})
+                    .filter(([k, v]) => v === true)
                     .map(([k, v]) => `<div style="font-size: 0.75rem; color: #475569; display: flex; align-items: center; gap: 4px; font-weight: 500;">✔️ ${k.replace(/_/g, ' ')}</div>`)
                     .join('');
 
+                const priceDisplay = Number(p.price) === 0 && Number(p.per_student_rate) > 0
+                    ? `<span style="font-size: 1.1rem; font-weight: 900; color: var(--school-theme-color);">Custom Pricing</span>`
+                    : `<span style="font-size: 1.3rem; font-weight: 900; color: var(--school-theme-color); font-family: monospace; white-space: nowrap;">₦${Number(p.price).toLocaleString()}<span style="font-size: 0.75rem; font-weight: 600; color: #64748b;"> / ${p.duration || 'Term'}</span></span>`;
+
+                const perStudentLine = Number(p.per_student_rate) > 0
+                    ? `<div style="font-size: 0.75rem; font-weight: 700; color: #0f766e; margin-top: 4px;">+ ₦${Number(p.per_student_rate).toLocaleString()} / student / term</div>`
+                    : '';
+
                 return `
-                    <div class="card" style="border-radius: 20px; border: 1px solid #cbd5e1; background: white; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); transition: transform 0.2s;">
+                    <div class="card" style="border-radius: 20px; border: 1px solid #cbd5e1; background: white; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); transition: transform 0.2s;">
                         <div>
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                <h4 style="font-weight: 900; font-size: 1.2rem; color: #1e293b;">${p.name}</h4>
-                                <span style="font-size: 1.5rem; font-weight: 900; color: var(--school-theme-color); font-family: monospace;">$${p.price}</span>
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
+                                <h4 style="font-weight: 900; font-size: 1.15rem; color: #1e293b;">${p.name}</h4>
+                                ${priceDisplay}
                             </div>
-                            <div style="font-size: 0.75rem; font-weight: 700; color: #64748b; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em;">Limit: ${p.student_limit} Students</div>
+                            ${perStudentLine}
+                            <div style="font-size: 0.7rem; font-weight: 700; color: #64748b; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.05em;">Max: ${p.student_limit >= 99999 ? 'Unlimited' : p.student_limit.toLocaleString()} Students</div>
                         </div>
 
-                        <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #f1f5f9; padding-top: 1rem; flex: 1;">
-                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Active Features</div>
+                        ${p.target_audience ? `<div style="font-size: 0.75rem; color: #475569; background: #f8fafc; border-radius: 10px; padding: 8px 10px; font-weight: 500; line-height: 1.4; border: 1px solid #e2e8f0;">🎯 ${p.target_audience}</div>` : ''}
+
+                        ${p.description ? `<div style="font-size: 0.8rem; color: #334155; line-height: 1.5; font-weight: 500;">${p.description}</div>` : ''}
+
+                        <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #f1f5f9; padding-top: 0.75rem; flex: 1;">
+                            <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Included Features</div>
                             ${feats || '<div style="font-size: 0.75rem; color: #94a3b8; font-style: italic;">No features configured</div>'}
                         </div>
 
@@ -25862,7 +25876,7 @@ export const UI = {
             const client = window.getSupabase ? window.getSupabase() : null;
             if (!client) throw new Error('Cloud client connection unavailable');
 
-            let plan = { name: '', price: 49.99, student_limit: 500, features: { sms: true, cbt: true, push_notifications: true } };
+            let plan = { name: '', price: 50000, duration: 'Term', student_limit: 500, per_student_rate: 0, description: '', target_audience: '', features: { sms: true, cbt: true, push_notifications: true, offline_access: true } };
 
             if (planId) {
                 const { data } = await client.from('plans').select('*').eq('id', planId).single();
@@ -25875,7 +25889,7 @@ export const UI = {
 
             const modalHtml = `
                 <div id="${modalId}" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(8px); z-index: 99999; display: flex; align-items: center; justify-content: center; font-family: 'Outfit', sans-serif;">
-                    <div style="background: white; border-radius: 28px; width: 100%; max-width: 480px; padding: 2rem; box-shadow: var(--shadow-2xl); border: 1px solid #cbd5e1; display: flex; flex-direction: column; gap: 1.5rem;" class="animate-scale-in">
+                    <div style="background: white; border-radius: 28px; width: 100%; max-width: 540px; max-height: 90vh; padding: 2rem; box-shadow: var(--shadow-2xl); border: 1px solid #cbd5e1; display: flex; flex-direction: column; gap: 1.25rem; overflow-y: auto;" class="animate-scale-in">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <h3 style="font-weight: 900; font-size: 1.35rem; color: #1e293b;">${planId ? 'Configure Plan' : 'Add Pricing Plan'}</h3>
                             <button onclick="document.getElementById('${modalId}').remove()" style="background: #f1f5f9; color: #64748b; border: none; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
@@ -25883,38 +25897,82 @@ export const UI = {
                             </button>
                         </div>
 
-                        <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
                             <div class="form-group">
                                 <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">PLAN NAME</label>
-                                <input type="text" id="edit-plan-name" class="input" value="${plan.name}" placeholder="e.g. Standard Plan" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; font-weight: 600;">
+                                <input type="text" id="edit-plan-name" class="input" value="${plan.name}" placeholder="e.g. Professional Plan" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; font-weight: 600;">
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                                <div class="form-group">
+                                    <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">BASE PRICE (₦ NAIRA)</label>
+                                    <input type="number" step="0.01" id="edit-plan-price" class="input" value="${plan.price}" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; font-weight: 600;">
+                                </div>
+                                <div class="form-group">
+                                    <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">PER-STUDENT RATE (₦/TERM)</label>
+                                    <input type="number" step="0.01" id="edit-plan-per-student" class="input" value="${plan.per_student_rate || 0}" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; font-weight: 600;">
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                                <div class="form-group">
+                                    <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">BILLING DURATION</label>
+                                    <select id="edit-plan-duration" class="input" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; font-weight: 600; background: white;">
+                                        <option value="Month" ${plan.duration === 'Month' ? 'selected' : ''}>Per Month</option>
+                                        <option value="Term" ${plan.duration === 'Term' ? 'selected' : ''}>Per Term</option>
+                                        <option value="Year" ${plan.duration === 'Year' ? 'selected' : ''}>Per Year</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">STUDENT LIMIT</label>
+                                    <input type="number" id="edit-plan-limit" class="input" value="${plan.student_limit}" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; font-weight: 600;">
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">PRICE ($ USD)</label>
-                                <input type="number" step="0.01" id="edit-plan-price" class="input" value="${plan.price}" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; font-weight: 600;">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">TARGET AUDIENCE</label>
+                                <input type="text" id="edit-plan-audience" class="input" value="${plan.target_audience || ''}" placeholder="e.g. Small to Medium K-12 Schools" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; font-weight: 600;">
                             </div>
                             <div class="form-group">
-                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">STUDENT LIMIT</label>
-                                <input type="number" id="edit-plan-limit" class="input" value="${plan.student_limit}" style="width: 100%; margin-top: 4px; box-sizing: border-box; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; font-weight: 600;">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">DESCRIPTION</label>
+                                <textarea id="edit-plan-desc" class="input" rows="3" placeholder="Describe the plan benefits..." style="width: 100%; margin-top: 4px; box-sizing: border-box; border-radius: 8px; border: 1px solid #cbd5e1; padding: 8px 10px; font-weight: 500; font-size: 0.85rem; font-family: inherit; resize: vertical;">${plan.description || ''}</textarea>
                             </div>
 
-                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
                                 <label style="font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase;">Included Features</label>
-                                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: #334155;">
-                                    <input type="checkbox" id="feat-sms" ${plan.features?.sms ? 'checked' : ''}> Integrated SMS Messaging
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: #334155;">
-                                    <input type="checkbox" id="feat-cbt" ${plan.features?.cbt ? 'checked' : ''}> CBT Exam Hub
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: #334155;">
-                                    <input type="checkbox" id="feat-push" ${plan.features?.push_notifications ? 'checked' : ''}> Push Notification Registrations
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: #334155;">
-                                    <input type="checkbox" id="feat-analytics" ${plan.features?.advanced_analytics ? 'checked' : ''}> Advanced Academic Insights
-                                </label>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;">
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-sms" ${plan.features?.sms ? 'checked' : ''}> SMS Messaging
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-cbt" ${plan.features?.cbt ? 'checked' : ''}> CBT Exam Hub
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-push" ${plan.features?.push_notifications ? 'checked' : ''}> Push Notifications
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-offline" ${plan.features?.offline_access ? 'checked' : ''}> Offline Access
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-analytics" ${plan.features?.advanced_analytics ? 'checked' : ''}> Advanced Analytics
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-parent" ${plan.features?.parent_portal ? 'checked' : ''}> Parent Portal
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-payments" ${plan.features?.online_payments ? 'checked' : ''}> Online Payments
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-reports" ${plan.features?.automated_reports ? 'checked' : ''}> Auto Reports
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-api" ${plan.features?.api_access ? 'checked' : ''}> API Access
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-whitelabel" ${plan.features?.white_labeling ? 'checked' : ''}> White Labeling
+                                    </label>
+                                </div>
                             </div>
                         </div>
 
-                        <div style="display: flex; justify-content: flex-end; gap: 1rem; border-top: 1px solid #cbd5e1; padding-top: 1.25rem; margin-top: 0.5rem;">
+                        <div style="display: flex; justify-content: flex-end; gap: 1rem; border-top: 1px solid #cbd5e1; padding-top: 1.25rem; margin-top: 0.25rem;">
                             <button onclick="document.getElementById('${modalId}').remove()" class="btn btn-secondary" style="border-radius: 12px; height: 42px; padding: 0 1.5rem; font-weight: 700; background: #cbd5e1; border: none; cursor: pointer;">Cancel</button>
                             <button id="btn-save-pricing-plan" class="btn btn-primary" style="border-radius: 12px; height: 42px; padding: 0 1.5rem; font-weight: 700; background: var(--school-theme-color); color: white; border: none; cursor: pointer;">Save Plan</button>
                         </div>
@@ -25932,12 +25990,22 @@ export const UI = {
                 const payload = {
                     name: document.getElementById('edit-plan-name').value.trim(),
                     price: parseFloat(document.getElementById('edit-plan-price').value) || 0.00,
+                    per_student_rate: parseFloat(document.getElementById('edit-plan-per-student').value) || 0.00,
+                    duration: document.getElementById('edit-plan-duration').value,
                     student_limit: parseInt(document.getElementById('edit-plan-limit').value) || 100,
+                    target_audience: document.getElementById('edit-plan-audience').value.trim(),
+                    description: document.getElementById('edit-plan-desc').value.trim(),
                     features: {
                         sms: document.getElementById('feat-sms').checked,
                         cbt: document.getElementById('feat-cbt').checked,
                         push_notifications: document.getElementById('feat-push').checked,
-                        advanced_analytics: document.getElementById('feat-analytics').checked
+                        offline_access: document.getElementById('feat-offline').checked,
+                        advanced_analytics: document.getElementById('feat-analytics').checked,
+                        parent_portal: document.getElementById('feat-parent').checked,
+                        online_payments: document.getElementById('feat-payments').checked,
+                        automated_reports: document.getElementById('feat-reports').checked,
+                        api_access: document.getElementById('feat-api').checked,
+                        white_labeling: document.getElementById('feat-whitelabel').checked
                     },
                     updated_at: new Date().toISOString()
                 };
