@@ -1126,9 +1126,22 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js')
             .then((registration) => {
                 console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                // Check for updates periodically
+                setInterval(() => {
+                    registration.update();
+                }, 60000 * 5); // Check every 5 minutes
             }, (err) => {
                 console.log('ServiceWorker registration failed: ', err);
             });
+    });
+
+    // Reload the page when the new Service Worker has taken over
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        console.log('[SW] Controller changed. Reloading page...');
+        window.location.reload();
     });
 }
 
