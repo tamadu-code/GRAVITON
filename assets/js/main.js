@@ -224,7 +224,7 @@ async function loadAuthenticatedApp(authUser) {
                 // ── TENANT SWITCH DETECTION ──
                 // If a different tenant is logging in on the same browser,
                 // clear all local IndexedDB data to prevent cross-tenant data leakage
-                const previousTenantId = localStorage.getItem('tenant_id');
+                const previousTenantId = localStorage.getItem('last_active_tenant_id');
                 if (previousTenantId && previousTenantId !== claims.tenant_id) {
                     console.warn(`[Tenant Switch] Detected tenant change: ${previousTenantId} → ${claims.tenant_id}. Purging local database...`);
                     try {
@@ -247,6 +247,7 @@ async function loadAuthenticatedApp(authUser) {
                 }
 
                 localStorage.setItem('tenant_id', claims.tenant_id);
+                localStorage.setItem('last_active_tenant_id', claims.tenant_id);
                 
                 // Fetch tenant configuration (e.g. prefix) and subscription status from database
                 if (navigator.onLine && client) {
