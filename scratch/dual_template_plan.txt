@@ -1,0 +1,296 @@
+GRAVITON CMS
+Dual Report Card & Gradebook Template System
+────────────────────────────────────────
+Document Type: Implementation Plan
+Version: 1.0
+Date: June 2026
+System: Graviton Core v26.4
+Status: Proposed — Awaiting Approval
+Table of Contents
+1.  Executive Summary
+2.  Current System Analysis
+3.  Proposed Architecture
+4.  Report Card Templates
+  4.1  Nursery & Primary Template
+  4.2  Secondary Template
+  4.3  Template Switching Logic
+5.  Gradebook Views
+  5.1  Nursery & Primary Gradebook
+  5.2  Secondary Gradebook
+6.  Database & Configuration
+7.  Implementation Phases
+8.  File Change Summary
+9.  Risk Assessment
+10.  Testing & Verification Plan
+1. Executive Summary
+This document outlines the plan to implement a dual-template system for both Report Cards and the Gradebook within Graviton CMS. The system will automatically detect whether a student belongs to the Nursery/Primary level or the Secondary level (JSS/SSS) and render the appropriate template with a tailored design, grading scale, and layout.
+The goal is to provide age-appropriate, visually distinct academic reports that meet the expectations of parents, students, and regulatory standards for each educational level.
+Key Benefits:
+Age-appropriate presentation of academic results
+Different grading scales per level (descriptive vs. numeric)
+Customizable column layouts for each level
+Single codebase with template branching — no data duplication
+Admin-configurable template settings via the Settings panel
+2. Current System Analysis
+The current Graviton CMS uses a single, unified report card template and gradebook layout for all class levels. While functional, this creates several limitations:
+Aspect
+Current Limitation
+Grading Scale
+One grading scale for all levels; nursery/primary needs descriptive ratings
+Score Columns
+All levels show Assignment, Test1, Test2, Project, Exam — too complex for nursery
+Report Layout
+Same formal layout used for 3-year-olds and 17-year-olds
+Behavioural Traits
+No dedicated section for nursery/primary behavioural/psychomotor assessment
+Existing Infrastructure That Supports This Change:
+The classes table already has a level field that categorizes classes
+The scores table stores all score data uniformly — templates only change presentation
+The settings table can store template configuration as JSON
+The report card generator in ui.js is already modular enough to branch
+3. Proposed Architecture
+3.1 Template Selection Flow
+The system will use a simple decision tree based on the student's class level:
+Step 1: User requests a report card or opens the gradebook for a student/class.
+Step 2: System looks up the class record from the classes table.
+Step 3: The class.level field is checked (e.g., "Nursery", "Primary", "JSS", "SSS").
+Step 4: If level is "Nursery" or "Primary" → Template A (Nursery/Primary) is used.
+Step 5: If level is "JSS" or "SSS" or "Secondary" → Template B (Secondary) is used.
+Step 6: The appropriate template renders using the same underlying score data.
+3.2 Configuration Architecture
+Template behaviour will be configurable via the Admin Settings panel. A new settings key report_card_config will store a JSON object with per-level settings:
+{  "nursery_primary": {    "grading_scale": "descriptive",    "show_position": false,    "show_percentage": false,    "show_behavioural_traits": true,    "show_psychomotor": true,    "score_columns": ["ca", "exam"],    "max_score": { "ca": 40, "exam": 60 },    "grade_map": {      "A": { "min": 70, "label": "Excellent" },      "B": { "min": 60, "label": "Very Good" },      "C": { "min": 50, "label": "Good" },      "D": { "min": 40, "label": "Fair" },      "E": { "min": 0, "label": "Needs Improvement" }    }  },  "secondary": {    "grading_scale": "numeric",    "show_position": true,    "show_percentage": true,    "show_behavioural_traits": false,    "show_psychomotor": false,    "score_columns": ["assignment", "test1", "test2", "project", "exam"],    "max_score": { "assignment": 10, "test1": 10, "test2": 10, "project": 10, "exam": 60 },    "grade_map": {      "A1": { "min": 75, "label": "Distinction" },      "B2": { "min": 70, "label": "Very Good" },      "B3": { "min": 65, "label": "Good" },      "C4": { "min": 60, "label": "Credit" },      "C5": { "min": 55, "label": "Credit" },      "C6": { "min": 50, "label": "Credit" },      "D7": { "min": 45, "label": "Pass" },      "E8": { "min": 40, "label": "Pass" },      "F9": { "min": 0, "label": "Fail" }    }  }}
+4. Report Card Templates
+4.1 Nursery & Primary Template
+Design Philosophy: Warm, colourful, and parent-friendly. Emphasizes holistic development over raw academics. Uses descriptive grades and includes dedicated sections for behavioural and psychomotor skills.
+Template Sections:
+Section
+Contents
+Header
+School logo, name, address, motto, term/session, student photo
+Student Info
+Name, class, admission number, age, gender, attendance summary
+Academic Performance
+Simplified table with Subject | CA Score | Exam Score | Total | Grade | Remark
+Grading Key
+Descriptive scale: A = Excellent (70-100), B = Very Good (60-69), C = Good (50-59), D = Fair (40-49), E = Needs Improvement (0-39)
+Behavioural Traits
+Grid of traits rated 1-5: Punctuality, Neatness, Honesty, Attentiveness, Politeness, Obedience, Teamwork, Leadership, etc.
+Psychomotor Skills
+Grid of skills rated 1-5: Handwriting, Drawing, Sports, Verbal Fluency, Creativity, Musical Skills, etc.
+Teacher's Comment
+Free text comment from the class/form teacher
+Head Teacher's Comment
+Free text comment from the head teacher
+Next Term Info
+Resumption date, fees due, items to bring
+Footer
+School stamp area, signature lines, print date
+4.2 Secondary Template
+Design Philosophy: Formal, data-rich, and WAEC/NECO-aligned. Emphasizes detailed score breakdowns, class rankings, and percentage analysis. No behavioural traits section.
+Template Sections:
+Section
+Contents
+Header
+School logo, name, address, motto, term/session, student photo
+Student Info
+Name, class, admission number, gender, number in class, attendance record
+Academic Performance
+Detailed table: Subject | Assignment (10) | Test 1 (10) | Test 2 (10) | Project (10) | Exam (60) | Total (100) | Grade | Position | Remark
+Grading Key
+WAEC-aligned: A1 (75-100), B2 (70-74), B3 (65-69), C4 (60-64), C5 (55-59), C6 (50-54), D7 (45-49), E8 (40-44), F9 (0-39)
+Summary Statistics
+Total score, average, overall position, class average, highest/lowest in class
+Performance Chart
+Optional bar/radar chart showing subject performance
+Class Teacher's Comment
+Auto-generated or manual comment based on average
+Principal's Comment
+Free text from the principal
+Next Term Info
+Resumption date, fees, school calendar highlights
+Footer
+School stamp, signature lines, QR verification code, print date
+4.3 Template Switching Logic
+The template switching is determined at render time using the class level. The pseudocode below illustrates the branching logic:
+function generateReportCard(student, term, session) {    const classRecord = getClass(student.class_name);    const level = classRecord.level;  // "Nursery", "Primary", "JSS", "SSS"        const isNurseryPrimary = ["Nursery", "Primary"].includes(level);        if (isNurseryPrimary) {        return renderNurseryPrimaryReport(student, term, session);    } else {        return renderSecondaryReport(student, term, session);    }}
+5. Gradebook Views
+5.1 Nursery & Primary Gradebook
+Layout: Simplified spreadsheet with fewer columns and descriptive grading.
+Column Structure:
+S/N
+Student Name
+CA (40)
+Exam (60)
+Total (100)
+Grade
+1
+Amara Johnson
+35
+52
+87
+A (Excellent)
+Key Features:
+Only 2 score input columns (CA and Exam) instead of 5
+Grade column shows descriptive label (e.g., "A — Excellent")
+No class position/ranking column
+Colour-coded grades for quick scanning (green = good, amber = fair, red = needs improvement)
+Bulk entry mode with simplified input
+5.2 Secondary Gradebook
+Layout: Full-featured spreadsheet with detailed CA breakdown and rankings.
+Column Structure:
+S/N
+Student Name
+Assign (10)
+Test1 (10)
+Test2 (10)
+Proj (10)
+Exam (60)
+Total
+Grade
+1
+Chidi Okafor
+8
+9
+7
+8
+55
+87
+A1
+Key Features:
+Full 5-column CA breakdown (Assignment, Test 1, Test 2, Project, Exam)
+Automatic total and grade calculation using WAEC scale
+Class position/ranking auto-calculated and displayed
+Subject average and class statistics shown at bottom
+Export to Excel/PDF functionality
+6. Database & Configuration
+6.1 No Schema Changes Required for Scores
+The existing scores table already stores all necessary fields (assignment, test1, test2, project, exam, total, grade). For nursery/primary, the unused columns (test2, project) will simply remain null — no schema migration needed.
+6.2 New Settings Key
+A new entry in the settings table will control template behaviour:
+Key
+Value Type
+Description
+report_card_config
+JSON (TEXT)
+Stores grading scales, column visibility, trait toggles per level
+6.3 Class Level Mapping
+The system will use the following mapping to determine which template to use:
+Class Level
+Template
+Gradebook View
+Nursery 1 / Nursery 2
+Template A (Nursery/Primary)
+Simplified (2 columns)
+Primary 1 – Primary 3
+Template A (Nursery/Primary)
+Simplified (2 columns)
+Primary 4 – Primary 6
+Template A (Nursery/Primary)
+Simplified (2 columns)
+JSS 1 – JSS 3
+Template B (Secondary)
+Full (5 columns)
+SSS 1 – SSS 3
+Template B (Secondary)
+Full (5 columns)
+Custom Level
+Admin-configurable
+Admin-configurable
+7. Implementation Phases
+Phase 1: Configuration & Settings (1–2 days)
+Create the report_card_config settings key with default JSON values
+Add a "Report Card Settings" section in the Admin Settings panel
+Build UI for admins to customise grading scales, column visibility, and trait lists per level
+Add level detection helper function: getTemplateType(className)
+Phase 2: Gradebook Branching (2–3 days)
+Refactor the existing gradebook renderer to accept a template configuration object
+Create the simplified nursery/primary gradebook view (2-column CA input)
+Preserve the existing secondary gradebook view (5-column CA input)
+Add level-based branching at the point where the gradebook is rendered
+Ensure score saving works correctly regardless of which columns are visible
+Test data integrity: scores saved from simplified view load correctly in full view
+Phase 3: Report Card Templates (3–5 days)
+Design and build the Nursery/Primary HTML report card template
+Add behavioural traits and psychomotor skills sections with 1-5 rating inputs
+Design and build the Secondary HTML report card template with WAEC grading
+Add class position, percentage, and summary statistics to secondary template
+Implement template switching logic in the report card generator
+Add print-optimised CSS for both templates (A4 portrait)
+Implement PDF export for both templates
+Phase 4: Testing & Polish (1–2 days)
+Test with real data across all class levels
+Verify offline report card generation works for both templates
+Test print output quality on physical printers
+Gather feedback from teachers and admin users
+Fix edge cases (students changing levels mid-session, empty score handling)
+Estimated Total Duration: 7–12 working days
+8. File Change Summary
+File
+Action
+Description
+ui.js
+MODIFY
+Add template branching in report card generator and gradebook renderer
+ui.js
+MODIFY
+Add nursery/primary report card HTML template function
+ui.js
+MODIFY
+Add nursery/primary simplified gradebook view
+ui.js
+MODIFY
+Add behavioural traits & psychomotor input/display sections
+main.js
+MODIFY
+Add getTemplateType() helper function
+supabase-client.js
+MODIFY
+Ensure report_card_config syncs in settings whitelist (already covered)
+style.css
+MODIFY
+Add print CSS for both report card templates
+Note: No new database tables or migrations are required. All changes are UI/presentation layer only, with configuration stored in the existing settings table.
+9. Risk Assessment
+Risk
+Impact
+Likelihood
+Mitigation
+Class level field is empty or inconsistent
+Medium
+Low
+Default to secondary template if level is unknown; add validation on class creation
+Teachers enter scores in wrong template view
+Low
+Low
+Scores are stored the same way regardless of view; no data loss possible
+Existing report cards look different after update
+Medium
+Medium
+Only apply new templates going forward; existing PDF exports are unaffected
+Print layout breaks on different paper sizes
+Low
+Medium
+Design for A4 portrait; add print preview before printing
+10. Testing & Verification Plan
+10.1 Functional Tests
+Open gradebook for a Nursery class → should show 2-column (CA + Exam) layout
+Open gradebook for a JSS class → should show 5-column layout
+Enter scores in nursery gradebook → verify they save correctly to the scores table
+Enter scores in secondary gradebook → verify all 5 CA fields save correctly
+Generate report card for Primary 3 student → verify nursery/primary template renders
+Generate report card for SSS 2 student → verify secondary template renders
+Print nursery report card → verify it fits A4, includes traits and psychomotor
+Print secondary report card → verify it fits A4, includes position and WAEC grades
+Change a class from Primary to JSS → verify template switches on next report generation
+Test with a student who has no scores → verify graceful empty state for both templates
+10.2 Offline Tests
+Generate nursery/primary report card while offline → should work from IndexedDB data
+Generate secondary report card while offline → should work from IndexedDB data
+Open gradebook while offline → correct template should render based on cached class data
+10.3 Edge Case Tests
+Student transfers from Primary 6 to JSS 1 mid-session → old reports stay in old template, new ones use secondary
+Admin changes grading scale in settings → new reports reflect updated scale immediately
+Class with no level set → defaults to secondary template with a console warning
+— End of Document —
+Prepared for Graviton CMS • June 2026
