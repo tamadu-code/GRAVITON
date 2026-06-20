@@ -127,7 +127,8 @@ serve(async (req) => {
             },
             body: JSON.stringify({
               attendance_code: student.attendance_code,
-              student_id: student.legacy_student_id || student_id
+              student_id: student.legacy_student_id || student_id,
+              tenant_id: student.tenant_id
             })
           })
 
