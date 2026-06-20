@@ -466,7 +466,7 @@ export const UI = {
             const settings = {};
             allSettings.forEach(s => settings[s.key] = s.value);
             
-            const schoolName = (settings.schoolName || localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI') + '';
+            const schoolName = (settings.schoolName || localStorage.getItem('tenant_school_name') || '') + '';
             const schoolLogo = settings.schoolLogo;
             const themeColor = settings.themeColor || '#060495';
             
@@ -2165,12 +2165,12 @@ export const UI = {
             }
 
             const schoolInfo = {
-                name: settings.schoolName || localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
-                address: settings.schoolAddress || '123 Education Street, Academic City',
-                phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
-                email: settings.schoolEmail || 'info@school.com',
-                motto: settings.schoolMotto || 'Knowledge is Power',
-                principalName: settings.principalName || 'Mr. Lartey Sampson',
+                name: settings.schoolName || localStorage.getItem('tenant_school_name') || '',
+                address: settings.schoolAddress || '',
+                phone: settings.schoolPhone || '',
+                email: settings.schoolEmail || '',
+                motto: settings.schoolMotto || '',
+                principalName: settings.principalName || '',
                 principalSignature: settings.principalSignature || null,
                 logo: settings.schoolLogo || null,
                 themeColor: settings.themeColor || '#060495',
@@ -4615,7 +4615,9 @@ export const UI = {
                         return;
                     }
                     printBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Generating...';
-                    await generateCredentialsPDF(allStudents, { name: 'GRAVITON ACADEMY' });
+                    const allSettings = await db.settings.toArray();
+                    const credSchoolName = allSettings.find(s => s.key === 'schoolName')?.value || localStorage.getItem('tenant_school_name') || '';
+                    await generateCredentialsPDF(allStudents, { name: credSchoolName });
                     Notifications.show('Credentials generated successfully.', 'success');
                 } catch (e) {
                     Notifications.show('Failed to generate credentials.', 'error');
@@ -4775,7 +4777,8 @@ export const UI = {
                         throw new Error('Validation failed');
                     }
 
-                    serial = `NKQMS-${year}-${attendanceCodeInput || Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+                    const prefix = localStorage.getItem('tenant_student_id_prefix') || 'NKQMS';
+                    serial = `${prefix}-${year}-${attendanceCodeInput || Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
                     attendanceCode = attendanceCodeInput || null;
                     
                     const arm = document.getElementById('std-arm').value;
@@ -5323,7 +5326,8 @@ export const UI = {
 
                     const regenerateID = document.getElementById('regenerate-id-flag').checked;
                     if (regenerateID) {
-                        const newId = `NKQMS-${updates.admission_year}-${updates.attendance_code}`;
+                        const prefix = localStorage.getItem('tenant_student_id_prefix') || 'NKQMS';
+                        const newId = `${prefix}-${updates.admission_year}-${updates.attendance_code}`;
                         if (newId !== studentId) {
                             if (confirm(`CRITICAL: Changing System ID from ${studentId} to ${newId}. This may affect existing reports. Proceed?`)) {
                                 // Perform cascading update
@@ -8742,16 +8746,16 @@ export const UI = {
                         }
 
                         const schoolInfo = {
-                            name: settings.schoolName || localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
-                            address: settings.schoolAddress || '123 Education Street, Academic City',
-                            phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
-                            email: settings.schoolEmail || 'info@school.com',
-                            motto: settings.schoolMotto || 'Knowledge is Power',
-                            principalName: settings.principalName || 'Mr. Lartey Sampson',
+                            name: settings.schoolName || localStorage.getItem('tenant_school_name') || '',
+                            address: settings.schoolAddress || '',
+                            phone: settings.schoolPhone || '',
+                            email: settings.schoolEmail || '',
+                            motto: settings.schoolMotto || '',
+                            principalName: settings.principalName || '',
                             principalSignature: settings.principalSignature || null,
                             logo: settings.schoolLogo || null,
                             themeColor: settings.themeColor || '#060495',
-                            schoolManager: settings.schoolManager || 'TAMADU CODE',
+                            schoolManager: settings.schoolManager || '',
                             termEnd: closureDate,
                             termStart: nextTermDate,
                             teacherName: teacherName,
@@ -8793,12 +8797,12 @@ export const UI = {
                     }
 
                     const schoolInfoTemplate = {
-                        name: settings.schoolName || localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
-                        address: settings.schoolAddress || '123 Education Street, Academic City',
-                        phone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
-                        email: settings.schoolEmail || 'info@school.com',
-                        motto: settings.schoolMotto || 'Knowledge is Power',
-                        principalName: settings.principalName || 'Mr. Lartey Sampson',
+                        name: settings.schoolName || localStorage.getItem('tenant_school_name') || '',
+                        address: settings.schoolAddress || '',
+                        phone: settings.schoolPhone || '',
+                        email: settings.schoolEmail || '',
+                        motto: settings.schoolMotto || '',
+                        principalName: settings.principalName || '',
                         principalSignature: settings.principalSignature || null,
                         logo: settings.schoolLogo || null,
                         themeColor: settings.themeColor || '#060495',
@@ -16256,18 +16260,18 @@ export const UI = {
         const teachers = await db.profiles.filter(p => (p.role || '').toLowerCase() === 'teacher').toArray();
         const teachersOptionHtml = teachers.map(t => `<option value="${t.id}">${t.full_name || t.name || 'Unknown'}</option>`).join('');
 
-        // Default values if not set
+        // Default values if not set — leave blank if school hasn't configured yet
         const config = {
-            schoolName: settings.schoolName || localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL',
-            schoolManager: settings.schoolManager || 'TAMADU CODE',
-            schoolMotto: settings.schoolMotto || 'Knowledge is Power',
-            schoolAddress: settings.schoolAddress || '123 Education Street, Academic City',
-            schoolPhone: settings.schoolPhone || '08035461711, 08037316183, 08058134229',
-            schoolEmail: settings.schoolEmail || 'info@school.com',
+            schoolName: settings.schoolName || localStorage.getItem('tenant_school_name') || '',
+            schoolManager: settings.schoolManager || '',
+            schoolMotto: settings.schoolMotto || '',
+            schoolAddress: settings.schoolAddress || '',
+            schoolPhone: settings.schoolPhone || '',
+            schoolEmail: settings.schoolEmail || '',
             currentSession: settings.currentSession || settings.current_session || '2025/2026',
             currentTerm: settings.currentTerm || settings.current_term || '1st Term',
             gradingSystem: settings.gradingSystem || 'Grade-Based (A1, B2, etc.)',
-            principalName: settings.principalName || 'Mr. Lartey Sampson',
+            principalName: settings.principalName || '',
             principalSignature: settings.principalSignature || null,
             schoolLogo: settings.schoolLogo || null,
             themeColor: settings.themeColor || '#060495',
@@ -20934,7 +20938,7 @@ export const UI = {
         const totalReceivables = (await db.student_analytics.toArray()).reduce((a, b) => a + (parseFloat(b.fee_balance) || 0), 0);
         
         const settings = await db.settings.toArray();
-        const schoolName = settings.find(s => s.key === 'schoolName')?.value || 'GRAVITON ACADEMY';
+        const schoolName = settings.find(s => s.key === 'schoolName')?.value || '';
         
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
@@ -22570,7 +22574,7 @@ export const UI = {
         // Add School Header
         const settings = await db.settings.toArray();
         const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
-        const schoolName = getVal('schoolName', localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
+        const schoolName = getVal('schoolName', localStorage.getItem('tenant_school_name') || '');
         const schoolLogo = getVal('schoolLogo', null);
         const session = getVal('currentSession', '2025/2026');
         const term = getVal('currentTerm', '3rd Term');
@@ -22668,7 +22672,7 @@ export const UI = {
         doc.text("Principal's Signature", 105, sigY + 6, { align: 'center' });
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
-        doc.text(`(${getVal('principalName', 'Mr. Lartey Sampson')})`, 105, sigY + 11, { align: 'center' });
+        doc.text(`(${getVal('principalName', '')})`, 105, sigY + 11, { align: 'center' });
 
         try {
             this.showPDFPreview(doc, `Duty_Roster_${term.replace(/\s+/g, '_')}.pdf`);
@@ -22713,7 +22717,7 @@ export const UI = {
 
         const settings = await db.settings.toArray();
         const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
-        const schoolName = getVal('schoolName', localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
+        const schoolName = getVal('schoolName', localStorage.getItem('tenant_school_name') || '');
         const schoolLogo = getVal('schoolLogo', null);
         const currentSession = getVal('currentSession', '2025/2026');
         const currentTerm = getVal('currentTerm', '1st Term');
@@ -22899,7 +22903,7 @@ export const UI = {
                             ${principalSignature ? `<img src="${principalSignature}" style="height: 50px; display: block; margin: 0 auto 0.5rem; object-fit: contain;" alt="Principal Signature">` : '<div style="height: 50px;"></div>'}
                             <div style="border-top: 1.5px solid #000; width: 100%; margin: 0 auto;"></div>
                             <p style="font-size: 0.8rem; margin-top: 0.4rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #1e293b; margin-bottom: 0.2rem;">Principal's Signature</p>
-                            <p style="font-size: 0.75rem; font-weight: 600; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 0.05em;">(${getVal('principalName', 'Mr. Lartey Sampson')})</p>
+                            <p style="font-size: 0.75rem; font-weight: 600; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 0.05em;">(${getVal('principalName', '')})</p>
                         </div>
                     </div>
                 </div>

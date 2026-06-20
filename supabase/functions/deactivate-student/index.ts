@@ -77,7 +77,10 @@ serve(async (req) => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${ATTENDANCE_TOKEN}`
           },
-          body: JSON.stringify({ attendance_code: student.attendance_code })
+          body: JSON.stringify({ 
+            attendance_code: student.attendance_code,
+            tenant_id: student.tenant_id
+          })
         })
 
         if (!response.ok) {

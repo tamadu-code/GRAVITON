@@ -580,7 +580,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
     doc.text(schoolInfo.principalComment || ScoringEngine.getPrincipalRemark(avg), 12, currentY + 10, { maxWidth: pageWidth - 25 });
-    doc.text(`Name: ${schoolInfo.principalName || 'Mr. Lartey Sampson'}`, 12, currentY + 18);
+    doc.text(`Name: ${schoolInfo.principalName || ''}`, 12, currentY + 18);
     doc.text(`Sign: ____________________`, pageWidth - 60, currentY + 18);
     if (schoolInfo.principalSignature) {
         try {
@@ -695,7 +695,7 @@ export async function generateCredentialsPDF(students, schoolInfo = {}) {
     // Header
     doc.setFontSize(22);
     doc.setTextColor(31, 111, 235);
-    doc.text(schoolInfo.schoolName || schoolInfo.name || 'GRAVITON ACADEMY', 105, 20, { align: 'center' });
+    doc.text(schoolInfo.schoolName || schoolInfo.name || '', 105, 20, { align: 'center' });
     doc.setFontSize(12);
     doc.setTextColor(100, 116, 139);
     doc.text('Student Access Credentials', 105, 28, { align: 'center' });
@@ -782,10 +782,10 @@ export async function generateMastersheet(className, students, subjects, scores,
     const settings = await db.settings.toArray();
     const getVal = (key, fb) => settings.find(s => s.key === key)?.value || fb;
     
-    const sName = getVal('schoolName', localStorage.getItem('tenant_school_name') || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL');
-    const sAddress = getVal('schoolAddress', '123 Education Street, Academic City');
-    const sPhone = getVal('schoolPhone', '08035461711, 08037316183, 08058134229');
-    const sMotto = getVal('schoolMotto', 'Knowledge is Power');
+    const sName = getVal('schoolName', localStorage.getItem('tenant_school_name') || '');
+    const sAddress = getVal('schoolAddress', '');
+    const sPhone = getVal('schoolPhone', '');
+    const sMotto = getVal('schoolMotto', '');
     const logoBase64 = getVal('schoolLogo', null);
     
     // Header
@@ -912,7 +912,7 @@ export async function generatePaymentReceipt(payment, student, schoolInfo = {}) 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(rgb.r, rgb.g, rgb.b);
-    doc.text((schoolInfo.schoolName || schoolInfo.name || "GRAVITON ACADEMY").toUpperCase(), 50, y, { align: 'center' });
+    doc.text((schoolInfo.schoolName || schoolInfo.name || '').toUpperCase(), 50, y, { align: 'center' });
     y += 5;
     
     if (schoolInfo.schoolMotto) {
@@ -1075,7 +1075,7 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
             
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
-            const schoolName = schoolInfo.schoolName || 'NEW KINGS AND QUEENS MONTESSORI SCHOOL';
+            const schoolName = schoolInfo.schoolName || '';
             doc.text(schoolName.toUpperCase(), pageWidth / 2, 18, { align: 'center' });
             
             doc.setFontSize(11);
@@ -1226,7 +1226,7 @@ export async function generateTimetablePDF(className, classes, subjects, schoolI
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(18);
-        doc.text((schoolInfo.schoolName || schoolInfo.name || "GRAVITON ACADEMY").toUpperCase(), logoX, 16);
+        doc.text((schoolInfo.schoolName || schoolInfo.name || '').toUpperCase(), logoX, 16);
         
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(9);
@@ -1470,7 +1470,7 @@ export async function generatePinSlipPDF(pinData, schoolInfo = {}) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(rgb.r, rgb.g, rgb.b);
-    doc.text((schoolInfo.schoolName || schoolInfo.name || "GRAVITON ACADEMY").toUpperCase(), 50, y, { align: 'center' });
+    doc.text((schoolInfo.schoolName || schoolInfo.name || '').toUpperCase(), 50, y, { align: 'center' });
     y += 4;
     
     // Motto
@@ -1616,7 +1616,7 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
-    doc.text((schoolInfo.schoolName || schoolInfo.name || "NEW KINGS AND QUEENS MONTESSORI SCHOOL").toUpperCase(), pageWidth / 2, 12, { align: 'center' });
+    doc.text((schoolInfo.schoolName || schoolInfo.name || '').toUpperCase(), pageWidth / 2, 12, { align: 'center' });
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.5);

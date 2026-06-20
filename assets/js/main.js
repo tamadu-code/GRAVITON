@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v26.8 (BUILD v328) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v26.9 (BUILD v332) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -234,7 +234,13 @@ async function loadAuthenticatedApp(authUser) {
                         }
                         // Clear sync timestamp to force full re-pull
                         localStorage.removeItem('last_sync_timestamp');
-                        console.log(`[Tenant Switch] Local database purged. ${allTables.length} tables cleared.`);
+                        // Clear ALL tenant-specific branding/config from localStorage
+                        localStorage.removeItem('tenant_school_name');
+                        localStorage.removeItem('tenant_student_id_prefix');
+                        localStorage.removeItem('tenant_subscription_status');
+                        localStorage.removeItem('tenant_plan_tier');
+                        localStorage.removeItem('tenant_max_student_limit');
+                        console.log(`[Tenant Switch] Local database purged. ${allTables.length} tables cleared. Tenant localStorage keys reset.`);
                     } catch (purgeErr) {
                         console.error('[Tenant Switch] Failed to purge local DB:', purgeErr);
                         // Nuclear option: delete and recreate the entire database
@@ -262,7 +268,8 @@ async function loadAuthenticatedApp(authUser) {
                             console.log(`[Auth Hook] Set tenant prefix: ${tenantData.student_id_prefix}`);
                         }
                         if (tenantData && tenantData.name) {
-                            localStorage.setItem('tenant_school_name', tenantData.name);
+                            const cleanName = tenantData.name.toLowerCase().includes('default school') ? '' : tenantData.name;
+                            localStorage.setItem('tenant_school_name', cleanName);
                         }
 
                         const { data: subData } = await client

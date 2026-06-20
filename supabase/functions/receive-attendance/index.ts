@@ -22,9 +22,10 @@ serve(async (req) => {
   const authHeader = req.headers.get('Authorization') || ''
   const token = authHeader.replace('Bearer ', '')
   
-  // Accept either the service_role key or check it matches what the trigger sends
+  // Accept either the service_role key, the custom token, or check it matches what the trigger sends
   let caller_tenant_id: string | null = null
-  if (token !== SUPABASE_SERVICE_ROLE_KEY && !authHeader.includes('eyJhbGciOi')) {
+  const expectedToken = 'Tam360Du180'
+  if (token !== SUPABASE_SERVICE_ROLE_KEY && !authHeader.includes('eyJhbGciOi') && token !== expectedToken) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
   }
 
@@ -94,7 +95,7 @@ serve(async (req) => {
       }
     }
 
-    const tenant_id = resolvedTenantId || queryTenantId || headerTenantId || bodyTenantId || caller_tenant_id;
+    let tenant_id = resolvedTenantId || queryTenantId || headerTenantId || bodyTenantId || caller_tenant_id;
     console.log(`Resolved attendance tenant context: ${tenant_id || 'NONE'}`);
 
     // Find student in SMS with tenant-isolation
@@ -281,7 +282,7 @@ serve(async (req) => {
 
     const now = new Date().toISOString();
 
-    const tenant_id = student?.tenant_id || caller_tenant_id || '00000000-0000-0000-0000-000000000001';
+    tenant_id = student?.tenant_id || tenant_id || '00000000-0000-0000-0000-000000000001';
 
     // Step 4A: Upsert into the `attendance` table (daily biometric sign-in/out)
     // This is the table that holds sign_in, sign_out, is_late as TEXT columns
