@@ -31,6 +31,8 @@ serve(async (req) => {
   }
 
   try {
+    const url = new URL(req.url)
+
     const authHeader = req.headers.get('Authorization') || ''
     const token = authHeader.replace('Bearer ', '')
     
@@ -119,7 +121,7 @@ serve(async (req) => {
 
         // Try to deactivate in the external attendance system
         try {
-          const response = await fetch(`${baseUrl}/deactivate-student`, {
+          const response = await fetch(`${baseUrl}/functions/v1/deactivate-student`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
