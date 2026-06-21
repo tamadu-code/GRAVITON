@@ -225,7 +225,7 @@ async function loadAuthenticatedApp(authUser) {
                 // If a different tenant is logging in on the same browser,
                 // clear all local IndexedDB data to prevent cross-tenant data leakage
                 const previousTenantId = localStorage.getItem('last_active_tenant_id');
-                if (previousTenantId && previousTenantId !== claims.tenant_id) {
+                if (previousTenantId !== claims.tenant_id) {
                     console.warn(`[Tenant Switch] Detected tenant change: ${previousTenantId} → ${claims.tenant_id}. Purging local database...`);
                     try {
                         const allTables = db.tables.map(t => t.name);
