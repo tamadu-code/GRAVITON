@@ -874,10 +874,7 @@ export const UI = {
         });
         
         const chartValues = velocityData.map(v => {
-            if (v.total > 0) return v.pct;
-            const dayOfWeek = new Date(v.date).getDay();
-            if (dayOfWeek === 0 || dayOfWeek === 6) return 0;
-            return 82 + Math.floor(Math.random() * 14); // Realistic 82-96% turnout fallback
+            return v.total > 0 ? v.pct : 0;
         });
 
         const subjects       = await db.subjects.toArray();
