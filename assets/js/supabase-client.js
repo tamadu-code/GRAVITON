@@ -584,6 +584,26 @@ export async function syncFromCloud(forceAll = false) {
         throw err;
     } finally {
         window._isSyncingFromCloud = false;
+
+        // ── Refresh subscription metadata from cloud ──
+        try {
+            const subTenantId = localStorage.getItem('tenant_id');
+            if (client && subTenantId) {
+                const { data: subData } = await client
+                    .from('subscriptions')
+                    .select('status, plan_tier, max_student_limit')
+                    .eq('tenant_id', subTenantId)
+                    .maybeSingle();
+                if (subData) {
+                    localStorage.setItem('tenant_subscription_status', subData.status || 'active');
+                    localStorage.setItem('tenant_plan_tier', subData.plan_tier || 'standard');
+                    localStorage.setItem('tenant_max_student_limit', String(subData.max_student_limit || 200));
+                }
+            }
+        } catch (subErr) {
+            console.warn('[Sync] Subscription refresh failed:', subErr);
+        }
+
         if (!forceAll) {
             localStorage.setItem('last_sync_timestamp', new Date().toISOString());
         }

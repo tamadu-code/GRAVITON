@@ -900,7 +900,46 @@ export const UI = {
                     <p class="text-secondary" style="font-size: 0.85rem;">Welcome back, <span class="font-bold text-primary">${this.currentUser.name}</span>. Here is what's happening today.</p>
                 </header>
 
+                ${(() => {
+                    const dashSubStatus = localStorage.getItem('tenant_subscription_status') || 'active';
+                    const dashPlanLimit = parseInt(localStorage.getItem('tenant_max_student_limit') || '200');
+                    const dashPlanTier = localStorage.getItem('tenant_plan_tier') || 'standard';
+                    const limitPct = dashPlanLimit > 0 ? Math.round((studentCount / dashPlanLimit) * 100) : 0;
+                    let banner = '';
 
+                    if (dashSubStatus === 'past_due') {
+                        banner = `<div style="background: linear-gradient(135deg, #fef3c7, #fffbeb); border: 1px solid #fbbf24; border-radius: 16px; padding: 1rem 1.5rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; animation: fadeIn 0.3s ease;">
+                            <div style="width: 40px; height: 40px; background: #f59e0b; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <i data-lucide="alert-triangle" style="width: 20px; height: 20px; color: white;"></i>
+                            </div>
+                            <div>
+                                <div style="font-weight: 800; color: #92400e; font-size: 0.9rem;">Subscription Payment Overdue</div>
+                                <div style="font-size: 0.8rem; color: #a16207;">Your ${dashPlanTier.toUpperCase()} plan payment is past due. Some features may be restricted. Go to Settings → Subscription & Billing to renew.</div>
+                            </div>
+                        </div>`;
+                    } else if (dashSubStatus === 'canceled' || dashSubStatus === 'suspended') {
+                        banner = `<div style="background: linear-gradient(135deg, #fee2e2, #fff1f2); border: 1px solid #fca5a5; border-radius: 16px; padding: 1rem 1.5rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; animation: fadeIn 0.3s ease;">
+                            <div style="width: 40px; height: 40px; background: #ef4444; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <i data-lucide="shield-off" style="width: 20px; height: 20px; color: white;"></i>
+                            </div>
+                            <div>
+                                <div style="font-weight: 800; color: #991b1b; font-size: 0.9rem;">Subscription ${dashSubStatus === 'canceled' ? 'Canceled' : 'Suspended'}</div>
+                                <div style="font-size: 0.8rem; color: #b91c1c;">Data sync, student enrollment, and cloud features are disabled. Contact your platform administrator or renew in Settings.</div>
+                            </div>
+                        </div>`;
+                    } else if (limitPct >= 90 && dashSubStatus === 'active') {
+                        banner = `<div style="background: linear-gradient(135deg, #eff6ff, #f0f9ff); border: 1px solid #93c5fd; border-radius: 16px; padding: 1rem 1.5rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; animation: fadeIn 0.3s ease;">
+                            <div style="width: 40px; height: 40px; background: #3b82f6; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <i data-lucide="info" style="width: 20px; height: 20px; color: white;"></i>
+                            </div>
+                            <div>
+                                <div style="font-weight: 800; color: #1e40af; font-size: 0.9rem;">Approaching Student Limit</div>
+                                <div style="font-size: 0.8rem; color: #2563eb;">You've enrolled ${studentCount} of ${dashPlanLimit} students (${limitPct}%). Consider upgrading your plan to accommodate more students.</div>
+                            </div>
+                        </div>`;
+                    }
+                    return banner;
+                })()}
 
                 <div class="stats-grid mb-1">
                     <div class="stat-card-premium" style="border-radius: 16px; padding: 1.25rem;">
@@ -4784,6 +4823,14 @@ export const UI = {
                     if (!name || !className) {
                         Notifications.show('Name and Class are required', 'error');
                         throw new Error('Validation failed');
+                    }
+
+                    // ── Subscription Student Limit Enforcement ──
+                    const currentActiveCount = await db.students.filter(s => s.is_active !== false).count();
+                    const maxStudentLimit = parseInt(localStorage.getItem('tenant_max_student_limit') || '200');
+                    if (currentActiveCount >= maxStudentLimit) {
+                        Notifications.show(`Enrollment blocked: You have reached your plan's student limit (${currentActiveCount}/${maxStudentLimit}). Please upgrade your subscription in Settings → Subscription & Billing.`, 'error');
+                        throw new Error('Student limit exceeded');
                     }
 
                     const prefix = localStorage.getItem('tenant_student_id_prefix') || 'NKQMS';
@@ -16243,9 +16290,33 @@ export const UI = {
     async renderSettings() {
         // Load settings and subscription details
         const enrolledCount = await db.students.filter(s => s.is_active !== false).count();
-        const subStatus = localStorage.getItem('tenant_subscription_status') || 'trialing';
-        const planLimit = localStorage.getItem('tenant_max_student_limit') || '200';
-        const planTier = localStorage.getItem('tenant_plan_tier') || 'standard';
+        let subStatus = localStorage.getItem('tenant_subscription_status') || 'trialing';
+        let planLimit = localStorage.getItem('tenant_max_student_limit') || '200';
+        let planTier = localStorage.getItem('tenant_plan_tier') || 'standard';
+
+        // Live-refresh subscription data from cloud on every render
+        try {
+            const tenantId = localStorage.getItem('tenant_id');
+            const client = window.getSupabase ? window.getSupabase() : null;
+            if (client && tenantId && navigator.onLine) {
+                const { data: subData } = await client
+                    .from('subscriptions')
+                    .select('status, plan_tier, max_student_limit')
+                    .eq('tenant_id', tenantId)
+                    .maybeSingle();
+                if (subData) {
+                    subStatus = subData.status || 'active';
+                    planLimit = String(subData.max_student_limit || 200);
+                    planTier = subData.plan_tier || 'standard';
+                    // Update localStorage cache so other consumers stay in sync
+                    localStorage.setItem('tenant_subscription_status', subStatus);
+                    localStorage.setItem('tenant_max_student_limit', planLimit);
+                    localStorage.setItem('tenant_plan_tier', planTier);
+                }
+            }
+        } catch (e) {
+            console.warn('[Settings] Live subscription refresh failed, using cached values:', e);
+        }
         
         let subStatusColor = '#10b981';
         let subStatusText = 'Active';
@@ -16942,9 +17013,31 @@ export const UI = {
         }
 
         const schoolName = localStorage.getItem('tenant_school_name') || 'This School';
-        const planTier = localStorage.getItem('tenant_plan_tier') || 'standard';
-        const planLimit = localStorage.getItem('tenant_max_student_limit') || '200';
-        const subStatus = localStorage.getItem('tenant_subscription_status') || 'trialing';
+        let planTier = localStorage.getItem('tenant_plan_tier') || 'standard';
+        let planLimit = localStorage.getItem('tenant_max_student_limit') || '200';
+        let subStatus = localStorage.getItem('tenant_subscription_status') || 'trialing';
+
+        // Live-refresh subscription data from cloud
+        try {
+            const client = window.getSupabase ? window.getSupabase() : null;
+            if (client && tenantId && navigator.onLine) {
+                const { data: subData } = await client
+                    .from('subscriptions')
+                    .select('status, plan_tier, max_student_limit')
+                    .eq('tenant_id', tenantId)
+                    .maybeSingle();
+                if (subData) {
+                    subStatus = subData.status || 'active';
+                    planLimit = String(subData.max_student_limit || 200);
+                    planTier = subData.plan_tier || 'standard';
+                    localStorage.setItem('tenant_subscription_status', subStatus);
+                    localStorage.setItem('tenant_max_student_limit', planLimit);
+                    localStorage.setItem('tenant_plan_tier', planTier);
+                }
+            }
+        } catch (e) {
+            console.warn('[Subscription Modal] Live refresh failed, using cached values:', e);
+        }
 
         let amount = 20000;
         let planLabel = "Standard Monthly Plan";
