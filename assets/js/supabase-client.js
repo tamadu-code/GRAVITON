@@ -347,7 +347,6 @@ export async function syncFromCloud(forceAll = false) {
         return;
     }
 
-    const userRole = localStorage.getItem('user_role');
     const subStatus = localStorage.getItem('tenant_subscription_status');
     if (subStatus && subStatus !== 'active' && subStatus !== 'trialing' && userRole !== 'SuperAdmin') {
         console.warn(`[Sync] Background pull blocked due to inactive subscription: ${subStatus}`);
