@@ -16299,11 +16299,24 @@ export const UI = {
             const tenantId = localStorage.getItem('tenant_id');
             const client = window.getSupabase ? window.getSupabase() : null;
             if (client && tenantId && navigator.onLine) {
-                const { data: subData } = await client
+                console.log('[Settings] Live subscription refresh start for tenant:', tenantId);
+                const { data: subData, error: subError } = await client
                     .from('subscriptions')
                     .select('status, plan_tier, max_student_limit')
                     .eq('tenant_id', tenantId)
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
                     .maybeSingle();
+                
+                if (subError) {
+                    console.error('[Settings] Live subscription refresh query error:', subError);
+                    if (typeof Notifications !== 'undefined') {
+                        Notifications.show(`Subscription Sync Warning: ${subError.message}`, 'warning');
+                    }
+                } else {
+                    console.log('[Settings] Live subscription refresh query result:', subData);
+                }
+
                 if (subData) {
                     subStatus = subData.status || 'active';
                     planLimit = String(subData.max_student_limit || 200);
@@ -17021,11 +17034,24 @@ export const UI = {
         try {
             const client = window.getSupabase ? window.getSupabase() : null;
             if (client && tenantId && navigator.onLine) {
-                const { data: subData } = await client
+                console.log('[Subscription Modal] Live subscription refresh start for tenant:', tenantId);
+                const { data: subData, error: subError } = await client
                     .from('subscriptions')
                     .select('status, plan_tier, max_student_limit')
                     .eq('tenant_id', tenantId)
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
                     .maybeSingle();
+                
+                if (subError) {
+                    console.error('[Subscription Modal] Live subscription refresh query error:', subError);
+                    if (typeof Notifications !== 'undefined') {
+                        Notifications.show(`Subscription Sync Warning: ${subError.message}`, 'warning');
+                    }
+                } else {
+                    console.log('[Subscription Modal] Live subscription refresh query result:', subData);
+                }
+
                 if (subData) {
                     subStatus = subData.status || 'active';
                     planLimit = String(subData.max_student_limit || 200);
@@ -25872,7 +25898,7 @@ export const UI = {
             if (!client) throw new Error('Cloud client connection unavailable');
 
             const { data: tenant } = await client.from('tenants').select('name, slug, student_id_prefix').eq('id', tenantId).single();
-            const { data: sub } = await client.from('subscriptions').select('*').eq('tenant_id', tenantId).maybeSingle();
+            const { data: sub } = await client.from('subscriptions').select('*').eq('tenant_id', tenantId).order('updated_at', { ascending: false }).limit(1).maybeSingle();
 
             const planTier = sub?.plan_tier || 'standard';
             const status = sub?.status || 'active';

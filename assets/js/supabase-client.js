@@ -597,11 +597,21 @@ export async function syncFromCloud(forceAll = false) {
         try {
             const subTenantId = localStorage.getItem('tenant_id');
             if (client && subTenantId) {
-                const { data: subData } = await client
+                console.log('[Sync] Refreshing subscription for tenant:', subTenantId);
+                const { data: subData, error: subError } = await client
                     .from('subscriptions')
                     .select('status, plan_tier, max_student_limit')
                     .eq('tenant_id', subTenantId)
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
                     .maybeSingle();
+                
+                if (subError) {
+                    console.error('[Sync] Subscription refresh query error:', subError);
+                } else {
+                    console.log('[Sync] Subscription refresh query result:', subData);
+                }
+
                 if (subData) {
                     localStorage.setItem('tenant_subscription_status', subData.status || 'active');
                     localStorage.setItem('tenant_plan_tier', subData.plan_tier || 'standard');

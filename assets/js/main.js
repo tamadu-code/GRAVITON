@@ -276,6 +276,8 @@ async function loadAuthenticatedApp(authUser) {
                             .from('subscriptions')
                             .select('status, plan_tier, max_student_limit')
                             .eq('tenant_id', claims.tenant_id)
+                            .order('updated_at', { ascending: false })
+                            .limit(1)
                             .maybeSingle();
                         if (subData) {
                             localStorage.setItem('tenant_subscription_status', subData.status || 'active');
