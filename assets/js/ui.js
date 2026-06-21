@@ -135,6 +135,32 @@ export const UI = {
         }
         return this.currentUser?.assigned_id || this.currentUser?.student_id || this.currentUser?.id || '';
     },
+
+    /**
+     * Feature gating utility — checks if a specific platform feature is enabled
+     * for the current tenant's subscription plan.
+     * Features are cached in localStorage as 'tenant_features' JSON object.
+     * @param {string} featureName - One of: cbt, sms, api_access, parent_portal,
+     *   offline_access, white_labeling, online_payments, automated_reports,
+     *   dedicated_support, advanced_analytics, push_notifications
+     * @returns {boolean} true if the feature is enabled, false otherwise
+     */
+    isFeatureEnabled(featureName) {
+        try {
+            // SuperAdmin always has all features
+            const role = (this.currentUser?.role || localStorage.getItem('user_role') || '').toLowerCase();
+            if (role === 'superadmin') return true;
+
+            const cached = localStorage.getItem('tenant_features');
+            if (!cached) return true; // Default to enabled if not yet loaded
+            const features = JSON.parse(cached);
+            // If the feature key doesn't exist in the object, default to true
+            return features[featureName] !== false;
+        } catch (e) {
+            console.warn('[FeatureGate] Error checking feature:', featureName, e);
+            return true; // Fail-open to avoid blocking users on parse errors
+        }
+    },
     
     showPDFPreview(doc, filename = 'document.pdf') {
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
@@ -480,7 +506,9 @@ export const UI = {
             
             const schoolName = (settings.schoolName || localStorage.getItem('tenant_school_name') || '') + '';
             const schoolLogo = settings.schoolLogo;
-            const themeColor = settings.themeColor || '#060495';
+            // If white_labeling feature is disabled, force default theme color
+            const whitelabelEnabled = this.isFeatureEnabled('white_labeling');
+            const themeColor = whitelabelEnabled ? (settings.themeColor || '#060495') : '#060495';
             
             document.documentElement.style.setProperty('--school-theme-color', themeColor);
             
@@ -596,6 +624,37 @@ export const UI = {
             if (isParent && !allowedForParents.includes(viewName)) isRestricted = true;
             if (isFinance && !allowedForFinance.includes(viewName)) isRestricted = true;
             if (viewName === 'superadmin' && role !== 'superadmin') isRestricted = true;
+
+            // ─── Feature Gating: Block views for disabled plan features ───
+            const featureViewMap = {
+                'cbt': 'cbt',
+                'cbt_participants': 'cbt',
+                'keys': 'api_access',
+                'parents': 'parent_portal',
+                'insights': 'advanced_analytics',
+                'reports': 'automated_reports'
+            };
+            const requiredFeature = featureViewMap[viewName];
+            if (requiredFeature && !this.isFeatureEnabled(requiredFeature)) {
+                this.contentArea.innerHTML = `
+                    <div class="view-container animate-fade-in" style="display: flex; align-items: center; justify-content: center; height: 70vh;">
+                        <div class="text-center" style="max-width: 440px; padding: 2.5rem; background: white; border-radius: 28px; box-shadow: var(--shadow-lg); border: 1px solid #e2e8f0;">
+                            <div style="background: linear-gradient(135deg, #fef3c7, #fde68a); color: #d97706; width: 80px; height: 80px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; transform: rotate(-5deg);">
+                                <i data-lucide="lock" style="width: 36px; height: 36px;"></i>
+                            </div>
+                            <h2 style="font-weight: 900; font-size: 1.4rem; color: #1e293b; margin-bottom: 0.5rem;">Premium Feature</h2>
+                            <p style="color: #64748b; font-size: 0.88rem; line-height: 1.6; margin-bottom: 0.5rem;">The <strong>${viewName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</strong> module is not included in your current subscription plan.</p>
+                            <p style="color: #94a3b8; font-size: 0.78rem; line-height: 1.5;">Upgrade your plan to unlock this feature and many more.</p>
+                            <div style="display: flex; gap: 0.75rem; justify-content: center; margin-top: 1.5rem;">
+                                <button class="btn btn-secondary" onclick="UI.renderView('dashboard')" style="border-radius: 12px; height: 44px; padding: 0 1.5rem; font-weight: 700;">Back to Dashboard</button>
+                                <button class="btn btn-primary" onclick="UI.showSubscriptionModal(false)" style="border-radius: 12px; height: 44px; padding: 0 1.5rem; font-weight: 700; background: linear-gradient(135deg, #2563eb, #7c3aed); border: none;">Upgrade Plan</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                return;
+            }
 
             if (isRestricted) {
                 this.contentArea.innerHTML = `
@@ -16326,6 +16385,20 @@ export const UI = {
                     localStorage.setItem('tenant_max_student_limit', planLimit);
                     localStorage.setItem('tenant_plan_tier', planTier);
                 }
+
+                // Fetch plan features for the current tier and cache them
+                try {
+                    const { data: planRows } = await client
+                        .from('plans')
+                        .select('features')
+                        .or(`name.ilike.%${planTier}%`);
+                    if (planRows && planRows.length > 0 && planRows[0].features) {
+                        localStorage.setItem('tenant_features', JSON.stringify(planRows[0].features));
+                        console.log('[Settings] Cached plan features for tier:', planTier, planRows[0].features);
+                    }
+                } catch (featErr) {
+                    console.warn('[Settings] Failed to fetch plan features:', featErr);
+                }
             }
         } catch (e) {
             console.warn('[Settings] Live subscription refresh failed, using cached values:', e);
@@ -16434,7 +16507,7 @@ export const UI = {
                     </div>
 
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
-                        <div class="form-group">
+                        <div class="form-group" style="position: relative;">
                             <label>School Logo</label>
                             <div style="display: flex; align-items: center; gap: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px dashed #cbd5e1;">
                                 <input type="file" id="set-school-logo-file" accept="image/*" style="display: none;">
@@ -16445,13 +16518,27 @@ export const UI = {
                                     ${config.schoolLogo ? `<img src="${config.schoolLogo}" style="width: 100%; height: 100%; object-fit: contain;">` : ''}
                                 </div>
                             </div>
+                            ${!this.isFeatureEnabled('white_labeling') ? `
+                            <div style="position: absolute; inset: 0; background: rgba(248, 250, 252, 0.85); backdrop-filter: blur(2px); border-radius: 16px; display: flex; align-items: center; justify-content: center; z-index: 2;">
+                                <div style="display: flex; align-items: center; gap: 6px; background: #fef3c7; padding: 6px 14px; border-radius: 8px; border: 1px solid #fde68a;">
+                                    <i data-lucide="lock" style="width: 14px; color: #d97706;"></i>
+                                    <span style="font-size: 0.75rem; font-weight: 700; color: #92400e;">Premium Feature</span>
+                                </div>
+                            </div>` : ''}
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="position: relative;">
                             <label>Theme Color</label>
                             <div style="display: flex; align-items: center; gap: 1rem; background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px solid #e2e8f0;">
-                                <input type="color" id="set-theme-color" value="${config.themeColor}" style="width: 50px; height: 40px; border: none; border-radius: 8px; cursor: pointer;">
+                                <input type="color" id="set-theme-color" value="${config.themeColor}" style="width: 50px; height: 40px; border: none; border-radius: 8px; cursor: pointer;" ${!this.isFeatureEnabled('white_labeling') ? 'disabled' : ''}>
                                 <span style="font-family: monospace; font-weight: 700; color: #475569;">${config.themeColor.toUpperCase()}</span>
                             </div>
+                            ${!this.isFeatureEnabled('white_labeling') ? `
+                            <div style="position: absolute; inset: 0; background: rgba(248, 250, 252, 0.85); backdrop-filter: blur(2px); border-radius: 16px; display: flex; align-items: center; justify-content: center; z-index: 2;">
+                                <div style="display: flex; align-items: center; gap: 6px; background: #fef3c7; padding: 6px 14px; border-radius: 8px; border: 1px solid #fde68a;">
+                                    <i data-lucide="lock" style="width: 14px; color: #d97706;"></i>
+                                    <span style="font-size: 0.75rem; font-weight: 700; color: #92400e;">Premium Feature</span>
+                                </div>
+                            </div>` : ''}
                         </div>
                     </div>
 
@@ -16766,9 +16853,14 @@ export const UI = {
                                     <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Billing Frequency</div>
                                     <div style="font-size: 0.85rem; font-weight: 600; color: #334155; margin-top: 2px;">${planTier.toUpperCase()} Plan</div>
                                 </div>
-                                <button id="btn-manage-subscription" class="btn btn-primary" style="height: 44px; border-radius: 12px; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; background: #2563eb;">
-                                    <i data-lucide="external-link" style="width: 16px;"></i> Manage Subscription
-                                </button>
+                                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                    <button id="btn-renew-subscription" class="btn" style="height: 40px; border-radius: 10px; font-weight: 700; display: flex; align-items: center; gap: 0.4rem; background: #10b981; color: white; border: none; padding: 0 1rem; cursor: pointer; font-size: 0.8rem; transition: all 0.2s;">
+                                        <i data-lucide="refresh-cw" style="width: 14px;"></i> Renew Plan
+                                    </button>
+                                    <button id="btn-upgrade-subscription" class="btn" style="height: 40px; border-radius: 10px; font-weight: 700; display: flex; align-items: center; gap: 0.4rem; background: linear-gradient(135deg, #2563eb, #7c3aed); color: white; border: none; padding: 0 1rem; cursor: pointer; font-size: 0.8rem; transition: all 0.2s;">
+                                        <i data-lucide="arrow-up-circle" style="width: 14px;"></i> Switch / Upgrade
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -16815,10 +16907,16 @@ export const UI = {
             }
         };
 
-        const manageSubBtn = document.getElementById('btn-manage-subscription');
-        if (manageSubBtn) {
-            manageSubBtn.onclick = () => {
-                this.showSubscriptionModal();
+        const renewSubBtn = document.getElementById('btn-renew-subscription');
+        if (renewSubBtn) {
+            renewSubBtn.onclick = () => {
+                this.showSubscriptionModal(true); // Renew-only: same tier
+            };
+        }
+        const upgradeSubBtn = document.getElementById('btn-upgrade-subscription');
+        if (upgradeSubBtn) {
+            upgradeSubBtn.onclick = () => {
+                this.showSubscriptionModal(false); // Full plan selection
             };
         }
 
@@ -17018,7 +17116,7 @@ export const UI = {
         renderPtConstraintsConfig();
     },
 
-    async showSubscriptionModal() {
+    async showSubscriptionModal(onlyRenewCurrent = false) {
         const tenantId = localStorage.getItem('tenant_id');
         if (!tenantId) {
             Notifications.show('Tenant context not found. Please reload.', 'error');
@@ -17153,9 +17251,9 @@ export const UI = {
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <h3 style="font-weight: 955; font-size: 1.4rem; color: #0f172a; display: flex; align-items: center; gap: 8px; margin: 0;">
-                                <i data-lucide="shield-check" style="color: #10b981;"></i> Upgrade & Billing Console
+                                <i data-lucide="${onlyRenewCurrent ? 'refresh-cw' : 'shield-check'}" style="color: ${onlyRenewCurrent ? '#10b981' : '#7c3aed'};"></i> ${onlyRenewCurrent ? 'Renew Subscription' : 'Upgrade & Billing Console'}
                             </h3>
-                            <p style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem; margin-bottom: 0;">Manage subscription settings for <strong>${schoolName}</strong> (Enrolled Students: <strong>${studentCount}</strong>)</p>
+                            <p style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem; margin-bottom: 0;">${onlyRenewCurrent ? `Renewing your <strong>${currentTier.toUpperCase()}</strong> plan for <strong>${schoolName}</strong>` : `Manage subscription settings for <strong>${schoolName}</strong>`} (Enrolled Students: <strong>${studentCount}</strong>)</p>
                         </div>
                         <button onclick="document.getElementById('${modalId}').remove()" style="background: #f1f5f9; color: #64748b; border: none; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
                             <i data-lucide="x" style="width: 18px; height: 18px;"></i>
@@ -17164,16 +17262,19 @@ export const UI = {
 
                     <!-- Step 1: Select Plan -->
                     <div>
-                        <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">1. Select Subscription Plan</label>
+                        <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">${onlyRenewCurrent ? '1. Renewing Current Plan' : '1. Select Subscription Plan'}</label>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-                            ${plans.map(p => {
+                            ${plans.filter(p => onlyRenewCurrent ? p.tier === currentTier : true).map(p => {
                                 const isSelected = p.tier === currentTier;
                                 const calculatedPrice = p.price + (p.per_student_rate * studentCount);
                                 return `
                                     <div class="plan-card ${isSelected ? 'selected' : ''}" data-tier="${p.tier}" data-price="${p.price}" data-rate="${p.per_student_rate}" data-limit="${p.student_limit}" data-duration="${p.duration}" style="border: 2px solid ${isSelected ? '#2563eb' : '#e2e8f0'}; background: ${isSelected ? '#f8fafc' : 'white'}; border-radius: 16px; padding: 1rem; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; gap: 4px; transition: all 0.2s;">
                                         <div style="display:flex; justify-content:space-between; align-items:center;">
                                             <span style="font-weight: 900; font-size: 0.95rem; color: #1e293b;">${p.name}</span>
-                                            <span style="font-size: 0.65rem; background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 6px; font-weight: 800; text-transform: uppercase;">${p.duration}</span>
+                                            <div style="display: flex; gap: 4px; align-items: center;">
+                                                ${onlyRenewCurrent ? '<span style="font-size: 0.6rem; background: #d1fae5; color: #065f46; padding: 2px 6px; border-radius: 6px; font-weight: 800; text-transform: uppercase;">RENEWING</span>' : ''}
+                                                <span style="font-size: 0.65rem; background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 6px; font-weight: 800; text-transform: uppercase;">${p.duration}</span>
+                                            </div>
                                         </div>
                                         <p style="font-size: 0.7rem; color: #64748b; line-height: 1.3; margin: 4px 0;">${p.description}</p>
                                         <div style="margin-top: 4px; border-top: 1px solid #f1f5f9; padding-top: 4px;">
@@ -17425,6 +17526,20 @@ export const UI = {
             localStorage.setItem('tenant_subscription_status', 'active');
             localStorage.setItem('tenant_plan_tier', planTier);
             localStorage.setItem('tenant_max_student_limit', String(studentLimit));
+
+            // Cache features for the newly activated plan tier
+            try {
+                const { data: planRows } = await client
+                    .from('plans')
+                    .select('features')
+                    .or(`name.ilike.%${planTier}%`);
+                if (planRows && planRows.length > 0 && planRows[0].features) {
+                    localStorage.setItem('tenant_features', JSON.stringify(planRows[0].features));
+                    console.log('[Subscription] Cached features for new tier:', planTier);
+                }
+            } catch (featErr) {
+                console.warn('[Subscription] Failed to cache features post-activation:', featErr);
+            }
             
             // Check if subscription row exists for this tenant
             const { data: existingSub, error: selectErr } = await client
@@ -26607,6 +26722,9 @@ export const UI = {
                                     <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
                                         <input type="checkbox" id="feat-whitelabel" ${plan.features?.white_labeling ? 'checked' : ''}> White Labeling
                                     </label>
+                                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                        <input type="checkbox" id="feat-dedicated-support" ${plan.features?.dedicated_support ? 'checked' : ''}> Dedicated Support
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -26644,7 +26762,8 @@ export const UI = {
                         online_payments: document.getElementById('feat-payments').checked,
                         automated_reports: document.getElementById('feat-reports').checked,
                         api_access: document.getElementById('feat-api').checked,
-                        white_labeling: document.getElementById('feat-whitelabel').checked
+                        white_labeling: document.getElementById('feat-whitelabel').checked,
+                        dedicated_support: document.getElementById('feat-dedicated-support').checked
                     },
                     updated_at: new Date().toISOString()
                 };

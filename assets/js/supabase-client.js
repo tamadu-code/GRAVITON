@@ -616,6 +616,21 @@ export async function syncFromCloud(forceAll = false) {
                     localStorage.setItem('tenant_subscription_status', subData.status || 'active');
                     localStorage.setItem('tenant_plan_tier', subData.plan_tier || 'standard');
                     localStorage.setItem('tenant_max_student_limit', String(subData.max_student_limit || 200));
+
+                    // Cache plan features for feature gating
+                    try {
+                        const planTier = subData.plan_tier || 'standard';
+                        const { data: planRows } = await client
+                            .from('plans')
+                            .select('features')
+                            .or(`name.ilike.%${planTier}%`);
+                        if (planRows && planRows.length > 0 && planRows[0].features) {
+                            localStorage.setItem('tenant_features', JSON.stringify(planRows[0].features));
+                            console.log('[Sync] Cached plan features for tier:', planTier);
+                        }
+                    } catch (featErr) {
+                        console.warn('[Sync] Failed to fetch plan features:', featErr);
+                    }
                 }
             }
         } catch (subErr) {
