@@ -56,6 +56,10 @@ export async function syncToCloud() {
     if (!client) return { success: false, message: 'Supabase not configured' };
 
     const userRole = localStorage.getItem('user_role');
+    if (userRole === 'SuperAdmin') {
+        return { success: true, message: 'Sync skipped for SuperAdmin' };
+    }
+
     const subStatus = localStorage.getItem('tenant_subscription_status');
     if (subStatus && subStatus !== 'active' && subStatus !== 'trialing' && userRole !== 'SuperAdmin') {
         console.warn(`[Sync] Background push blocked due to inactive subscription: ${subStatus}`);
@@ -329,6 +333,11 @@ export async function syncToCloud() {
 export async function syncFromCloud(forceAll = false) {
     const client = getSupabase();
     if (!client) return;
+
+    const userRole = localStorage.getItem('user_role');
+    if (userRole === 'SuperAdmin') {
+        return;
+    }
 
     const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 'cbt_exam_sections'];
     
@@ -614,6 +623,11 @@ export async function syncFromCloud(forceAll = false) {
 
 
 export function startSyncLoop(intervalMs = 60000) {
+    const userRole = localStorage.getItem('user_role');
+    if (userRole === 'SuperAdmin') {
+        return Promise.resolve();
+    }
+
     // Run the initial sync immediately and return the promise
     // (so callers can .then() on it to know when first sync is done)
     const initialSync = syncFromCloud().then(() => syncToCloud()).catch(err => {

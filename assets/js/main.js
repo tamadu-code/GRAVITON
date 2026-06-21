@@ -220,7 +220,7 @@ async function loadAuthenticatedApp(authUser) {
                 claims.user_role = impRole;
             }
 
-            if (claims.tenant_id) {
+            if (claims.tenant_id && claims.user_role !== 'SuperAdmin') {
                 // ── TENANT SWITCH DETECTION ──
                 // If a different tenant is logging in on the same browser,
                 // clear all local IndexedDB data to prevent cross-tenant data leakage
@@ -292,6 +292,24 @@ async function loadAuthenticatedApp(authUser) {
                     }
                 }
             } else {
+                // If they are SuperAdmin, perform a clean purge of any previously active tenant cached data
+                if (claims.user_role === 'SuperAdmin') {
+                    const previousTenantId = localStorage.getItem('last_active_tenant_id');
+                    if (previousTenantId) {
+                        console.log(`[Tenant Switch] SuperAdmin active: cleaning up previous tenant (${previousTenantId}) data...`);
+                        try {
+                            const allTables = db.tables.map(t => t.name);
+                            for (const tableName of allTables) {
+                                await db[tableName].clear();
+                            }
+                            localStorage.removeItem('last_sync_timestamp');
+                            localStorage.removeItem('last_active_tenant_id');
+                        } catch (purgeErr) {
+                            console.error('[Tenant Switch] Failed to clear local DB for SuperAdmin:', purgeErr);
+                        }
+                    }
+                }
+
                 localStorage.removeItem('tenant_id');
                 localStorage.removeItem('tenant_student_id_prefix');
                 localStorage.removeItem('tenant_subscription_status');
@@ -554,17 +572,21 @@ async function loadAuthenticatedApp(authUser) {
     // Run Data Health Check (Admin only)
     await UI.runDatabaseHealthCheck();
 
-    // Start Data Sync Loop and update status when first sync completes
-    updateSyncStatus('Syncing', 'syncing');
-    startSyncLoop().then(() => {
-        updateSyncStatus('Online', 'live');
-        // Retry initializing push notifications if they failed earlier due to missing key
-        if (!localStorage.getItem('vapid_public_key')) {
-            initPushNotifications(authUser.id).catch(err => console.warn('[Push] Setup retry warning:', err));
-        }
-    }).catch(() => {
-        updateSyncStatus('Offline', 'offline');
-    });
+    // Start Data Sync Loop and update status when first sync completes (skip for SuperAdmin)
+    if (currentRole === 'SuperAdmin') {
+        updateSyncStatus('Platform Admin', 'live');
+    } else {
+        updateSyncStatus('Syncing', 'syncing');
+        startSyncLoop().then(() => {
+            updateSyncStatus('Online', 'live');
+            // Retry initializing push notifications if they failed earlier due to missing key
+            if (!localStorage.getItem('vapid_public_key')) {
+                initPushNotifications(authUser.id).catch(err => console.warn('[Push] Setup retry warning:', err));
+            }
+        }).catch(() => {
+            updateSyncStatus('Offline', 'offline');
+        });
+    }
 
     // ─── Data Health Check & Auto-Purge ───
     async function checkInactiveHealth() {
