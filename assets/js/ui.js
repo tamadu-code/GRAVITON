@@ -17026,56 +17026,119 @@ export const UI = {
         }
 
         const schoolName = localStorage.getItem('tenant_school_name') || 'This School';
-        let planTier = localStorage.getItem('tenant_plan_tier') || 'standard';
-        let planLimit = localStorage.getItem('tenant_max_student_limit') || '200';
-        let subStatus = localStorage.getItem('tenant_subscription_status') || 'trialing';
+        let currentTier = localStorage.getItem('tenant_plan_tier') || 'standard';
+        let currentLimit = localStorage.getItem('tenant_max_student_limit') || '200';
+        let currentStatus = localStorage.getItem('tenant_subscription_status') || 'trialing';
 
-        // Live-refresh subscription data from cloud
+        const client = window.getSupabase ? window.getSupabase() : null;
+
+        // 1. Count students locally
+        let studentCount = 0;
         try {
-            const client = window.getSupabase ? window.getSupabase() : null;
-            if (client && tenantId && navigator.onLine) {
-                console.log('[Subscription Modal] Live subscription refresh start for tenant:', tenantId);
-                const { data: subData, error: subError } = await client
-                    .from('subscriptions')
-                    .select('status, plan_tier, max_student_limit')
-                    .eq('tenant_id', tenantId)
-                    .order('updated_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                
-                if (subError) {
-                    console.error('[Subscription Modal] Live subscription refresh query error:', subError);
-                    if (typeof Notifications !== 'undefined') {
-                        Notifications.show(`Subscription Sync Warning: ${subError.message}`, 'warning');
-                    }
-                } else {
-                    console.log('[Subscription Modal] Live subscription refresh query result:', subData);
-                }
+            const db = (await import('./db.js')).default;
+            studentCount = await db.students.count();
+        } catch (e) {
+            console.warn('[Subscription Modal] Failed to count students locally:', e);
+        }
 
-                if (subData) {
-                    subStatus = subData.status || 'active';
-                    planLimit = String(subData.max_student_limit || 200);
-                    planTier = subData.plan_tier || 'standard';
-                    localStorage.setItem('tenant_subscription_status', subStatus);
-                    localStorage.setItem('tenant_max_student_limit', planLimit);
-                    localStorage.setItem('tenant_plan_tier', planTier);
+        // 2. Fetch platform payment configuration (OPay & Paystack key)
+        let opayBankName = 'OPay (Digital Wallet / Bank)';
+        let opayAccountNumber = '8037316183';
+        let opayAccountName = 'TAMADU CODE';
+        let paystackPublicKey = 'pk_test_d3a8e94fa8a8ebc5e2d63e9f4c8b21c436b7012a';
+
+        try {
+            if (client && navigator.onLine) {
+                const { data: configData } = await client
+                    .from('platform_config')
+                    .select('*');
+                if (configData) {
+                    configData.forEach(row => {
+                        if (row.key === 'opay_bank_name' && row.value) opayBankName = row.value;
+                        if (row.key === 'opay_account_number' && row.value) opayAccountNumber = row.value;
+                        if (row.key === 'opay_account_name' && row.value) opayAccountName = row.value;
+                        if (row.key === 'paystack_public_key' && row.value) paystackPublicKey = row.value;
+                    });
                 }
             }
         } catch (e) {
-            console.warn('[Subscription Modal] Live refresh failed, using cached values:', e);
+            console.warn('[Subscription Modal] Failed to fetch platform_config:', e);
         }
 
-        let amount = 20000;
-        let planLabel = "Standard Monthly Plan";
-        if (planTier === 'premium') {
-            amount = 50000;
-            planLabel = "Premium Monthly Plan";
-        } else if (planTier === 'custom') {
-            amount = 100000;
-            planLabel = "Custom Enterprise Plan";
-        } else if (planTier === 'free') {
-            amount = 5000;
-            planLabel = "Trial Extension Plan";
+        // 3. Define pricing plans catalog
+        const defaultPlans = [
+            {
+                tier: 'free',
+                name: 'Starter Plan',
+                price: 25000,
+                duration: 'Year',
+                student_limit: 50,
+                per_student_rate: 0,
+                target_audience: 'Micro-schools & Tutoring Centers (< 50 students)',
+                description: 'Low-cost entry for nursery schools and small tutoring centers. Core SIS features with basic attendance.'
+            },
+            {
+                tier: 'standard',
+                name: 'Professional Plan',
+                price: 60000,
+                duration: 'Term',
+                student_limit: 500,
+                per_student_rate: 200,
+                target_audience: 'Small to Medium K-12 Schools (100-500 students)',
+                description: 'Hybrid pricing: base fee + per-student rate. Includes LMS, online payments, parent portal, WAEC reports.'
+            },
+            {
+                tier: 'premium',
+                name: 'Premium Plan',
+                price: 120000,
+                duration: 'Term',
+                student_limit: 1000,
+                per_student_rate: 150,
+                target_audience: 'Established Schools (500-1000 students)',
+                description: 'Advanced capabilities for growing schools. Priority support, CBT exam hub, and automated push notifications.'
+            },
+            {
+                tier: 'custom',
+                name: 'Enterprise Plan',
+                price: 0,
+                duration: 'Year',
+                student_limit: 99999,
+                per_student_rate: 350,
+                target_audience: 'Large Schools & Multi-Campus Groups (500+ students)',
+                description: 'Custom per-student pricing. Includes API access, advanced HR/payroll, white-labeling, and custom SLAs.'
+            }
+        ];
+
+        // Try to fetch plans from the cloud plans catalog
+        let plans = [...defaultPlans];
+        try {
+            if (client && navigator.onLine) {
+                const { data: dbPlans, error: plansErr } = await client
+                    .from('plans')
+                    .select('*')
+                    .order('price');
+                if (!plansErr && dbPlans && dbPlans.length > 0) {
+                    plans = dbPlans.map(p => {
+                        let tier = 'standard';
+                        if (p.name.toLowerCase().includes('starter') || p.name.toLowerCase().includes('free')) tier = 'free';
+                        else if (p.name.toLowerCase().includes('premium')) tier = 'premium';
+                        else if (p.name.toLowerCase().includes('enterprise') || p.name.toLowerCase().includes('custom')) tier = 'custom';
+                        
+                        return {
+                            tier: tier,
+                            name: p.name,
+                            price: parseFloat(p.price) || 0,
+                            duration: p.duration || 'Term',
+                            student_limit: parseInt(p.student_limit) || 500,
+                            per_student_rate: parseFloat(p.per_student_rate) || 0,
+                            target_audience: p.target_audience || '',
+                            description: p.description || ''
+                        };
+                    });
+                }
+            }
+        } catch (e) {
+            console.warn('[Subscription Modal] Failed to fetch cloud plans, using fallback:', e);
         }
 
         const modalId = 'subscription-payment-modal';
@@ -17083,55 +17146,64 @@ export const UI = {
         if (existing) existing.remove();
 
         const modalHtml = `
-            <div id="${modalId}" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(10px); z-index: 99999; display: flex; align-items: center; justify-content: center; font-family: 'Outfit', sans-serif;">
-                <div style="background: white; border-radius: 28px; width: 100%; max-width: 550px; padding: 2rem; box-shadow: var(--shadow-2xl); position: relative; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1.25rem;" class="animate-scale-in">
+            <div id="${modalId}" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(10px); z-index: 99999; display: flex; align-items: center; justify-content: center; font-family: 'Outfit', sans-serif; padding: 1rem;">
+                <div style="background: white; border-radius: 28px; width: 100%; max-width: 650px; max-height: 90vh; padding: 2rem; box-shadow: var(--shadow-2xl); position: relative; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1.25rem; overflow-y: auto;" class="animate-scale-in">
                     
                     <!-- Header -->
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <h3 style="font-weight: 955; font-size: 1.4rem; color: #0f172a; display: flex; align-items: center; gap: 8px;">
-                                <i data-lucide="shield-check" style="color: #10b981;"></i> School Subscription
+                            <h3 style="font-weight: 955; font-size: 1.4rem; color: #0f172a; display: flex; align-items: center; gap: 8px; margin: 0;">
+                                <i data-lucide="shield-check" style="color: #10b981;"></i> Upgrade & Billing Console
                             </h3>
-                            <p style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem;">Renew or manage billing details for <strong>${schoolName}</strong></p>
+                            <p style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem; margin-bottom: 0;">Manage subscription settings for <strong>${schoolName}</strong> (Enrolled Students: <strong>${studentCount}</strong>)</p>
                         </div>
                         <button onclick="document.getElementById('${modalId}').remove()" style="background: #f1f5f9; color: #64748b; border: none; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
                             <i data-lucide="x" style="width: 18px; height: 18px;"></i>
                         </button>
                     </div>
 
-                    <!-- Plan Info Badge -->
-                    <div style="background: linear-gradient(135deg, #f8fafc, #f1f5f9); border: 1px solid #cbd5e1; border-radius: 16px; padding: 1rem; display: flex; flex-direction: column; gap: 6px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase;">PLAN TIER</span>
-                            <span style="background: #10b981; color: white; padding: 2px 8px; border-radius: 8px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase;">${planTier}</span>
-                        </div>
-                        <div style="font-size: 1.15rem; font-weight: 900; color: #1e293b;">
-                            ${planLabel}
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 0.8rem; color: #475569; font-weight: 600;">
-                            <span>Max Students: <strong>${planLimit} Students</strong></span>
-                            <span>Renewal Amount: <strong style="color: #0f172a;">₦${amount.toLocaleString()}</strong></span>
-                        </div>
-                    </div>
-
-                    <!-- Payment Options Selector -->
+                    <!-- Step 1: Select Plan -->
                     <div>
-                        <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Choose Payment Channel</label>
+                        <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">1. Select Subscription Plan</label>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-                            <button id="pay-opt-online" class="btn" style="height: 56px; border-radius: 14px; border: 2px solid #2563eb; background: #eff6ff; color: #2563eb; font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer;">
-                                <span style="font-size: 0.85rem;">Paystack Online</span>
-                                <span style="font-size: 0.65rem; opacity: 0.8; font-weight: 500;">Card / USSD / OPay</span>
+                            ${plans.map(p => {
+                                const isSelected = p.tier === currentTier;
+                                const calculatedPrice = p.price + (p.per_student_rate * studentCount);
+                                return `
+                                    <div class="plan-card ${isSelected ? 'selected' : ''}" data-tier="${p.tier}" data-price="${p.price}" data-rate="${p.per_student_rate}" data-limit="${p.student_limit}" data-duration="${p.duration}" style="border: 2px solid ${isSelected ? '#2563eb' : '#e2e8f0'}; background: ${isSelected ? '#f8fafc' : 'white'}; border-radius: 16px; padding: 1rem; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; gap: 4px; transition: all 0.2s;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                                            <span style="font-weight: 900; font-size: 0.95rem; color: #1e293b;">${p.name}</span>
+                                            <span style="font-size: 0.65rem; background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 6px; font-weight: 800; text-transform: uppercase;">${p.duration}</span>
+                                        </div>
+                                        <p style="font-size: 0.7rem; color: #64748b; line-height: 1.3; margin: 4px 0;">${p.description}</p>
+                                        <div style="margin-top: 4px; border-top: 1px solid #f1f5f9; padding-top: 4px;">
+                                            <span style="font-size: 0.95rem; font-weight: 900; color: #0f172a;">₦${calculatedPrice.toLocaleString()}</span>
+                                            <span style="font-size: 0.65rem; color: #64748b; font-weight: 500;"> Due</span>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Select Channel -->
+                    <div>
+                        <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">2. Choose Payment Channel</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                            <button id="pay-opt-online" class="btn" style="height: 50px; border-radius: 12px; border: 2px solid #2563eb; background: #eff6ff; color: #2563eb; font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer;">
+                                <span style="font-size: 0.85rem; font-weight: 800;">Paystack Online</span>
+                                <span style="font-size: 0.6rem; opacity: 0.8; font-weight: 600;">Instant Auto-Verify</span>
                             </button>
-                            <button id="pay-opt-transfer" class="btn" style="height: 56px; border-radius: 14px; border: 2px solid #e2e8f0; background: white; color: #475569; font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer;">
-                                <span style="font-size: 0.85rem;">OPay Transfer</span>
-                                <span style="font-size: 0.65rem; opacity: 0.8; font-weight: 500;">Direct Bank / USSD</span>
+                            <button id="pay-opt-transfer" class="btn" style="height: 50px; border-radius: 12px; border: 2px solid #e2e8f0; background: white; color: #475569; font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer;">
+                                <span style="font-size: 0.85rem; font-weight: 800;">OPay / Bank Transfer</span>
+                                <span style="font-size: 0.6rem; opacity: 0.8; font-weight: 600;">Manual Approval</span>
                             </button>
                         </div>
                     </div>
 
-                    <!-- Container for chosen payment type details -->
-                    <div id="payment-details-container" style="min-height: 180px; transition: all 0.3s ease;">
-                        <!-- Content will be injected based on selection -->
+                    <!-- Payment Details Container -->
+                    <div id="payment-details-container" style="min-height: 160px; transition: all 0.3s ease;">
+                        <!-- Injected by JS -->
                     </div>
                 </div>
             </div>
@@ -17139,182 +17211,270 @@ export const UI = {
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
+        // Modal State
+        let selectedPlan = plans.find(p => p.tier === currentTier) || plans[0];
+        let paymentChannel = 'online'; // 'online' or 'transfer'
+
         const detailsContainer = document.getElementById('payment-details-container');
         const optOnline = document.getElementById('pay-opt-online');
         const optTransfer = document.getElementById('pay-opt-transfer');
 
-        const showOnline = () => {
-            optOnline.style.borderColor = '#2563eb';
-            optOnline.style.background = '#eff6ff';
-            optOnline.style.color = '#2563eb';
+        const updatePaymentView = () => {
+            const calculatedAmount = selectedPlan.price + (selectedPlan.per_student_rate * studentCount);
 
-            optTransfer.style.borderColor = '#e2e8f0';
-            optTransfer.style.background = 'white';
-            optTransfer.style.color = '#475569';
+            if (paymentChannel === 'online') {
+                optOnline.style.borderColor = '#2563eb';
+                optOnline.style.background = '#eff6ff';
+                optOnline.style.color = '#2563eb';
 
-            detailsContainer.innerHTML = `
-                <div style="display: flex; flex-direction: column; gap: 1rem; align-items: center; text-align: center; padding: 1rem 0;">
-                    <div style="background: #f0fdf4; color: #16a34a; width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                        <i data-lucide="credit-card" style="width: 24px; height: 24px;"></i>
+                optTransfer.style.borderColor = '#e2e8f0';
+                optTransfer.style.background = 'white';
+                optTransfer.style.color = '#475569';
+
+                detailsContainer.innerHTML = `
+                    <div style="display: flex; flex-direction: column; gap: 0.85rem; align-items: center; text-align: center; padding: 0.5rem 0;">
+                        <div style="background: #f0fdf4; color: #16a34a; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                            <i data-lucide="credit-card" style="width: 22px; height: 22px;"></i>
+                        </div>
+                        <div>
+                            <h4 style="font-weight: 800; color: #1e293b; font-size: 0.9rem; margin: 0;">Secure Online Checkout</h4>
+                            <p style="font-size: 0.72rem; color: #64748b; max-width: 380px; margin-top: 2px; margin-bottom: 0; line-height: 1.4;">Pay with Debit Card, Bank Transfer, or USSD via Paystack. Automated instant activation upon payment confirmation.</p>
+                        </div>
+                        <button id="btn-trigger-paystack-sub" class="btn btn-primary" style="width: 100%; height: 44px; border-radius: 12px; font-weight: 900; background: #09a5db; border: none; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
+                            <span>Pay ₦${calculatedAmount.toLocaleString()} Now</span>
+                            <i data-lucide="arrow-right" style="width: 16px;"></i>
+                        </button>
                     </div>
-                    <div>
-                        <h4 style="font-weight: 800; color: #1e293b; font-size: 0.95rem;">Secure Online Checkout</h4>
-                        <p style="font-size: 0.75rem; color: #64748b; max-width: 320px; margin-top: 4px; line-height: 1.4;">Pay using your debit card, direct bank transfer, OPay wallet, or USSD code safely powered by Paystack.</p>
-                    </div>
-                    <button id="btn-trigger-paystack-sub" class="btn btn-primary" style="width: 100%; height: 48px; border-radius: 12px; font-weight: 900; background: #09a5db; border: none; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
-                        <span>Pay ₦${amount.toLocaleString()} Now</span>
-                        <i data-lucide="arrow-right" style="width: 16px;"></i>
-                    </button>
-                </div>
-            `;
-            if (typeof lucide !== 'undefined') lucide.createIcons();
+                `;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
 
-            document.getElementById('btn-trigger-paystack-sub').onclick = async () => {
-                const payBtn = document.getElementById('btn-trigger-paystack-sub');
-                payBtn.disabled = true;
-                payBtn.textContent = 'Launching Payment...';
+                document.getElementById('btn-trigger-paystack-sub').onclick = function() {
+                    const payBtn = document.getElementById('btn-trigger-paystack-sub');
+                    payBtn.disabled = true;
+                    payBtn.textContent = 'Launching Payment...';
 
-                // Fetch platform paystack public key or fallback to default
-                let paystackKey = 'pk_test_d3a8e94fa8a8ebc5e2d63e9f4c8b21c436b7012a'; 
-                
-                // Try to check if school has configured their own key, or load a platform key
-                try {
-                    const db = (await import('./db.js')).default;
-                    const allSettings = await db.settings.toArray();
-                    const keySetting = allSettings.find(s => s.key === 'paystack_public_key')?.value;
-                    if (keySetting && keySetting.startsWith('pk_') && keySetting.length > 15 && !keySetting.includes('xxx')) {
-                        paystackKey = keySetting;
-                    }
-                } catch (e) {}
-
-                if (typeof PaystackPop === 'undefined') {
-                    Notifications.show('Paystack library failed to load. Please check your internet connection.', 'error');
-                    payBtn.disabled = false;
-                    payBtn.innerHTML = `<span>Pay ₦${amount.toLocaleString()} Now</span><i data-lucide="arrow-right" style="width: 16px;"></i>`;
-                    if (typeof lucide !== 'undefined') lucide.createIcons();
-                    return;
-                }
-
-                const handler = PaystackPop.setup({
-                    key: paystackKey,
-                    email: UI.currentUser.email || 'billing@school.com',
-                    amount: amount * 100, // in kobo
-                    currency: 'NGN',
-                    metadata: {
-                        tenant_id: tenantId,
-                        school_name: schoolName,
-                        plan_tier: planTier,
-                        purpose: 'Graviton Platform Subscription'
-                    },
-                    callback: async (response) => {
-                        console.log('[Paystack Subscription Success]', response);
-                        await UI.activateSubscription(tenantId, amount);
-                        document.getElementById(modalId).remove();
-                    },
-                    onClose: () => {
-                        Notifications.show('Payment cancelled.', 'warning');
+                    if (typeof PaystackPop === 'undefined') {
+                        Notifications.show('Paystack library failed to load. Please check your internet connection.', 'error');
                         payBtn.disabled = false;
-                        payBtn.innerHTML = `<span>Pay ₦${amount.toLocaleString()} Now</span><i data-lucide="arrow-right" style="width: 16px;"></i>`;
+                        payBtn.innerHTML = `<span>Pay ₦${calculatedAmount.toLocaleString()} Now</span><i data-lucide="arrow-right" style="width: 16px;"></i>`;
                         if (typeof lucide !== 'undefined') lucide.createIcons();
+                        return;
                     }
+
+                    const handler = PaystackPop.setup({
+                        key: paystackPublicKey,
+                        email: UI.currentUser.email || 'billing@school.com',
+                        amount: calculatedAmount * 100, // in kobo
+                        currency: 'NGN',
+                        metadata: {
+                            tenant_id: tenantId,
+                            school_name: schoolName,
+                            plan_tier: selectedPlan.tier,
+                            max_student_limit: selectedPlan.student_limit,
+                            purpose: `Graviton ${selectedPlan.name} Subscription`
+                        },
+                        callback: function(response) {
+                            console.log('[Paystack Subscription Success]', response);
+                            UI.activateSubscription(tenantId, calculatedAmount, selectedPlan.tier, selectedPlan.student_limit, selectedPlan.duration).then(() => {
+                                const modal = document.getElementById(modalId);
+                                if (modal) modal.remove();
+                            });
+                        },
+                        onClose: function() {
+                            Notifications.show('Payment cancelled.', 'warning');
+                            payBtn.disabled = false;
+                            payBtn.innerHTML = `<span>Pay ₦${calculatedAmount.toLocaleString()} Now</span><i data-lucide="arrow-right" style="width: 16px;"></i>`;
+                            if (typeof lucide !== 'undefined') lucide.createIcons();
+                        }
+                    });
+                    handler.openIframe();
+                };
+
+            } else {
+                optTransfer.style.borderColor = '#2563eb';
+                optTransfer.style.background = '#eff6ff';
+                optTransfer.style.color = '#2563eb';
+
+                optOnline.style.borderColor = '#e2e8f0';
+                optOnline.style.background = 'white';
+                optOnline.style.color = '#475569';
+
+                detailsContainer.innerHTML = `
+                    <div style="display: flex; flex-direction: column; gap: 0.85rem; padding: 0.25rem 0;">
+                        <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px; padding: 0.75rem; display: flex; gap: 8px; align-items: flex-start;">
+                            <i data-lucide="info" style="color: #d97706; flex-shrink: 0; width: 16px; margin-top: 2px;"></i>
+                            <p style="font-size: 0.7rem; color: #b45309; margin: 0; line-height: 1.4;">
+                                Transfer the amount to our OPay account below. For <strong>instant automated approval</strong>, select the Paystack Online channel and choose Bank Transfer there instead.
+                            </p>
+                        </div>
+
+                        <!-- Bank Account Details Card -->
+                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 14px; padding: 0.85rem; display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 700; color: #64748b;">
+                                <span>BANK NAME</span>
+                                <span>${opayBankName}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                                <span style="font-size: 0.75rem; font-weight: 700; color: #64748b;">ACCOUNT NUMBER</span>
+                                <span style="font-weight: 900; font-size: 1.15rem; color: #0f172a; font-family: monospace; display: flex; align-items: center; gap: 6px;">
+                                    ${opayAccountNumber}
+                                    <button onclick="navigator.clipboard.writeText('${opayAccountNumber}'); Notifications.show('Account number copied!', 'success');" style="background: none; border: none; color: #2563eb; cursor: pointer; padding: 2px;" title="Copy Account Number">
+                                        <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
+                                    </button>
+                                </span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-top: 4px;">
+                                <span>ACCOUNT NAME</span>
+                                <span style="color: #0f172a;">${opayAccountName}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-top: 4px;">
+                                <span>AMOUNT DUE</span>
+                                <span style="color: #2563eb; font-weight: 800;">₦${calculatedAmount.toLocaleString()}</span>
+                            </div>
+                        </div>
+
+                        <button id="btn-verify-transfer-sub" class="btn btn-primary" style="width: 100%; height: 44px; border-radius: 12px; font-weight: 900; background: #10b981; border: none; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                            <i data-lucide="check-circle" style="width: 16px;"></i>
+                            <span>I Have Made the Transfer</span>
+                        </button>
+                    </div>
+                `;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                document.getElementById('btn-verify-transfer-sub').onclick = async () => {
+                    const verifyBtn = document.getElementById('btn-verify-transfer-sub');
+                    verifyBtn.disabled = true;
+                    verifyBtn.textContent = 'Submitting verification request...';
+
+                    try {
+                        if (client && navigator.onLine) {
+                            // Insert audit log to alert SuperAdmin
+                            await client.from('audit_logs').insert({
+                                tenant_id: tenantId,
+                                operation: 'UPDATE',
+                                table: 'subscriptions',
+                                record_id: `transfer_request_amount_${calculatedAmount}_tier_${selectedPlan.tier}`,
+                                user_id: UI.currentUser?.id || 'tenant_admin',
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                        
+                        Notifications.show('Transfer confirmation submitted! Admin will verify and activate your plan.', 'success');
+                        
+                        // Close modal
+                        const modal = document.getElementById(modalId);
+                        if (modal) modal.remove();
+                    } catch (e) {
+                        console.error('[OPay submission error]', e);
+                        Notifications.show('Failed to submit transfer proof. Try again.', 'error');
+                        verifyBtn.disabled = false;
+                        verifyBtn.textContent = 'I Have Made the Transfer';
+                    }
+                };
+            }
+        };
+
+        // Attach plan selection listeners
+        document.querySelectorAll('.plan-card').forEach(card => {
+            card.onclick = () => {
+                document.querySelectorAll('.plan-card').forEach(c => {
+                    c.classList.remove('selected');
+                    c.style.borderColor = '#e2e8f0';
+                    c.style.background = 'white';
                 });
-                handler.openIframe();
+                card.classList.add('selected');
+                card.style.borderColor = '#2563eb';
+                card.style.background = '#f8fafc';
+
+                const tier = card.dataset.tier;
+                selectedPlan = plans.find(p => p.tier === tier);
+                updatePaymentView();
             };
+        });
+
+        optOnline.onclick = () => {
+            paymentChannel = 'online';
+            updatePaymentView();
+        };
+        optTransfer.onclick = () => {
+            paymentChannel = 'transfer';
+            updatePaymentView();
         };
 
-        const showTransfer = () => {
-            optTransfer.style.borderColor = '#2563eb';
-            optTransfer.style.background = '#eff6ff';
-            optTransfer.style.color = '#2563eb';
-
-            optOnline.style.borderColor = '#e2e8f0';
-            optOnline.style.background = 'white';
-            optOnline.style.color = '#475569';
-
-            detailsContainer.innerHTML = `
-                <div style="display: flex; flex-direction: column; gap: 0.85rem; padding: 0.5rem 0;">
-                    <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px; padding: 0.75rem; display: flex; gap: 8px; align-items: flex-start;">
-                        <i data-lucide="info" style="color: #d97706; flex-shrink:0; width: 16px; margin-top:2px;"></i>
-                        <p style="font-size: 0.7rem; color: #b45309; margin: 0; line-height: 1.4;">Transfer the exact amount below to our designated OPay / Bank account. Once completed, click the verification button below to activate instantly.</p>
-                    </div>
-
-                    <!-- Bank Account Details Card -->
-                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 14px; padding: 0.85rem; display: flex; flex-direction: column; gap: 4px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 700; color: #64748b;">
-                            <span>BANK NAME</span>
-                            <span>OPay (Digital Wallet / Bank)</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-                            <span style="font-size: 0.75rem; font-weight: 700; color: #64748b;">ACCOUNT NUMBER</span>
-                            <span style="font-weight: 900; font-size: 1.15rem; color: #0f172a; font-family: monospace; display:flex; align-items:center; gap:6px;">
-                                8037316183
-                                <button onclick="navigator.clipboard.writeText('8037316183'); Notifications.show('Account number copied!', 'success');" style="background:none; border:none; color:#2563eb; cursor:pointer;" title="Copy Account Number">
-                                    <i data-lucide="copy" style="width:14px; height:14px;"></i>
-                                </button>
-                            </span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-top: 4px;">
-                            <span>ACCOUNT NAME</span>
-                            <span style="color:#0f172a;">TAMADU CODE</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-top: 4px;">
-                            <span>AMOUNT DUE</span>
-                            <span style="color:#2563eb; font-weight:800;">₦${amount.toLocaleString()}</span>
-                        </div>
-                    </div>
-
-                    <button id="btn-verify-transfer-sub" class="btn btn-primary" style="width: 100%; height: 44px; border-radius: 12px; font-weight: 900; background: #10b981; border: none; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                        <i data-lucide="check-circle" style="width: 16px;"></i>
-                        <span>Confirm & Verify Transfer</span>
-                    </button>
-                </div>
-            `;
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-
-            document.getElementById('btn-verify-transfer-sub').onclick = async () => {
-                const verifyBtn = document.getElementById('btn-verify-transfer-sub');
-                verifyBtn.disabled = true;
-                verifyBtn.textContent = 'Verifying with ledger...';
-
-                await UI.activateSubscription(tenantId, amount);
-                document.getElementById(modalId).remove();
-            };
-        };
-
-        optOnline.onclick = showOnline;
-        optTransfer.onclick = showTransfer;
-
-        // Default to Online
-        showOnline();
+        // Initialize view
+        updatePaymentView();
     },
 
-    async activateSubscription(tenantId, amount) {
+    async activateSubscription(tenantId, amount, planTier, studentLimit, duration) {
         try {
             const client = window.getSupabase ? window.getSupabase() : null;
             if (!client) throw new Error('Cloud client connection unavailable');
 
-            // Calculate new expiry date (+30 days)
+            // Calculate new expiry date based on plan duration
             const newExpiry = new Date();
-            newExpiry.setDate(newExpiry.getDate() + 30);
+            if (duration === 'Year') {
+                newExpiry.setDate(newExpiry.getDate() + 365);
+            } else if (duration === 'Term') {
+                newExpiry.setDate(newExpiry.getDate() + 120);
+            } else {
+                newExpiry.setDate(newExpiry.getDate() + 30);
+            }
             const expiryIso = newExpiry.toISOString();
 
-            // Update local storage status
+            // Update local storage values immediately
             localStorage.setItem('tenant_subscription_status', 'active');
+            localStorage.setItem('tenant_plan_tier', planTier);
+            localStorage.setItem('tenant_max_student_limit', String(studentLimit));
             
-            // Push update to cloud
-            const { error } = await client
+            // Check if subscription row exists for this tenant
+            const { data: existingSub, error: selectErr } = await client
                 .from('subscriptions')
-                .update({
-                    status: 'active',
-                    expires_at: expiryIso,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('tenant_id', tenantId);
-
-            if (error) throw error;
-
-            Notifications.show(`Subscription activated successfully! Valid until ${newExpiry.toLocaleDateString()}`, 'success');
+                .select('id')
+                .eq('tenant_id', tenantId)
+                .maybeSingle();
             
+            if (selectErr) throw selectErr;
+
+            let query;
+            if (existingSub && existingSub.id) {
+                query = client
+                    .from('subscriptions')
+                    .update({
+                        status: 'active',
+                        plan_tier: planTier,
+                        max_student_limit: studentLimit,
+                        expires_at: expiryIso,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', existingSub.id);
+            } else {
+                query = client
+                    .from('subscriptions')
+                    .insert({
+                        tenant_id: tenantId,
+                        status: 'active',
+                        plan_tier: planTier,
+                        max_student_limit: studentLimit,
+                        expires_at: expiryIso,
+                        updated_at: new Date().toISOString()
+                    });
+            }
+
+            const { error: saveErr } = await query;
+            if (saveErr) throw saveErr;
+
+            Notifications.show(`Subscription activated successfully! Tier: ${planTier.toUpperCase()} (${studentLimit} Students limit). Valid until ${newExpiry.toLocaleDateString()}`, 'success');
+            
+            // Force-restart cloud sync loop so it picks up the new active status
+            if (window.syncFromCloud) {
+                console.log('[Subscription] Force-triggering pull sync post-activation...');
+                await window.syncFromCloud(true).catch(e => console.warn('[Post-renewal pull sync]', e));
+            }
+            if (window.syncToCloud) {
+                console.log('[Subscription] Force-triggering push sync post-activation...');
+                await window.syncToCloud().catch(e => console.warn('[Post-renewal push sync]', e));
+            }
+
             // Reload the view to update badges immediately
             await this.renderSettings();
         } catch (err) {
@@ -25529,48 +25689,130 @@ export const UI = {
                                     </td>
                                 </tr>
                             </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-
-            document.getElementById('btn-refresh-super-console').onclick = () => this.loadSuperAdminData();
-            document.getElementById('btn-provision-tenant').onclick = () => this.showProvisionSchoolModal();
-            
-            const searchInput = document.getElementById('search-tenants');
-            const statusSelect = document.getElementById('filter-tenant-status');
-            
-            searchInput.oninput = () => this.loadSuperAdminData();
-            statusSelect.onchange = () => this.loadSuperAdminData();
-
-            await this.loadSuperAdminData();
-
-        } else if (tabName === 'plans') {
+              } else if (tabName === 'plans') {
             container.innerHTML = `
-                <div class="card" style="border-radius: 24px; padding: 1.5rem; background: white; border: 1px solid #cbd5e1; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                        <div>
-                            <h3 style="font-weight: 800; font-size: 1.25rem; color: #1e293b;">Subscription Packages</h3>
-                            <p style="color: #64748b; font-size: 0.85rem; margin-top: 2px;">Manage plan costs, student constraints, and active feature sets.</p>
+                <div style="display: flex; flex-direction: column; gap: 2rem;">
+                    <!-- Platform Payment Configuration -->
+                    <div class="card" style="border-radius: 24px; padding: 1.5rem; background: white; border: 1px solid #cbd5e1; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
+                        <h3 style="font-weight: 800; font-size: 1.25rem; color: #1e293b; margin-bottom: 0.25rem; margin-top: 0;">Platform Payment Settings</h3>
+                        <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 1.25rem; margin-top: 0;">Global OPay account details for manual bank transfer and Paystack Public Key for online payments.</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">OPAY BANK NAME</label>
+                                <input type="text" id="config-opay-bank-name" placeholder="OPay (Digital Wallet / Bank)" style="width: 100%; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; box-sizing: border-box; font-size: 0.85rem; margin-top: 4px; font-weight: 600;">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">OPAY ACCOUNT NUMBER</label>
+                                <input type="text" id="config-opay-account-number" placeholder="e.g. 8037316183" style="width: 100%; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; box-sizing: border-box; font-size: 0.85rem; margin-top: 4px; font-weight: 600;">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">OPAY ACCOUNT NAME</label>
+                                <input type="text" id="config-opay-account-name" placeholder="e.g. TAMADU CODE" style="width: 100%; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; box-sizing: border-box; font-size: 0.85rem; margin-top: 4px; font-weight: 600;">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; font-weight: 700; color: #475569;">PAYSTACK PUBLIC KEY</label>
+                                <input type="text" id="config-paystack-key" placeholder="pk_test_..." style="width: 100%; height: 38px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 10px; box-sizing: border-box; font-size: 0.85rem; margin-top: 4px; font-weight: 600;">
+                            </div>
                         </div>
-                        <button class="btn btn-primary" id="btn-add-pricing-plan" style="border-radius: 12px; height: 40px; padding: 0 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; background: var(--school-theme-color); color: white; border: none; cursor: pointer;">
-                            <i data-lucide="plus-circle" style="width: 14px;"></i> Add Package
+                        
+                        <button class="btn btn-primary" id="btn-save-platform-config" style="border-radius: 12px; height: 40px; padding: 0 1.5rem; font-weight: 700; font-size: 0.85rem; background: var(--school-theme-color); color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="save" style="width: 14px;"></i> Save Platform Settings
                         </button>
                     </div>
-                    
-                    <div style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); display: grid; gap: 1.5rem;" id="super-plans-grid">
-                        <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: #94a3b8;">
-                            <div class="loader" style="margin: 0 auto 1rem; width: 24px; height: 24px; border: 2px solid var(--school-theme-color); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-                            Syncing subscription catalogs...
+ 
+                    <!-- Subscription Packages -->
+                    <div class="card" style="border-radius: 24px; padding: 1.5rem; background: white; border: 1px solid #cbd5e1; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <div>
+                                <h3 style="font-weight: 800; font-size: 1.25rem; color: #1e293b; margin: 0;">Subscription Packages</h3>
+                                <p style="color: #64748b; font-size: 0.85rem; margin-top: 2px; margin-bottom: 0;">Manage plan costs, student constraints, and active feature sets.</p>
+                            </div>
+                            <button class="btn btn-primary" id="btn-add-pricing-plan" style="border-radius: 12px; height: 40px; padding: 0 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; background: var(--school-theme-color); color: white; border: none; cursor: pointer;">
+                                <i data-lucide="plus-circle" style="width: 14px;"></i> Add Package
+                            </button>
+                        </div>
+                        
+                        <div style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); display: grid; gap: 1.5rem;" id="super-plans-grid">
+                            <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: #94a3b8;">
+                                <div class="loader" style="margin: 0 auto 1rem; width: 24px; height: 24px; border: 2px solid var(--school-theme-color); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                                Syncing subscription catalogs...
+                            </div>
                         </div>
                     </div>
                 </div>
             `;
             if (typeof lucide !== 'undefined') lucide.createIcons();
+            
+            // Load platform_config values
+            try {
+                const client = window.getSupabase ? window.getSupabase() : null;
+                if (client) {
+                    const { data: configData } = await client.from('platform_config').select('*');
+                    if (configData) {
+                        configData.forEach(row => {
+                            let inputId = '';
+                            if (row.key === 'opay_bank_name') inputId = 'config-opay-bank-name';
+                            else if (row.key === 'opay_account_number') inputId = 'config-opay-account-number';
+                            else if (row.key === 'opay_account_name') inputId = 'config-opay-account-name';
+                            else if (row.key === 'paystack_public_key') inputId = 'config-paystack-key';
+                            
+                            const input = document.getElementById(inputId);
+                            if (input) input.value = row.value || '';
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to load platform settings:', e);
+            }
+ 
+            document.getElementById('btn-save-platform-config').onclick = async () => {
+                const saveBtn = document.getElementById('btn-save-platform-config');
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving...';
+                
+                const client = window.getSupabase ? window.getSupabase() : null;
+                if (!client) {
+                    Notifications.show('Supabase connection failed.', 'error');
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = '<i data-lucide="save" style="width: 14px;"></i> Save Platform Settings';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                    return;
+                }
+                
+                const bankName = document.getElementById('config-opay-bank-name').value.trim();
+                const accNum = document.getElementById('config-opay-account-number').value.trim();
+                const accName = document.getElementById('config-opay-account-name').value.trim();
+                const psKey = document.getElementById('config-paystack-key').value.trim();
+                
+                try {
+                    const payload = [
+                        { key: 'opay_bank_name', value: bankName },
+                        { key: 'opay_account_number', value: accNum },
+                        { key: 'opay_account_name', value: accName },
+                        { key: 'paystack_public_key', value: psKey }
+                    ];
+                    
+                    for (const item of payload) {
+                        const { error } = await client
+                            .from('platform_config')
+                            .upsert(item, { onConflict: 'key' });
+                        if (error) throw error;
+                    }
+                    
+                    Notifications.show('Platform settings saved successfully.', 'success');
+                } catch (e) {
+                    console.error('Failed to save settings:', e);
+                    Notifications.show(`Failed to save settings: ${e.message}`, 'error');
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = '<i data-lucide="save" style="width: 14px;"></i> Save Platform Settings';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+ 
             document.getElementById('btn-add-pricing-plan').onclick = () => this.showPricingPlanModal();
             await this.loadPricingPlans();
-
         } else if (tabName === 'logs') {
             container.innerHTML = `
                 <div class="card" style="border-radius: 24px; padding: 1.5rem; background: white; border: 1px solid #cbd5e1; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);">
