@@ -9,6 +9,18 @@ import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateC
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
 import { initPushNotifications, unsubscribeUser } from './push.js';
 
+/**
+ * Multi-Tenancy: Returns profiles filtered by the current tenant_id.
+ * Falls back to all profiles for SuperAdmin or if tenant_id is not set.
+ */
+const getTenantProfiles = async () => {
+    const tenantId = localStorage.getItem('tenant_id');
+    if (tenantId) {
+        return db.profiles.where('tenant_id').equals(tenantId).toArray();
+    }
+    return db.profiles.toArray();
+};
+
 const normalizeTerm = (t) => {
     if (!t) return '1st Term';
     const s = t.trim().toLowerCase();
@@ -829,7 +841,7 @@ export const UI = {
         try {
             // Optimize teacher count using indexed query
             const roles = ['Teacher', 'Admin'];
-            teacherCount = await db.profiles.where('role').anyOf(roles).filter(p => p.status !== 'Terminated' && p.status !== 'Inactive').count();
+            teacherCount = (await getTenantProfiles()).filter(p => roles.includes(p.role) && p.status !== 'Terminated' && p.status !== 'Inactive').length;
         } catch(e) { console.error('Error fetching teacher count', e); }
 
         const today          = new Date().toISOString().split('T')[0];
@@ -3476,7 +3488,7 @@ export const UI = {
         
         let activeStudents = await db.students.filter(s => s.is_active !== false).toArray();
         const formTeachers = await db.form_teachers.toArray().catch(() => []);
-        const profiles = await db.profiles.toArray().catch(() => []);
+        const profiles = await getTenantProfiles().catch(() => []);
 
         if (isTeacher) {
             const assignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
@@ -3722,7 +3734,7 @@ export const UI = {
                 if (isTeacher) return; // Teachers cannot reassign themselves
                 
                 const className = field.dataset.className;
-                const profiles = await db.profiles.toArray();
+                const profiles = await getTenantProfiles();
                 const teachers = profiles.filter(p => (p.role || '').toLowerCase() === 'teacher' || (p.role || '').toLowerCase() === 'admin');
                 
                 const currentFT = await db.form_teachers.where('class_name').equals(className).first();
@@ -3861,7 +3873,7 @@ export const UI = {
         
         let subjects = await db.subjects.toArray();
         const assignments = await db.subject_assignments.toArray().catch(() => []);
-        const profiles = await db.profiles.toArray().catch(() => []);
+        const profiles = await getTenantProfiles().catch(() => []);
 
         if (isTeacher) {
             const teacherAssignments = assignments.filter(a => a.teacher_id === teacherId);
@@ -4195,7 +4207,7 @@ export const UI = {
         const subjects = await db.subjects.toArray();
         const subject = subjects.find(s => s.name === subjectName);
         const assignments = await db.subject_assignments.toArray();
-        const teachers = (await db.profiles.toArray()).filter(p => p.role === 'Teacher' || p.role === 'Admin');
+        const teachers = (await getTenantProfiles()).filter(p => p.role === 'Teacher' || p.role === 'Admin');
         const classes = await db.classes.toArray();
 
         const currentAssignments = assignments.filter(a => currentIds.split(',').includes(a.subject_id));
@@ -5678,7 +5690,7 @@ export const UI = {
         settingsArray.forEach(s => settings[s.key] = s.value);
         const currentTerm = settings.currentTerm || '1st Term';
         const currentSession = settings.currentSession || '2025/2026';
-        const profiles = await db.profiles.toArray();
+        const profiles = await getTenantProfiles();
         const schoolInfo = {
             schoolName: settings.schoolName,
             logo: settings.schoolLogo,
@@ -6467,7 +6479,7 @@ export const UI = {
         const classes = (await db.classes.toArray()).sort(compareClasses);
         const subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         const assignments = await db.subject_assignments.toArray();
-        const profiles = await db.profiles.toArray();
+        const profiles = await getTenantProfiles();
         const formTeachers = await db.form_teachers.toArray();
         
         // Dynamic Limits
@@ -8853,7 +8865,7 @@ export const UI = {
 
 
     async renderStaff() {
-        const profiles = await db.profiles.toArray();
+        const profiles = await getTenantProfiles();
         const teachers = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.status !== 'Terminated' && p.status !== 'Inactive' && p.full_name && p.full_name !== 'Unnamed Staff' && p.full_name !== 'Unknown Staff');
         const unknownStaff = profiles.filter(p => (p.role === 'Teacher' || p.role === 'Admin') && (!p.full_name || p.full_name === 'Unnamed Staff' || p.full_name === 'Unknown Staff'));
         const formerStaff = profiles.filter(p => p.status === 'Terminated' || p.status === 'Inactive');
@@ -8996,7 +9008,7 @@ export const UI = {
         const bulkStaffBtn = document.getElementById('btn-bulk-repair-staff');
         if (bulkStaffBtn) {
             bulkStaffBtn.onclick = async () => {
-                const allStaff = (await db.profiles.toArray()).filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.full_name && p.full_name !== 'Unnamed Staff' && p.full_name !== 'Unknown Staff');
+                const allStaff = (await getTenantProfiles()).filter(p => (p.role === 'Teacher' || p.role === 'Admin') && p.full_name && p.full_name !== 'Unnamed Staff' && p.full_name !== 'Unknown Staff');
                 if (!confirm(`This will re-provision login accounts for ALL ${allStaff.length} staff members. Password will be reset to "Staff123!". Continue?`)) return;
                 
                 bulkStaffBtn.disabled = true;
@@ -10117,7 +10129,7 @@ export const UI = {
         let studentResults = [];
         let liveProgress = [];
         if (isStudent) {
-            const profiles = await db.profiles.toArray();
+            const profiles = await getTenantProfiles();
             const studentProfiles = profiles.filter(p => p.assigned_id === studentId || p.id === studentId);
             const possibleIds = [...new Set([studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean))];
             
@@ -11423,7 +11435,7 @@ export const UI = {
 
         // Broad ID matching: find ANY result for this student (handles admin re-opens under different ID variant)
         const studentId = this.resolveCBTStudentId();
-        const profiles = await db.profiles.toArray();
+        const profiles = await getTenantProfiles();
         const studentProfiles = profiles.filter(p => p.assigned_id === studentId || p.id === studentId);
         const possibleIds = [studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
         
@@ -13349,7 +13361,7 @@ export const UI = {
             let result = await db.cbt_results.where('[student_id+exam_id]').equals([studentId, examId]).first();
             if (!result) {
                 // Alternate ID lookup mapping UUID <-> Student ID mismatch
-                const profiles = await db.profiles.toArray();
+                const profiles = await getTenantProfiles();
                 const profile = profiles.find(p => p.assigned_id === studentId || p.id === studentId);
                 if (profile) {
                     const alternateId = profile.assigned_id === studentId ? profile.id : profile.assigned_id;
@@ -13397,7 +13409,7 @@ export const UI = {
                 const supabase = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (supabase) {
                     try {
-                        const profiles = await db.profiles.toArray();
+                        const profiles = await getTenantProfiles();
                         const profile = profiles.find(p => p.assigned_id === result.student_id || p.id === result.student_id);
                         const targetIds = [result.student_id];
                         if (profile) {
@@ -13421,7 +13433,7 @@ export const UI = {
                 }
             }
 
-            const profiles = await db.profiles.toArray();
+            const profiles = await getTenantProfiles();
             const profile = profiles.find(p => p.assigned_id === result.student_id || p.id === result.student_id);
             const standardStudentId = profile?.assigned_id || result.student_id;
             const uuidStudentId = profile?.id || result.student_id;
@@ -13542,7 +13554,7 @@ export const UI = {
                 if (this.currentUser && (this.currentUser.assigned_id === result.student_id || this.currentUser.student_id === result.student_id || this.currentUser.id === result.student_id)) {
                     student = this.currentUser;
                 } else {
-                    const profiles = await db.profiles.toArray();
+                    const profiles = await getTenantProfiles();
                     const profile = profiles.find(p => p.assigned_id === result.student_id || p.id === result.student_id);
                     if (profile) {
                         student = await db.students.get(profile.assigned_id || profile.id);
@@ -14170,12 +14182,12 @@ export const UI = {
         const openBulkClasses = document.getElementById('toggle-bulk-classes')?.checked;
         const openBulkSubjects = document.getElementById('toggle-bulk-subjects')?.checked;
 
-        const teachers = (await db.profiles.where('role').equals('Teacher').toArray())
+        const teachers = (await getTenantProfiles()).filter(p => p.role === 'Teacher')
             .filter(t => t.full_name && t.full_name !== 'Unnamed Staff' && t.full_name !== 'Unknown Staff' && t.status !== 'Terminated' && t.status !== 'Inactive');
         const classes = await db.classes.toArray();
         let subjects = await db.subjects.toArray();
         const assignments = await db.subject_assignments.toArray();
-        const profiles = await db.profiles.toArray();
+        const profiles = await getTenantProfiles();
 
         // Sort classes serially
         const classOrder = { 'JSS': 1, 'JS': 1, 'SSS': 2, 'SS': 2, 'PRY': 3, 'BASIC': 4 };
@@ -15233,7 +15245,7 @@ export const UI = {
         
         if (autoGenerateBtn) {
             autoGenerateBtn.onclick = async () => {
-                const teachers = await db.profiles.filter(p => (p.role || '').toLowerCase() === 'teacher').toArray();
+                const teachers = (await getTenantProfiles()).filter(p => (p.role || '').toLowerCase() === 'teacher');
                 const teachersOptionHtml = teachers.map(t => `<option value="${t.id}">${t.full_name || t.name || 'Unknown'}</option>`).join('');
                 
                 const allSettings = await db.settings.toArray();
@@ -15655,7 +15667,7 @@ export const UI = {
 
     async showTimetablePreviewAuditModal(subjects) {
         const classes = (await db.classes.toArray()).sort(compareClasses);
-        const profiles = await db.profiles.toArray();
+        const profiles = await getTenantProfiles();
         const assignments = await db.subject_assignments.toArray();
         const entries = UI.tempTimetableState || await db.timetable.toArray();
 
@@ -16257,7 +16269,7 @@ export const UI = {
         const settings = {};
         allSettings.forEach(s => settings[s.key] = s.value);
 
-        const teachers = await db.profiles.filter(p => (p.role || '').toLowerCase() === 'teacher').toArray();
+        const teachers = (await getTenantProfiles()).filter(p => (p.role || '').toLowerCase() === 'teacher');
         const teachersOptionHtml = teachers.map(t => `<option value="${t.id}">${t.full_name || t.name || 'Unknown'}</option>`).join('');
 
         // Default values if not set — leave blank if school hasn't configured yet
@@ -17830,7 +17842,7 @@ export const UI = {
         let realStudents = await db.students.filter(s => s.is_active !== false).toArray().catch(() => []);
         let realSubjects = await db.subjects.toArray().catch(() => []);
         let realAssignments = await db.subject_assignments.toArray().catch(() => []);
-        let realProfiles = await db.profiles.toArray().catch(() => []);
+        let realProfiles = await getTenantProfiles().catch(() => []);
         let realAuditLogs = await db.audit_logs.toArray().catch(() => []);
 
         // Build map for quick student ID -> student lookup to fall back on class_name
@@ -22048,7 +22060,7 @@ export const UI = {
 
     async renderParents() {
         const links = await db.parent_links.toArray();
-        const profiles = (await db.profiles.toArray()).filter(p => (p.role || '').toLowerCase() === 'parent');
+        const profiles = (await getTenantProfiles()).filter(p => (p.role || '').toLowerCase() === 'parent');
         const students = await db.students.toArray();
 
         // Calculate stats
@@ -22193,7 +22205,7 @@ export const UI = {
     },
 
     async showParentLinkModal() {
-        const parents = (await db.profiles.toArray()).filter(p => (p.role || '').toLowerCase() === 'parent');
+        const parents = (await getTenantProfiles()).filter(p => (p.role || '').toLowerCase() === 'parent');
         const students = (await db.students.toArray()).filter(s => s.is_active !== false && s.is_active !== 0);
 
         this.showModal('Create Parent-Student Link', `
@@ -22710,7 +22722,7 @@ export const UI = {
 
     async renderRoster() {
         const roster = await db.duty_assignments.toArray();
-        const allStaff = await db.profiles.toArray();
+        const allStaff = await getTenantProfiles();
         // Exclude Admin from duty roster pool
         const staff = allStaff.filter(p => p.role === 'Teacher' && p.status !== 'Terminated' && p.status !== 'Inactive' && p.full_name && p.full_name !== 'Unnamed Staff');
         const fullTimeStaff = staff.filter(s => (s.employment_type || 'Full-Time') === 'Full-Time');
@@ -23891,7 +23903,7 @@ export const UI = {
         }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
         // Fetch profiles to map Auth IDs back to Student IDs for legacy/mismatched records
-        const profiles = await db.profiles.toArray();
+        const profiles = await getTenantProfiles();
         const profileMap = profiles.reduce((acc, p) => {
             if (p.assigned_id) acc[p.id] = p.assigned_id;
             return acc;
@@ -24096,7 +24108,7 @@ export const UI = {
 
         try {
             // Smart ID matching: find ANY result for this student (by record ID or profile ID)
-            const profiles = await db.profiles.toArray();
+            const profiles = await getTenantProfiles();
             const studentProfiles = profiles.filter(p => p.assigned_id === studentId || p.id === studentId);
             const possibleIds = [studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
             
@@ -24178,7 +24190,7 @@ export const UI = {
 
         try {
             // Smart ID matching: find ANY result for this student (by record ID or profile ID)
-            const profiles = await db.profiles.toArray();
+            const profiles = await getTenantProfiles();
             const studentProfiles = profiles.filter(p => p.assigned_id === studentId || p.id === studentId);
             const possibleIds = [studentId, ...studentProfiles.map(p => p.id), ...studentProfiles.map(p => p.assigned_id)].filter(Boolean);
             
@@ -24380,7 +24392,7 @@ export const UI = {
             const [activeResults, exam, profiles] = await Promise.all([
                 db.cbt_results.where('exam_id').equals(examId).and(r => r.status === 'In Progress').toArray(),
                 db.cbt_exams.get(examId),
-                db.profiles.toArray()
+                getTenantProfiles()
             ]);
 
             for (const r of activeResults) {

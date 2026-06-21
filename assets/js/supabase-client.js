@@ -387,7 +387,7 @@ export async function syncFromCloud(forceAll = false) {
                     }
 
                     // Skip tenant_id filter for tables that use RLS via auth.uid() instead
-                    const noTenantIdTables = ['profiles', 'cbt_exam_questions'];
+                    const noTenantIdTables = ['cbt_exam_questions'];
                     if (tenantId && !isSuperAdmin && !noTenantIdTables.includes(table)) {
                         query = query.eq('tenant_id', tenantId);
                     }
