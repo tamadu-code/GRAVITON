@@ -25689,7 +25689,24 @@ export const UI = {
                                     </td>
                                 </tr>
                             </tbody>
-              } else if (tabName === 'plans') {
+                        </table>
+                    </div>
+                </div>
+            `;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            document.getElementById('btn-refresh-super-console').onclick = () => this.loadSuperAdminData();
+            document.getElementById('btn-provision-tenant').onclick = () => this.showProvisionSchoolModal();
+            
+            const searchInput = document.getElementById('search-tenants');
+            const statusSelect = document.getElementById('filter-tenant-status');
+            
+            searchInput.oninput = () => this.loadSuperAdminData();
+            statusSelect.onchange = () => this.loadSuperAdminData();
+
+            await this.loadSuperAdminData();
+
+        } else if (tabName === 'plans') {
             container.innerHTML = `
                 <div style="display: flex; flex-direction: column; gap: 2rem;">
                     <!-- Platform Payment Configuration -->
