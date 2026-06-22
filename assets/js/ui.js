@@ -26127,6 +26127,10 @@ export const UI = {
             if (tenantRes.error) throw tenantRes.error;
             if (subRes.error) throw subRes.error;
 
+            // Re-verify listContainer still exists after async fetch (tab might have switched)
+            const currentListContainer = document.getElementById('superadmin-tenants-list');
+            if (!currentListContainer) return;
+
             const tenants = tenantRes.data;
             const subs = subRes.data;
 
@@ -26140,9 +26144,13 @@ export const UI = {
             const activeCount = subs.filter(s => s.status === 'active' || s.status === 'trialing').length;
             const suspendedCount = tenants.filter(t => t.status !== 'active').length + subs.filter(s => s.status === 'past_due' || s.status === 'canceled').length;
 
-            document.getElementById('super-stat-schools').textContent = tenants.length.toString();
-            document.getElementById('super-stat-active').textContent = activeCount.toString();
-            document.getElementById('super-stat-suspended').textContent = suspendedCount.toString();
+            const schoolsEl = document.getElementById('super-stat-schools');
+            const activeEl = document.getElementById('super-stat-active');
+            const suspendedEl = document.getElementById('super-stat-suspended');
+
+            if (schoolsEl) schoolsEl.textContent = tenants.length.toString();
+            if (activeEl) activeEl.textContent = activeCount.toString();
+            if (suspendedEl) suspendedEl.textContent = suspendedCount.toString();
 
             // Client-side search and filters
             const searchVal = document.getElementById('search-tenants')?.value.toLowerCase() || '';
@@ -26155,7 +26163,7 @@ export const UI = {
             });
 
             if (filteredTenants.length === 0) {
-                listContainer.innerHTML = `
+                currentListContainer.innerHTML = `
                     <tr>
                         <td colspan="6" style="padding: 3rem; text-align: center; color: #64748b; font-weight: 600;">
                             No matching registered schools found on the platform.
@@ -26165,7 +26173,7 @@ export const UI = {
                 return;
             }
 
-            listContainer.innerHTML = filteredTenants.map(t => {
+            currentListContainer.innerHTML = filteredTenants.map(t => {
                 const sub = subMap[t.id] || { plan_tier: 'none', status: 'canceled', max_student_limit: 0, expires_at: null };
                 
                 let statusBadgeColor = '#10b981';
@@ -26235,13 +26243,16 @@ export const UI = {
 
         } catch (err) {
             console.error('Super Admin console load error:', err);
-            listContainer.innerHTML = `
-                <tr>
-                    <td colspan="6" style="padding: 3rem; text-align: center; color: #be123c; font-weight: 700;">
-                        Failed to load dashboard data: ${err.message}
-                    </td>
-                </tr>
-            `;
+            const errListContainer = document.getElementById('superadmin-tenants-list');
+            if (errListContainer) {
+                errListContainer.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="padding: 3rem; text-align: center; color: #be123c; font-weight: 700;">
+                            Failed to load dashboard data: ${err.message}
+                        </td>
+                    </tr>
+                `;
+            }
         }
     },
 
@@ -26567,8 +26578,11 @@ export const UI = {
             const { data: plans, error } = await client.from('plans').select('*').order('price');
             if (error) throw error;
 
+            const currentGrid = document.getElementById('super-plans-grid');
+            if (!currentGrid) return;
+
             if (plans.length === 0) {
-                grid.innerHTML = `
+                currentGrid.innerHTML = `
                     <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: #94a3b8;">
                         No subscription packages registered. Click Add Package to seed.
                     </div>
@@ -26576,7 +26590,7 @@ export const UI = {
                 return;
             }
 
-            grid.innerHTML = plans.map(p => {
+            currentGrid.innerHTML = plans.map(p => {
                 const feats = Object.entries(p.features || {})
                     .filter(([k, v]) => v === true)
                     .map(([k, v]) => `<div style="font-size: 0.75rem; color: #475569; display: flex; align-items: center; gap: 4px; font-weight: 500;">✔️ ${k.replace(/_/g, ' ')}</div>`)
@@ -26621,7 +26635,10 @@ export const UI = {
 
         } catch (e) {
             console.error('[Pricing Load Error]', e);
-            grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: #be123c; font-weight: 700;">Failed to sync package list: ${e.message}</div>`;
+            const errGrid = document.getElementById('super-plans-grid');
+            if (errGrid) {
+                errGrid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: #be123c; font-weight: 700;">Failed to sync package list: ${e.message}</div>`;
+            }
         }
     },
 
@@ -26823,8 +26840,11 @@ export const UI = {
             const { data: logs, error } = await query;
             if (error) throw error;
 
+            const currentBody = document.getElementById('super-logs-list');
+            if (!currentBody) return;
+
             if (logs.length === 0) {
-                body.innerHTML = `
+                currentBody.innerHTML = `
                     <tr>
                         <td colspan="6" style="padding: 2.5rem; text-align: center; color: #94a3b8; font-weight: 500;">
                             No logged events match the selected criteria.
@@ -26841,7 +26861,10 @@ export const UI = {
                 return acc;
             }, {});
 
-            body.innerHTML = logs.map(l => {
+            const finalBody = document.getElementById('super-logs-list');
+            if (!finalBody) return;
+
+            finalBody.innerHTML = logs.map(l => {
                 const dateStr = new Date(l.timestamp).toLocaleString();
                 const schoolName = schoolLookup[l.tenant_id] || 'Unknown School';
                 
@@ -26869,7 +26892,10 @@ export const UI = {
 
         } catch (e) {
             console.error('[Logs Load Error]', e);
-            body.innerHTML = `<tr><td colspan="6" style="padding: 2.5rem; text-align: center; color: #be123c; font-weight: 700;">Failed to populate audit feed: ${e.message}</td></tr>`;
+            const errBody = document.getElementById('super-logs-list');
+            if (errBody) {
+                errBody.innerHTML = `<tr><td colspan="6" style="padding: 2.5rem; text-align: center; color: #be123c; font-weight: 700;">Failed to populate audit feed: ${e.message}</td></tr>`;
+            }
         }
     },
 

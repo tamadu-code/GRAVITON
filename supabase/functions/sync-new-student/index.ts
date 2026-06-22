@@ -79,16 +79,15 @@ serve(async (req) => {
     }
 
     // Student does NOT exist — create them
-    const apiUrl = `${baseUrl}/rest/v1/students`
+    const functionsUrl = baseUrl.includes('/functions/v1') ? baseUrl : `${baseUrl}/functions/v1`
+    const apiUrl = `${functionsUrl}/create-student`
     console.log(`Creating student at: ${apiUrl}`)
 
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'apikey': ATTENDANCE_TOKEN,
-        'Authorization': `Bearer ${ATTENDANCE_TOKEN}`,
         'Content-Type': 'application/json',
-        'Prefer': 'return=representation,resolution=merge-duplicates'
+        'Authorization': `Bearer ${ATTENDANCE_TOKEN}`
       },
       body: JSON.stringify({
         name: record.name,
@@ -106,7 +105,7 @@ serve(async (req) => {
     const responseData = await response.json()
     console.log('Attendance System Response:', responseData)
     
-    const attendance_code = responseData[0]?.code
+    const attendance_code = responseData.attendance_code
     
     if (!attendance_code) {
       throw new Error('Attendance system did not return a biometric code')
