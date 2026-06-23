@@ -44,6 +44,15 @@ serve(async (req) => {
 
     console.log('Received attendance data:', JSON.stringify(record))
 
+    // Handle Keep-Alive / Ping requests cleanly
+    if (payload.ping || payload.keep_alive) {
+      console.log('Keep-alive ping received')
+      return new Response(JSON.stringify({ success: true, message: 'Keep-alive status: active' }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200
+      })
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     // The Attendance System sends: student_id (their UUID), date, sign_in, sign_out, is_late
