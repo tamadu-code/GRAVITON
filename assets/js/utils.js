@@ -738,7 +738,7 @@ export async function generateCredentialsPDF(students, schoolInfo = {}) {
         y += 55;
     });
     
-    doc.save(`Student_Credentials_${new Date().toISOString().split('T')[0]}.pdf`);
+    return doc;
 }
 
 /**

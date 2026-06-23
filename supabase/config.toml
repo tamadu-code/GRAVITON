@@ -359,3 +359,7 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 [functions.receive-attendance]
 verify_jwt = false
 
+[functions.sync-new-student]
+verify_jwt = false
+
+

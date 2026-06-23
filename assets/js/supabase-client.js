@@ -66,7 +66,7 @@ export async function syncToCloud() {
         return { success: false, message: 'Subscription inactive' };
     }
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections', 'cbt_question_bank', 'cbt_options'];
+    const tables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections', 'cbt_question_bank', 'cbt_options'];
     let syncCount = 0;
     const failedTables = new Set();
 
@@ -339,7 +339,7 @@ export async function syncFromCloud(forceAll = false) {
         return;
     }
 
-    const tables = ['profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'settings', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 'cbt_exam_sections'];
+    const tables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 'cbt_exam_sections'];
     
     // ── Block sync during active exam to prevent flickering and state resets ──
     if (document.body.classList.contains('exam-mode')) {
@@ -749,7 +749,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v26.9 (BUILD v332) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v26.9 (BUILD v342) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);

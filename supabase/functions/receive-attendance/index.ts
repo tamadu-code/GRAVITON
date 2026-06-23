@@ -167,15 +167,17 @@ serve(async (req) => {
       }
 
       const baseUrl = ATTENDANCE_SYSTEM_URL.endsWith('/') ? ATTENDANCE_SYSTEM_URL.slice(0, -1) : ATTENDANCE_SYSTEM_URL;
+      const ATTENDANCE_ANON_KEY = Deno.env.get('ATTENDANCE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1emxpb2R2ZGR6bWhlaGZmcWZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTkxNTEsImV4cCI6MjA5MjQzNTE1MX0.0ASY-NuhdHPhyg9pB2XYiXOLJTnrocXxjkC6gpqO_vQ';
       
       // If the identifier contains letters or is longer than 6 chars, query by 'id' instead of 'code' in the Attendance System
       const queryField = /^\d+$/.test(String(raw_student_identifier)) && String(raw_student_identifier).length <= 6 ? 'code' : 'id';
       const checkUrl = `${baseUrl}/rest/v1/students?${queryField}=eq.${raw_student_identifier}&select=name,class,code`;
       
+      console.log(`Auto-discovery URL: ${checkUrl}`);
       const checkResponse = await fetch(checkUrl, {
         headers: {
-          'apikey': ATTENDANCE_TOKEN,
-          'Authorization': `Bearer ${ATTENDANCE_TOKEN}`,
+          'apikey': ATTENDANCE_ANON_KEY,
+          'Authorization': `Bearer ${ATTENDANCE_ANON_KEY}`,
         },
       });
 
@@ -267,8 +269,9 @@ serve(async (req) => {
           return new Response(JSON.stringify({ error: `Student not found for identifier ${raw_student_identifier}` }), { status: 404 });
         }
       } else {
-        console.error('Failed to communicate with Attendance System for auto-discovery.');
-        return new Response(JSON.stringify({ error: 'Attendance System communication error' }), { status: 500 });
+        const errText = await checkResponse.text().catch(() => 'Could not read body');
+        console.error(`Failed to communicate with Attendance System for auto-discovery. Status: ${checkResponse.status}, Body: ${errText}`);
+        return new Response(JSON.stringify({ error: `Attendance System communication error: ${errText}` }), { status: 500 });
       }
     }
 

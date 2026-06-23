@@ -163,13 +163,6 @@ export const UI = {
     },
     
     showPDFPreview(doc, filename = 'document.pdf') {
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
-        if (isMobile) {
-            Notifications.show(`Downloading ${filename}...`, 'success');
-            doc.save(filename);
-            return;
-        }
-
         const blobUrl = doc.output('bloburl');
         const existing = document.getElementById('full-pdf-preview');
         if (existing) existing.remove();
@@ -4723,8 +4716,8 @@ export const UI = {
                     }
                     printBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Generating...';
                     const allSettings = await db.settings.toArray();
-                    const credSchoolName = allSettings.find(s => s.key === 'schoolName')?.value || localStorage.getItem('tenant_school_name') || '';
-                    await generateCredentialsPDF(allStudents, { name: credSchoolName });
+                    const doc = await generateCredentialsPDF(allStudents, { name: credSchoolName });
+                    if (doc) this.showPDFPreview(doc, `Student_Credentials_${new Date().toISOString().split('T')[0]}.pdf`);
                     Notifications.show('Credentials generated successfully.', 'success');
                 } catch (e) {
                     Notifications.show('Failed to generate credentials.', 'error');
@@ -16709,6 +16702,8 @@ export const UI = {
                             <i data-lucide="user-x"></i> Purge Inactive Students
                         </button>
                     </div>
+                    </div>
+                </div>
 
                 <!-- Section: Timetable Auto-Generation Settings -->
                 <div class="glass-collapse-card">
@@ -17245,17 +17240,26 @@ export const UI = {
 
         const modalHtml = `
             <div id="${modalId}" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(10px); z-index: 99999; display: flex; align-items: center; justify-content: center; font-family: 'Outfit', sans-serif; padding: 1rem;">
-                <div style="background: white; border-radius: 28px; width: 100%; max-width: 650px; max-height: 90vh; padding: 2rem; box-shadow: var(--shadow-2xl); position: relative; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1.25rem; overflow-y: auto;" class="animate-scale-in">
+                <style>
+                    #${modalId} .sub-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+                    @media (max-width: 600px) {
+                        #${modalId} .sub-modal-grid { grid-template-columns: 1fr !important; }
+                        #${modalId} .sub-modal-inner { padding: 1.25rem !important; }
+                        #${modalId} .sub-modal-title { font-size: 1.1rem !important; }
+                        #${modalId} .sub-modal-subtitle { font-size: 0.75rem !important; }
+                    }
+                </style>
+                <div class="sub-modal-inner" style="background: white; border-radius: 28px; width: 100%; max-width: 650px; max-height: 90vh; padding: 2rem; box-shadow: var(--shadow-2xl); position: relative; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1.25rem; overflow-y: auto;" class="animate-scale-in">
                     
                     <!-- Header -->
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <h3 style="font-weight: 955; font-size: 1.4rem; color: #0f172a; display: flex; align-items: center; gap: 8px; margin: 0;">
+                            <h3 class="sub-modal-title" style="font-weight: 955; font-size: 1.4rem; color: #0f172a; display: flex; align-items: center; gap: 8px; margin: 0;">
                                 <i data-lucide="${onlyRenewCurrent ? 'refresh-cw' : 'shield-check'}" style="color: ${onlyRenewCurrent ? '#10b981' : '#7c3aed'};"></i> ${onlyRenewCurrent ? 'Renew Subscription' : 'Upgrade & Billing Console'}
                             </h3>
-                            <p style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem; margin-bottom: 0;">${onlyRenewCurrent ? `Renewing your <strong>${currentTier.toUpperCase()}</strong> plan for <strong>${schoolName}</strong>` : `Manage subscription settings for <strong>${schoolName}</strong>`} (Enrolled Students: <strong>${studentCount}</strong>)</p>
+                            <p class="sub-modal-subtitle" style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem; margin-bottom: 0;">${onlyRenewCurrent ? `Renewing your <strong>${currentTier.toUpperCase()}</strong> plan for <strong>${schoolName}</strong>` : `Manage subscription settings for <strong>${schoolName}</strong>`} (Enrolled Students: <strong>${studentCount}</strong>)</p>
                         </div>
-                        <button onclick="document.getElementById('${modalId}').remove()" style="background: #f1f5f9; color: #64748b; border: none; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
+                        <button onclick="document.getElementById('${modalId}').remove()" style="background: #f1f5f9; color: #64748b; border: none; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; flex-shrink: 0;">
                             <i data-lucide="x" style="width: 18px; height: 18px;"></i>
                         </button>
                     </div>
@@ -17263,7 +17267,7 @@ export const UI = {
                     <!-- Step 1: Select Plan -->
                     <div>
                         <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">${onlyRenewCurrent ? '1. Renewing Current Plan' : '1. Select Subscription Plan'}</label>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                        <div class="sub-modal-grid">
                             ${plans.filter(p => onlyRenewCurrent ? p.tier === currentTier : true).map(p => {
                                 const isSelected = p.tier === currentTier;
                                 const calculatedPrice = p.price + (p.per_student_rate * studentCount);
@@ -17290,7 +17294,7 @@ export const UI = {
                     <!-- Step 2: Select Channel -->
                     <div>
                         <label style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">2. Choose Payment Channel</label>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                        <div class="sub-modal-grid">
                             <button id="pay-opt-online" class="btn" style="height: 50px; border-radius: 12px; border: 2px solid #2563eb; background: #eff6ff; color: #2563eb; font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer;">
                                 <span style="font-size: 0.85rem; font-weight: 800;">Paystack Online</span>
                                 <span style="font-size: 0.6rem; opacity: 0.8; font-weight: 600;">Instant Auto-Verify</span>
@@ -20352,7 +20356,8 @@ export const UI = {
             const schoolInfo = {};
             settingsArray.forEach(s => schoolInfo[s.key] = s.value);
             
-            await generateCredentialsPDF(filteredStudents, schoolInfo);
+            const doc = await generateCredentialsPDF(filteredStudents, schoolInfo);
+            if (doc) this.showPDFPreview(doc, `Student_Credentials_${new Date().toISOString().split('T')[0]}.pdf`);
         });
     },
 
@@ -20363,7 +20368,8 @@ export const UI = {
         const settingsArray = await db.settings.toArray();
         const schoolInfo = {};
         settingsArray.forEach(s => schoolInfo[s.key] = s.value);
-        await generateCredentialsPDF([student], schoolInfo);
+        const doc = await generateCredentialsPDF([student], schoolInfo);
+        if (doc) this.showPDFPreview(doc, `Credential_${student.name.replace(/\s+/g, '_')}.pdf`);
     },
 
     async renderPins() {

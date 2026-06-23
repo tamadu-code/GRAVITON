@@ -5,6 +5,7 @@ const ATTENDANCE_SYSTEM_URL = Deno.env.get('ATTENDANCE_SYSTEM_URL')
 const ATTENDANCE_TOKEN = Deno.env.get('ATTENDANCE_TOKEN')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+const ATTENDANCE_ANON_KEY = Deno.env.get('ATTENDANCE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1emxpb2R2ZGR6bWhlaGZmcWZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTkxNTEsImV4cCI6MjA5MjQzNTE1MX0.0ASY-NuhdHPhyg9pB2XYiXOLJTnrocXxjkC6gpqO_vQ'
 
 serve(async (req) => {
   try {
@@ -25,8 +26,8 @@ serve(async (req) => {
       const response = await fetch(updateUrl, {
         method: 'PATCH',
         headers: {
-          'apikey': ATTENDANCE_TOKEN,
-          'Authorization': `Bearer ${ATTENDANCE_TOKEN}`,
+          'apikey': ATTENDANCE_ANON_KEY,
+          'Authorization': `Bearer ${ATTENDANCE_ANON_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -52,8 +53,8 @@ serve(async (req) => {
     const checkUrl = `${baseUrl}/rest/v1/students?name=eq.${encodeURIComponent(record.name)}&tenant_id=eq.${tenantIdVal}&select=code`
     const checkResponse = await fetch(checkUrl, {
       headers: {
-        'apikey': ATTENDANCE_TOKEN,
-        'Authorization': `Bearer ${ATTENDANCE_TOKEN}`,
+        'apikey': ATTENDANCE_ANON_KEY,
+        'Authorization': `Bearer ${ATTENDANCE_ANON_KEY}`,
       },
     })
 

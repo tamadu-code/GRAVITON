@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const ATTENDANCE_SYSTEM_URL = Deno.env.get('ATTENDANCE_SYSTEM_URL')
 const ATTENDANCE_TOKEN = Deno.env.get('ATTENDANCE_TOKEN')
+const ATTENDANCE_ANON_KEY = Deno.env.get('ATTENDANCE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1emxpb2R2ZGR6bWhlaGZmcWZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTkxNTEsImV4cCI6MjA5MjQzNTE1MX0.0ASY-NuhdHPhyg9pB2XYiXOLJTnrocXxjkC6gpqO_vQ'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
@@ -153,8 +154,8 @@ serve(async (req) => {
             const delResponse = await fetch(deleteUrl, {
               method: 'DELETE',
               headers: {
-                'apikey': ATTENDANCE_TOKEN,
-                'Authorization': `Bearer ${ATTENDANCE_TOKEN}`,
+                'apikey': ATTENDANCE_ANON_KEY,
+                'Authorization': `Bearer ${ATTENDANCE_ANON_KEY}`,
                 'Prefer': 'return=minimal'
               }
             })

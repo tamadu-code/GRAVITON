@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v26.9 (BUILD v332) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v26.9 (BUILD v342) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -222,10 +222,9 @@ async function loadAuthenticatedApp(authUser) {
 
             if (claims.tenant_id && claims.user_role !== 'SuperAdmin') {
                 // ── TENANT SWITCH DETECTION ──
-                // If a different tenant is logging in on the same browser,
-                // clear all local IndexedDB data to prevent cross-tenant data leakage
+                // Only purge when a DIFFERENT tenant is logging in (not on first login or same tenant re-login)
                 const previousTenantId = localStorage.getItem('last_active_tenant_id');
-                if (previousTenantId !== claims.tenant_id) {
+                if (previousTenantId && previousTenantId !== claims.tenant_id) {
                     console.warn(`[Tenant Switch] Detected tenant change: ${previousTenantId} → ${claims.tenant_id}. Purging local database...`);
                     try {
                         const allTables = db.tables.map(t => t.name);
@@ -250,6 +249,10 @@ async function loadAuthenticatedApp(authUser) {
                             return;
                         } catch (e) { console.error('[Tenant Switch] Nuclear purge also failed:', e); }
                     }
+                } else if (!previousTenantId) {
+                    console.log(`[Tenant Switch] First login for tenant ${claims.tenant_id}. No purge needed.`);
+                } else {
+                    console.log(`[Tenant Switch] Same tenant re-login (${claims.tenant_id}). Skipping purge.`);
                 }
 
                 localStorage.setItem('tenant_id', claims.tenant_id);
