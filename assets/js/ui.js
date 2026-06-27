@@ -4627,9 +4627,6 @@ export const UI = {
                                 <button class="btn btn-secondary view-full-profile-btn" data-id="${student.student_id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 44px; background: #2563eb; color: white; border: none; font-weight: 700;">
                                     <i data-lucide="user" style="width: 14px;"></i> View Full Profile
                                 </button>
-                                <button class="btn btn-secondary list-print-reg-btn" data-id="${student.student_id}" style="border-radius: 10px; font-size: 0.75rem; height: 44px; font-weight: 700; width: 44px; display: flex; align-items: center; justify-content: center; padding: 0; background: #f8fafc; color: #475569; border: 1px solid #cbd5e1;" title="Print Admission Form">
-                                    <i data-lucide="printer" style="width: 16px;"></i>
-                                </button>
                                 <button class="btn btn-secondary mobile-edit-std-btn" data-id="${student.student_id}" style="border-radius: 10px; font-size: 0.75rem; height: 44px; font-weight: 700; width: 44px; display: flex; align-items: center; justify-content: center; padding: 0;">
                                     <i data-lucide="edit-3" style="width: 16px;"></i>
                                 </button>
@@ -4639,42 +4636,6 @@ export const UI = {
                         
                         const editBtn = detailArea.querySelector('.mobile-edit-std-btn');
                         const viewProfileBtn = detailArea.querySelector('.view-full-profile-btn');
-                        const listPrintBtn = detailArea.querySelector('.list-print-reg-btn');
-
-                        if (listPrintBtn) {
-                            listPrintBtn.addEventListener('click', async (btnEv) => {
-                                btnEv.preventDefault();
-                                btnEv.stopPropagation();
-                                const sid = listPrintBtn.dataset.id;
-                                try {
-                                    listPrintBtn.disabled = true;
-                                    const originalHtml = listPrintBtn.innerHTML;
-                                    listPrintBtn.innerHTML = '<i data-lucide="loader" class="spin" style="width: 16px;"></i>';
-                                    if (typeof lucide !== 'undefined') lucide.createIcons();
-
-                                    const stdRecord = await db.students.get(sid);
-                                    if (stdRecord) {
-                                        const schoolInfo = {
-                                            schoolName: localStorage.getItem('tenant_school_name') || 'GRAVITON ACADEMY',
-                                            logo: localStorage.getItem('tenant_school_logo') || '',
-                                            address: localStorage.getItem('tenant_school_address') || '',
-                                            phone: localStorage.getItem('tenant_school_phone') || '',
-                                            email: localStorage.getItem('tenant_school_email') || '',
-                                            themeColor: localStorage.getItem('tenant_theme_color') || '#4338ca'
-                                        };
-                                        const doc = await generateRegistrationFormPDF(stdRecord, schoolInfo);
-                                        this.showPDFPreview(doc, `Registration_Form_${stdRecord.name.replace(/\s+/g, '_')}.pdf`);
-                                    }
-                                } catch (err) {
-                                    console.error('List Print Error:', err);
-                                    Notifications.show(`Generation failed: ${err.message}`, 'error');
-                                } finally {
-                                    listPrintBtn.disabled = false;
-                                    listPrintBtn.innerHTML = '<i data-lucide="printer" style="width: 16px;"></i>';
-                                    if (typeof lucide !== 'undefined') lucide.createIcons();
-                                }
-                            });
-                        }
 
                         if (viewProfileBtn) {
                             viewProfileBtn.addEventListener('click', async (btnEv) => {
@@ -5005,6 +4966,12 @@ export const UI = {
                             is_synced: 0
                         });
 
+                        // Check and link parent account
+                        const parentEmail = document.getElementById('std-parent-email').value.trim();
+                        const parentName = document.getElementById('std-parent-name').value.trim();
+                        const parentPhone = document.getElementById('std-parent-phone').value.trim();
+                        await this.linkOrUpdateParent(newStudent.id || serial, parentEmail, parentName, parentPhone);
+
                         this.debouncedSync(); 
                         Notifications.show(`Student ${name} successfully registered!`, 'success');
                     } catch (err) {
@@ -5022,6 +4989,73 @@ export const UI = {
         }
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    async linkOrUpdateParent(studentId, parentEmail, parentName, parentPhone) {
+        if (!parentEmail || !parentEmail.trim()) return;
+        const email = parentEmail.trim().toLowerCase();
+        
+        try {
+            // Find existing parent profile
+            let parentProfile = await db.profiles.where('email').equalsIgnoreCase(email).first();
+            let parentId = parentProfile ? parentProfile.id : null;
+            
+            if (!parentProfile) {
+                console.log('[Parent Link] Parent profile not found. Creating parent account for email:', email);
+                const parentAssignedId = `PAR${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+                
+                // Call registerUser to provision auth
+                let parentAuthData = null;
+                try {
+                    const parentAuthResult = await registerUser(email, 'Parent123!', parentName || 'Parent / Guardian', 'Parent', parentAssignedId);
+                    parentAuthData = parentAuthResult.data;
+                } catch (e) {
+                    console.warn('[Parent Link] Parent auth creation failed/delayed:', e);
+                }
+                
+                parentId = parentAuthData?.user?.id || parentAssignedId;
+                const newParent = prepareForSync({
+                    id: parentId,
+                    full_name: parentName || 'Parent / Guardian',
+                    email: email,
+                    role: 'Parent',
+                    phone: parentPhone || '',
+                    status: 'Active',
+                    assigned_id: parentAssignedId
+                });
+                await db.profiles.put(newParent);
+            } else {
+                // Update parent name/phone if profile exists but was empty/partial
+                const updates = {};
+                if (parentName && parentName !== 'Parent / Guardian' && parentProfile.full_name === 'Parent / Guardian') updates.full_name = parentName;
+                if (parentPhone && !parentProfile.phone) updates.phone = parentPhone;
+                if (Object.keys(updates).length > 0) {
+                    await db.profiles.update(parentProfile.id, prepareForSync(updates));
+                }
+            }
+            
+            if (parentId) {
+                // Link all students with this parent email to this parent
+                const relatedStudents = await db.students.where('parent_email').equalsIgnoreCase(email).toArray();
+                
+                for (const std of relatedStudents) {
+                    const sid = std.id || std.student_id;
+                    if (!sid) continue;
+                    const links = await db.parent_links.where('student_id').equals(sid).toArray();
+                    const linkExists = links.some(l => l.parent_id === parentId);
+                    if (!linkExists) {
+                        await db.parent_links.add(prepareForSync({
+                            id: crypto.randomUUID(),
+                            parent_id: parentId,
+                            student_id: sid,
+                            relationship: 'Parent'
+                        }));
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[Parent Link] Error linking parent:', err);
+        }
     },
 
     async renderStudentDetail(studentId) {
@@ -5534,6 +5568,13 @@ export const UI = {
                                 await db.scores.where('student_id').equals(studentId).modify({ student_id: newId });
                                 await db.payments.where('student_id').equals(studentId).modify({ student_id: newId });
                                 
+                                // Check and link parent account
+                                if (updates.parent_email) {
+                                    const parentName = originalData.parent_name || 'Parent / Guardian';
+                                    const parentPhone = originalData.parent_phone || '';
+                                    await this.linkOrUpdateParent(newId, updates.parent_email, parentName, parentPhone);
+                                }
+                                
                                 Notifications.show('Student ID migrated successfully.', 'success');
                                 this.renderStudents();
                                 this.debouncedSync();
@@ -5544,6 +5585,14 @@ export const UI = {
 
                     console.log(`[Modify] Saving updates for ${studentId}:`, updates);
                     await db.students.update(studentId, prepareForSync(updates));
+
+                    // Check and link parent account
+                    if (updates.parent_email) {
+                        const parentName = student.parent_name || 'Parent / Guardian';
+                        const parentPhone = student.parent_phone || '';
+                        await this.linkOrUpdateParent(studentId, updates.parent_email, parentName, parentPhone);
+                    }
+
                     Notifications.show('Profile updated successfully.', 'success');
                     this.renderStudentDetail(studentId);
                 }, 'Update Profile', 'save');
@@ -11620,7 +11669,7 @@ export const UI = {
             new Date(b.updated_at || 0) - new Date(a.updated_at || 0)
         )[0];
 
-        if (session && session.status === 'In Progress') {
+        if (session && session.status === 'In Progress' && session.question_ids && session.question_ids.length > 0) {
             // RESUME: Skip instructions, go straight to exam (includes admin re-opened exams)
             return this.finalizeStartCBTExam(examId, true);
         }
@@ -24654,9 +24703,11 @@ export const UI = {
                 started_at: fakeStartTime.toISOString(),
                 updated_at: new Date().toISOString(),
                 is_synced: 0,
-                // If the user adds MORE time than total duration, the student app needs to know
-                // or else it blocks at the entry point. We'll set a 'bonus' hint.
-                score: 0 
+                score: 0,
+                answers: {},
+                question_ids: [],
+                warnings: 0,
+                violations: []
             };
 
             const targetResultId = result ? result.id : `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`;
@@ -24696,6 +24747,7 @@ export const UI = {
                         total_questions: exam.total_questions || 60,
                         total_marks: exam.total_marks || 60,
                         answers: {},
+                        question_ids: [],
                         warnings: 0,
                         violations: []
                     });
