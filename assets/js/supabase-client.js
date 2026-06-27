@@ -253,13 +253,11 @@ export async function syncToCloud() {
                                         break;
                                     }
                                 }
-                                error = healError;
-                            } else {
-                                console.error(`Sync error for ${table}:`, error, "Data:", chunk);
                             }
                         }
 
                         if (error) {
+                            console.error(`Sync error for ${table}:`, error, "Data:", chunk);
                             failedTables.add(table);
                             continue; 
                         }
@@ -826,6 +824,8 @@ export async function registerUser(email, password, fullName, role, assignedId =
     const adminSessionKey = Object.keys(localStorage).find(key => key.startsWith('sb-') && key.endsWith('-auth-token'));
     const adminSessionVal = adminSessionKey ? localStorage.getItem(adminSessionKey) : null;
 
+    const tenantId = localStorage.getItem('tenant_id');
+
     if (role === 'Student' && !assignedId) {
         assignedId = password; // fallback to password/serial if Student
     }
@@ -833,7 +833,7 @@ export async function registerUser(email, password, fullName, role, assignedId =
     const { data, error } = await client.auth.signUp({
         email,
         password,
-        options: { data: { full_name: fullName, role: role, assigned_id: assignedId } }
+        options: { data: { full_name: fullName, role: role, assigned_id: assignedId, tenant_id: tenantId } }
     });
 
     if (!error && data.user) {
@@ -844,6 +844,7 @@ export async function registerUser(email, password, fullName, role, assignedId =
             email: email,
             status: 'Active',
             assigned_id: assignedId,
+            tenant_id: tenantId,
             updated_at: new Date().toISOString()
         }, { onConflict: 'email' });
     } else if (error && (error.message.includes('already registered') || error.message.includes('already exists'))) {
@@ -858,7 +859,7 @@ export async function registerUser(email, password, fullName, role, assignedId =
         if (!loginError && loginData?.user) {
             console.log(`[Register] Recovered auth UUID via sign-in: ${loginData.user.id}`);
             
-            // Sync/update profile in Supabase to make sure assigned_id is set
+            // Sync/update profile in Supabase to make sure assigned_id and tenant_id are set
             await client.from('profiles').upsert({
                 id: loginData.user.id,
                 full_name: fullName,
@@ -866,6 +867,7 @@ export async function registerUser(email, password, fullName, role, assignedId =
                 email: email,
                 status: 'Active',
                 assigned_id: assignedId,
+                tenant_id: tenantId,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'email' });
 
@@ -895,6 +897,7 @@ export async function registerUser(email, password, fullName, role, assignedId =
                 email: email,
                 status: 'Active',
                 assigned_id: assignedId,
+                tenant_id: tenantId,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'email' });
         }

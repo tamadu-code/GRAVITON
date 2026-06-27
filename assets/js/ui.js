@@ -5027,10 +5027,10 @@ export const UI = {
                                 <p style="font-size: 1.1rem; color: #64748b; margin-top: 0.25rem;">${student.class_name} • ${student.sub_class || 'General Stream'}</p>
                             </div>
                               <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                                 <button id="btn-print-reg-form" class="btn btn-secondary" title="Print Registration Form" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;"><i data-lucide="printer"></i> Print Form</button>
                                  ${!((this.currentUser.role || '').toLowerCase() === 'teacher') ? `
                                  <button id="btn-sync-biometric" class="btn btn-secondary" title="Update Biometric Record" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;"><i data-lucide="refresh-cw"></i> Sync Biometric</button>
                                  <button id="btn-repair-auth" class="btn btn-secondary" title="Fix Login Issues" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a;"><i data-lucide="shield-alert"></i> Repair Auth</button>
-                                 <button id="btn-print-reg-form" class="btn btn-secondary" title="Print Registration Form" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;"><i data-lucide="printer"></i> Print Form</button>
                                  <button id="btn-promote-student" class="btn btn-secondary" title="Promote Student" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;"><i data-lucide="trending-up"></i> Promote</button>
                                  <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
                                  <button id="btn-delete-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fee2e2; border: 1px solid #fecaca;"><i data-lucide="trash-2"></i> Delete</button>

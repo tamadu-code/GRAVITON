@@ -143,6 +143,17 @@ db.version(41).stores({
     audit_logs: 'id, operation, table, record_id, timestamp, user_id, tenant_id, is_synced'
 });
 
+db.audit_logs.hook('creating', (primKey, obj, transaction) => {
+    const tenantId = localStorage.getItem('tenant_id');
+    if (tenantId && obj.tenant_id === undefined) {
+        obj.tenant_id = tenantId;
+    }
+    if (!obj.timestamp) {
+        obj.timestamp = new Date().toISOString();
+    }
+    obj.is_synced = 0;
+});
+
 db.on('versionchange', (event) => {
     console.warn('Database upgrade pending. Closing connections...');
     db.close(); 

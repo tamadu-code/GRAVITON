@@ -675,6 +675,18 @@ async function loadAuthenticatedApp(authUser) {
                 }
             }
 
+            // 3. Repair db.audit_logs missing tenant_id
+            const activeTenantId = localStorage.getItem('tenant_id');
+            if (activeTenantId) {
+                const untenantedLogs = await db.audit_logs.filter(log => !log.tenant_id).toArray();
+                if (untenantedLogs.length > 0) {
+                    console.log(`[Self-Heal] Auto-assigning tenant_id to ${untenantedLogs.length} audit logs`);
+                    for (const log of untenantedLogs) {
+                        await db.audit_logs.update(log.id, { tenant_id: activeTenantId, is_synced: 0 });
+                    }
+                }
+            }
+
             if (repairedCount > 0) {
                 console.log(`[Self-Heal] Repaired ${repairedCount} legacy UUID records.`);
                 if (typeof syncToCloud === 'function') {
