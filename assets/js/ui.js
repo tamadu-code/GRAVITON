@@ -24659,43 +24659,53 @@ export const UI = {
                 score: 0 
             };
 
+            const targetResultId = result ? result.id : `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`;
+
             if (result) {
                 // If result was under a different ID (e.g. Profile ID), we migrate it to the Unified ID now
-                await db.cbt_results.update(result.id, { 
+                await db.cbt_results.update(result.id, prepareForSync({ 
                     ...updatePayload,
                     student_id: studentId // Standardize to the Record ID used in the registry
-                });
+                }));
             } else {
-                await db.cbt_results.add({
+                await db.cbt_results.add(prepareForSync({
+                    id: targetResultId,
                     student_id: studentId,
                     exam_id: examId,
+                    total_questions: exam.total_questions || 60,
+                    total_marks: exam.total_marks || 60,
+                    answers: {},
+                    warnings: 0,
+                    violations: [],
                     ...updatePayload
-                });
+                }));
             }
 
             // *** CRITICAL: Push to cloud IMMEDIATELY so syncFromCloud never overwrites with stale data ***
             try {
                 const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (client && navigator.onLine) {
-                    const cloudPayload = {
-                        id: result ? result.id : undefined,
+                    const cloudPayload = prepareForSync({
+                        id: targetResultId,
                         exam_id: examId,
                         student_id: studentId,
                         status: 'In Progress',
                         started_at: fakeStartTime.toISOString(),
                         updated_at: new Date().toISOString(),
-                        score: 0
-                    };
-                    if (result) {
-                        cloudPayload.id = result.id;
-                    }
+                        score: 0,
+                        total_questions: exam.total_questions || 60,
+                        total_marks: exam.total_marks || 60,
+                        answers: {},
+                        warnings: 0,
+                        violations: []
+                    });
                     const { error: cloudErr } = await client.from('cbt_results').upsert(cloudPayload);
                     if (cloudErr) {
                         console.warn('[CBT Reopen] Cloud push failed, will retry via sync:', cloudErr.message);
                     } else {
                         console.log('[CBT Reopen] Successfully pushed In Progress status to cloud.');
                         // Mark as synced locally since we just pushed
-                        if (result) await db.cbt_results.update(result.id, { is_synced: 1 });
+                        await db.cbt_results.update(targetResultId, { is_synced: 1 });
                     }
                 }
             } catch (cloudPushErr) {
@@ -24859,20 +24869,22 @@ export const UI = {
                     .delete();
             }
 
+            const targetId = result ? result.id : `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`;
+
             if (result || possibleIds.length > 1) {
-                const targetId = result ? result.id : `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`;
-                await db.cbt_results.put({
+                await db.cbt_results.put(prepareForSync({
                     id: targetId,
                     student_id: studentId,
                     exam_id: examId,
                     ...finalResultUpdate
-                });
+                }));
             } else {
-                await db.cbt_results.add({
+                await db.cbt_results.add(prepareForSync({
+                    id: targetId,
                     student_id: studentId,
                     exam_id: examId,
                     ...finalResultUpdate
-                });
+                }));
             }
 
             // Cleanup progress
@@ -24886,12 +24898,13 @@ export const UI = {
             // Immediate Cloud Push (bypass debounce)
             if (navigator.onLine && typeof getSupabase === 'function') {
                 const supabase = getSupabase();
-                const { is_synced, ...cloudPayload } = {
-                    id: result ? result.id : `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                const cloudPayload = prepareForSync({
+                    id: targetId,
                     student_id: studentId,
                     exam_id: examId,
                     ...finalResultUpdate
-                };
+                });
+                delete cloudPayload.is_synced;
                 await supabase.from('cbt_results').upsert(cloudPayload, { onConflict: 'student_id,exam_id' });
             }
 
