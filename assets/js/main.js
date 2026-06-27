@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v27.2 (BUILD v346) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v27.3 (BUILD v347) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -721,8 +721,24 @@ async function loadAuthenticatedApp(authUser) {
     async function mapSSS1ExamStatus() {
         try {
             const db = (await import('./db.js')).default;
+            
+            // 1. Get SSS 1 Students
             const students = await db.students.where('class_name').startsWith('SSS 1').toArray();
             const studentIds = students.map(s => s.student_id);
+
+            // 2. Get Subjects
+            const allSubjects = await db.subjects.toArray();
+            const targetSubjects = allSubjects.filter(sub => {
+                const name = (sub.name || '').toLowerCase();
+                return name.includes('digital') || name.includes('technolog') || name.includes('econom');
+            });
+            const targetSubIds = targetSubjects.map(sub => sub.id);
+
+            // 3. Get Scores & CBT Results
+            const scores = await db.scores.where('student_id').anyOf(studentIds).toArray();
+            const cbtResults = await db.cbt_results.toArray();
+            const exams = await db.cbt_exams.toArray();
+            const examMap = exams.reduce((m, e) => { m[e.id] = e.title; return m; }, {});
             
             const profiles = await db.profiles.toArray();
             const uuidToSerial = profiles.reduce((acc, p) => {
@@ -730,35 +746,46 @@ async function loadAuthenticatedApp(authUser) {
                 return acc;
             }, {});
 
-            const cbtResults = await db.cbt_results.toArray();
-            const scores = await db.scores.where('student_id').anyOf(studentIds).toArray();
-            const exams = await db.cbt_exams.toArray();
-            const examMap = exams.reduce((m, e) => { m[e.id] = e.title; return m; }, {});
-            
+            // 4. Map scores per student and subject
             const report = [];
             for (const s of students) {
-                const sResults = cbtResults.filter(r => {
+                const studentScores = scores.filter(sc => sc.student_id === s.student_id && targetSubIds.includes(sc.subject_id));
+                const studentCBT = cbtResults.filter(r => {
                     const resolvedId = uuidToSerial[r.student_id] || r.student_id;
-                    return resolvedId === s.student_id;
+                    return resolvedId.trim().toUpperCase() === s.student_id.trim().toUpperCase();
                 });
-                const sScores = scores.filter(sc => sc.student_id === s.student_id);
-                
-                const cbtDetail = sResults.map(r => `${examMap[r.exam_id] || r.exam_id}: ${r.status} (${r.score || 0} marks)`).join('; ') || 'None';
-                const scoreDetail = sScores.map(sc => `${sc.subject_id}: ${sc.total || 0}`).join('; ') || 'None';
-                
+
+                // Detail of CBT results
+                const cbtDetail = studentCBT.map(r => `${examMap[r.exam_id] || r.exam_id}: ${r.status} (${r.score || 0} marks)`).join('; ') || 'None';
+
+                // Build detail for each target subject
+                const subjectDetails = {};
+                targetSubjects.forEach(sub => {
+                    const scoreRec = studentScores.find(sc => sc.subject_id === sub.id);
+                    if (scoreRec) {
+                        const parts = [];
+                        if (scoreRec.test1 !== undefined && scoreRec.test1 !== null) parts.push(`T1: ${scoreRec.test1}`);
+                        if (scoreRec.test2 !== undefined && scoreRec.test2 !== null) parts.push(`T2: ${scoreRec.test2}`);
+                        if (scoreRec.exam !== undefined && scoreRec.exam !== null) parts.push(`Exam: ${scoreRec.exam}`);
+                        parts.push(`Total: ${scoreRec.total || 0}`);
+                        subjectDetails[sub.name] = parts.join(' | ');
+                    } else {
+                        subjectDetails[sub.name] = 'No Grade';
+                    }
+                });
+
                 report.push({
                     'Student Name': s.name,
                     'Student ID': s.student_id,
                     'Class': s.class_name,
-                    'CBT Exams': cbtDetail,
-                    'Gradebook Scores': scoreDetail,
-                    'Status': sResults.length > 0 ? 'Taken' : 'Not Taken'
+                    'CBT Results (Local/Cloud)': cbtDetail,
+                    ...subjectDetails
                 });
             }
-            
-            console.log('=== SSS 1 STUDENT CBT & GRADEBOOK MAP ===');
+
+            console.log('=== SSS 1 DETAILED GRADEBOOK & CBT EXAM MAP ===');
             console.table(report);
-            console.log('==========================================');
+            console.log('================================================');
         } catch (e) {
             console.warn('[Mapper] Failed to map SSS 1 status:', e);
         }
