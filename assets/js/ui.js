@@ -24368,7 +24368,8 @@ export const UI = {
 
         // Prioritize the latest record (by updated_at) to handle re-opens and ID mismatches
         const resultEntries = results.reduce((acc, r) => {
-            const resolvedId = profileMap[r.student_id] || r.student_id;
+            if (!r.student_id) return acc;
+            const resolvedId = (profileMap[r.student_id] || r.student_id).trim().toUpperCase();
             const existing = acc[resolvedId];
             
             const rTime = new Date(r.updated_at || 0).getTime();
@@ -24382,7 +24383,8 @@ export const UI = {
 
         // Inject 'In Progress' for those currently taking the exam
         progress.forEach(p => {
-            const resolvedId = profileMap[p.student_id] || p.student_id;
+            if (!p.student_id) return;
+            const resolvedId = (profileMap[p.student_id] || p.student_id).trim().toUpperCase();
             if (!resultEntries[resolvedId]) {
                 resultEntries[resolvedId] = {
                     student_id: resolvedId,
@@ -24405,7 +24407,8 @@ export const UI = {
         const isAdmin = this.currentUser.role === 'Admin' || this.currentUser.role === 'Principal';
 
         registryContainer.innerHTML = assignedStudents.map((s, idx) => {
-            const r = resultEntries[s.student_id];
+            const studentIdUpper = (s.student_id || '').trim().toUpperCase();
+            const r = resultEntries[studentIdUpper];
             const studentName = s.name || 'Unknown Student';
             const status = r ? r.status : 'Not Started';
             const isCompleted = status === 'Completed';
