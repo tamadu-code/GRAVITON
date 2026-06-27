@@ -764,6 +764,10 @@ async function loadAuthenticatedApp(authUser) {
         }
     }
     setTimeout(mapSSS1ExamStatus, 6000);
+    window.addEventListener('sync-complete', () => {
+        console.log('[Sync-Complete] Re-running SSS 1 Exam Status Mapping...');
+        mapSSS1ExamStatus();
+    });
 
     // ─── One-Time Migration: Backfill class_name on Question Bank ───
     async function patchBankClassNames() {
