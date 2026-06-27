@@ -2097,3 +2097,202 @@ export function compareClasses(a, b) {
     return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
 }
 
+export async function generateRegistrationFormPDF(student, schoolInfo = {}) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    
+    const themeColor = schoolInfo.themeColor || '#4338ca';
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 67, g: 56, b: 202 };
+    };
+    const rgb = hexToRgb(themeColor);
+    
+    // Top border stripe
+    doc.setFillColor(rgb.r, rgb.g, rgb.b);
+    doc.rect(0, 0, 210, 8, 'F');
+    
+    let y = 20;
+    
+    // Logo
+    if (schoolInfo.logo) {
+        try {
+            doc.addImage(schoolInfo.logo, 'PNG', 15, y, 22, 22);
+        } catch (e) {
+            console.error("Failed to render school logo in registration form:", e);
+        }
+    }
+    
+    // School Details
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(rgb.r, rgb.g, rgb.b);
+    doc.text(schoolInfo.schoolName || 'GRAVITON ACADEMY', 42, y + 4);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+    let addressLine = schoolInfo.address || '';
+    if (addressLine) {
+        doc.text(addressLine, 42, y + 9);
+    }
+    
+    let contactInfo = [];
+    if (schoolInfo.phone) contactInfo.push(`Tel: ${schoolInfo.phone}`);
+    if (schoolInfo.email) contactInfo.push(`Email: ${schoolInfo.email}`);
+    if (contactInfo.length > 0) {
+        doc.text(contactInfo.join('  |  '), 42, y + 14);
+    }
+    
+    y += 26;
+    
+    // Document Title
+    doc.setFillColor(241, 245, 249);
+    doc.rect(15, y, 180, 10, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
+    doc.text("OFFICIAL STUDENT ADMISSION & REGISTRATION RECORD", 18, y + 6.5);
+    
+    // Student Passport
+    const passportX = 160;
+    const passportY = y + 18;
+    const passportW = 32;
+    const passportH = 36;
+    
+    let passportDrawn = false;
+    if (student.passport_url || student.passport) {
+        try {
+            doc.addImage(student.passport_url || student.passport, 'JPEG', passportX, passportY, passportW, passportH);
+            passportDrawn = true;
+        } catch (e) {
+            console.warn("Failed to render student passport:", e);
+        }
+    }
+    
+    if (!passportDrawn) {
+        // Draw elegant placeholder box
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(0.5);
+        doc.setFillColor(248, 250, 252);
+        doc.rect(passportX, passportY, passportW, passportH, 'FD');
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text("PASSPORT PHOTO", passportX + (passportW / 2), passportY + (passportH / 2) + 2, { align: 'center' });
+    }
+    
+    y += 18;
+    
+    // Helper function to draw sections
+    const drawSectionHeader = (title, startY) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(rgb.r, rgb.g, rgb.b);
+        doc.text(title.toUpperCase(), 15, startY);
+        // Underline
+        doc.setDrawColor(rgb.r, rgb.g, rgb.b);
+        doc.setLineWidth(0.35);
+        doc.line(15, startY + 2, 145, startY + 2);
+        return startY + 8;
+    };
+    
+    const drawField = (label, value, fieldX, fieldY, fieldW = 60) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(label, fieldX, fieldY);
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(15, 23, 42);
+        doc.text(String(value || 'N/A'), fieldX, fieldY + 4.5);
+        
+        // Underline field for neatness
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.2);
+        doc.line(fieldX, fieldY + 7, fieldX + fieldW, fieldY + 7);
+    };
+
+    // SECTION 1: PERSONAL DETAILS
+    let currentY = drawSectionHeader("1. Academic & Personal Details", y);
+    
+    drawField("Student ID / Serial", student.student_id, 15, currentY, 55);
+    drawField("Full Name", student.name, 75, currentY, 70);
+    currentY += 12;
+    
+    drawField("Gender", student.gender, 15, currentY, 55);
+    drawField("Date of Birth", student.dob, 75, currentY, 70);
+    currentY += 12;
+    
+    drawField("Admission Year", student.admission_year, 15, currentY, 55);
+    drawField("Attendance Code", student.attendance_code, 75, currentY, 70);
+    currentY += 16;
+    
+    // SECTION 2: CLASS PLACEMENT
+    currentY = drawSectionHeader("2. Class Assignment", currentY);
+    drawField("Assigned Class", student.class_name, 15, currentY, 55);
+    drawField("Class Arm / Specialization", student.sub_class || 'None / General', 75, currentY, 70);
+    currentY += 20;
+    
+    // SECTION 3: CONTACT & MEDICAL DETAILS
+    currentY = drawSectionHeader("3. Contact & Medical Details", currentY);
+    doc.line(15, currentY - 6, 195, currentY - 6);
+    
+    drawField("Phone Number", student.phone, 15, currentY, 80);
+    drawField("Blood Group", student.blood_group, 105, currentY, 40);
+    drawField("Genotype", student.genotype, 155, currentY, 40);
+    currentY += 12;
+    
+    drawField("Residential Address", student.address, 15, currentY, 180);
+    currentY += 20;
+    
+    // SECTION 4: PARENT / GUARDIAN DETAILS
+    currentY = drawSectionHeader("4. Parent / Guardian Information", currentY);
+    doc.line(15, currentY - 6, 195, currentY - 6);
+    
+    drawField("Parent/Guardian Name", student.parent_name, 15, currentY, 80);
+    drawField("Parent Phone", student.parent_phone, 105, currentY, 90);
+    currentY += 12;
+    
+    drawField("Parent Email / Username", student.parent_email, 15, currentY, 180);
+    currentY += 30;
+    
+    // SECTION 5: DECLARATIONS & SIGNATURES
+    currentY = drawSectionHeader("5. Attestation & Signatures", currentY);
+    doc.line(15, currentY - 6, 195, currentY - 6);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text("I hereby certify that the information provided above is correct and complete to the best of my knowledge.", 15, currentY);
+    currentY += 24;
+    
+    // Signature lines
+    doc.setDrawColor(71, 85, 105);
+    doc.setLineWidth(0.35);
+    
+    // Parent
+    doc.line(15, currentY, 65, currentY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text("Parent/Guardian Signature", 15, currentY + 4);
+    
+    // Registrar
+    doc.line(105, currentY, 145, currentY);
+    doc.text("Registrar Signature", 105, currentY + 4);
+    
+    // Date
+    doc.line(165, currentY, 195, currentY);
+    doc.text("Date", 165, currentY + 4);
+    
+    // Footer page info
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text("Generated by Graviton CMS on " + new Date().toLocaleDateString(), 15, 287);
+    doc.text("Page 1 of 1", 195, 287, { align: 'right' });
+    
+    return doc;
+}
+
