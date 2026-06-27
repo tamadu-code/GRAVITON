@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v27.1 (BUILD v345) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v27.2 (BUILD v346) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -675,14 +675,32 @@ async function loadAuthenticatedApp(authUser) {
                 }
             }
 
-            // 3. Repair db.audit_logs missing tenant_id
+            // 3. Repair all tables missing tenant_id
             const activeTenantId = localStorage.getItem('tenant_id');
             if (activeTenantId) {
-                const untenantedLogs = await db.audit_logs.filter(log => !log.tenant_id).toArray();
-                if (untenantedLogs.length > 0) {
-                    console.log(`[Self-Heal] Auto-assigning tenant_id to ${untenantedLogs.length} audit logs`);
-                    for (const log of untenantedLogs) {
-                        await db.audit_logs.update(log.id, { tenant_id: activeTenantId, is_synced: 0 });
+                const tablesToHeal = [
+                    'profiles', 'students', 'classes', 'subjects', 'scores', 'timetable', 
+                    'attendance', 'payments', 'fee_structures', 'form_teachers', 
+                    'subject_assignments', 'student_analytics', 'duty_assignments', 
+                    'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 
+                    'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 
+                    'cbt_exam_sections', 'push_subscriptions', 'audit_logs'
+                ];
+                for (const tableName of tablesToHeal) {
+                    try {
+                        const table = db[tableName];
+                        if (table) {
+                            const untenanted = await table.filter(row => !row.tenant_id).toArray();
+                            if (untenanted.length > 0) {
+                                console.log(`[Self-Heal] Auto-assigning tenant_id to ${untenanted.length} records in ${tableName}`);
+                                for (const row of untenanted) {
+                                    const pk = table.schema.primKey.name;
+                                    await table.update(row[pk], { tenant_id: activeTenantId, is_synced: 0 });
+                                }
+                            }
+                        }
+                    } catch (tableErr) {
+                        console.warn(`[Self-Heal] Failed to heal table ${tableName}:`, tableErr);
                     }
                 }
             }
@@ -698,6 +716,54 @@ async function loadAuthenticatedApp(authUser) {
         }
     }
     await resolveUUIDStudentIds();
+
+    // ─── Utility: Map SSS 1 Students CBT and Gradebook Status ───
+    async function mapSSS1ExamStatus() {
+        try {
+            const db = (await import('./db.js')).default;
+            const students = await db.students.where('class_name').startsWith('SSS 1').toArray();
+            const studentIds = students.map(s => s.student_id);
+            
+            const profiles = await db.profiles.toArray();
+            const uuidToSerial = profiles.reduce((acc, p) => {
+                if (p.assigned_id) acc[p.id] = p.assigned_id;
+                return acc;
+            }, {});
+
+            const cbtResults = await db.cbt_results.toArray();
+            const scores = await db.scores.where('student_id').anyOf(studentIds).toArray();
+            const exams = await db.cbt_exams.toArray();
+            const examMap = exams.reduce((m, e) => { m[e.id] = e.title; return m; }, {});
+            
+            const report = [];
+            for (const s of students) {
+                const sResults = cbtResults.filter(r => {
+                    const resolvedId = uuidToSerial[r.student_id] || r.student_id;
+                    return resolvedId === s.student_id;
+                });
+                const sScores = scores.filter(sc => sc.student_id === s.student_id);
+                
+                const cbtDetail = sResults.map(r => `${examMap[r.exam_id] || r.exam_id}: ${r.status} (${r.score || 0} marks)`).join('; ') || 'None';
+                const scoreDetail = sScores.map(sc => `${sc.subject_id}: ${sc.total || 0}`).join('; ') || 'None';
+                
+                report.push({
+                    'Student Name': s.name,
+                    'Student ID': s.student_id,
+                    'Class': s.class_name,
+                    'CBT Exams': cbtDetail,
+                    'Gradebook Scores': scoreDetail,
+                    'Status': sResults.length > 0 ? 'Taken' : 'Not Taken'
+                });
+            }
+            
+            console.log('=== SSS 1 STUDENT CBT & GRADEBOOK MAP ===');
+            console.table(report);
+            console.log('==========================================');
+        } catch (e) {
+            console.warn('[Mapper] Failed to map SSS 1 status:', e);
+        }
+    }
+    setTimeout(mapSSS1ExamStatus, 6000);
 
     // ─── One-Time Migration: Backfill class_name on Question Bank ───
     async function patchBankClassNames() {
