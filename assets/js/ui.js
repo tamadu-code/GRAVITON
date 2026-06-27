@@ -4627,6 +4627,9 @@ export const UI = {
                                 <button class="btn btn-secondary view-full-profile-btn" data-id="${student.student_id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 44px; background: #2563eb; color: white; border: none; font-weight: 700;">
                                     <i data-lucide="user" style="width: 14px;"></i> View Full Profile
                                 </button>
+                                <button class="btn btn-secondary list-print-reg-btn" data-id="${student.student_id}" style="border-radius: 10px; font-size: 0.75rem; height: 44px; font-weight: 700; width: 44px; display: flex; align-items: center; justify-content: center; padding: 0; background: #f8fafc; color: #475569; border: 1px solid #cbd5e1;" title="Print Admission Form">
+                                    <i data-lucide="printer" style="width: 16px;"></i>
+                                </button>
                                 <button class="btn btn-secondary mobile-edit-std-btn" data-id="${student.student_id}" style="border-radius: 10px; font-size: 0.75rem; height: 44px; font-weight: 700; width: 44px; display: flex; align-items: center; justify-content: center; padding: 0;">
                                     <i data-lucide="edit-3" style="width: 16px;"></i>
                                 </button>
@@ -4636,6 +4639,42 @@ export const UI = {
                         
                         const editBtn = detailArea.querySelector('.mobile-edit-std-btn');
                         const viewProfileBtn = detailArea.querySelector('.view-full-profile-btn');
+                        const listPrintBtn = detailArea.querySelector('.list-print-reg-btn');
+
+                        if (listPrintBtn) {
+                            listPrintBtn.addEventListener('click', async (btnEv) => {
+                                btnEv.preventDefault();
+                                btnEv.stopPropagation();
+                                const sid = listPrintBtn.dataset.id;
+                                try {
+                                    listPrintBtn.disabled = true;
+                                    const originalHtml = listPrintBtn.innerHTML;
+                                    listPrintBtn.innerHTML = '<i data-lucide="loader" class="spin" style="width: 16px;"></i>';
+                                    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                                    const stdRecord = await db.students.get(sid);
+                                    if (stdRecord) {
+                                        const schoolInfo = {
+                                            schoolName: localStorage.getItem('tenant_school_name') || 'GRAVITON ACADEMY',
+                                            logo: localStorage.getItem('tenant_school_logo') || '',
+                                            address: localStorage.getItem('tenant_school_address') || '',
+                                            phone: localStorage.getItem('tenant_school_phone') || '',
+                                            email: localStorage.getItem('tenant_school_email') || '',
+                                            themeColor: localStorage.getItem('tenant_theme_color') || '#4338ca'
+                                        };
+                                        const doc = await generateRegistrationFormPDF(stdRecord, schoolInfo);
+                                        this.showPDFPreview(doc, `Registration_Form_${stdRecord.name.replace(/\s+/g, '_')}.pdf`);
+                                    }
+                                } catch (err) {
+                                    console.error('List Print Error:', err);
+                                    Notifications.show(`Generation failed: ${err.message}`, 'error');
+                                } finally {
+                                    listPrintBtn.disabled = false;
+                                    listPrintBtn.innerHTML = '<i data-lucide="printer" style="width: 16px;"></i>';
+                                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                                }
+                            });
+                        }
 
                         if (viewProfileBtn) {
                             viewProfileBtn.addEventListener('click', async (btnEv) => {
@@ -24350,20 +24389,27 @@ export const UI = {
         const subNameMap = subjectsList.reduce((acc, sub) => ({...acc, [sub.id]: sub.name}), {});
 
         let studentScoresMap = {};
-        if (exam.is_unified) {
-            try {
-                const allScores = await db.scores.where('term').equals(exam.term).toArray();
-                const termSessionScores = allScores.filter(sc => sc.session === exam.session);
-                termSessionScores.forEach(sc => {
-                    const resolvedId = profileMap[sc.student_id] || sc.student_id;
-                    if (!studentScoresMap[resolvedId]) {
-                        studentScoresMap[resolvedId] = {};
+        try {
+            const allScores = await db.scores.where('term').equals(exam.term).toArray();
+            const termSessionScores = allScores.filter(sc => sc.session === exam.session);
+            termSessionScores.forEach(sc => {
+                const resolvedId = (profileMap[sc.student_id] || sc.student_id).trim().toUpperCase();
+                const rawId = (sc.student_id || '').trim().toUpperCase();
+                
+                if (!studentScoresMap[resolvedId]) {
+                    studentScoresMap[resolvedId] = {};
+                }
+                studentScoresMap[resolvedId][sc.subject_id] = sc;
+
+                if (rawId !== resolvedId) {
+                    if (!studentScoresMap[rawId]) {
+                        studentScoresMap[rawId] = {};
                     }
-                    studentScoresMap[resolvedId][sc.subject_id] = sc;
-                });
-            } catch (e) {
-                console.warn('[CBT] Failed to fetch scoreboard breakdown scores:', e);
-            }
+                    studentScoresMap[rawId][sc.subject_id] = sc;
+                }
+            });
+        } catch (e) {
+            console.warn('[CBT] Failed to fetch scoreboard breakdown scores:', e);
         }
 
         // Prioritize the latest record (by updated_at) to handle re-opens and ID mismatches
@@ -24408,7 +24454,48 @@ export const UI = {
 
         registryContainer.innerHTML = assignedStudents.map((s, idx) => {
             const studentIdUpper = (s.student_id || '').trim().toUpperCase();
-            const r = resultEntries[studentIdUpper];
+            let r = resultEntries[studentIdUpper];
+            
+            // Fallback: If not started/no result, check for gradebook scores for this exam
+            if (!r) {
+                let hasRegisteredScore = false;
+                let fallbackScore = 0;
+                if (exam.is_unified) {
+                    const matchedScores = sections.map(sec => {
+                        const scoreRecord = studentScoresMap[studentIdUpper]?.[sec.subject_id];
+                        return scoreRecord ? (parseFloat(scoreRecord[sec.score_field || 'exam']) || 0) : null;
+                    }).filter(score => score !== null);
+                    if (matchedScores.length > 0) {
+                        hasRegisteredScore = true;
+                        fallbackScore = matchedScores.reduce((sum, scoreVal) => sum + scoreVal, 0);
+                    }
+                } else {
+                    const subId = exam.subject_id;
+                    if (subId) {
+                        const scoreRecord = studentScoresMap[studentIdUpper]?.[subId];
+                        if (scoreRecord) {
+                            const possibleScore = parseFloat(scoreRecord.exam) || parseFloat(scoreRecord.test2) || parseFloat(scoreRecord.test1) || 0;
+                            if (possibleScore > 0) {
+                                hasRegisteredScore = true;
+                                fallbackScore = possibleScore;
+                            }
+                        }
+                    }
+                }
+
+                if (hasRegisteredScore) {
+                    r = {
+                        student_id: s.student_id,
+                        status: 'Completed',
+                        score: fallbackScore,
+                        total_marks: exam.is_unified ? sections.reduce((sum, sec) => sum + (parseFloat(sec.target_mark) || 60), 0) : (exam.total_marks || exam.total_questions || 60),
+                        answers: {},
+                        violations: [],
+                        is_fallback: true
+                    };
+                }
+            }
+
             const studentName = s.name || 'Unknown Student';
             const status = r ? r.status : 'Not Started';
             const isCompleted = status === 'Completed';
@@ -24434,7 +24521,7 @@ export const UI = {
                         <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                             ${sections.map(sec => {
                                 const subName = subNameMap[sec.subject_id] || sec.subject_id;
-                                const scoreRecord = studentScoresMap[studentId]?.[sec.subject_id];
+                                const scoreRecord = studentScoresMap[studentId.trim().toUpperCase()]?.[sec.subject_id];
                                 const scaledScore = scoreRecord ? (parseFloat(scoreRecord[sec.score_field || 'exam']) || 0) : null;
                                 const targetMax = parseFloat(sec.target_mark) || 60;
                                 
