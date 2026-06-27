@@ -5,7 +5,7 @@
 console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
-import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses } from './utils.js';
+import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses, generateRegistrationFormPDF } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
 import { initPushNotifications, unsubscribeUser } from './push.js';
 
@@ -4790,6 +4790,7 @@ export const UI = {
                             <div>
                                 <label>Class Arm (e.g. A, B)</label>
                                 <select id="std-arm" class="input" style="width: 100%; box-sizing: border-box;">
+                                    <option value="">None / General</option>
                                     <option value="A">A</option>
                                     <option value="B">B</option>
                                     <option value="C">C</option>
@@ -4926,7 +4927,7 @@ export const UI = {
                         Notifications.show(`Provisioning cloud account for ${name}...`, 'info');
                         
                         // Set a 12s timeout for cloud registration to prevent hanging if offline/slow
-                        const authPromise = registerUser(studentEmail, serial, name, 'Student');
+                        const authPromise = registerUser(studentEmail, serial, name, 'Student', serial);
                         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Cloud timeout')), 12000));
                         
                         let authData, authError;
@@ -5029,6 +5030,7 @@ export const UI = {
                                  ${!((this.currentUser.role || '').toLowerCase() === 'teacher') ? `
                                  <button id="btn-sync-biometric" class="btn btn-secondary" title="Update Biometric Record" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;"><i data-lucide="refresh-cw"></i> Sync Biometric</button>
                                  <button id="btn-repair-auth" class="btn btn-secondary" title="Fix Login Issues" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a;"><i data-lucide="shield-alert"></i> Repair Auth</button>
+                                 <button id="btn-print-reg-form" class="btn btn-secondary" title="Print Registration Form" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;"><i data-lucide="printer"></i> Print Form</button>
                                  <button id="btn-promote-student" class="btn btn-secondary" title="Promote Student" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;"><i data-lucide="trending-up"></i> Promote</button>
                                  <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
                                  <button id="btn-delete-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fee2e2; border: 1px solid #fecaca;"><i data-lucide="trash-2"></i> Delete</button>
@@ -5212,6 +5214,40 @@ export const UI = {
         }
 
 
+        // Print Registration Form Logic
+        const printRegBtn = document.getElementById('btn-print-reg-form');
+        if (printRegBtn) {
+            printRegBtn.onclick = async () => {
+                printRegBtn.disabled = true;
+                const originalHtml = printRegBtn.innerHTML;
+                printRegBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Generating PDF...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                try {
+                    // Fetch tenant configurations for school name/theme
+                    const schoolInfo = {
+                        schoolName: localStorage.getItem('tenant_school_name') || 'GRAVITON ACADEMY',
+                        logo: localStorage.getItem('tenant_school_logo') || '',
+                        address: localStorage.getItem('tenant_school_address') || '',
+                        phone: localStorage.getItem('tenant_school_phone') || '',
+                        email: localStorage.getItem('tenant_school_email') || '',
+                        themeColor: localStorage.getItem('tenant_theme_color') || '#4338ca'
+                    };
+
+                    const doc = await generateRegistrationFormPDF(student, schoolInfo);
+                    this.showPDFPreview(doc, `Registration_Form_${student.name.replace(/\s+/g, '_')}.pdf`);
+                } catch (err) {
+                    console.error('Error generating registration form:', err);
+                    Notifications.show(`Generation failed: ${err.message}`, 'error');
+                } finally {
+                    printRegBtn.disabled = false;
+                    printRegBtn.innerHTML = originalHtml;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        }
+
+
         // Repair Auth Logic
         const repairBtn = document.getElementById('btn-repair-auth');
         if (repairBtn) {
@@ -5373,6 +5409,7 @@ export const UI = {
                             <div style="display: flex; gap: 0.5rem;">
                                 <div style="flex: 2;"><label>Class</label><select id="edit-std-class" class="input" style="width:100%;">${classOptions}</select></div>
                                 <div style="flex: 1;"><label>Arm</label><select id="edit-std-arm" class="input" style="width:100%;">
+                                    <option value="" ${!student.sub_class ? 'selected' : ''}>None / General</option>
                                     <option value="A" ${student.sub_class === 'A' ? 'selected' : ''}>A</option>
                                     <option value="B" ${student.sub_class === 'B' ? 'selected' : ''}>B</option>
                                     <option value="C" ${student.sub_class === 'C' ? 'selected' : ''}>C</option>
@@ -9116,7 +9153,7 @@ export const UI = {
                     bulkStaffBtn.innerHTML = `<i data-lucide="loader" class="spin"></i> Repairing ${count}/${allStaff.length}...`;
                     
                     try {
-                        const { data: authData, error: authError } = await registerUser(s.email, 'Staff123!', s.full_name, s.role);
+                        const { data: authData, error: authError } = await registerUser(s.email, 'Staff123!', s.full_name, s.role, s.assigned_id);
                         
                         const client = window.getSupabase ? window.getSupabase() : null;
                         if (client && (authData?.user || s.id)) {
@@ -9252,11 +9289,12 @@ export const UI = {
                 }
 
                 const DEFAULT_PASSWORD = 'Staff123!';
+                const staffAssignedId = `SCH/STF/${Math.floor(Math.random()*9000)+1000}`;
 
                 try {
                     // 1. Create Supabase auth account
                     Notifications.show('Creating login account...', 'info');
-                    const { data: authData, error: authError } = await registerUser(finalEmail, DEFAULT_PASSWORD, name, role);
+                    const { data: authData, error: authError } = await registerUser(finalEmail, DEFAULT_PASSWORD, name, role, staffAssignedId);
 
                     if (authError) {
                         // If it's a "user already registered" error, still create the local profile
@@ -9281,7 +9319,7 @@ export const UI = {
                         department: dept,
                         qualifications: quals,
                         status: 'Active',
-                        assigned_id: `SCH/STF/${Math.floor(Math.random()*9000)+1000}`
+                        assigned_id: staffAssignedId
                     });
 
                     await db.profiles.put(newStaff); // Use put in case auth trigger already created it
@@ -22841,11 +22879,12 @@ export const UI = {
             }
 
             const DEFAULT_PASSWORD = 'Parent123!';
+            const assignedId = `PAR/${Math.floor(Math.random() * 9000) + 1000}`;
 
             try {
                 // 1. Create Supabase auth account
                 Notifications.show('Creating parent login account...', 'info');
-                const { data: authData, error: authError } = await registerUser(finalEmail, DEFAULT_PASSWORD, name, 'Parent');
+                const { data: authData, error: authError } = await registerUser(finalEmail, DEFAULT_PASSWORD, name, 'Parent', assignedId);
 
                 if (authError) {
                     if (authError.message && authError.message.includes('already registered')) {
@@ -22858,7 +22897,6 @@ export const UI = {
 
                 // 2. Create local profile record
                 const userId = authData?.user?.id || `PAR${Math.random().toString(36).substr(2, 7).toUpperCase()}`;
-                const assignedId = `PAR/${Math.floor(Math.random() * 9000) + 1000}`;
 
                 const newParent = prepareForSync({
                     id: userId,
@@ -24344,9 +24382,10 @@ export const UI = {
 
         // Inject 'In Progress' for those currently taking the exam
         progress.forEach(p => {
-            if (!resultEntries[p.student_id]) {
-                resultEntries[p.student_id] = {
-                    student_id: p.student_id,
+            const resolvedId = profileMap[p.student_id] || p.student_id;
+            if (!resultEntries[resolvedId]) {
+                resultEntries[resolvedId] = {
+                    student_id: resolvedId,
                     status: 'In Progress',
                     score: '...',
                     answers: p.current_answers
@@ -25030,7 +25069,7 @@ export const UI = {
             const studentEmail = `${studentId.toLowerCase()}@student.school`;
             
             // Call registration helper (it handles existing users gracefully)
-            const { data: authData, error } = await registerUser(studentEmail, studentId, studentId, 'Student');
+            const { data: authData, error } = await registerUser(studentEmail, studentId, studentId, 'Student', studentId);
             
             if (error) {
                 throw error;

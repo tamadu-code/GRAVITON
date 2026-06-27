@@ -749,7 +749,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v26.9 (BUILD v342) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v27.0 (BUILD v343) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);
@@ -818,14 +818,22 @@ export async function getUserProfile(userId) {
     return null;
 }
 
-export async function registerUser(email, password, fullName, role) {
+export async function registerUser(email, password, fullName, role, assignedId = null) {
     const client = getSupabase();
     if (!client) return { error: { message: 'Supabase not initialized' } };
+
+    // Detect if we currently have an admin/staff session to restore it later
+    const adminSessionKey = Object.keys(localStorage).find(key => key.startsWith('sb-') && key.endsWith('-auth-token'));
+    const adminSessionVal = adminSessionKey ? localStorage.getItem(adminSessionKey) : null;
+
+    if (role === 'Student' && !assignedId) {
+        assignedId = password; // fallback to password/serial if Student
+    }
 
     const { data, error } = await client.auth.signUp({
         email,
         password,
-        options: { data: { full_name: fullName, role: role } }
+        options: { data: { full_name: fullName, role: role, assigned_id: assignedId } }
     });
 
     if (!error && data.user) {
@@ -835,6 +843,7 @@ export async function registerUser(email, password, fullName, role) {
             role: role,
             email: email,
             status: 'Active',
+            assigned_id: assignedId,
             updated_at: new Date().toISOString()
         }, { onConflict: 'email' });
     } else if (error && (error.message.includes('already registered') || error.message.includes('already exists'))) {
@@ -848,14 +857,74 @@ export async function registerUser(email, password, fullName, role) {
         
         if (!loginError && loginData?.user) {
             console.log(`[Register] Recovered auth UUID via sign-in: ${loginData.user.id}`);
+            
+            // Sync/update profile in Supabase to make sure assigned_id is set
+            await client.from('profiles').upsert({
+                id: loginData.user.id,
+                full_name: fullName,
+                role: role,
+                email: email,
+                status: 'Active',
+                assigned_id: assignedId,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'email' });
+
+            // Restore admin session if needed
+            if (adminSessionKey && adminSessionVal) {
+                localStorage.setItem(adminSessionKey, adminSessionVal);
+                const parsed = JSON.parse(adminSessionVal);
+                if (parsed && parsed.access_token && parsed.refresh_token) {
+                    await client.auth.setSession({
+                        access_token: parsed.access_token,
+                        refresh_token: parsed.refresh_token
+                    }).catch(e => console.warn('[Register] Failed to restore admin session:', e));
+                }
+            }
             return { data: { user: { id: loginData.user.id } }, error: null };
         }
         
         // Fallback: search profiles table by email
         console.log(`[Register] Sign-in failed (${loginError?.message}), falling back to profiles lookup...`);
         const { data: profile } = await client.from('profiles').select('id').eq('email', email).maybeSingle();
+        
+        if (profile) {
+            await client.from('profiles').upsert({
+                id: profile.id,
+                full_name: fullName,
+                role: role,
+                email: email,
+                status: 'Active',
+                assigned_id: assignedId,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'email' });
+        }
+
+        // Restore admin session if needed
+        if (adminSessionKey && adminSessionVal) {
+            localStorage.setItem(adminSessionKey, adminSessionVal);
+            const parsed = JSON.parse(adminSessionVal);
+            if (parsed && parsed.access_token && parsed.refresh_token) {
+                await client.auth.setSession({
+                    access_token: parsed.access_token,
+                    refresh_token: parsed.refresh_token
+                }).catch(e => console.warn('[Register] Failed to restore admin session:', e));
+            }
+        }
         return { data: { user: profile ? { id: profile.id } : null }, error: null };
     }
+
+    // Restore admin session if needed
+    if (adminSessionKey && adminSessionVal) {
+        localStorage.setItem(adminSessionKey, adminSessionVal);
+        const parsed = JSON.parse(adminSessionVal);
+        if (parsed && parsed.access_token && parsed.refresh_token) {
+            await client.auth.setSession({
+                access_token: parsed.access_token,
+                refresh_token: parsed.refresh_token
+            }).catch(e => console.warn('[Register] Failed to restore admin session:', e));
+        }
+    }
+
     return { data, error };
 }
 
