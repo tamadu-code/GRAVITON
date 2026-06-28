@@ -60,6 +60,13 @@ serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+    if (!ATTENDANCE_SYSTEM_URL) {
+      return new Response(JSON.stringify({ error: 'Biometric system not configured. ATTENDANCE_SYSTEM_URL is not set.' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
     
     console.log('Starting optimized bulk arm repair...')
 

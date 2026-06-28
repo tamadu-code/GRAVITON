@@ -15,16 +15,20 @@ serve(async (req) => {
   }
 
   try {
-    const { email, password, full_name, role, id } = await req.json()
+    const { email, password, full_name, role, id, tenant_id, assigned_id } = await req.json()
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     
     // --- New Path: Update Auth by User ID (e.g. Email / Profile changes) ---
     if (id) {
       console.log(`Updating auth user for ID: ${id}...`);
+      const userMetadata: any = { full_name, role };
+      if (tenant_id) userMetadata.tenant_id = tenant_id;
+      if (assigned_id) userMetadata.assigned_id = assigned_id;
+
       const updateParams: any = {
         email_confirm: true,
-        user_metadata: { full_name, role }
+        user_metadata: userMetadata
       };
       if (email) updateParams.email = email;
       if (password) updateParams.password = password;
@@ -41,6 +45,8 @@ serve(async (req) => {
         updated_at: new Date().toISOString()
       };
       if (email) profileUpdate.email = email;
+      if (tenant_id) profileUpdate.tenant_id = tenant_id;
+      if (assigned_id) profileUpdate.assigned_id = assigned_id;
 
       await supabase.from('profiles').upsert(profileUpdate);
 
@@ -62,11 +68,15 @@ serve(async (req) => {
     if (userId) {
         console.log(`User found in profiles (${userId}). Updating password via admin API...`);
         // We update the password for the existing user
+        const userMetadata: any = { full_name, role };
+        if (tenant_id) userMetadata.tenant_id = tenant_id;
+        if (assigned_id) userMetadata.assigned_id = assigned_id;
+
         const { data, error } = await supabase.auth.admin.updateUserById(userId, {
             email: email,
             password: password,
             email_confirm: true,
-            user_metadata: { full_name, role }
+            user_metadata: userMetadata
         });
         
         if (error) {
@@ -76,12 +86,25 @@ serve(async (req) => {
            const user = users.users.find(u => u.email === email);
            if (user) {
                userId = user.id;
-               const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, { email, password, email_confirm: true });
+               const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, { email, password, email_confirm: true, user_metadata: userMetadata });
                if (updateErr) throw updateErr;
            } else {
                throw error;
            }
         }
+
+        // Make sure profile is correct and has tenant_id / assigned_id
+        const profileUpdate: any = {
+            id: userId,
+            email: email,
+            full_name: full_name || '',
+            role: role || 'Student',
+            status: 'Active',
+            updated_at: new Date().toISOString()
+        };
+        if (tenant_id) profileUpdate.tenant_id = tenant_id;
+        if (assigned_id) profileUpdate.assigned_id = assigned_id;
+        await supabase.from('profiles').upsert(profileUpdate);
         
         return new Response(JSON.stringify({ success: true, message: 'Password reset for existing user', user: { id: userId } }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -95,17 +118,25 @@ serve(async (req) => {
         if (existingUser) {
             console.log(`User found in auth.users but not in profiles. Updating password...`);
             userId = existingUser.id;
-            const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, { password, email_confirm: true });
+            const userMetadata: any = { full_name, role };
+            if (tenant_id) userMetadata.tenant_id = tenant_id;
+            if (assigned_id) userMetadata.assigned_id = assigned_id;
+
+            const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, { password, email_confirm: true, user_metadata: userMetadata });
             if (updateErr) throw updateErr;
             
             // Re-create profile
-            await supabase.from('profiles').upsert({
+            const profileData: any = {
                 id: userId,
                 email: email,
                 full_name: full_name || '',
                 role: role || 'Student',
-                status: 'Active'
-            });
+                status: 'Active',
+                updated_at: new Date().toISOString()
+            };
+            if (tenant_id) profileData.tenant_id = tenant_id;
+            if (assigned_id) profileData.assigned_id = assigned_id;
+            await supabase.from('profiles').upsert(profileData);
             
             return new Response(JSON.stringify({ success: true, message: 'Password reset and profile restored', user: { id: userId } }), {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -115,24 +146,32 @@ serve(async (req) => {
         
         console.log(`User not found anywhere. Creating new auth user...`);
         // User does not exist, create them
+        const userMetadata: any = { full_name, role };
+        if (tenant_id) userMetadata.tenant_id = tenant_id;
+        if (assigned_id) userMetadata.assigned_id = assigned_id;
+
         const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
             email: email,
             password: password,
             email_confirm: true,
-            user_metadata: { full_name, role }
+            user_metadata: userMetadata
         });
         
         if (createError) throw createError;
         
         let createdUserId = newUser?.user?.id;
         if (newUser && newUser.user) {
-            await supabase.from('profiles').upsert({
+            const profileData: any = {
                 id: newUser.user.id,
                 email: email,
                 full_name: full_name || '',
                 role: role || 'Student',
-                status: 'Active'
-            });
+                status: 'Active',
+                updated_at: new Date().toISOString()
+            };
+            if (tenant_id) profileData.tenant_id = tenant_id;
+            if (assigned_id) profileData.assigned_id = assigned_id;
+            await supabase.from('profiles').upsert(profileData);
         }
         
         return new Response(JSON.stringify({ success: true, message: 'New user provisioned', user: { id: createdUserId } }), {

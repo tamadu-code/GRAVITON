@@ -4511,6 +4511,9 @@ export const UI = {
                         <button id="btn-bulk-repair-students" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; font-size: 0.75rem; font-weight: 700;">
                             <i data-lucide="shield-alert" style="width: 14px;"></i> Bulk Repair Auth
                         </button>
+                        <button id="btn-print-blank-admission" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.25); font-size: 0.75rem;" title="Print a blank admission / registration form">
+                            <i data-lucide="file-text" style="width: 14px;"></i> Blank Admission Form
+                        </button>
                         ` : ''}
                     </div>
                 </div>
@@ -4750,7 +4753,9 @@ export const UI = {
                                     email: email,
                                     password: s.student_id,
                                     full_name: s.name,
-                                    role: 'Student'
+                                    role: 'Student',
+                                    tenant_id: localStorage.getItem('tenant_id'),
+                                    assigned_id: s.student_id
                                 }
                             });
                             if (error) throw error;
@@ -4766,6 +4771,40 @@ export const UI = {
                 bulkRepairBtn.innerHTML = '<i data-lucide="shield-alert" style="width: 14px;"></i> Bulk Repair Auth';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             };
+        }
+
+        // Print Blank Admission Form
+        const blankAdmBtn = document.getElementById('btn-print-blank-admission');
+        if (blankAdmBtn) {
+            blankAdmBtn.addEventListener('click', async () => {
+                blankAdmBtn.disabled = true;
+                const originalHtml = blankAdmBtn.innerHTML;
+                blankAdmBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Generating...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                try {
+                    const schoolInfo = {
+                        schoolName: localStorage.getItem('tenant_school_name') || 'GRAVITON ACADEMY',
+                        logo: localStorage.getItem('tenant_school_logo') || '',
+                        address: localStorage.getItem('tenant_school_address') || '',
+                        phone: localStorage.getItem('tenant_school_phone') || '',
+                        email: localStorage.getItem('tenant_school_email') || '',
+                        themeColor: localStorage.getItem('tenant_theme_color') || '#4338ca'
+                    };
+
+                    // Pass an empty object to generate a blank form with all field labels but no data
+                    const doc = await generateRegistrationFormPDF({}, schoolInfo);
+                    this.showPDFPreview(doc, `Blank_Admission_Form_${new Date().toISOString().split('T')[0]}.pdf`);
+                    Notifications.show('Blank admission form generated.', 'success');
+                } catch (err) {
+                    console.error('Error generating blank admission form:', err);
+                    Notifications.show(`Failed to generate blank form: ${err.message}`, 'error');
+                } finally {
+                    blankAdmBtn.disabled = false;
+                    blankAdmBtn.innerHTML = originalHtml;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            });
         }
 
         // Add Student Modal
@@ -5340,7 +5379,9 @@ export const UI = {
                             email: studentEmail,
                             password: student.student_id,
                             full_name: student.name,
-                            role: 'Student'
+                            role: 'Student',
+                            tenant_id: localStorage.getItem('tenant_id') || student.tenant_id,
+                            assigned_id: student.student_id
                         }
                     });
 
@@ -9544,7 +9585,9 @@ export const UI = {
                             email: staffEmail,
                             password: DEFAULT_STAFF_PASSWORD,
                             full_name: staff.full_name,
-                            role: staff.role
+                            role: staff.role,
+                            tenant_id: localStorage.getItem('tenant_id') || staff.tenant_id,
+                            assigned_id: staff.assigned_id
                         }
                     });
 
@@ -9748,7 +9791,9 @@ export const UI = {
                                             id: staffId,
                                             email: email,
                                             full_name: name,
-                                            role: role
+                                            role: role,
+                                            tenant_id: localStorage.getItem('tenant_id'),
+                                            assigned_id: staffId
                                         }
                                     });
                                     if (authErr) {
