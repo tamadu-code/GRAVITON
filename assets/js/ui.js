@@ -2352,44 +2352,43 @@ export const UI = {
                 return {
                     ...s,
                     totalScore,
-                    average: Number(average.toFixed(2))
+                    average: average // full precision for accurate ranking
                 };
             });
 
-            const isSenior = student.class_name.includes('SSS') || student.class_name.includes('SS ');
-            if (isSenior) {
+            // Detect if students have multiple distinct sub_class values (arms A/B/C or specializations Science/Arts)
+            const distinctSubs = [...new Set(studentStats.map(s => (s.sub_class || '').trim()).filter(sc => sc.length > 0))];
+            const hasSubGroups = distinctSubs.length > 1;
+
+            if (hasSubGroups) {
                 const groups = {};
                 studentStats.forEach(s => {
-                    const spec = s.sub_class || 'General';
-                    if (!groups[spec]) groups[spec] = [];
-                    groups[spec].push(s);
+                    const grp = (s.sub_class || '').trim() || 'General';
+                    if (!groups[grp]) groups[grp] = [];
+                    groups[grp].push(s);
                 });
-                Object.keys(groups).forEach(spec => {
-                    const members = groups[spec];
+                Object.keys(groups).forEach(grp => {
+                    const members = groups[grp];
                     members.sort((a, b) => b.average - a.average);
+                    let denseRank = 1;
                     members.forEach((s, idx) => {
-                        let rank = idx + 1;
-                        if (idx > 0 && s.average === members[idx-1].average) {
-                            s.rank = members[idx-1].rank;
-                            s.rankRaw = members[idx-1].rankRaw;
-                        } else {
-                            s.rank = ScoringEngine.getOrdinal(rank);
-                            s.rankRaw = rank;
+                        if (idx > 0 && s.average < members[idx-1].average) {
+                            denseRank++;
                         }
+                        s.rank = ScoringEngine.getOrdinal(denseRank);
+                        s.rankRaw = denseRank;
                         s.specializationSize = members.length;
                     });
                 });
             } else {
                 studentStats.sort((a, b) => b.average - a.average);
+                let denseRank = 1;
                 studentStats.forEach((s, idx) => {
-                    let rank = idx + 1;
-                    if (idx > 0 && s.average === studentStats[idx-1].average) {
-                        s.rank = studentStats[idx-1].rank;
-                        s.rankRaw = studentStats[idx-1].rankRaw;
-                    } else {
-                        s.rank = ScoringEngine.getOrdinal(rank);
-                        s.rankRaw = rank;
+                    if (idx > 0 && s.average < studentStats[idx-1].average) {
+                        denseRank++;
                     }
+                    s.rank = ScoringEngine.getOrdinal(denseRank);
+                    s.rankRaw = denseRank;
                     s.specializationSize = studentStats.length;
                 });
             }
@@ -9010,7 +9009,7 @@ export const UI = {
                     if (sub) loadedSubjects.push(sub);
                 }
 
-                // 1. First Pass: Calculate averages for all students
+                // 1. First Pass: Calculate averages for all students (full precision for accurate ranking)
                 let studentStats = loadedStudents.map(student => {
                     const studentScores = loadedScores.filter(s => s.student_id === student.student_id);
                     let totalScore = 0;
@@ -9020,59 +9019,55 @@ export const UI = {
                         totalScore += Number(s.total) || 0;
                     });
                     
-                    const average = subjectCount > 0 ? (totalScore / subjectCount).toFixed(2) : 0;
+                    const average = subjectCount > 0 ? (totalScore / subjectCount) : 0;
                     
                     return {
                         ...student,
                         totalScore,
-                        average: Number(average)
+                        average: average // full precision — 70.01% ranks above 70.00%
                     };
                 });
 
-                // 2. Second Pass: Group by specialization and calculate ranks
-                // If it's an SSS class, we rank within sub_class. Otherwise, we rank within the whole class.
-                const isSenior = className.includes('SSS') || className.includes('SS ');
+                // 2. Second Pass: Detect sub-groups (arms A/B/C or specializations Science/Arts) and rank within them
+                // If students have multiple distinct sub_class values, rank within each group; otherwise rank all together
+                const distinctSubClasses = [...new Set(studentStats.map(s => (s.sub_class || '').trim()).filter(sc => sc.length > 0))];
+                const hasSubGroups = distinctSubClasses.length > 1;
                 
-                if (isSenior) {
+                if (hasSubGroups) {
                     const groups = {};
                     studentStats.forEach(s => {
-                        const spec = s.sub_class || 'General';
-                        if (!groups[spec]) groups[spec] = [];
-                        groups[spec].push(s);
+                        const grp = (s.sub_class || '').trim() || 'General';
+                        if (!groups[grp]) groups[grp] = [];
+                        groups[grp].push(s);
                     });
 
-                    Object.keys(groups).forEach(spec => {
-                        const members = groups[spec];
+                    Object.keys(groups).forEach(grp => {
+                        const members = groups[grp];
                         members.sort((a, b) => b.average - a.average);
+                        let denseRank = 1;
                         members.forEach((s, idx) => {
-                            let rank = idx + 1;
-                            if (idx > 0 && s.average === members[idx-1].average) {
-                                // Tie handling (optional, but good for consistency)
-                                s.rank = members[idx-1].rank;
-                                s.rankRaw = members[idx-1].rankRaw;
-                            } else {
-                                s.rank = ScoringEngine.getOrdinal(rank);
-                                s.rankRaw = rank;
+                            if (idx > 0 && s.average < members[idx-1].average) {
+                                denseRank++; // Dense ranking: no gaps after ties
                             }
+                            s.rank = ScoringEngine.getOrdinal(denseRank);
+                            s.rankRaw = denseRank;
                             s.specializationSize = members.length;
                         });
                     });
                 } else {
                     studentStats.sort((a, b) => b.average - a.average);
+                    let denseRank = 1;
                     studentStats.forEach((s, idx) => {
-                        let rank = idx + 1;
-                        if (idx > 0 && s.average === studentStats[idx-1].average) {
-                            s.rank = studentStats[idx-1].rank;
-                            s.rankRaw = studentStats[idx-1].rankRaw;
-                        } else {
-                            s.rank = ScoringEngine.getOrdinal(rank);
-                            s.rankRaw = rank;
+                        if (idx > 0 && s.average < studentStats[idx-1].average) {
+                            denseRank++; // Dense ranking: no gaps after ties
                         }
+                        s.rank = ScoringEngine.getOrdinal(denseRank);
+                        s.rankRaw = denseRank;
                         s.specializationSize = studentStats.length;
                     });
                 }
 
-                // Keep rank order: highest average first — force a final sort for all cases (especially senior classes where ranking was done within groups)
+                // Final sort: highest average first for display (especially needed when sub-groups were ranked separately)
                 studentStats.sort((a, b) => b.average - a.average);
 
                 // Final Analytics for Header
@@ -9127,7 +9122,7 @@ export const UI = {
                                             <td>${idx + 1}</td>
                                             <td style="font-weight: 600;">${s.name}</td>
                                             <td>${s.totalScore}</td>
-                                            <td class="${avgClass}">${s.average}%</td>
+                                            <td class="${avgClass}">${s.average.toFixed(2)}%</td>
                                             <td style="font-weight: 700;">${s.rank || 'N/A'}</td>
                                             <td><span class="grade-badge ${badgeClass}">${statusText}</span></td>
                                             <td style="text-align: right;">

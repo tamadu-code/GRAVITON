@@ -853,7 +853,7 @@ export async function generateMastersheet(className, students, subjects, scores,
     let currentRank = 1;
     const body = bodyData.map((row, index) => {
         if (index > 0 && parseFloat(bodyData[index - 1].avg) > parseFloat(row.avg)) {
-            currentRank = index + 1;
+            currentRank++; // Dense ranking: no gaps after ties
         }
         return [row.name, ...row.scores, row.total, row.avg, currentRank];
     });
