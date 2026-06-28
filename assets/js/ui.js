@@ -9067,8 +9067,18 @@ export const UI = {
                     });
                 }
 
-                // Final sort: highest average first for display (especially needed when sub-groups were ranked separately)
-                studentStats.sort((a, b) => b.average - a.average);
+                // Final sort for display
+                if (hasSubGroups) {
+                    // Group by specialization/arm first, then highest average first within each group
+                    studentStats.sort((a, b) => {
+                        const grpA = (a.sub_class || '').trim();
+                        const grpB = (b.sub_class || '').trim();
+                        if (grpA !== grpB) return grpA.localeCompare(grpB);
+                        return b.average - a.average;
+                    });
+                } else {
+                    studentStats.sort((a, b) => b.average - a.average);
+                }
 
                 // Final Analytics for Header
                 let qualifiedPass = studentStats.filter(s => s.average >= 50).length;
@@ -9108,30 +9118,51 @@ export const UI = {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${studentStats.map((s, idx) => {
-                                        let badgeClass = 'grade-danger';
-                                        let statusText = 'Fail';
-                                        let avgClass = 'avg-fail';
-                                        
-                                        if (s.average >= 75) { badgeClass = 'grade-gold'; statusText = 'Elite (A)'; avgClass = 'avg-pass'; }
-                                        else if (s.average >= 60) { badgeClass = 'grade-silver'; statusText = 'Credit (B/C)'; avgClass = 'avg-pass'; }
-                                        else if (s.average >= 50) { badgeClass = 'grade-bronze'; statusText = 'Pass (D/E)'; avgClass = 'avg-pass'; }
-                                        
-                                        return `
-                                        <tr>
-                                            <td>${idx + 1}</td>
-                                            <td style="font-weight: 600;">${s.name}</td>
-                                            <td>${s.totalScore}</td>
-                                            <td class="${avgClass}">${s.average.toFixed(2)}%</td>
-                                            <td style="font-weight: 700;">${s.rank || 'N/A'}</td>
-                                            <td><span class="grade-badge ${badgeClass}">${statusText}</span></td>
-                                            <td style="text-align: right;">
-                                                <button class="btn btn-secondary btn-sm generate-individual-pdf" data-id="${s.student_id}" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
-                                                    <i data-lucide="file-text" style="width: 12px; height: 12px;"></i> View
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    `}).join('')}
+                                    ${(() => {
+                                        let groupCounter = 0;
+                                        let lastGroup = null;
+                                        return studentStats.map((s, idx) => {
+                                            let badgeClass = 'grade-danger';
+                                            let statusText = 'Fail';
+                                            let avgClass = 'avg-fail';
+                                            
+                                            if (s.average >= 75) { badgeClass = 'grade-gold'; statusText = 'Elite (A)'; avgClass = 'avg-pass'; }
+                                            else if (s.average >= 60) { badgeClass = 'grade-silver'; statusText = 'Credit (B/C)'; avgClass = 'avg-pass'; }
+                                            else if (s.average >= 50) { badgeClass = 'grade-bronze'; statusText = 'Pass (D/E)'; avgClass = 'avg-pass'; }
+                                            
+                                            let groupHeader = '';
+                                            const curGroup = (s.sub_class || '').trim();
+                                            if (hasSubGroups && curGroup !== lastGroup) {
+                                                groupCounter = 0;
+                                                lastGroup = curGroup;
+                                                const groupSize = studentStats.filter(st => (st.sub_class || '').trim() === curGroup).length;
+                                                groupHeader = `<tr style="background: linear-gradient(135deg, #0f172a, #1e293b);">
+                                                    <td colspan="7" style="color: #f8fafc; font-weight: 800; padding: 0.7rem 1rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; border: none;">
+                                                        <span style="display: inline-flex; align-items: center; gap: 0.5rem;">
+                                                            <span style="width: 8px; height: 8px; border-radius: 50%; background: #818cf8; display: inline-block;"></span>
+                                                            ${curGroup || 'General'} — ${groupSize} Student${groupSize !== 1 ? 's' : ''}
+                                                        </span>
+                                                    </td>
+                                                </tr>`;
+                                            }
+                                            groupCounter++;
+                                            
+                                            return `${groupHeader}
+                                            <tr>
+                                                <td>${groupCounter}</td>
+                                                <td style="font-weight: 600;">${s.name}</td>
+                                                <td>${s.totalScore}</td>
+                                                <td class="${avgClass}">${s.average.toFixed(2)}%</td>
+                                                <td style="font-weight: 700;">${s.rank || 'N/A'}${hasSubGroups ? ' / ' + s.specializationSize : ''}</td>
+                                                <td><span class="grade-badge ${badgeClass}">${statusText}</span></td>
+                                                <td style="text-align: right;">
+                                                    <button class="btn btn-secondary btn-sm generate-individual-pdf" data-id="${s.student_id}" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
+                                                        <i data-lucide="file-text" style="width: 12px; height: 12px;"></i> View
+                                                    </button>
+                                                </td>
+                                            </tr>`;
+                                        }).join('');
+                                    })()}
                                 </tbody>
                             </table>
                         </div>
