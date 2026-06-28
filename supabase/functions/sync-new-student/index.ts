@@ -58,7 +58,7 @@ serve(async (req) => {
       }
 
       return new Response(JSON.stringify({ success: true, updated: true, attendance_code: record.attendance_code }), {
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       })
     }
@@ -89,7 +89,7 @@ serve(async (req) => {
         if (updateError) throw updateError
 
         return new Response(JSON.stringify({ success: true, attendance_code, existed: true }), {
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 200,
         })
       }

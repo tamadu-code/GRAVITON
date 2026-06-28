@@ -496,6 +496,154 @@ export const UI = {
             const allSettings = await db.settings.toArray();
             const settings = {};
             allSettings.forEach(s => settings[s.key] = s.value);
+
+            // Auto-update term status based on closure and resumption dates
+            if (settings.termClosure && settings.nextTermBegins) {
+                const d = new Date();
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                const localToday = `${year}-${month}-${day}`;
+                
+                let calculatedStatus = 'Active';
+                if (localToday >= settings.termClosure && localToday < settings.nextTermBegins) {
+                    calculatedStatus = 'Inactive';
+                }
+                
+                if (settings.termStatus !== calculatedStatus) {
+                    settings.termStatus = calculatedStatus;
+                    const dbEntry = allSettings.find(s => s.key === 'termStatus');
+                    if (dbEntry) {
+                        dbEntry.value = calculatedStatus;
+                        dbEntry.is_synced = 0;
+                        await db.settings.update(dbEntry.id, { value: calculatedStatus, is_synced: 0 });
+                    } else {
+                        const newEntry = { id: 'SET_TERMSTATUS', key: 'termStatus', value: calculatedStatus, is_synced: 0 };
+                        allSettings.push(newEntry);
+                        await db.settings.add(prepareForSync(newEntry));
+                    }
+                    console.log(`[AutoTermStatus] Automatically updated termStatus to: ${calculatedStatus}`);
+                    this.debouncedSync();
+                }
+            }
+            
+            // Auto-Transition Academic Cycle when resumption date is reached/passed
+            if (settings.nextTermBegins) {
+                const d = new Date();
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                const localToday = `${year}-${month}-${day}`;
+                
+                if (localToday >= settings.nextTermBegins) {
+                    let nextTerm = '';
+                    let nextSession = settings.currentSession || '2025/2026';
+                    const currentTerm = settings.currentTerm || '1st Term';
+
+                    if (currentTerm === '1st Term') {
+                        nextTerm = '2nd Term';
+                    } else if (currentTerm === '2nd Term') {
+                        nextTerm = '3rd Term';
+                    } else if (currentTerm === '3rd Term') {
+                        // Execute promotion before transitioning session/term
+                        try {
+                            const success = await this.executePromotion();
+                            if (success) {
+                                nextTerm = '1st Term';
+                                const years = nextSession.split('/').map(Number);
+                                if (years.length === 2 && !isNaN(years[0]) && !isNaN(years[1])) {
+                                    nextSession = `${years[0] + 1}/${years[1] + 1}`;
+                                }
+                            } else {
+                                console.log('[CycleAutoTransition] Auto promotion was canceled or failed. Halting transition.');
+                            }
+                        } catch (promoErr) {
+                            console.error('[CycleAutoTransition] Auto promotion failed:', promoErr);
+                        }
+                    }
+
+                    if (nextTerm) {
+                        const updateSetting = async (k, val) => {
+                            const existing = await db.settings.where('key').equals(k).first();
+                            if (existing) {
+                                await db.settings.update(existing.id, prepareForSync({ key: k, value: val, is_synced: 0 }));
+                            } else {
+                                await db.settings.add(prepareForSync({ id: `SET_${k.toUpperCase()}`, key: k, value: val, is_synced: 0 }));
+                            }
+                        };
+                        
+                        await updateSetting('currentTerm', nextTerm);
+                        await updateSetting('currentSession', nextSession);
+                        await updateSetting('termClosure', '');
+                        await updateSetting('nextTermBegins', '');
+                        await updateSetting('termStatus', 'Active');
+
+                        // Update local variables in settings
+                        settings.currentTerm = nextTerm;
+                        settings.currentSession = nextSession;
+                        settings.termClosure = '';
+                        settings.nextTermBegins = '';
+                        settings.termStatus = 'Active';
+
+                        const termEntry = allSettings.find(s => s.key === 'currentTerm');
+                        if (termEntry) termEntry.value = nextTerm;
+                        const sessEntry = allSettings.find(s => s.key === 'currentSession');
+                        if (sessEntry) sessEntry.value = nextSession;
+                        const closureEntry = allSettings.find(s => s.key === 'termClosure');
+                        if (closureEntry) closureEntry.value = '';
+                        const resumptionEntry = allSettings.find(s => s.key === 'nextTermBegins');
+                        if (resumptionEntry) resumptionEntry.value = '';
+                        const statusEntry = allSettings.find(s => s.key === 'termStatus');
+                        if (statusEntry) statusEntry.value = 'Active';
+
+                        console.log(`[CycleAutoTransition] Successfully moved to ${nextTerm} (${nextSession})`);
+                        Notifications.show(`School cycle transitioned to ${nextTerm} (${nextSession})!`, 'success');
+                        this.debouncedSync();
+                    }
+                }
+            }
+
+            // Auto-sync Nigerian public holidays once a day
+            const syncHolidaysToday = async () => {
+                const d = new Date();
+                const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                const lastSync = localStorage.getItem('last_holiday_sync_date');
+                
+                if (lastSync !== todayStr && navigator.onLine) {
+                    try {
+                        const currentYear = d.getFullYear();
+                        const response = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${currentYear}/NG`);
+                        if (response.ok) {
+                            const holidaysData = await response.json();
+                            const holidayDates = holidaysData.map(h => h.date);
+                            
+                            const existingHolidays = await db.settings.where('key').equals('holidays').first();
+                            let currentHolidays = existingHolidays?.value ? existingHolidays.value.split(/[,\n]+/).map(x => x.trim()).filter(x => x) : [];
+                            
+                            const updatedHolidaysList = [...new Set([...currentHolidays, ...holidayDates])].sort();
+                            const updatedValue = updatedHolidaysList.join(',');
+                            
+                            if (existingHolidays) {
+                                if (existingHolidays.value !== updatedValue) {
+                                    await db.settings.update(existingHolidays.id, { value: updatedValue, is_synced: 0 });
+                                }
+                            } else {
+                                await db.settings.add(prepareForSync({
+                                    id: 'SET_HOLIDAYS',
+                                    key: 'holidays',
+                                    value: updatedValue,
+                                    is_synced: 0
+                                }));
+                            }
+                            localStorage.setItem('last_holiday_sync_date', todayStr);
+                            console.log('[AutoHolidays] Sync complete for Nigeria public holidays:', updatedHolidaysList);
+                        }
+                    } catch (err) {
+                        console.warn('[AutoHolidays] Sync failed:', err.message);
+                    }
+                }
+            };
+            syncHolidaysToday();
             
             const schoolName = (settings.schoolName || localStorage.getItem('tenant_school_name') || '') + '';
             const schoolLogo = settings.schoolLogo;
@@ -8924,8 +9072,7 @@ export const UI = {
                     });
                 }
 
-                // Restore alpha sort for UI display if preferred, or keep rank sort
-                studentStats.sort((a,b) => a.name.localeCompare(b.name));
+                // Keep rank order: highest average first (students are already sorted by average descending from ranking logic above)
 
                 // Final Analytics for Header
                 let qualifiedPass = studentStats.filter(s => s.average >= 50).length;
@@ -16744,8 +16891,8 @@ export const UI = {
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Term Status</label>
-                            <select id="set-term-status" class="input" style="font-weight: 800; color: ${config.termStatus === 'Active' ? '#10b981' : '#ef4444'};">
+                            <label>Term Status ${settings.termClosure && settings.nextTermBegins ? '<span style="font-size: 0.75rem; color: #4f46e5; font-weight: 800; margin-left: 0.25rem;">(Automated)</span>' : ''}</label>
+                            <select id="set-term-status" class="input" style="font-weight: 800; color: ${config.termStatus === 'Active' ? '#10b981' : '#ef4444'};" ${settings.termClosure && settings.nextTermBegins ? 'disabled' : ''}>
                                 <option value="Active" ${config.termStatus === 'Active' ? 'selected' : ''}>In Session (Active)</option>
                                 <option value="Inactive" ${config.termStatus === 'Inactive' ? 'selected' : ''}>On Holiday (Inactive)</option>
                             </select>
@@ -17989,18 +18136,46 @@ export const UI = {
     },
 
     async executePromotion() {
-        if (!confirm('WARNING: You are about to promote all students to their next classes. This action should only be taken at the end of the academic session. Do you wish to proceed?')) return;
+        const settingsList = await db.settings.toArray();
+        const settings = {};
+        settingsList.forEach(s => settings[s.key] = s.value);
+        
+        const termStatus = settings.termStatus || 'Active';
+        if (termStatus !== 'Inactive') {
+            Notifications.show('School-wide promotion can only be executed when the school is on holiday (Inactive).', 'error');
+            return false;
+        }
+
+        if (!confirm('WARNING: You are about to promote all students to their next classes. This action should only be taken at the end of the academic session. Do you wish to proceed?')) return false;
 
         Notifications.show('Executing school-wide promotion...', 'info');
         
         try {
+            const currentSession = settings.currentSession || '2025/2026';
+            const currentTerm = settings.currentTerm || '3rd Term';
+
+            // Load all scores for the current term and session to compute averages
+            const allScores = await db.scores.toArray();
+            const termScores = allScores.filter(sc => sc.term === currentTerm && sc.session === currentSession);
+
             const students = await db.students.where('is_active').equals(1).toArray();
             let promoted = 0;
             let graduated = 0;
+            let repeated = 0;
 
             for (const s of students) {
                 const currentClass = s.class_name.toUpperCase();
                 let nextClass = '';
+
+                // Calculate average for current term/session
+                const studentScores = termScores.filter(sc => sc.student_id === s.student_id && sc.total !== null && sc.total !== undefined && sc.total !== '');
+                const totalScore = studentScores.reduce((sum, sc) => sum + (parseFloat(sc.total) || 0), 0);
+                const average = studentScores.length > 0 ? (totalScore / studentScores.length) : 0;
+
+                if (average < 40) {
+                    repeated++;
+                    continue; // Skip promotion, student repeats/retains current class
+                }
 
                 // Promotion Logic
                 if (currentClass.includes('JSS 1') || currentClass.includes('JS 1')) nextClass = 'JSS 2';
@@ -18020,11 +18195,13 @@ export const UI = {
                 }
             }
 
-            Notifications.show(`Promotion Complete! ${promoted} students promoted, ${graduated} graduated.`, 'success');
+            Notifications.show(`Promotion Complete! ${promoted} students promoted, ${graduated} graduated, ${repeated} repeated.`, 'success');
             this.debouncedSync();
+            return true;
         } catch (e) {
             console.error(e);
             Notifications.show('Promotion failed.', 'error');
+            return false;
         }
     },
 

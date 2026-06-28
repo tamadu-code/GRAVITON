@@ -80,12 +80,19 @@ serve(async (req) => {
         });
         
         if (error) {
-           console.log(`Failed to update user by ID. Attempting to list users by email...`);
-           // Fallback: list users and match email
-           const { data: users } = await supabase.auth.admin.listUsers();
-           const user = users.users.find(u => u.email === email);
-           if (user) {
-               userId = user.id;
+           console.log(`Failed to update user by ID. Attempting to locate user in auth.users by email...`);
+           // Fallback: query auth.users directly
+           const { data: authUser, error: authUserErr } = await supabase
+             .schema('auth')
+             .from('users')
+             .select('id')
+             .eq('email', email)
+             .maybeSingle();
+             
+           if (authUserErr) throw authUserErr;
+           
+           if (authUser) {
+               userId = authUser.id;
                const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, { email, password, email_confirm: true, user_metadata: userMetadata });
                if (updateErr) throw updateErr;
            } else {
@@ -112,12 +119,18 @@ serve(async (req) => {
         })
     } else {
         // Find if user exists in auth.users but not in profiles
-        const { data: users } = await supabase.auth.admin.listUsers();
-        const existingUser = users.users.find(u => u.email === email);
+        const { data: authUser, error: authUserErr } = await supabase
+          .schema('auth')
+          .from('users')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle();
+          
+        if (authUserErr) throw authUserErr;
         
-        if (existingUser) {
-            console.log(`User found in auth.users but not in profiles. Updating password...`);
-            userId = existingUser.id;
+        if (authUser) {
+            console.log(`User found in auth.users (ID: ${authUser.id}) but not in profiles. Updating password...`);
+            userId = authUser.id;
             const userMetadata: any = { full_name, role };
             if (tenant_id) userMetadata.tenant_id = tenant_id;
             if (assigned_id) userMetadata.assigned_id = assigned_id;

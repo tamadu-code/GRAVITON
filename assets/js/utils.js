@@ -430,7 +430,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     // Conditional Ranking Display
     const gSystem = schoolInfo.gradingSystem || 'Positional Ranking';
     if (gSystem === 'Positional Ranking') {
-        doc.text(`POSITION: ${schoolInfo.position || 'N/A'} / ${schoolInfo.specializationSize || schoolInfo.classSize || '0'}`, rightX, y);
+        doc.text(`POSITION: ${schoolInfo.position || 'N/A'}`, rightX, y);
     } else if (gSystem === 'Point System (5.0 CGPA)') {
         doc.text(`GPA: ${termGpa} / 5.00`, rightX, y);
         doc.text(`CGPA: ${cgpa} / 5.00`, rightX, y + 4);
@@ -446,7 +446,18 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     y += 7;
     // Row 4
     doc.text(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'}`, leftX, y);
-    doc.text(`PASS/FAIL: ${parseFloat(avg) >= 40 ? 'PASS' : 'FAIL'}`, midX, y);
+    const isThirdTerm = (schoolInfo.term || '').toLowerCase().includes('third');
+    if (isThirdTerm) {
+        const decision = parseFloat(avg) >= 40 ? 'PROMOTED' : 'REPEAT';
+        const decisionColor = parseFloat(avg) >= 40 ? [0, 128, 0] : [200, 0, 0];
+        doc.setTextColor(...decisionColor);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`DECISION: ${decision}`, midX, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+    } else {
+        doc.text(`PASS/FAIL: ${parseFloat(avg) >= 40 ? 'PASS' : 'FAIL'}`, midX, y);
+    }
     doc.text(`NEXT BEGINS: ${schoolInfo.termStart || '13th April, 2026'}`, rightX, y);
     
     // --- Subjects Table ---
@@ -596,7 +607,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     // --- QR Code Security Section ---
     let gpaCgpaDetails = "";
     if (gSystem === 'Positional Ranking') {
-        gpaCgpaDetails = `POSITION: ${schoolInfo.position || 'N/A'} / ${schoolInfo.specializationSize || schoolInfo.classSize || '0'}`;
+        gpaCgpaDetails = `POSITION: ${schoolInfo.position || 'N/A'}`;
     } else if (gSystem === 'Point System (5.0 CGPA)') {
         gpaCgpaDetails = `GPA: ${termGpa} / 5.00\nCGPA: ${cgpa} / 5.00`;
     } else {
@@ -613,7 +624,11 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     }
     
     qrLines.push(`TERM: ${scores[0]?.term || 'N/A'} AVERAGE: ${avg}%`);
-    qrLines.push(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'} PASS/FAIL: ${parseFloat(avg) >= 40 ? 'PASS' : 'FAIL'} NEXT BEGINS: ${schoolInfo.termStart || '13th April, 2026'}`);
+    const isThirdTermQR = (schoolInfo.term || '').toLowerCase().includes('third');
+    const passFailOrDecision = isThirdTermQR
+        ? `DECISION: ${parseFloat(avg) >= 40 ? 'PROMOTED' : 'REPEAT'}`
+        : `PASS/FAIL: ${parseFloat(avg) >= 40 ? 'PASS' : 'FAIL'}`;
+    qrLines.push(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'} ${passFailOrDecision} NEXT BEGINS: ${schoolInfo.termStart || '13th April, 2026'}`);
 
     const qrPayload = qrLines.join('\n');
     try {
@@ -832,12 +847,12 @@ export async function generateMastersheet(className, students, subjects, scores,
         return { name: student.name, scores: studentScores, total, avg };
     });
     
-    // Fix Numerical Ranking Sort (Descending)
-    bodyData.sort((a, b) => b.total - a.total);
+    // Fix Numerical Ranking Sort (Descending by Average)
+    bodyData.sort((a, b) => parseFloat(b.avg) - parseFloat(a.avg));
     
     let currentRank = 1;
     const body = bodyData.map((row, index) => {
-        if (index > 0 && bodyData[index - 1].total > row.total) {
+        if (index > 0 && parseFloat(bodyData[index - 1].avg) > parseFloat(row.avg)) {
             currentRank = index + 1;
         }
         return [row.name, ...row.scores, row.total, row.avg, currentRank];
