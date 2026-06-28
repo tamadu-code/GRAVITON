@@ -20,7 +20,9 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     
     // --- New Path: Update Auth by User ID (e.g. Email / Profile changes) ---
-    if (id) {
+    // Make sure id is a valid UUID (not a temporary client-side ID like STFxxxxxx)
+    const isUUID = id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+    if (isUUID) {
       console.log(`Updating auth user for ID: ${id}...`);
       const userMetadata: any = { full_name, role };
       if (tenant_id) userMetadata.tenant_id = tenant_id;
@@ -66,12 +68,27 @@ serve(async (req) => {
     let userId = profile?.id;
 
     if (!userId) {
-      console.log(`Checking auth list for existing user with email: ${email}...`);
-      const { data: listData, error: listError } = await supabase.auth.admin.listUsers();
-      if (listError) throw listError;
-      const authUser = listData.users.find((u: any) => u.email === email);
-      if (authUser) {
-        userId = authUser.id;
+      let page = 1;
+      let foundUser = null;
+      while (true) {
+        console.log(`Checking auth list page ${page} for existing user with email: ${email}...`);
+        const { data: listData, error: listError } = await supabase.auth.admin.listUsers({
+          page: page,
+          perPage: 100
+        });
+        if (listError) throw listError;
+        if (!listData || !listData.users || listData.users.length === 0) break;
+        
+        const match = listData.users.find((u: any) => u.email === email);
+        if (match) {
+          foundUser = match;
+          break;
+        }
+        if (listData.users.length < 100) break;
+        page++;
+      }
+      if (foundUser) {
+        userId = foundUser.id;
       }
     }
 
