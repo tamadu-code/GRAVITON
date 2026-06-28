@@ -1,4 +1,4 @@
-const CACHE_NAME = 'graviton-cache-v351';
+const CACHE_NAME = 'graviton-cache-v352';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

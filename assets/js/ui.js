@@ -9072,7 +9072,8 @@ export const UI = {
                     });
                 }
 
-                // Keep rank order: highest average first (students are already sorted by average descending from ranking logic above)
+                // Keep rank order: highest average first — force a final sort for all cases (especially senior classes where ranking was done within groups)
+                studentStats.sort((a, b) => b.average - a.average);
 
                 // Final Analytics for Header
                 let qualifiedPass = studentStats.filter(s => s.average >= 50).length;
@@ -9106,6 +9107,7 @@ export const UI = {
                                         <th>Student Name</th>
                                         <th>Total Score</th>
                                         <th>Average</th>
+                                        <th>Position</th>
                                         <th>Status</th>
                                         <th style="text-align: right;">Action</th>
                                     </tr>
@@ -9126,6 +9128,7 @@ export const UI = {
                                             <td style="font-weight: 600;">${s.name}</td>
                                             <td>${s.totalScore}</td>
                                             <td class="${avgClass}">${s.average}%</td>
+                                            <td style="font-weight: 700;">${s.rank || 'N/A'}</td>
                                             <td><span class="grade-badge ${badgeClass}">${statusText}</span></td>
                                             <td style="text-align: right;">
                                                 <button class="btn btn-secondary btn-sm generate-individual-pdf" data-id="${s.student_id}" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">

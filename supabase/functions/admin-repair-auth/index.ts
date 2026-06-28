@@ -65,13 +65,23 @@ serve(async (req) => {
     
     let userId = profile?.id;
 
-    if (userId) {
-        console.log(`User found in profiles (${userId}). Updating password via admin API...`);
-        // We update the password for the existing user
-        const userMetadata: any = { full_name, role };
-        if (tenant_id) userMetadata.tenant_id = tenant_id;
-        if (assigned_id) userMetadata.assigned_id = assigned_id;
+    if (!userId) {
+      console.log(`Checking auth list for existing user with email: ${email}...`);
+      const { data: listData, error: listError } = await supabase.auth.admin.listUsers();
+      if (listError) throw listError;
+      const authUser = listData.users.find((u: any) => u.email === email);
+      if (authUser) {
+        userId = authUser.id;
+      }
+    }
 
+    const userMetadata: any = { full_name, role };
+    if (tenant_id) userMetadata.tenant_id = tenant_id;
+    if (assigned_id) userMetadata.assigned_id = assigned_id;
+
+    if (userId) {
+        console.log(`User found (${userId}). Updating password via admin API...`);
+        // We update the password for the existing user
         const { data, error } = await supabase.auth.admin.updateUserById(userId, {
             email: email,
             password: password,
@@ -79,26 +89,7 @@ serve(async (req) => {
             user_metadata: userMetadata
         });
         
-        if (error) {
-           console.log(`Failed to update user by ID. Attempting to locate user in auth.users by email...`);
-           // Fallback: query auth.users directly
-           const { data: authUser, error: authUserErr } = await supabase
-             .schema('auth')
-             .from('users')
-             .select('id')
-             .eq('email', email)
-             .maybeSingle();
-             
-           if (authUserErr) throw authUserErr;
-           
-           if (authUser) {
-               userId = authUser.id;
-               const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, { email, password, email_confirm: true, user_metadata: userMetadata });
-               if (updateErr) throw updateErr;
-           } else {
-               throw error;
-           }
-        }
+        if (error) throw error;
 
         // Make sure profile is correct and has tenant_id / assigned_id
         const profileUpdate: any = {
@@ -118,51 +109,8 @@ serve(async (req) => {
           status: 200,
         })
     } else {
-        // Find if user exists in auth.users but not in profiles
-        const { data: authUser, error: authUserErr } = await supabase
-          .schema('auth')
-          .from('users')
-          .select('id')
-          .eq('email', email)
-          .maybeSingle();
-          
-        if (authUserErr) throw authUserErr;
-        
-        if (authUser) {
-            console.log(`User found in auth.users (ID: ${authUser.id}) but not in profiles. Updating password...`);
-            userId = authUser.id;
-            const userMetadata: any = { full_name, role };
-            if (tenant_id) userMetadata.tenant_id = tenant_id;
-            if (assigned_id) userMetadata.assigned_id = assigned_id;
-
-            const { error: updateErr } = await supabase.auth.admin.updateUserById(userId, { password, email_confirm: true, user_metadata: userMetadata });
-            if (updateErr) throw updateErr;
-            
-            // Re-create profile
-            const profileData: any = {
-                id: userId,
-                email: email,
-                full_name: full_name || '',
-                role: role || 'Student',
-                status: 'Active',
-                updated_at: new Date().toISOString()
-            };
-            if (tenant_id) profileData.tenant_id = tenant_id;
-            if (assigned_id) profileData.assigned_id = assigned_id;
-            await supabase.from('profiles').upsert(profileData);
-            
-            return new Response(JSON.stringify({ success: true, message: 'Password reset and profile restored', user: { id: userId } }), {
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 200,
-            });
-        }
-        
         console.log(`User not found anywhere. Creating new auth user...`);
         // User does not exist, create them
-        const userMetadata: any = { full_name, role };
-        if (tenant_id) userMetadata.tenant_id = tenant_id;
-        if (assigned_id) userMetadata.assigned_id = assigned_id;
-
         const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
             email: email,
             password: password,
