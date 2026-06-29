@@ -24770,45 +24770,8 @@ export const UI = {
             const studentIdUpper = (s.student_id || '').trim().toUpperCase();
             let r = resultEntries[studentIdUpper];
             
-            // Fallback: If not started/no result, check for gradebook scores for this exam
-            if (!r) {
-                let hasRegisteredScore = false;
-                let fallbackScore = 0;
-                if (exam.is_unified) {
-                    const matchedScores = sections.map(sec => {
-                        const scoreRecord = studentScoresMap[studentIdUpper]?.[sec.subject_id];
-                        return scoreRecord ? (parseFloat(scoreRecord[sec.score_field || 'exam']) || 0) : null;
-                    }).filter(score => score !== null);
-                    if (matchedScores.length > 0) {
-                        hasRegisteredScore = true;
-                        fallbackScore = matchedScores.reduce((sum, scoreVal) => sum + scoreVal, 0);
-                    }
-                } else {
-                    const subId = exam.subject_id;
-                    if (subId) {
-                        const scoreRecord = studentScoresMap[studentIdUpper]?.[subId];
-                        if (scoreRecord) {
-                            const possibleScore = parseFloat(scoreRecord.exam) || parseFloat(scoreRecord.test2) || parseFloat(scoreRecord.test1) || 0;
-                            if (possibleScore > 0) {
-                                hasRegisteredScore = true;
-                                fallbackScore = possibleScore;
-                            }
-                        }
-                    }
-                }
-
-                if (hasRegisteredScore) {
-                    r = {
-                        student_id: s.student_id,
-                        status: 'Completed',
-                        score: fallbackScore,
-                        total_marks: exam.is_unified ? sections.reduce((sum, sec) => sum + (parseFloat(sec.target_mark) || 60), 0) : (exam.total_marks || exam.total_questions || 60),
-                        answers: {},
-                        violations: [],
-                        is_fallback: true
-                    };
-                }
-            }
+            // CBT status is determined ONLY from cbt_results and exam_progress tables.
+            // Gradebook scores are NOT consulted — they may have been entered manually.
 
             const studentName = s.name || 'Unknown Student';
             const status = r ? r.status : 'Not Started';
