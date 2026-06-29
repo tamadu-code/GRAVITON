@@ -11504,6 +11504,8 @@ export const UI = {
                         class_name: cls,
                         question_text: q.question_text,
                         passage_text: q.passage_text || null,
+                        term: examData.term || '',
+                        session: examData.session || '',
                         type: q.type || 'mcq',
                         marks: q.marks || 1
                     });
@@ -14237,16 +14239,28 @@ export const UI = {
         // Normalize line endings
         text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-        // Regex to find answer markers (e.g. [Ans: C], [Answer: Photosynthesis], Correct Option: C, etc.)
-        const ansRegex = /(?:\[\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\]|\(\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\)|(?:Correct|Correct\s+Option|Answer)\s*:\s*([^\n\r]*))/gi;
+        // New, safer Regex to find answer markers (requiring start of line or newline prefix)
+        const ansRegex = /(?:\[\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\]|\(\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\)|(?:^|[\r\n])\s*(?:Correct\s+Option|Correct\s+Answer|Correct|Answer|Ans)\s*:\s*([^\n\r]*))/gi;
         
         let matches = [];
         let match;
         while ((match = ansRegex.exec(text)) !== null) {
+            // Because of the (?:^|[\r\n]) prefix, the matched string might include the preceding newline character.
+            // We adjust index and length to NOT include that preceding character in our matched boundaries.
+            let matchStr = match[0];
+            let matchIndex = match.index;
+            
+            const prefixMatch = matchStr.match(/^(?:^|[\r\n])\s*/);
+            if (prefixMatch) {
+                const prefixLen = prefixMatch[0].length;
+                matchStr = matchStr.substring(prefixLen);
+                matchIndex += prefixLen;
+            }
+
             matches.push({
-                index: match.index,
-                length: match[0].length,
-                fullMatch: match[0],
+                index: matchIndex,
+                length: matchStr.length,
+                fullMatch: matchStr,
                 answer: (match[1] || match[2] || match[3] || '').trim()
             });
         }
@@ -24389,10 +24403,10 @@ export const UI = {
                     if (client) {
                         const BATCH_SIZE = 50;
                         
-                        // Strict whitelists to ensure no schema mismatch error (PGRST204)
-                        const qCols = ['id', 'exam_id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'updated_at'];
-                        const bankCols = ['id', 'subject_id', 'class_name', 'question_text', 'topic_area', 'difficulty_level', 'updated_at'];
-                        const optCols = ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'updated_at'];
+                        // Standardized whitelists (matching supabase-client.js whitelists) to ensure no schema mismatch or RLS error
+                        const qCols = ['id', 'exam_id', 'question_text', 'passage_text', 'option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'correct_option', 'marks', 'tenant_id', 'updated_at'];
+                        const bankCols = ['id', 'subject_id', 'class_name', 'question_text', 'passage_text', 'term', 'session', 'topic_area', 'difficulty_level', 'tenant_id', 'updated_at'];
+                        const optCols = ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'tenant_id', 'updated_at'];
 
                         for (let i = 0; i < newQuestions.length; i += BATCH_SIZE) {
                             const batch = newQuestions.slice(i, i + BATCH_SIZE);
