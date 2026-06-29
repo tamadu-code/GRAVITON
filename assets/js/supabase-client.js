@@ -366,12 +366,11 @@ export async function syncFromCloud(forceAll = false) {
     const isSuperAdmin = userRole === 'SuperAdmin';
 
     try {
-        for (const table of tables) {
-            console.log(`[Sync] Pulling table: ${table}...`);
+        const syncPromises = tables.map(async (table) => {
+            let totalPulled = 0;
             try {
                 let hasMore = true;
                 let offset = 0;
-                let totalPulled = 0;
                 const BATCH_SIZE = 1000; // Match standard Supabase default limit
 
                 while (hasMore) {
@@ -380,7 +379,6 @@ export async function syncFromCloud(forceAll = false) {
                     if (!forceAll) {
                         // For attendance tables: filter by EITHER updated_at OR date
                         if (table === 'attendance_records' || table === 'attendance') {
-                            const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
                             const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
                             
                             // Deep sync the last 3 days regardless of lastSync to catch late clock-outs
@@ -400,9 +398,9 @@ export async function syncFromCloud(forceAll = false) {
 
                     const { data, error } = await query;
                     if (error) {
-                        if (error.code === '42P01') { hasMore = false; continue; }
+                        if (error.code === '42P01') { hasMore = false; return 0; }
                         console.warn(`Pull error for ${table}:`, error.message);
-                        hasMore = false; continue;
+                        hasMore = false; return 0;
                     }
 
                     if (data && data.length > 0) {
@@ -438,7 +436,7 @@ export async function syncFromCloud(forceAll = false) {
                                 }
                             }
                             
-                        let processedData = validData;
+                            let processedData = validData;
 
                             // --- Profile field mapping (cloud → local) ---
                             // Map DB 'qualification' (singular) to IndexedDB 'qualifications' (plural)
@@ -504,8 +502,6 @@ export async function syncFromCloud(forceAll = false) {
                             // Don't overwrite local records that have unsynced changes (is_synced: 0)
                             // unless the cloud version is explicitly newer (based on updated_at)
                             const finalProcessedData = [];
-                            const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
-                            
                             for (const cloudItem of processedData) {
                                 const localItem = await db[table].get(cloudItem[pk]);
                                 if (localItem && localItem.is_synced === 0) {
@@ -538,7 +534,6 @@ export async function syncFromCloud(forceAll = false) {
                 }
                 if (totalPulled > 0) {
                     console.log(`[Sync] Pulled ${totalPulled} total records into '${table}' table.`);
-                    totalPulledAcrossAllTables += totalPulled;
                 }
 
                 // --- Deletion Reconciliation for Core Tables ---
@@ -583,8 +578,14 @@ export async function syncFromCloud(forceAll = false) {
                         }
                     }
                 }
-            } catch (e) { console.warn(`Pull error for ${table}:`, e); }
-        }
+            } catch (e) {
+                console.warn(`Pull error for ${table}:`, e);
+            }
+            return totalPulled;
+        });
+
+        const syncResults = await Promise.all(syncPromises);
+        totalPulledAcrossAllTables = syncResults.reduce((a, b) => a + b, 0);
     } catch (err) {
         console.error('[Sync] Fatal error in syncFromCloud:', err);
         throw err;
@@ -747,7 +748,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v27.6 (BUILD v359) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v27.6 (BUILD v360) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);

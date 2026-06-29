@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v27.6 (BUILD v359) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v27.6 (BUILD v360) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -369,6 +369,7 @@ async function loadAuthenticatedApp(authUser) {
                 }
 
                 if (sourceData) {
+                    const activeTenantId = claims?.tenant_id || localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
                     profile = {
                         id: authUser.id,
                         full_name: sourceData.name,
@@ -376,21 +377,29 @@ async function loadAuthenticatedApp(authUser) {
                         assigned_id: sourceData.student_id,
                         email: authUser.email,
                         status: 'Active',
+                        tenant_id: activeTenantId,
                         passport: sourceData.passport_url || sourceData.passport || null,
                         updated_at: new Date().toISOString()
                     };
                     
                     // Force save to profiles table
-                    if (client) await client.from('profiles').upsert({
-                        id: profile.id,
-                        full_name: profile.full_name,
-                        role: profile.role,
-                        assigned_id: profile.assigned_id,
-                        email: profile.email,
-                        status: profile.status,
-                        updated_at: profile.updated_at
-                    });
-                    console.log('[AutoRepair] Successfully re-provisioned student profile:', identifier);
+                    if (client) {
+                        const { error: upsertErr } = await client.from('profiles').upsert({
+                            id: profile.id,
+                            full_name: profile.full_name,
+                            role: profile.role,
+                            assigned_id: profile.assigned_id,
+                            email: profile.email,
+                            status: profile.status,
+                            tenant_id: profile.tenant_id,
+                            updated_at: profile.updated_at
+                        });
+                        if (upsertErr) {
+                            console.error('[AutoRepair] Failed to upsert student profile:', upsertErr.message);
+                        } else {
+                            console.log('[AutoRepair] Successfully re-provisioned student profile:', identifier);
+                        }
+                    }
                 }
             }
         }
@@ -414,6 +423,7 @@ async function loadAuthenticatedApp(authUser) {
             detectedRole = 'Student';
         }
 
+        const activeTenantId = claims?.tenant_id || localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
         profile = {
             id: authUser.id,
             full_name: full_name || authUser.email,
@@ -421,6 +431,7 @@ async function loadAuthenticatedApp(authUser) {
             assigned_id: authUser.email.split('@')[0].toUpperCase(),
             email: authUser.email,
             status: 'Active',
+            tenant_id: activeTenantId,
             updated_at: new Date().toISOString()
         };
 
