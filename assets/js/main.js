@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v27.6 (BUILD v360) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v27.6 (BUILD v361) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -369,7 +369,7 @@ async function loadAuthenticatedApp(authUser) {
                 }
 
                 if (sourceData) {
-                    const activeTenantId = claims?.tenant_id || localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
+                    const activeTenantId = localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
                     profile = {
                         id: authUser.id,
                         full_name: sourceData.name,
@@ -423,7 +423,7 @@ async function loadAuthenticatedApp(authUser) {
             detectedRole = 'Student';
         }
 
-        const activeTenantId = claims?.tenant_id || localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
+        const activeTenantId = localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
         profile = {
             id: authUser.id,
             full_name: full_name || authUser.email,
