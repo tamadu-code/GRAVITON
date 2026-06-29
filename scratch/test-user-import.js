@@ -1,10 +1,9 @@
-function parseBulkQuestions(text) {
+// Let's test the original parseBulkQuestions (prior to our line-by-line change) on the user's exact paste.
+const originalParser = (text) => {
     if (!text) return [];
-
-    // Normalize line endings
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-    // New, safer Regex to find answer markers (requiring start of line or newline prefix)
+    // This was the regex in BUILD v357 after the first fix:
     const ansRegex = /(?:\[\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\]|\(\s*(?:Ans|Answer)\s*:\s*([\s\S]*?)\s*\)|(?:^|[\r\n])\s*(?:Correct\s+Option|Correct\s+Answer|Correct|Answer|Ans)\s*:\s*([^\n\r]*))/gi;
     
     let matches = [];
@@ -28,16 +27,52 @@ function parseBulkQuestions(text) {
         });
     }
 
-    if (matches.length === 0) {
-        return [];
-    }
+    if (matches.length === 0) return [];
 
     const parsedQuestions = [];
     let currentPassageText = null;
     let lastIndex = 0;
 
-    // Helper to parse a single block of text into a question object
-    function parseSingleBlock(block, overrideCorrectAnswer, passage) {
+    for (let i = 0; i < matches.length; i++) {
+        const currentMatch = matches[i];
+        const segment = text.substring(lastIndex, currentMatch.index);
+        lastIndex = currentMatch.index + currentMatch.length;
+
+        let paragraphs = segment.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+
+        let passageParts = [];
+        let questionParagraphs = [];
+
+        let questionStartIndex = paragraphs.length - 1;
+        if (paragraphs.length >= 2) {
+            const lastPara = paragraphs[paragraphs.length - 1];
+            const startsWithOptionA = /^\s*[\(\[]?A[\)\]\.]/i.test(lastPara);
+            if (startsWithOptionA) {
+                questionStartIndex = paragraphs.length - 2;
+            }
+        }
+
+        for (let j = 0; j < paragraphs.length; j++) {
+            const para = paragraphs[j];
+            if (/^(?:NONE|CLEAR|NO PASSAGE|END PASSAGE|\[NO PASSAGE\]|\[END PASSAGE\])$/i.test(para)) {
+                currentPassageText = null;
+                passageParts = [];
+            } else if (j >= questionStartIndex) {
+                questionParagraphs.push(para);
+            } else {
+                passageParts.push(para);
+            }
+        }
+
+        if (passageParts.length > 0) {
+            currentPassageText = passageParts.join('\n\n');
+        }
+
+        const questionBlock = questionParagraphs.join('\n\n');
+        if (!questionBlock) continue;
+
+        // Parse type (explicit fitb vs mcq)
+        let block = questionBlock;
         let explicitType = null;
         const typeMatch = /\[Type\s*:\s*(MCQ|Fill|FITB|Fill-in-the-blank)\]/i.exec(block);
         if (typeMatch) {
@@ -46,6 +81,7 @@ function parseBulkQuestions(text) {
             block = block.replace(typeMatch[0], '').trim();
         }
 
+        // Detect options
         const optAReg = /(?:^|[\s\n])[\(\[]?A[\)\]\.]/im;
         const optBReg = /(?:^|[\s\n])[\(\[]?B[\)\]\.]/im;
         const optCReg = /(?:^|[\s\n])[\(\[]?C[\)\]\.]/im;
@@ -107,8 +143,8 @@ function parseBulkQuestions(text) {
             }
 
             let correctOpt = 'A';
-            if (overrideCorrectAnswer) {
-                const letter = overrideCorrectAnswer.toUpperCase().trim().charAt(0);
+            if (currentMatch.answer) {
+                const letter = currentMatch.answer.toUpperCase().trim().charAt(0);
                 if (['A','B','C','D','E'].includes(letter)) {
                     correctOpt = letter;
                 }
@@ -116,10 +152,10 @@ function parseBulkQuestions(text) {
 
             questionText = questionText.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '').trim();
 
-            return {
+            parsedQuestions.push({
                 type: 'mcq',
                 question_text: questionText,
-                passage_text: passage,
+                passage_text: currentPassageText,
                 option_a: optA,
                 option_b: optB,
                 option_c: optC,
@@ -128,15 +164,15 @@ function parseBulkQuestions(text) {
                 correct_option: correctOpt,
                 fill_answer: '',
                 marks: 1
-            };
+            });
         } else {
-            let fillAnswer = overrideCorrectAnswer || '';
+            let fillAnswer = currentMatch.answer || '';
             let questionText = block.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '').trim();
 
-            return {
+            parsedQuestions.push({
                 type: 'fill',
                 question_text: questionText,
-                passage_text: passage,
+                passage_text: currentPassageText,
                 option_a: '',
                 option_b: '',
                 option_c: '',
@@ -145,122 +181,76 @@ function parseBulkQuestions(text) {
                 correct_option: fillAnswer,
                 fill_answer: fillAnswer,
                 marks: 1
-            };
+            });
         }
-    }
-
-    for (let i = 0; i < matches.length; i++) {
-        const currentMatch = matches[i];
-        
-        // Extract the segment of text before this answer marker
-        const segment = text.substring(lastIndex, currentMatch.index);
-        lastIndex = currentMatch.index + currentMatch.length;
-
-        // Split the segment into paragraphs
-        let paragraphs = segment.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
-
-        let passageParts = [];
-        let questionParagraphs = [];
-
-        // Determine which paragraphs belong to the question
-        let questionStartIndex = paragraphs.length - 1;
-        if (paragraphs.length >= 2) {
-            const lastPara = paragraphs[paragraphs.length - 1];
-            const startsWithOptionA = /^\s*[\(\[]?A[\)\]\.]/i.test(lastPara);
-            if (startsWithOptionA) {
-                questionStartIndex = paragraphs.length - 2;
-            }
-        }
-
-        for (let j = 0; j < paragraphs.length; j++) {
-            const para = paragraphs[j];
-            
-            // Check for clear/passage markers
-            if (/^(?:NONE|CLEAR|NO PASSAGE|END PASSAGE|\[NO PASSAGE\]|\[END PASSAGE\])$/i.test(para)) {
-                currentPassageText = null;
-                passageParts = [];
-                continue;
-            }
-
-            if (j >= questionStartIndex) {
-                questionParagraphs.push(para);
-            } else {
-                // Parse the paragraph line-by-line to filter out dividers/headers
-                const lines = para.split('\n').map(l => l.trim()).filter(Boolean);
-                const cleanLines = lines.filter(line => {
-                    const isLineDivider = /^[-*_=\s]{3,}$/.test(line);
-                    const isLineHeader = /^\s*(?:#+|\[|Section|Instruction|Part\s+\d+|Direction|Question\s+Bank|Bulk)/i.test(line);
-                    return !isLineDivider && !isLineHeader;
-                });
-
-                if (cleanLines.length === 0) {
-                    continue; // Skip paragraph entirely
-                }
-
-                const cleanPara = cleanLines.join('\n');
-
-                // Check if it's an MCQ question missing an answer marker
-                const optAReg = /(?:^|[\s\n])[\(\[]?A[\)\]\.]/im;
-                const optBReg = /(?:^|[\s\n])[\(\[]?B[\)\]\.]/im;
-                if (optAReg.test(cleanPara) && optBReg.test(cleanPara)) {
-                    // Parse as MCQ and add to list directly
-                    const parsedQ = parseSingleBlock(cleanPara, 'A', currentPassageText);
-                    parsedQuestions.push(parsedQ);
-                    continue;
-                }
-
-                // Check if it's a Fill in the Blank question missing an answer marker (contains blanks)
-                if (/_{3,}/.test(cleanPara)) {
-                    const parsedQ = parseSingleBlock(cleanPara, '', currentPassageText);
-                    parsedQuestions.push(parsedQ);
-                    continue;
-                }
-
-                // Otherwise, it is a valid passage paragraph
-                passageParts.push(cleanPara);
-            }
-        }
-
-        // Update currentPassageText if new passage defined
-        if (passageParts.length > 0) {
-            currentPassageText = passageParts.join('\n\n');
-        }
-
-        const questionBlock = questionParagraphs.join('\n\n');
-        if (!questionBlock) continue;
-
-        // Parse and add the main question block
-        const mainQ = parseSingleBlock(questionBlock, currentMatch.answer, currentPassageText);
-        parsedQuestions.push(mainQ);
     }
 
     return parsedQuestions;
-}
+};
 
-// Test Sample from Image 1: Header/Divider
-const sample1 = `
----
-## Fill in the Blank Questions (FIB)
+const userPaste = `
+1. What is the chemical symbol for Sodium?
+A. S
+B. Na
+C. So
+D. N
+[Ans: B]
 
-The Earth has _____ moons.
-[Ans: 1]
-`;
+2. The Earth's largest ocean is?
+(A) Atlantic Ocean (B) Indian Ocean (C) Arctic Ocean (D) Pacific Ocean
+[Answer: D]
 
-// Test Sample from Image 2: Missing Answer Marker on previous question
-const sample2 = `
+3. In which year did World War II end?
+A. 1943
+B. 1944
+C. 1945
+D. 1946
+Answer: C
+
+4. What is the speed of light approximately in km/s?
+A. 300,000
+B. 150,000
+C. 500,000
+D. 100,000
+[Ans: A]
+
+5. The hardest natural substance on Earth is?
+(A) Gold (B) Iron (C) Diamond (D) Platinum
+Answer: C
+
+6. Which planet is known as the Red Planet?
+A. Venus
+B. Mars
+C. Jupiter
+D. Mercury
+[Answer: B]
+
+7. What is the main component of the Sun?
+(A) Oxygen (B) Nitrogen (C) Hydrogen (D) Carbon
+Correct Option: C
+
+8. The smallest country in the world is?
+A. Monaco
+B. Vatican City
+C. San Marino
+D. Liechtenstein
+[Ans: B]
+
+9. Which blood type is the universal donor?
+(A) Type A (B) Type B (C) Type AB (D) Type O
+[Answer: D]
+
 10. The atomic number of Carbon is?
 A. 4
 B. 6
 C. 8
 D. 12
+Ans: B
 
-The capital of Australia is?
-A. Sydney
-B. Melbourne
-C. Canberra
-D. Brisbane
-[Ans: C]
+11. Which is the longest river in the world?
+(A) Amazon (B) Nile (C) Yangtze (D) Mississippi
+Answer: B
 `;
 
-console.log('Sample 1 Result (Image 1 - Header/Divider):\n', JSON.stringify(parseBulkQuestions(sample1), null, 2));
-console.log('\nSample 2 Result (Image 2 - Missing Answer):\n', JSON.stringify(parseBulkQuestions(sample2), null, 2));
+console.log('Original Parser Results count:', originalParser(userPaste).length);
+console.log('Original Parser Results:', JSON.stringify(originalParser(userPaste), null, 2));

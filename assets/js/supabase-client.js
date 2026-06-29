@@ -747,7 +747,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v27.6 (BUILD v358) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v27.6 (BUILD v359) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);
@@ -769,6 +769,16 @@ export async function loginUser(identifier, password) {
 }
 
 export async function logoutUser() {
+    try {
+        // Clear all local Dexie database tables to prevent multi-tenant data leakage
+        if (db && db.tables) {
+            await Promise.all(db.tables.map(table => table.clear().catch(err => console.warn(`Error clearing table ${table.name}:`, err))));
+            console.log('[Auth] Local database tables cleared on logout.');
+        }
+    } catch(dbErr) {
+        console.error('[Auth] Failed to clear local database tables on logout:', dbErr);
+    }
+
     const client = getSupabase();
     if (!client) return true;
     try {

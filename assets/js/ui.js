@@ -14273,54 +14273,8 @@ export const UI = {
         let currentPassageText = null;
         let lastIndex = 0;
 
-        for (let i = 0; i < matches.length; i++) {
-            const currentMatch = matches[i];
-            
-            // Extract the segment of text before this answer marker
-            const segment = text.substring(lastIndex, currentMatch.index);
-            lastIndex = currentMatch.index + currentMatch.length;
-
-            // Split the segment into paragraphs
-            let paragraphs = segment.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
-
-            // Process any commands or clear/passage markers in the segment paragraphs
-            let passageParts = [];
-            let questionParagraphs = [];
-
-            // We determine which paragraphs belong to the question.
-            // By default, the last paragraph is the question paragraph.
-            // But if the last paragraph starts with option A, the question text is in the second to last.
-            let questionStartIndex = paragraphs.length - 1;
-            if (paragraphs.length >= 2) {
-                const lastPara = paragraphs[paragraphs.length - 1];
-                const startsWithOptionA = /^\s*[\(\[]?A[\)\]\.]/i.test(lastPara);
-                if (startsWithOptionA) {
-                    questionStartIndex = paragraphs.length - 2;
-                }
-            }
-
-            for (let j = 0; j < paragraphs.length; j++) {
-                const para = paragraphs[j];
-                if (/^(?:NONE|CLEAR|NO PASSAGE|END PASSAGE|\[NO PASSAGE\]|\[END PASSAGE\])$/i.test(para)) {
-                    currentPassageText = null;
-                    passageParts = [];
-                } else if (j >= questionStartIndex) {
-                    questionParagraphs.push(para);
-                } else {
-                    passageParts.push(para);
-                }
-            }
-
-            // If there was a new passage defined in this segment, update currentPassageText
-            if (passageParts.length > 0) {
-                currentPassageText = passageParts.join('\n\n');
-            }
-
-            const questionBlock = questionParagraphs.join('\n\n');
-            if (!questionBlock) continue;
-
-            // Parse type (explicit fitb vs mcq)
-            let block = questionBlock;
+        // Helper to parse a single block of text into a question object
+        function parseSingleBlock(block, overrideCorrectAnswer, passage) {
             let explicitType = null;
             const typeMatch = /\[Type\s*:\s*(MCQ|Fill|FITB|Fill-in-the-blank)\]/i.exec(block);
             if (typeMatch) {
@@ -14329,7 +14283,6 @@ export const UI = {
                 block = block.replace(typeMatch[0], '').trim();
             }
 
-            // Detect options
             const optAReg = /(?:^|[\s\n])[\(\[]?A[\)\]\.]/im;
             const optBReg = /(?:^|[\s\n])[\(\[]?B[\)\]\.]/im;
             const optCReg = /(?:^|[\s\n])[\(\[]?C[\)\]\.]/im;
@@ -14391,20 +14344,19 @@ export const UI = {
                 }
 
                 let correctOpt = 'A';
-                if (currentMatch.answer) {
-                    const letter = currentMatch.answer.toUpperCase().trim().charAt(0);
+                if (overrideCorrectAnswer) {
+                    const letter = overrideCorrectAnswer.toUpperCase().trim().charAt(0);
                     if (['A','B','C','D','E'].includes(letter)) {
                         correctOpt = letter;
                     }
                 }
 
-                // Clean up any leading question number if present in questionText
                 questionText = questionText.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '').trim();
 
-                parsedQuestions.push({
+                return {
                     type: 'mcq',
                     question_text: questionText,
-                    passage_text: currentPassageText,
+                    passage_text: passage,
                     option_a: optA,
                     option_b: optB,
                     option_c: optC,
@@ -14413,16 +14365,15 @@ export const UI = {
                     correct_option: correctOpt,
                     fill_answer: '',
                     marks: 1
-                });
+                };
             } else {
-                let fillAnswer = currentMatch.answer || '';
-                // Clean up leading question number from block
+                let fillAnswer = overrideCorrectAnswer || '';
                 let questionText = block.replace(/^\s*(?:(?:Question|Q)\s*)?\d+\s*[.)\-:]\s*/i, '').trim();
 
-                parsedQuestions.push({
+                return {
                     type: 'fill',
                     question_text: questionText,
-                    passage_text: currentPassageText,
+                    passage_text: passage,
                     option_a: '',
                     option_b: '',
                     option_c: '',
@@ -14431,8 +14382,93 @@ export const UI = {
                     correct_option: fillAnswer,
                     fill_answer: fillAnswer,
                     marks: 1
-                });
+                };
             }
+        }
+
+        for (let i = 0; i < matches.length; i++) {
+            const currentMatch = matches[i];
+            
+            // Extract the segment of text before this answer marker
+            const segment = text.substring(lastIndex, currentMatch.index);
+            lastIndex = currentMatch.index + currentMatch.length;
+
+            // Split the segment into paragraphs
+            let paragraphs = segment.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+
+            let passageParts = [];
+            let questionParagraphs = [];
+
+            // Determine which paragraphs belong to the question
+            let questionStartIndex = paragraphs.length - 1;
+            if (paragraphs.length >= 2) {
+                const lastPara = paragraphs[paragraphs.length - 1];
+                const startsWithOptionA = /^\s*[\(\[]?A[\)\]\.]/i.test(lastPara);
+                if (startsWithOptionA) {
+                    questionStartIndex = paragraphs.length - 2;
+                }
+            }
+
+            for (let j = 0; j < paragraphs.length; j++) {
+                const para = paragraphs[j];
+                
+                // Check for clear/passage markers
+                if (/^(?:NONE|CLEAR|NO PASSAGE|END PASSAGE|\[NO PASSAGE\]|\[END PASSAGE\])$/i.test(para)) {
+                    currentPassageText = null;
+                    passageParts = [];
+                    continue;
+                }
+
+                if (j >= questionStartIndex) {
+                    questionParagraphs.push(para);
+                } else {
+                    // Parse the paragraph line-by-line to filter out dividers/headers
+                    const lines = para.split('\n').map(l => l.trim()).filter(Boolean);
+                    const cleanLines = lines.filter(line => {
+                        const isLineDivider = /^[-*_=\s]{3,}$/.test(line);
+                        const isLineHeader = /^\s*(?:#+|\[|Section|Instruction|Part\s+\d+|Direction|Question\s+Bank|Bulk)/i.test(line);
+                        return !isLineDivider && !isLineHeader;
+                    });
+
+                    if (cleanLines.length === 0) {
+                        continue; // Skip paragraph entirely
+                    }
+
+                    const cleanPara = cleanLines.join('\n');
+
+                    // Check if it's an MCQ question missing an answer marker
+                    const optAReg = /(?:^|[\s\n])[\(\[]?A[\)\]\.]/im;
+                    const optBReg = /(?:^|[\s\n])[\(\[]?B[\)\]\.]/im;
+                    if (optAReg.test(cleanPara) && optBReg.test(cleanPara)) {
+                        // Parse as MCQ and add to list directly
+                        const parsedQ = parseSingleBlock(cleanPara, 'A', currentPassageText);
+                        parsedQuestions.push(parsedQ);
+                        continue;
+                    }
+
+                    // Check if it's a Fill in the Blank question missing an answer marker (contains blanks)
+                    if (/_{3,}/.test(cleanPara)) {
+                        const parsedQ = parseSingleBlock(cleanPara, '', currentPassageText);
+                        parsedQuestions.push(parsedQ);
+                        continue;
+                    }
+
+                    // Otherwise, it is a valid passage paragraph
+                    passageParts.push(cleanPara);
+                }
+            }
+
+            // Update currentPassageText if new passage defined
+            if (passageParts.length > 0) {
+                currentPassageText = passageParts.join('\n\n');
+            }
+
+            const questionBlock = questionParagraphs.join('\n\n');
+            if (!questionBlock) continue;
+
+            // Parse and add the main question block
+            const mainQ = parseSingleBlock(questionBlock, currentMatch.answer, currentPassageText);
+            parsedQuestions.push(mainQ);
         }
 
         return parsedQuestions;
