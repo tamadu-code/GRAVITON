@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v27.6 (BUILD v362) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v27.7 (BUILD v363) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -1235,13 +1235,34 @@ if ('serviceWorker' in navigator) {
             });
     });
 
-    // Reload the page when the new Service Worker has taken over
+    // Show a non-disruptive update notification instead of hard reload
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (refreshing) return;
         refreshing = true;
-        console.log('[SW] Controller changed. Reloading page...');
-        window.location.reload();
+        console.log('[SW] Controller changed. New version available.');
+
+        // NEVER auto-reload during an active exam
+        if (document.body.classList.contains('exam-mode')) {
+            console.log('[SW] Exam in progress — deferring reload until exam ends.');
+            return;
+        }
+
+        // Show a non-disruptive update banner instead of hard reload
+        const banner = document.createElement('div');
+        banner.id = 'sw-update-banner';
+        banner.style.cssText = 'position: fixed; bottom: 0; left: 0; right: 0; background: linear-gradient(135deg, #4338ca, #6366f1); color: white; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; z-index: 9999999; font-family: Inter, sans-serif; font-size: 0.85rem; font-weight: 600; box-shadow: 0 -4px 20px rgba(67,56,202,0.3); gap: 12px;';
+        banner.innerHTML = `
+            <span style="display: flex; align-items: center; gap: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                A new update is available!
+            </span>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="window.location.reload()" style="background: white; color: #4338ca; border: none; padding: 6px 16px; border-radius: 8px; font-weight: 800; font-size: 0.8rem; cursor: pointer;">Refresh Now</button>
+                <button onclick="this.closest('#sw-update-banner').remove()" style="background: rgba(255,255,255,0.2); color: white; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; cursor: pointer;">Later</button>
+            </div>
+        `;
+        document.body.appendChild(banner);
     });
 }
 

@@ -156,6 +156,11 @@ db.audit_logs.hook('creating', (primKey, obj, transaction) => {
 
 db.on('versionchange', (event) => {
     console.warn('Database upgrade pending. Closing connections...');
+    // Don't hard-reload during active exam
+    if (document.body.classList.contains('exam-mode')) {
+        console.warn('[DB] Deferring versionchange reload — exam in progress.');
+        return false;
+    }
     db.close(); 
     window.location.reload(); 
     return false; 

@@ -12420,7 +12420,11 @@ export const UI = {
                     answers: {}, warnings: 0, violations: []
                 });
                 await db.cbt_results.add(session);
-                if (navigator.onLine && supabase) await supabase.from('cbt_results').upsert(session);
+                if (navigator.onLine && supabase) {
+                    const { is_synced, ...cloudSession } = session;
+                    await supabase.from('cbt_results').upsert(cloudSession, { onConflict: 'student_id,exam_id' });
+                    console.log('[CBT CLOUD] In Progress status pushed to cloud.');
+                }
             } else if (session.status === 'Completed') {
                 return Notifications.show('Exam already completed.', 'info');
             } else {
@@ -25022,7 +25026,7 @@ export const UI = {
             try {
                 const client = typeof getSupabase === 'function' ? getSupabase() : window.supabaseClient;
                 if (client && navigator.onLine) {
-                    const cloudPayload = prepareForSync({
+                    const cloudPayloadRaw = prepareForSync({
                         id: targetResultId,
                         exam_id: examId,
                         student_id: studentId,
@@ -25037,7 +25041,8 @@ export const UI = {
                         warnings: 0,
                         violations: []
                     });
-                    const { error: cloudErr } = await client.from('cbt_results').upsert(cloudPayload);
+                    const { is_synced: _is, ...cloudPayload } = cloudPayloadRaw;
+                    const { error: cloudErr } = await client.from('cbt_results').upsert(cloudPayload, { onConflict: 'student_id,exam_id' });
                     if (cloudErr) {
                         console.warn('[CBT Reopen] Cloud push failed, will retry via sync:', cloudErr.message);
                     } else {
@@ -25549,6 +25554,20 @@ export const UI = {
                     updated_at: new Date().toISOString(),
                     is_synced: 0
                 });
+            }
+
+            // Immediate cloud push for all reopened results
+            if (navigator.onLine && typeof getSupabase === 'function') {
+                const supabase = getSupabase();
+                if (supabase) {
+                    for (const r of results) {
+                        const updated = await db.cbt_results.get(r.id);
+                        if (updated) {
+                            const { is_synced, ...cloudPayload } = updated;
+                            await supabase.from('cbt_results').upsert(cloudPayload, { onConflict: 'student_id,exam_id' }).catch(() => {});
+                        }
+                    }
+                }
             }
 
             Notifications.show(`Successfully re-opened ${results.length} attempts.`, 'success');
