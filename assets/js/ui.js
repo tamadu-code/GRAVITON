@@ -122,6 +122,80 @@ const doesAssignmentMatchStream = (className, stream) => {
 };
 
 export const UI = {
+    calculateCBTScore(exam, questions, answers, sections = []) {
+        const rawTotal = questions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+        let rawScore = 0;
+        questions.forEach(q => {
+            const ans = answers[q.id];
+            if (ans) {
+                if (q.question_type === 'fill_in_blank') {
+                    const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+                    if (targets.includes(ans.toLowerCase().trim())) {
+                        rawScore += (parseFloat(q.marks) || 1);
+                    }
+                } else {
+                    const choiceHash = btoa(unescape(encodeURIComponent(ans + exam.id))).split('').reverse().join('');
+                    const rawCorrectText = q[`option_${(q.correct_option || 'A').toLowerCase()}`] || '';
+                    const correctHash = btoa(unescape(encodeURIComponent(rawCorrectText + exam.id))).split('').reverse().join('');
+                    if (choiceHash === correctHash) {
+                        rawScore += (parseFloat(q.marks) || 1);
+                    }
+                }
+            }
+        });
+
+        if (exam.is_unified) {
+            let computedScore = 0;
+            let computedTotal = 0;
+
+            sections.forEach(sec => {
+                const secQuestions = questions.filter(q => q.section_id === sec.id || q.subject_id === sec.subject_id);
+                if (secQuestions.length === 0) return;
+
+                let secRawScore = 0;
+                secQuestions.forEach(q => {
+                    const ans = answers[q.id];
+                    if (ans) {
+                        if (q.question_type === 'fill_in_blank') {
+                            const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+                            if (targets.includes(ans.toLowerCase().trim())) secRawScore += (parseFloat(q.marks) || 1);
+                        } else {
+                            const choiceHash = btoa(unescape(encodeURIComponent(ans + exam.id))).split('').reverse().join('');
+                            const rawCorrectText = q[`option_${(q.correct_option || 'A').toLowerCase()}`] || '';
+                            const correctHash = btoa(unescape(encodeURIComponent(rawCorrectText + exam.id))).split('').reverse().join('');
+                            if (choiceHash === correctHash) secRawScore += (parseFloat(q.marks) || 1);
+                        }
+                    }
+                });
+
+                const secRawTotal = secQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
+                const targetMax = parseFloat(sec.target_mark) || 60;
+                const scaledScore = secRawTotal > 0 ? parseFloat(((secRawScore / secRawTotal) * targetMax).toFixed(1)) : 0;
+
+                computedScore += scaledScore;
+                computedTotal += targetMax;
+            });
+
+            return {
+                score: parseFloat(computedScore.toFixed(1)),
+                totalMarks: computedTotal > 0 ? computedTotal : rawTotal
+            };
+        } else {
+            let allocatedMarks = parseFloat(exam.target_mark);
+            if (isNaN(allocatedMarks) || allocatedMarks <= 0) {
+                const field = (exam.score_field || '').toLowerCase();
+                if (field === 'exam') allocatedMarks = 60;
+                else if (field.includes('test') || field.includes('project') || field.includes('assignment')) allocatedMarks = 10;
+                else allocatedMarks = rawTotal;
+            }
+            const score = rawTotal > 0 ? parseFloat(((rawScore / rawTotal) * allocatedMarks).toFixed(1)) : 0;
+            return {
+                score,
+                totalMarks: allocatedMarks
+            };
+        }
+    },
+
     get contentArea() { return document.getElementById('content-area'); },
     get viewTitle() { return document.getElementById('view-title'); },
     lastOpenedBankCategory: null,
@@ -3210,7 +3284,7 @@ export const UI = {
                     date: res.started_at ? new Date(res.started_at).toLocaleDateString() : 'N/A',
                     score: res.score,
                     total_questions: res.total_questions || 0,
-                    total_marks: res.total_marks || 0,
+                    total_marks: res.total_marks || res.total_questions || 0,
                     warnings: res.warnings || 0,
                     violations: res.violations || 0
                 };
@@ -13509,35 +13583,14 @@ export const UI = {
         let totalMarks = isExternal && existing ? (parseFloat(existing.total_marks) || 0) : this.currentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
 
         if (!isExternal) {
-            let rawScore = 0;
-            this.currentQuestions.forEach(q => {
-                const studentChoice = this.userAnswers[q.id];
-                if (studentChoice) {
-                    if (q.question_type === 'fill_in_blank') {
-                        // Fill-in-blank: support multiple correct answers via comma-separation
-                        const targets = (q.fill_answer || q.correct_option || '').toString().toLowerCase().split(',').map(s => s.trim()).filter(s => s);
-                        const studentAns = (studentChoice || '').toLowerCase().trim();
-                        if (targets.includes(studentAns)) {
-                            rawScore += (parseFloat(q.marks) || 1);
-                        }
-                    } else {
-                        // MCQ: hash-based comparison
-                        const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + this.currentExam.id))).split('').reverse().join('');
-                        if (choiceHash === q.answerHash) {
-                            rawScore += (parseFloat(q.marks) || 1);
-                        }
-                    }
-                }
-            });
-
-            const rawTotal = this.currentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
-            score = rawScore;
-            totalMarks = rawTotal;
-
-            if (this.currentExam && !this.currentExam.is_unified && this.currentExam.target_mark && this.currentExam.target_mark > 0) {
-                totalMarks = parseFloat(this.currentExam.target_mark);
-                score = rawTotal > 0 ? parseFloat(((rawScore / rawTotal) * totalMarks).toFixed(1)) : 0;
+            let sections = [];
+            if (this.currentExam.is_unified) {
+                sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
             }
+
+            const calculated = this.calculateCBTScore(this.currentExam, this.currentQuestions, this.userAnswers, sections);
+            score = calculated.score;
+            totalMarks = calculated.totalMarks;
 
             const resultUpdate = prepareForSync({
                 score: score,
@@ -25172,28 +25225,14 @@ export const UI = {
                 studentQuestions = studentQuestions.slice(0, limit);
             }
 
-            // Calculate score based on SHUFFLED questions and HASHED answers
-            let rawScore = 0;
-            studentQuestions.forEach(q => {
-                const studentChoice = answers[q.id];
-                if (studentChoice) {
-                    const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + examId))).split('').reverse().join('');
-                    const rawCorrectText = q[`option_${(q.correct_option || 'A').toLowerCase()}`] || '';
-                    const correctHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join('');
-                    if (choiceHash === correctHash) {
-                        rawScore += (parseFloat(q.marks) || 1);
-                    }
-                }
-            });
-
-            const rawTotal = studentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
-            let score = rawScore;
-            let totalMarks = rawTotal;
-
-            if (exam && !exam.is_unified && exam.target_mark && exam.target_mark > 0) {
-                totalMarks = parseFloat(exam.target_mark);
-                score = rawTotal > 0 ? parseFloat(((rawScore / rawTotal) * totalMarks).toFixed(1)) : 0;
+            let sections = [];
+            if (exam.is_unified) {
+                sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
             }
+
+            const calculated = this.calculateCBTScore(exam, studentQuestions, answers, sections);
+            let score = calculated.score;
+            let totalMarks = calculated.totalMarks;
 
             const finalResultUpdate = {
                 status: 'Completed',
@@ -25276,6 +25315,11 @@ export const UI = {
                 db.cbt_exams.get(examId),
                 getTenantProfiles()
             ]);
+
+            let sections = [];
+            if (exam && exam.is_unified) {
+                sections = await db.cbt_exam_sections.where('exam_id').equals(examId).toArray();
+            }
 
             for (const r of activeResults) {
                 // Find associated profile to ensure we get the right progress ID
@@ -25372,27 +25416,9 @@ export const UI = {
                     studentQuestions = studentQuestions.slice(0, limit);
                 }
 
-                let rawScore = 0;
-                studentQuestions.forEach(q => {
-                    const studentChoice = answers[q.id];
-                    if (studentChoice) {
-                        const choiceHash = btoa(unescape(encodeURIComponent(studentChoice + examId))).split('').reverse().join('');
-                        const rawCorrectText = q[`option_${(q.correct_option || 'A').toLowerCase()}`] || '';
-                        const correctHash = btoa(unescape(encodeURIComponent(rawCorrectText + examId))).split('').reverse().join('');
-                        if (choiceHash === correctHash) {
-                            rawScore += (parseFloat(q.marks) || 1);
-                        }
-                    }
-                });
-
-                const rawTotal = studentQuestions.reduce((sum, q) => sum + (parseFloat(q.marks) || 1), 0);
-                let score = rawScore;
-                let totalMarks = rawTotal;
-
-                if (exam && !exam.is_unified && exam.target_mark && exam.target_mark > 0) {
-                    totalMarks = parseFloat(exam.target_mark);
-                    score = rawTotal > 0 ? parseFloat(((rawScore / rawTotal) * totalMarks).toFixed(1)) : 0;
-                }
+                const calculated = this.calculateCBTScore(exam, studentQuestions, answers, sections);
+                let score = calculated.score;
+                let totalMarks = calculated.totalMarks;
 
                 const finalResultUpdate = {
                     status: 'Completed',
