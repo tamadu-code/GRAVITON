@@ -66,7 +66,7 @@ export async function syncToCloud() {
         return { success: false, message: 'Subscription inactive' };
     }
 
-    const tables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections', 'cbt_question_bank', 'cbt_options'];
+    const tables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections', 'cbt_question_bank', 'cbt_options', 'exam_progress'];
     let syncCount = 0;
     const failedTables = new Set();
 
@@ -113,7 +113,8 @@ export async function syncToCloud() {
                     audit_logs: ['operation', 'table', 'record_id', 'timestamp', 'user_id', 'tenant_id'],
                     parent_links: ['id', 'parent_id', 'student_id', 'tenant_id', 'updated_at'],
                     cbt_question_bank: ['id', 'subject_id', 'class_name', 'question_text', 'passage_text', 'term', 'session', 'topic_area', 'difficulty_level', 'tenant_id', 'updated_at'],
-                    cbt_options: ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'tenant_id', 'updated_at']
+                    cbt_options: ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'tenant_id', 'updated_at'],
+                    exam_progress: ['id', 'exam_id', 'student_id', 'current_question', 'answers', 'started_at', 'tenant_id', 'updated_at']
                 };
 
                 const CHUNK_SIZE = 50;
@@ -328,7 +329,7 @@ export async function syncToCloud() {
 /**
  * Sync Engine - Pull cloud changes to local
  */
-export async function syncFromCloud(forceAll = false) {
+export async function syncFromCloud(options = false) {
     const client = getSupabase();
     if (!client) return;
 
@@ -337,7 +338,11 @@ export async function syncFromCloud(forceAll = false) {
         return;
     }
 
-    const tables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 'cbt_exam_sections'];
+    const forceAll = (options === true);
+    const specificTables = Array.isArray(options) ? options : null;
+
+    const allTables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 'cbt_exam_sections', 'exam_progress'];
+    const tables = specificTables ? allTables.filter(t => specificTables.includes(t)) : allTables;
     
     // ── Block sync during active exam to prevent flickering and state resets ──
     if (document.body.classList.contains('exam-mode')) {
@@ -352,8 +357,8 @@ export async function syncFromCloud(forceAll = false) {
     }
 
     // ── Clear stale lock (may persist across page reloads) ──
-    if (window._isSyncingFromCloud && !forceAll) return;
-    window._isSyncingFromCloud = true;
+    if (window._isSyncingFromCloud && !forceAll && !specificTables) return;
+    if (!specificTables) window._isSyncingFromCloud = true;
     let totalPulledAcrossAllTables = 0;
 
     const lastSyncTime = localStorage.getItem('last_sync_timestamp');
@@ -748,7 +753,7 @@ export async function loginUser(identifier, password) {
                 });
 
                 if (!retry2.error) {
-                    console.log('--- GRAVITON CORE v27.6 (BUILD v361) - INITIALIZING ---');
+                    console.log('--- GRAVITON CORE v27.6 (BUILD v362) - INITIALIZING ---');
                     return retry2;
                 } else {
                     console.error('[Auth] Login retry failed:', retry2.error.message);
@@ -985,5 +990,119 @@ export async function uploadPassport(id, type, file) {
     } catch (err) {
         console.error('Passport upload failed:', err);
         return { error: err.message };
+    }
+}
+
+/**
+ * Initialize Supabase Realtime subscriptions for critical tables
+ */
+export function initRealtimeSync() {
+    const client = getSupabase();
+    if (!client) return;
+
+    const tenantId = localStorage.getItem('tenant_id');
+    if (!tenantId) return;
+
+    const tablesToListen = [
+        'cbt_results',
+        'scores',
+        'attendance',
+        'attendance_records',
+        'students',
+        'classes',
+        'subjects',
+        'notices',
+        'payments',
+        'exam_progress'
+    ];
+
+    console.log('[Realtime] Initializing realtime subscriptions for tenant:', tenantId);
+
+    // Clean up existing subscriptions if any
+    if (window._realtimeChannels) {
+        window._realtimeChannels.forEach(channel => client.removeChannel(channel));
+    }
+    window._realtimeChannels = [];
+
+    tablesToListen.forEach(table => {
+        const channel = client.channel(`realtime:${table}`)
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: table,
+                filter: `tenant_id=eq.${tenantId}`
+            }, async (payload) => {
+                console.log(`[Realtime] Received ${payload.eventType} on ${table}:`, payload);
+                const pk = (table === 'students' || table === 'student_analytics') ? 'student_id' : 'id';
+                
+                try {
+                    if (payload.eventType === 'DELETE') {
+                        const idToDelete = payload.old[pk];
+                        if (idToDelete) {
+                            await db[table].delete(idToDelete);
+                            console.log(`[Realtime] Deleted locally: ${table}/${idToDelete}`);
+                        }
+                    } else {
+                        // INSERT or UPDATE
+                        const record = payload.new;
+                        if (record && record[pk]) {
+                            // Local Modification Shield (Defensive check)
+                            const localItem = await db[table].get(record[pk]);
+                            if (localItem && localItem.is_synced === 0) {
+                                const localTime = new Date(localItem.updated_at || 0).getTime();
+                                const remoteTime = new Date(record.updated_at || 0).getTime();
+                                if (remoteTime <= localTime) {
+                                    console.log(`[Realtime Shield] Skipping update for local-modified: ${table}/${record[pk]}`);
+                                    return;
+                                }
+                            }
+                            
+                            const processedRecord = { ...record, is_synced: 1 };
+                            
+                            // Normalise qualifications mapping if profiles table (not in table list but good practice)
+                            if (table === 'profiles') {
+                                processedRecord.qualifications = record.qualification || record.qualifications || null;
+                            }
+                            // Normalise cbt_questions option fields
+                            if (table === 'cbt_questions') {
+                                processedRecord.option_a = record.option_a ?? '';
+                                processedRecord.option_b = record.option_b ?? '';
+                                processedRecord.option_c = record.option_c ?? '';
+                                processedRecord.option_d = record.option_d ?? '';
+                                processedRecord.option_e = record.option_e ?? '';
+                                processedRecord.correct_option = record.correct_option ?? 'A';
+                                processedRecord.marks = record.marks ?? 1;
+                            }
+
+                            await db[table].put(processedRecord);
+                            console.log(`[Realtime] Updated locally: ${table}/${record[pk]}`);
+                        }
+                    }
+                    
+                    // Dispatch event for UI components to listen to
+                    window.dispatchEvent(new CustomEvent('realtime-update', { 
+                        detail: { table, eventType: payload.eventType, record: payload.new || payload.old } 
+                    }));
+                } catch (err) {
+                    console.error(`[Realtime] Error processing event for ${table}:`, err);
+                }
+            })
+            .subscribe((status) => {
+                console.log(`[Realtime] Subscription status for ${table}:`, status);
+            });
+            
+        window._realtimeChannels.push(channel);
+    });
+}
+
+/**
+ * Teardown Supabase Realtime subscriptions
+ */
+export function closeRealtimeSync() {
+    const client = getSupabase();
+    if (client && window._realtimeChannels) {
+        console.log('[Realtime] Tearing down realtime subscriptions.');
+        window._realtimeChannels.forEach(channel => client.removeChannel(channel));
+        window._realtimeChannels = [];
     }
 }

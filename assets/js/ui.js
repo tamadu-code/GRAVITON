@@ -13535,26 +13535,32 @@ export const UI = {
                 score = rawTotal > 0 ? parseFloat(((rawScore / rawTotal) * totalMarks).toFixed(1)) : 0;
             }
 
-            const resultUpdate = {
+            const resultUpdate = prepareForSync({
                 score: score,
                 total_questions: this.currentQuestions.length,
                 total_marks: totalMarks,
                 answers: this.userAnswers,
-                status: 'Completed',
-                updated_at: new Date().toISOString(),
-                is_synced: 0
-            };
+                status: 'Completed'
+            });
 
             if (existing) {
+                // Ensure existing tenant_id is preserved or stamped
+                if (!existing.tenant_id) {
+                    existing.tenant_id = localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
+                }
                 await db.cbt_results.update(existing.id, resultUpdate);
-                finalResult = { ...existing, ...resultUpdate };
+                finalResult = { ...existing, ...resultUpdate, is_synced: 0 };
             } else {
-                finalResult = { 
+                finalResult = prepareForSync({ 
                     id: `RES${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                     exam_id: examId,
                     student_id: studentId,
-                    ...resultUpdate 
-                };
+                    score: score,
+                    total_questions: this.currentQuestions.length,
+                    total_marks: totalMarks,
+                    answers: this.userAnswers,
+                    status: 'Completed'
+                });
                 await db.cbt_results.add(finalResult);
             }
 
@@ -14210,7 +14216,7 @@ export const UI = {
                 }
             }
 
-            const finalScore = prepareForSync({
+            const updatedScoreRecord = {
                 ...scoreData,
                 id: standardId, // Enforce standard ID format
                 student_id: finalStudentId,
@@ -14220,10 +14226,26 @@ export const UI = {
                 session: exam.session,
                 [exam.score_field]: scoreValue,
                 updated_at: new Date().toISOString()
-            });
+            };
 
+            // Recalculate CA and Total so it updates the gradebook in real time
+            const assignment = updatedScoreRecord.assignment === undefined || updatedScoreRecord.assignment === null ? null : parseFloat(updatedScoreRecord.assignment);
+            const test1 = updatedScoreRecord.test1 === undefined || updatedScoreRecord.test1 === null ? null : parseFloat(updatedScoreRecord.test1);
+            const test2 = updatedScoreRecord.test2 === undefined || updatedScoreRecord.test2 === null ? null : parseFloat(updatedScoreRecord.test2);
+            const project = updatedScoreRecord.project === undefined || updatedScoreRecord.project === null ? null : parseFloat(updatedScoreRecord.project);
+            const examVal = updatedScoreRecord.exam === undefined || updatedScoreRecord.exam === null ? null : parseFloat(updatedScoreRecord.exam);
+            
+            const hasAny = ![assignment, test1, test2, project, examVal].every(v => v === null);
+            if (hasAny) {
+                updatedScoreRecord.ca = (assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0);
+                updatedScoreRecord.total = (updatedScoreRecord.ca || 0) + (examVal || 0);
+                updatedScoreRecord.grade = ScoringEngine.getGrade(updatedScoreRecord.total);
+                updatedScoreRecord.remark = ScoringEngine.getRemark(updatedScoreRecord.total);
+            }
+
+            const finalScore = prepareForSync(updatedScoreRecord);
             await db.scores.put(finalScore);
-            console.log(`[SCORE POST] Successfully ${scoreData.id ? 'updated' : 'created'} record: ${standardId} with score ${scoreValue}`);
+            console.log(`[SCORE POST] Successfully ${scoreData.id ? 'updated' : 'created'} record: ${standardId} with score ${scoreValue}, total = ${updatedScoreRecord.total}`);
 
             // Fire cloud sync (debouncedSync is fire-and-forget, not a Promise)
             this.debouncedSync();
@@ -27554,6 +27576,27 @@ window.addEventListener('sync-complete', () => {
         window.UI.refreshLiveNotices();
         if (window.UI.currentView === 'noticeboard') {
             window.UI.refreshNoticeFeed();
+        }
+    }
+});
+
+window.addEventListener('realtime-update', async (e) => {
+    if (!window.UI) return;
+    const { table, eventType, record } = e.detail;
+    
+    // CBT Live Monitoring updates
+    if (window.UI.currentView === 'cbt_participants' && (table === 'cbt_results' || table === 'exam_progress')) {
+        const examId = window.UI.currentViewData;
+        if (record && record.exam_id === examId) {
+            console.log('[UI Realtime] Triggering instant re-render of CBT participants list.');
+            const exam = await db.cbt_exams.get(examId);
+            if (exam) {
+                const [results, progress] = await Promise.all([
+                    db.cbt_results.where('exam_id').equals(examId).toArray(),
+                    db.exam_progress.where('exam_id').equals(examId).toArray()
+                ]);
+                window.UI.updateCBTParticipantsList(exam, results, progress);
+            }
         }
     }
 });

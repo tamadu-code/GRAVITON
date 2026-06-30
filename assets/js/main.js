@@ -3,12 +3,12 @@
  */
 
 import { UI } from './ui.js';
-import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, registerUser, resetPassword, startSyncLoop, syncToCloud, syncFromCloud } from './supabase-client.js';
+import { loginUser, logoutUser, getCurrentSession, getUserProfile, getSupabase, registerUser, resetPassword, startSyncLoop, syncToCloud, syncFromCloud, initRealtimeSync, closeRealtimeSync } from './supabase-client.js';
 import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v27.6 (BUILD v361) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v27.6 (BUILD v362) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -17,6 +17,8 @@ window.db = db;
 window.getSupabase = getSupabase;
 window.syncToCloud = syncToCloud;
 window.syncFromCloud = syncFromCloud;
+window.initRealtimeSync = initRealtimeSync;
+window.closeRealtimeSync = closeRealtimeSync;
 
 
 // Initialize Lucide Icons safely
@@ -369,7 +371,8 @@ async function loadAuthenticatedApp(authUser) {
                 }
 
                 if (sourceData) {
-                    const activeTenantId = localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
+                    const activeTenantId = sourceData.tenant_id || localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
+                    localStorage.setItem('tenant_id', activeTenantId);
                     profile = {
                         id: authUser.id,
                         full_name: sourceData.name,
@@ -593,6 +596,14 @@ async function loadAuthenticatedApp(authUser) {
         updateSyncStatus('Platform Admin', 'live');
     } else {
         updateSyncStatus('Syncing', 'syncing');
+        
+        // Initialize Realtime Sync
+        try {
+            initRealtimeSync();
+        } catch (realtimeErr) {
+            console.warn('[Realtime] Failed to initialize:', realtimeErr);
+        }
+
         startSyncLoop().then(() => {
             updateSyncStatus('Online', 'live');
             // Retry initializing push notifications if they failed earlier due to missing key
@@ -1018,6 +1029,13 @@ if (logoutBtn) {
         }
         
         try {
+            // Close Realtime Sync
+            try {
+                closeRealtimeSync();
+            } catch (realtimeErr) {
+                console.warn('[Realtime] Failed to close:', realtimeErr);
+            }
+
             // Sign out in the background
             await logoutUser(); 
             
