@@ -116,7 +116,7 @@ serve(async (req) => {
       // Query by direct student_id match
       const { data: matched } = await supabase
         .from('students')
-        .select('student_id, name, is_active, tenant_id, parent_phone')
+        .select('student_id, name, is_active, tenant_id')
         .eq('student_id', String(raw_student_identifier))
         .maybeSingle();
       student = matched;
@@ -124,7 +124,7 @@ serve(async (req) => {
       // Query by attendance_code + tenant_id (if resolved)
       let query = supabase
         .from('students')
-        .select('student_id, name, is_active, tenant_id, parent_phone')
+        .select('student_id, name, is_active, tenant_id')
         .eq('attendance_code', numeric_code);
       
       if (tenant_id) {
@@ -145,7 +145,7 @@ serve(async (req) => {
       // Query by legacy_student_id + tenant_id (if resolved)
       let query = supabase
         .from('students')
-        .select('student_id, name, is_active, tenant_id, parent_phone')
+        .select('student_id, name, is_active, tenant_id')
         .eq('legacy_student_id', String(raw_student_identifier));
       
       if (tenant_id) {
@@ -217,7 +217,7 @@ serve(async (req) => {
           // 1. Check if student already exists in SMS with this resolved code (scoped to tenant)
           const { data: existingStudent, error: existingStudentError } = await supabase
             .from('students')
-            .select('student_id, name, is_active, tenant_id, parent_phone, admission_year')
+            .select('student_id, name, is_active, tenant_id, admission_year')
             .eq('attendance_code', resolvedCode)
             .eq('tenant_id', targetTenantId)
             .maybeSingle();
@@ -228,7 +228,7 @@ serve(async (req) => {
           // 2. Check if student already exists in SMS by name (case-insensitive, scoped to tenant)
           const { data: matchedByName, error: matchedByNameError } = await supabase
             .from('students')
-            .select('student_id, name, is_active, tenant_id, parent_phone, admission_year, attendance_code')
+            .select('student_id, name, is_active, tenant_id, admission_year, attendance_code')
             .ilike('name', attStudent.name)
             .eq('tenant_id', targetTenantId);
           if (matchedByNameError) {
@@ -409,20 +409,19 @@ serve(async (req) => {
                 admission_year: year,
                 tenant_id: targetTenantId
               }, { onConflict: 'student_id' })
-              .select('student_id, name, is_active, tenant_id, parent_phone')
+              .select('student_id, name, is_active, tenant_id')
               .single();
 
             if (upsertError) {
               console.error('Failed to upsert student in SMS:', upsertError);
               // Last resort: construct the student object manually from known values
               // The student DOES exist (PK constraint proved it), we just can't read it via RLS
-              console.log(`Constructing student record manually for ${new_student_id}`);
+              console.log('Constructing student record manually for', new_student_id);
               student = {
                 student_id: new_student_id,
                 name: attStudent.name,
                 is_active: true,
-                tenant_id: targetTenantId,
-                parent_phone: null
+                tenant_id: targetTenantId
               };
             } else {
               student = upsertedStudent;
@@ -506,9 +505,32 @@ serve(async (req) => {
     console.log(`Attendance recorded: ${student.name} → ${status} (Out: ${sign_out || 'N/A'}) on ${date}`)
 
     // Step 5: Dispatch SMS notification to parent if configured
-    if (student.parent_phone) {
+    let parentPhone = null;
+    try {
+      const { data: parentLink } = await supabase
+        .from('parent_links')
+        .select('parent_id')
+        .eq('student_id', student.student_id)
+        .maybeSingle();
+
+      if (parentLink && parentLink.parent_id) {
+        const { data: parentProfile } = await supabase
+          .from('profiles')
+          .select('phone')
+          .eq('id', parentLink.parent_id)
+          .maybeSingle();
+        
+        if (parentProfile && parentProfile.phone) {
+          parentPhone = parentProfile.phone;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to query parent phone number:', err.message);
+    }
+
+    if (parentPhone) {
       try {
-        console.log(`Triggering SMS dispatch to parent phone: ${student.parent_phone}`)
+        console.log(`Triggering SMS dispatch to parent phone: ${parentPhone}`)
         const smsMessage = sign_out 
           ? `Dear Parent, your child ${student.name} has signed out at ${sign_out} on ${date}.`
           : `Dear Parent, your child ${student.name} has signed in at ${sign_in || 'N/A'} on ${date}. Status: ${status}.`;
@@ -520,7 +542,7 @@ serve(async (req) => {
             'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
           },
           body: JSON.stringify({
-            to: student.parent_phone,
+            to: parentPhone,
             message: smsMessage,
             tenant_id: tenant_id
           })
