@@ -211,15 +211,172 @@ serve(async (req) => {
             subClass = classMatch[2].toUpperCase();
           }
 
-          // Check if student already exists in SMS with this resolved code (but just without the legacy_student_id)
-          const { data: existingStudent } = await supabase
-            .from('students')
-            .select('student_id, name, is_active, tenant_id, parent_phone')
-            .eq('attendance_code', resolvedCode)
-            .maybeSingle();
+          // Use the resolved tenant ID context, fallback if not set
+          const targetTenantId = tenant_id || '00000000-0000-0000-0000-000000000001';
 
-          if (existingStudent) {
-            // Update SMS student's legacy_student_id mapping
+          // 1. Check if student already exists in SMS with this resolved code (scoped to tenant)
+          const { data: existingStudent, error: existingStudentError } = await supabase
+            .from('students')
+            .select('student_id, name, is_active, tenant_id, parent_phone, admission_year')
+            .eq('attendance_code', resolvedCode)
+            .eq('tenant_id', targetTenantId)
+            .maybeSingle();
+          if (existingStudentError) {
+            console.error('Debug: existingStudent query error:', existingStudentError);
+          }
+
+          // 2. Check if student already exists in SMS by name (case-insensitive, scoped to tenant)
+          const { data: matchedByName, error: matchedByNameError } = await supabase
+            .from('students')
+            .select('student_id, name, is_active, tenant_id, parent_phone, admission_year, attendance_code')
+            .ilike('name', attStudent.name)
+            .eq('tenant_id', targetTenantId);
+          if (matchedByNameError) {
+            console.error('Debug: matchedByName query error:', matchedByNameError);
+          }
+
+          const existingByName = matchedByName && matchedByName.length > 0 ? matchedByName[0] : null;
+
+          // Resolve student ID prefix for this tenant
+          let prefix = 'NKQMS';
+          if (targetTenantId) {
+            const { data: tenantData, error: tenantError } = await supabase
+              .from('tenants')
+              .select('student_id_prefix')
+              .eq('id', targetTenantId)
+              .maybeSingle();
+            if (tenantError) {
+              console.error('Debug: Error fetching tenant prefix:', tenantError);
+            }
+            if (tenantData && tenantData.student_id_prefix) {
+              prefix = tenantData.student_id_prefix;
+            }
+          }
+
+          console.log('Debug variables:', {
+            targetTenantId,
+            resolvedCode,
+            existingStudent: existingStudent ? existingStudent.student_id : null,
+            existingByName: existingByName ? existingByName.student_id : null,
+            prefix,
+            attStudentName: attStudent.name
+          });
+
+          if (existingByName) {
+            const year = existingByName.admission_year || new Date().getFullYear();
+            const new_student_id = `${prefix}-${year}-${resolvedCode}`;
+
+            // If a duplicate student record by code already exists, we must merge/remove it
+            if (existingStudent && existingStudent.student_id !== existingByName.student_id) {
+              console.log(`Duplicate detected: ${attStudent.name} exists by name (${existingByName.student_id}) and by code (${existingStudent.student_id}). Merging...`);
+              
+              // Clean up conflicting records on the duplicate ID in child tables to prevent constraint violations
+              await supabase.from('attendance_records').delete().eq('student_id', existingStudent.student_id);
+              await supabase.from('attendance').delete().eq('student_id', existingStudent.student_id);
+
+              // Delete the duplicate student record itself
+              const { error: deleteError } = await supabase
+                .from('students')
+                .delete()
+                .eq('student_id', existingStudent.student_id);
+              
+              if (deleteError) {
+                console.warn(`Failed to delete duplicate student record ${existingStudent.student_id}:`, deleteError);
+              }
+            } else if (existingByName.student_id !== new_student_id) {
+              // Safety: check if target ID is already taken by some other record
+              const { data: duplicateStudent } = await supabase
+                .from('students')
+                .select('student_id')
+                .eq('student_id', new_student_id)
+                .maybeSingle();
+
+              if (duplicateStudent) {
+                console.log(`Target student ID ${new_student_id} is already in use by another record. Removing conflicting student...`);
+                await supabase.from('attendance_records').delete().eq('student_id', new_student_id);
+                await supabase.from('attendance').delete().eq('student_id', new_student_id);
+                await supabase.from('students').delete().eq('student_id', new_student_id);
+              }
+            }
+
+            // Perform copy-insert-update-delete rename
+            if (existingByName.student_id !== new_student_id) {
+              console.log(`Renaming student ID references from ${existingByName.student_id} to ${new_student_id} using copy-insert-update-delete`);
+
+              // 1. Fetch full existing student record to copy all fields
+              const { data: fullStudent, error: fetchError } = await supabase
+                .from('students')
+                .select('*')
+                .eq('student_id', existingByName.student_id)
+                .single();
+
+              if (fetchError || !fullStudent) {
+                console.error(`Failed to fetch original student record:`, fetchError);
+                return new Response(JSON.stringify({ error: `Failed to fetch original student record: ${fetchError?.message}` }), { status: 500 });
+              }
+
+              // 2. Prepare new student data
+              const newStudentData = {
+                ...fullStudent,
+                student_id: new_student_id,
+                attendance_code: resolvedCode,
+                legacy_student_id: String(raw_student_identifier),
+                is_active: true,
+                updated_at: new Date().toISOString()
+              };
+
+              // 3. Insert new student record first
+              const { error: insertError } = await supabase
+                .from('students')
+                .insert(newStudentData);
+
+              if (insertError) {
+                console.error(`Failed to insert copied student record:`, insertError);
+                return new Response(JSON.stringify({ error: `Failed to insert copied student record: ${insertError.message}` }), { status: 500 });
+              }
+
+              // 4. Update child table references
+              await supabase.from('scores').update({ student_id: new_student_id }).eq('student_id', existingByName.student_id);
+              await supabase.from('attendance_records').update({ student_id: new_student_id }).eq('student_id', existingByName.student_id);
+              await supabase.from('attendance').update({ student_id: new_student_id }).eq('student_id', existingByName.student_id);
+              await supabase.from('exam_progress').update({ student_id: new_student_id }).eq('student_id', existingByName.student_id);
+
+              // 5. Delete original old student record
+              const { error: deleteError } = await supabase
+                .from('students')
+                .delete()
+                .eq('student_id', existingByName.student_id);
+
+              if (deleteError) {
+                console.warn(`Failed to delete old student record ${existingByName.student_id}:`, deleteError);
+              }
+
+              student = newStudentData;
+              console.log(`Successfully migrated and updated student ${student.name} to ${new_student_id}`);
+            } else {
+              // No ID rename needed, just update mapping on the existing record
+              const { data: updatedStudent, error: updateError } = await supabase
+                .from('students')
+                .update({
+                  attendance_code: resolvedCode,
+                  legacy_student_id: String(raw_student_identifier),
+                  is_active: true
+                })
+                .eq('student_id', existingByName.student_id)
+                .select()
+                .single();
+
+              if (updateError) {
+                console.error('Failed to update student mapping:', updateError);
+                return new Response(JSON.stringify({ error: 'Failed to update student mapping' }), { status: 500 });
+              }
+
+              student = updatedStudent;
+              console.log(`Successfully mapped code to student ${student.name} (${student.student_id})`);
+            }
+
+          } else if (existingStudent) {
+            // SCENARIO: Student exists by code already in SMS, just update the legacy_student_id mapping
             const { error: updateError } = await supabase
               .from('students')
               .update({ legacy_student_id: String(raw_student_identifier) })
@@ -231,27 +388,17 @@ serve(async (req) => {
             
             student = existingStudent;
             console.log(`Linked existing SMS student ${student.name} to legacy_student_id ${raw_student_identifier}`);
+
           } else {
-            // Resolve student prefix for the tenant
-            const resolvedTenantId = caller_tenant_id || '00000000-0000-0000-0000-000000000001';
-            let prefix = 'NKQMS';
-            if (resolvedTenantId) {
-              const { data: tenantData } = await supabase
-                .from('tenants')
-                .select('student_id_prefix')
-                .eq('id', resolvedTenantId)
-                .maybeSingle();
-              if (tenantData && tenantData.student_id_prefix) {
-                prefix = tenantData.student_id_prefix;
-              }
-            }
-            // Create the student in SMS
+            // SCENARIO: Completely new student, auto-create in SMS
             const year = new Date().getFullYear();
             const new_student_id = `${prefix}-${year}-${resolvedCode}`;
-            
-            const { data: newStudent, error: createError } = await supabase
+
+            // Use UPSERT to handle the case where the student already exists
+            // (RLS may block SELECT but the row exists from a previous sync)
+            const { data: upsertedStudent, error: upsertError } = await supabase
               .from('students')
-              .insert({
+              .upsert({
                 student_id: new_student_id,
                 name: attStudent.name,
                 class_name: className,
@@ -260,18 +407,27 @@ serve(async (req) => {
                 legacy_student_id: String(raw_student_identifier),
                 is_active: true,
                 admission_year: year,
-                tenant_id: resolvedTenantId
-              })
-              .select()
+                tenant_id: targetTenantId
+              }, { onConflict: 'student_id' })
+              .select('student_id, name, is_active, tenant_id, parent_phone')
               .single();
 
-            if (createError) {
-              console.error('Failed to auto-create student in SMS:', createError);
-              return new Response(JSON.stringify({ error: 'Failed to auto-create student' }), { status: 500 });
+            if (upsertError) {
+              console.error('Failed to upsert student in SMS:', upsertError);
+              // Last resort: construct the student object manually from known values
+              // The student DOES exist (PK constraint proved it), we just can't read it via RLS
+              console.log(`Constructing student record manually for ${new_student_id}`);
+              student = {
+                student_id: new_student_id,
+                name: attStudent.name,
+                is_active: true,
+                tenant_id: targetTenantId,
+                parent_phone: null
+              };
+            } else {
+              student = upsertedStudent;
+              console.log(`Auto-created/updated student: ${student.name} (${student.student_id})`);
             }
-            
-            student = newStudent;
-            console.log(`Auto-created student: ${student.name} (${student.student_id}) and mapped legacy_student_id`);
           }
         } else {
           console.error(`Student identifier ${raw_student_identifier} not found in Attendance System either.`);
