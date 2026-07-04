@@ -5069,9 +5069,9 @@ export const UI = {
                             </select>
                         </div>
                         <div>
-                            <label>Attendance System Code (4-digits)</label>
-                            <input type="text" id="std-attendance-code" class="input" placeholder="e.g. 5703" maxlength="4" style="width: 100%; box-sizing: border-box; font-weight: 800; border: 2px solid #3b82f6;">
-                            <span style="font-size: 0.7rem; color: #3b82f6; display: block; margin-top: 4px;">Get this from the biometric/attendance terminal.</span>
+                            <label>Attendance System Code</label>
+                            <input type="text" id="std-attendance-code" class="input" placeholder="Auto-assigned by Attendance System" disabled style="width: 100%; box-sizing: border-box; font-weight: 800; background-color: #f1f5f9; color: #64748b;">
+                            <span style="font-size: 0.7rem; color: #64748b; display: block; margin-top: 4px;">Automatically assigned by the biometric device/attendance system.</span>
                         </div>
                         <div>
                             <label>Parent Email / Username</label>
@@ -5759,7 +5759,7 @@ export const UI = {
                         </div>
                         <div class="modal-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                              <div><label>Admission Year</label><input type="number" id="edit-std-year" class="input" value="${student.admission_year || 2024}" style="width:100%;"></div>
-                             <div><label>Attendance Code</label><input type="text" id="edit-std-attendance" class="input" value="${student.attendance_code || ''}" style="width:100%;" placeholder="4-digit code"></div>
+                             <div><label>Attendance Code</label><input type="text" id="edit-std-attendance" class="input" value="${student.attendance_code || ''}" style="width:100%; background-color: #f1f5f9; color: #64748b;" placeholder="Not assigned yet" disabled></div>
                              <div><label>Legacy ID (External)</label><input type="text" id="edit-std-legacy" class="input" value="${student.legacy_student_id || student.attendance_code || ''}" style="width:100%;" placeholder="External System ID"></div>
                              <div style="display: flex; align-items: flex-end; padding-bottom: 5px;">
                                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.75rem; font-weight: 700; color: #ef4444;">
