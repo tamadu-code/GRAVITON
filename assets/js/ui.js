@@ -5232,7 +5232,7 @@ export const UI = {
                         const parentPhone = document.getElementById('std-parent-phone').value.trim();
                         await this.linkOrUpdateParent(newStudent.id || serial, parentEmail, parentName, parentPhone);
 
-                        this.debouncedSync(); 
+                        this.debouncedSync(50); 
                         Notifications.show(`Student ${name} successfully registered!`, 'success');
                     } catch (err) {
                         console.error('Enrollment error:', err);
@@ -27643,6 +27643,12 @@ window.addEventListener('realtime-update', async (e) => {
                 window.UI.updateCBTParticipantsList(exam, results, progress);
             }
         }
+    }
+
+    // Realtime Student updates
+    if (table === 'students' && window.UI.currentView === 'students') {
+        console.log('[UI Realtime] Student list updated, re-rendering student view.');
+        window.UI.renderStudents();
     }
 });
 
