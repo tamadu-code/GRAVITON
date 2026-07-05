@@ -7738,7 +7738,7 @@ export const UI = {
         }
         
         // Initial State
-        const today = new Date().toISOString().split('T')[0];
+        const today = new Date().toLocaleDateString('en-CA');
         
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in">
@@ -8322,7 +8322,7 @@ export const UI = {
             const periodSelect = document.getElementById('att-period');
             
             // Auto-detect period if it's "Today" and autoDetectPeriod is true
-            const isToday = dateVal === new Date().toISOString().split('T')[0];
+            const isToday = dateVal === new Date().toLocaleDateString('en-CA');
             if (isToday && autoDetectPeriod) {
                 const autoPeriod = getCurrentPeriodByTime();
                 if (autoPeriod !== null && autoPeriod > 0) {
@@ -20998,7 +20998,7 @@ export const UI = {
         
         const totalReceivables = (await db.student_analytics.toArray()).reduce((a, b) => a + (parseFloat(b.fee_balance) || 0), 0);
         
-        const todayIntake = incomePayments.filter(p => p.date === new Date().toISOString().split('T')[0]).reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
+        const todayIntake = incomePayments.filter(p => p.date === new Date().toLocaleDateString('en-CA')).reduce((a, b) => a + (parseFloat(b.amount) || 0), 0);
         
         // Calculate student fee balances dynamically in-memory
         const activeStudents = students.filter(s => s.is_active !== false && s.is_active !== 0);
