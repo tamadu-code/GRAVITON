@@ -2480,9 +2480,13 @@ export const UI = {
 
             const formTeacherEntry = await db.form_teachers.where('class_name').equals(student.class_name).first();
             let teacherName = 'Class Teacher';
+            let teacherSignature = null;
             if (formTeacherEntry) {
                 const teacherProfile = await db.profiles.get(formTeacherEntry.teacher_id);
-                if (teacherProfile) teacherName = teacherProfile.full_name;
+                if (teacherProfile) {
+                    teacherName = teacherProfile.full_name;
+                    teacherSignature = teacherProfile.signature || null;
+                }
             }
 
             const schoolInfo = {
@@ -2493,7 +2497,7 @@ export const UI = {
                 motto: settings.schoolMotto || '',
                 principalName: settings.principalName || '',
                 principalSignature: settings.principalSignature || null,
-                teacherSignature: settings.teacherSignature || null,
+                teacherSignature: teacherSignature,
                 logo: settings.schoolLogo || null,
                 themeColor: settings.themeColor || '#060495',
                 schoolManager: settings.schoolManager || 'TAMADU CODE',
@@ -9265,9 +9269,13 @@ export const UI = {
                         // Resolve Form Teacher for this class
                         const formTeacherEntry = await db.form_teachers.where('class_name').equals(className).first();
                         let teacherName = 'Class Teacher';
+                        let teacherSignature = null;
                         if (formTeacherEntry) {
                             const teacherProfile = await db.profiles.get(formTeacherEntry.teacher_id);
-                            if (teacherProfile) teacherName = teacherProfile.full_name;
+                            if (teacherProfile) {
+                                teacherName = teacherProfile.full_name;
+                                teacherSignature = teacherProfile.signature || null;
+                            }
                         }
 
                         const schoolInfo = {
@@ -9278,7 +9286,7 @@ export const UI = {
                             motto: settings.schoolMotto || '',
                             principalName: settings.principalName || '',
                             principalSignature: settings.principalSignature || null,
-                            teacherSignature: settings.teacherSignature || null,
+                            teacherSignature: teacherSignature,
                             logo: settings.schoolLogo || null,
                             themeColor: settings.themeColor || '#060495',
                             schoolManager: settings.schoolManager || '',
@@ -9317,9 +9325,13 @@ export const UI = {
                     // Resolve Form Teacher for this class
                     const formTeacherEntry = await db.form_teachers.where('class_name').equals(className).first();
                     let teacherName = 'Class Teacher';
+                    let teacherSignature = null;
                     if (formTeacherEntry) {
                         const teacherProfile = await db.profiles.get(formTeacherEntry.teacher_id);
-                        if (teacherProfile) teacherName = teacherProfile.full_name;
+                        if (teacherProfile) {
+                            teacherName = teacherProfile.full_name;
+                            teacherSignature = teacherProfile.signature || null;
+                        }
                     }
 
                     const schoolInfoTemplate = {
@@ -9330,7 +9342,7 @@ export const UI = {
                         motto: settings.schoolMotto || '',
                         principalName: settings.principalName || '',
                         principalSignature: settings.principalSignature || null,
-                        teacherSignature: settings.teacherSignature || null,
+                        teacherSignature: teacherSignature,
                         logo: settings.schoolLogo || null,
                         themeColor: settings.themeColor || '#060495',
                         termEnd: closureDate,
@@ -9815,6 +9827,30 @@ export const UI = {
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Register teacher signature upload listener
+        const uploadInput = document.getElementById('upload-staff-sig-file');
+        if (uploadInput) {
+            uploadInput.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = async (re) => {
+                        const base64 = re.target.result;
+                        staff.signature = base64;
+                        staff.updated_at = new Date().toISOString();
+                        await db.profiles.put(prepareForSync(staff));
+                        const preview = document.getElementById('staff-sig-preview');
+                        if (preview) {
+                            preview.innerHTML = `<img src="${base64}" style="max-height: 100%; object-fit: contain;">`;
+                        }
+                        Notifications.show('Staff signature updated successfully!', 'success');
+                        this.debouncedSync();
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+        }
 
         // Repair Staff Auth Logic
         const repairBtn = document.getElementById('btn-staff-repair-auth');
@@ -16911,7 +16947,6 @@ export const UI = {
             gradingSystem: settings.gradingSystem || 'Grade-Based (A1, B2, etc.)',
             principalName: settings.principalName || '',
             principalSignature: settings.principalSignature || null,
-            teacherSignature: settings.teacherSignature || null,
             schoolLogo: settings.schoolLogo || null,
             themeColor: settings.themeColor || '#060495',
             holidays: settings.holidays || '',
@@ -17028,18 +17063,6 @@ export const UI = {
                         </div>
                     </div>
 
-                    <div class="form-group" style="margin-bottom: 1.5rem;">
-                        <label>Teacher's Signature</label>
-                        <div style="display: flex; align-items: center; gap: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px dashed #cbd5e1;">
-                            <input type="file" id="set-teacher-sig-file" accept="image/*" style="display: none;">
-                            <button class="btn btn-secondary" onclick="document.getElementById('set-teacher-sig-file').click()">
-                                <i data-lucide="upload"></i> Upload Signature
-                            </button>
-                            <div id="teacher-sig-preview" style="height: 40px;">
-                                ${config.teacherSignature ? `<img src="${config.teacherSignature}" style="max-height: 100%;">` : '<span style="color: #94a3b8; font-size: 0.85rem;">No signature</span>'}
-                            </div>
-                        </div>
-                    </div>
                     </div>
                 </div>
 
@@ -17382,18 +17405,7 @@ export const UI = {
             }
         };
 
-        document.getElementById('set-teacher-sig-file').onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = async (re) => {
-                    document.getElementById('teacher-sig-preview').innerHTML = `<img src="${re.target.result}" style="max-height: 100%;">`;
-                    this.pendingTeacherSignature = re.target.result;
-                    await this.saveSingleSetting('teacherSignature', re.target.result);
-                };
-                reader.readAsDataURL(file);
-            }
-        };
+
 
         document.getElementById('set-school-logo-file').onchange = (e) => {
             const file = e.target.files[0];
@@ -18289,9 +18301,6 @@ export const UI = {
 
         if (this.pendingSignature) {
             settingsToSave.push({ key: 'principalSignature', value: this.pendingSignature });
-        }
-        if (this.pendingTeacherSignature) {
-            settingsToSave.push({ key: 'teacherSignature', value: this.pendingTeacherSignature });
         }
         if (this.pendingLogo) {
             settingsToSave.push({ key: 'schoolLogo', value: this.pendingLogo });
@@ -20502,12 +20511,54 @@ export const UI = {
                             </button>
                         </div>
                     </div>
+
+                    <!-- Digital Signature Card (Staff Only) -->
+                    ${['teacher', 'admin', 'principal'].includes((this.currentUser?.role || '').toLowerCase()) ? `
+                    <div class="card" style="padding: 2rem; background: white; border-radius: 24px; border: 1px solid #f1f5f9; box-shadow: var(--shadow-sm); display: flex; flex-direction: column;">
+                        <h3 style="font-weight: 800; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                            <i data-lucide="pen-tool" style="color: #6366f1;"></i> Digital Signature
+                        </h3>
+                        <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.6;">
+                            Upload your signature image. It will be automatically stamped on student report cards when compiling results.
+                        </p>
+                        <div style="background: #f8fafc; border: 1px dashed #cbd5e1; padding: 1.25rem; border-radius: 16px; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; height: 100px; overflow: hidden; cursor: pointer;" onclick="document.getElementById('profile-sig-file').click()">
+                            <div id="profile-sig-preview" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                                ${this.currentUser.signature ? `<img src="${this.currentUser.signature}" style="max-height: 100%; object-fit: contain;">` : '<span style="color: #94a3b8; font-size: 0.85rem; font-weight: 700;">Click to upload signature</span>'}
+                            </div>
+                        </div>
+                        <input type="file" id="profile-sig-file" accept="image/*" style="display: none;">
+                    </div>
+                    ` : ''}
                 </div>
             </div>
         `;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
         this.initProfilePushUI();
+
+        // Register profile signature upload listener for active staff/teacher
+        const profileSigInput = document.getElementById('profile-sig-file');
+        if (profileSigInput) {
+            profileSigInput.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = async (re) => {
+                        const base64 = re.target.result;
+                        this.currentUser.signature = base64;
+                        this.currentUser.updated_at = new Date().toISOString();
+                        await db.profiles.put(prepareForSync(this.currentUser));
+                        const preview = document.getElementById('profile-sig-preview');
+                        if (preview) {
+                            preview.innerHTML = `<img src="${base64}" style="max-height: 100%; object-fit: contain;">`;
+                        }
+                        Notifications.show('Your digital signature updated successfully!', 'success');
+                        this.debouncedSync();
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+        }
 
         document.getElementById('btn-update-password').onclick = async () => {
             const newPw = document.getElementById('new-password').value;
