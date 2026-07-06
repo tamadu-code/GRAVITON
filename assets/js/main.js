@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v27.9 (BUILD v366) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v27.9 (BUILD v367) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")

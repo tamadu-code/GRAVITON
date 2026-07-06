@@ -16296,7 +16296,7 @@ export const UI = {
     showElearningModal(type, targetModuleId = null) {
         const modal = document.createElement('div');
         modal.id = 'elearning-entry-modal';
-        modal.className = 'modal-backdrop active animate-fade-in';
+        modal.className = 'modal-overlay active';
         modal.style.zIndex = '99999';
 
         let fieldsHtml = '';
