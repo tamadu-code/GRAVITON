@@ -1004,6 +1004,26 @@ export async function uploadPassport(id, type, file) {
     }
 }
 
+export async function uploadElearningFile(file) {
+    const client = getSupabase();
+    if (!client) return { error: 'Supabase not initialized' };
+
+    const tenantId = localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
+    const cleanFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+    const filePath = `${tenantId}/${Date.now()}_${cleanFileName}`;
+
+    try {
+        const { error: storageError } = await client.storage.from('elearning').upload(filePath, file, { upsert: true });
+        if (storageError) throw storageError;
+
+        const { data: { publicUrl } } = client.storage.from('elearning').getPublicUrl(filePath);
+        return { success: true, url: publicUrl };
+    } catch (err) {
+        console.error('File upload failed:', err);
+        return { error: err.message };
+    }
+}
+
 /**
  * Initialize Supabase Realtime subscriptions for critical tables
  */

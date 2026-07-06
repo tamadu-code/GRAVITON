@@ -6,7 +6,7 @@ console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses, generateRegistrationFormPDF } from './utils.js';
-import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase } from './supabase-client.js';
+import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase, uploadElearningFile } from './supabase-client.js';
 import { initPushNotifications, unsubscribeUser } from './push.js';
 
 /**
@@ -15480,6 +15480,21 @@ export const UI = {
                 progress.forEach(p => completedContentIds.add(p.content_id));
             }
 
+            // Fetch comments and submissions count for notifications
+            const commentsListAll = await db.elearning_comments.toArray();
+            const commentCounts = {};
+            commentsListAll.forEach(c => {
+                commentCounts[c.content_id] = (commentCounts[c.content_id] || 0) + 1;
+            });
+
+            const submissionsListAll = await db.elearning_submissions.toArray();
+            const pendingSubmissionCounts = {};
+            submissionsListAll.forEach(s => {
+                if (s.grade === null) {
+                    pendingSubmissionCounts[s.assignment_id] = (pendingSubmissionCounts[s.assignment_id] || 0) + 1;
+                }
+            });
+
             const renderModulesTab = () => {
                 const addModuleBtn = isTeacher ? `
                     <button class="btn btn-primary btn-sm" onclick="UI.showElearningModal('module')" style="border-radius: 8px;">
@@ -15547,22 +15562,30 @@ export const UI = {
                                                 document: 'Resource PDF/File',
                                                 link: 'Reference Link'
                                             };
-
+ 
                                             const doneBadge = isDone ? `
                                                 <span class="badge" style="background: #ecfdf5; color: #059669; font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; gap: 2px;">
                                                     <i data-lucide="check" style="width: 12px;"></i> Done
                                                 </span>
                                             ` : '';
 
+                                            const commCount = commentCounts[c.id] || 0;
+                                            const commentBadge = commCount > 0 ? `
+                                                <span style="font-size: 0.7rem; color: #4f46e5; display: inline-flex; align-items: center; gap: 4px; font-weight: 700; background: #eef2ff; padding: 2px 6px; border-radius: 6px; margin-left: 8px;" title="${commCount} forum discussion post${commCount !== 1 ? 's' : ''}">
+                                                    <i data-lucide="message-square" style="width: 12px; height: 12px;"></i> ${commCount}
+                                                </span>
+                                            ` : '';
+ 
                                             return `
                                                 <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 0.75rem 1rem; transition: background 0.2s;" class="hover-bg">
                                                     <div style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; flex: 1;" onclick="UI.viewElearningContent('${c.id}')">
                                                         <div style="color: #6366f1;">
                                                             <i data-lucide="${typeIcons[c.content_type] || 'book-open'}" style="width: 18px;"></i>
                                                         </div>
-                                                        <div>
+                                                        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem;">
                                                             <span style="font-weight: 700; color: #1e293b; font-size: 0.9rem;">${c.title}</span>
-                                                            <span style="font-size: 0.7rem; color: #94a3b8; margin-left: 8px;">${typeLabels[c.content_type]}</span>
+                                                            <span style="font-size: 0.7rem; color: #94a3b8;">${typeLabels[c.content_type]}</span>
+                                                            ${commentBadge}
                                                         </div>
                                                     </div>
                                                     <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -15576,17 +15599,25 @@ export const UI = {
                                                 </div>
                                             `;
                                         }).join('')}
-
+ 
                                         ${modAssignments.map(a => {
+                                            const pendingCount = pendingSubmissionCounts[a.id] || 0;
+                                            const pendingBadge = (isTeacher && pendingCount > 0) ? `
+                                                <span class="badge" style="background: #fee2e2; color: #ef4444; border: 1px solid #fecaca; font-weight: 850; font-size: 0.7rem; display: inline-flex; align-items: center; gap: 4px; animation: pulse 2s infinite;" title="${pendingCount} submissions pending review">
+                                                    <i data-lucide="bell" style="width: 12px; height: 12px;"></i> ${pendingCount} Action Required
+                                                </span>
+                                            ` : '';
+
                                             return `
                                                 <div style="display: flex; justify-content: space-between; align-items: center; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px; padding: 0.75rem 1rem; cursor: pointer;" onclick="UI.viewElearningAssignment('${a.id}')">
                                                     <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1;">
                                                         <div style="color: #d97706;">
                                                             <i data-lucide="clipboard-list" style="width: 18px;"></i>
                                                         </div>
-                                                        <div>
+                                                        <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; width: 100%;">
                                                             <span style="font-weight: 850; color: #78350f; font-size: 0.9rem;">Assignment: ${a.title}</span>
-                                                            <span style="font-size: 0.7rem; color: #b45309; margin-left: 8px;">Max Marks: ${a.max_marks}</span>
+                                                            <span style="font-size: 0.7rem; color: #b45309;">Max Marks: ${a.max_marks}</span>
+                                                            ${pendingBadge}
                                                         </div>
                                                     </div>
                                                     <div>
@@ -15725,7 +15756,7 @@ export const UI = {
                                         </div>
                                         <span style="font-size: 0.7rem; color: #94a3b8;">${new Date(c.created_at).toLocaleString()}</span>
                                     </div>
-                                    <p style="font-size: 0.85rem; color: #334155; line-height: 1.4;">${c.comment_text}</p>
+                                    <p style="font-size: 0.85rem; color: #334155; line-height: 1.4; white-space: pre-wrap;">${c.comment_text}</p>
                                     ${content ? `
                                         <div style="margin-top: 0.75rem; font-size: 0.7rem; color: #4f46e5; font-weight: 700; border-top: 1px dashed #f1f5f9; padding-top: 0.5rem; cursor: pointer;" onclick="UI.viewElearningContent('${content.id}')">
                                             <i data-lucide="arrow-right" style="width: 10px; display: inline-block; vertical-align: middle;"></i> View Lesson: ${content.title}
@@ -15856,35 +15887,44 @@ export const UI = {
                     </div>
 
                     <!-- Forum / Comment Panel -->
-                    <div class="card" style="border-radius: 20px; padding: 1.5rem; background: #fff; border: 1px solid #f1f5f9; max-height: 600px; display: flex; flex-direction: column;">
-                        <h3 style="font-weight: 800; color: #1e293b; font-size: 1.1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.75rem; margin-bottom: 1rem;">
-                            Lesson Q&A Discussion
-                        </h3>
+                    <details class="card" style="border-radius: 20px; padding: 1.5rem; background: #fff; border: 1px solid #f1f5f9; display: flex; flex-direction: column;" open>
+                        <summary style="font-weight: 800; color: #1e293b; font-size: 1.1rem; cursor: pointer; user-select: none; list-style: none; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="message-square" style="width: 18px; height: 18px; color: #4f46e5;"></i>
+                                Lesson Q&A Discussion Forum
+                            </span>
+                            <span style="font-size: 0.75rem; color: #64748b; font-weight: 700; background: #f1f5f9; padding: 2px 8px; border-radius: 6px;">
+                                ${comments.length} Comment${comments.length !== 1 ? 's' : ''}
+                            </span>
+                        </summary>
                         
-                        <div id="elearning-comments-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; padding-right: 0.25rem; margin-bottom: 1rem;">
-                            ${comments.map(c => {
-                                const prof = profileMap[c.user_id];
-                                return `
-                                    <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 0.75rem; font-size: 0.8rem;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
-                                            <span style="font-weight: 800; color: #1e293b;">${prof ? prof.full_name : 'Unknown User'}</span>
-                                            <span style="font-size: 0.65rem; color: #94a3b8;">${new Date(c.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        <div style="border-top: 1px solid #f1f5f9; padding-top: 1rem; margin-top: 1rem; display: flex; flex-direction: column;">
+                            <div id="elearning-comments-list" style="overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; padding-right: 0.25rem; margin-bottom: 1rem; max-height: 350px;">
+                                ${comments.length === 0 ? '<p style="color: #94a3b8; font-size: 0.85rem; font-style: italic; text-align: center; padding: 1rem 0;">No discussion posts yet. Be the first to ask a question!</p>' : ''}
+                                ${comments.map(c => {
+                                    const prof = profileMap[c.user_id];
+                                    return `
+                                        <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 0.75rem; font-size: 0.8rem;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                                <span style="font-weight: 800; color: #1e293b;">${prof ? prof.full_name : 'Unknown User'}</span>
+                                                <span style="font-size: 0.65rem; color: #94a3b8;">${new Date(c.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                            </div>
+                                            <p style="color: #475569; line-height: 1.35; white-space: pre-wrap;">${c.comment_text}</p>
                                         </div>
-                                        <p style="color: #475569; line-height: 1.35;">${c.comment_text}</p>
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-
-                        ${!isParent ? `
-                            <div style="display: flex; gap: 0.5rem; border-top: 1px solid #f1f5f9; padding-top: 1rem;">
-                                <input type="text" id="elearning-comment-input" class="input" placeholder="Ask a question..." style="height: 40px; font-size: 0.85rem; border-radius: 8px; flex: 1;">
-                                <button id="btn-post-comment" class="btn btn-primary btn-sm" style="border-radius: 8px; height: 40px; display: flex; align-items: center; justify-content: center; width: 40px; padding: 0;">
-                                    <i data-lucide="send" style="width: 16px;"></i>
-                                </button>
+                                    `;
+                                }).join('')}
                             </div>
-                        ` : ''}
-                    </div>
+
+                            ${!isParent ? `
+                                <div style="display: flex; gap: 0.5rem; border-top: 1px solid #f1f5f9; padding-top: 1rem;">
+                                    <input type="text" id="elearning-comment-input" class="input" placeholder="Ask a question..." style="height: 40px; font-size: 0.85rem; border-radius: 8px; flex: 1;">
+                                    <button id="btn-post-comment" class="btn btn-primary btn-sm" style="border-radius: 8px; height: 40px; display: flex; align-items: center; justify-content: center; width: 40px; padding: 0;">
+                                        <i data-lucide="send" style="width: 16px;"></i>
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </details>
                 </div>
             `;
         };
@@ -15907,59 +15947,61 @@ export const UI = {
                         <span class="badge" style="background: #fffbeb; color: #b45309; font-weight: 800;">GRADER GATEWAY</span>
                         <h2 style="font-weight: 900; color: #1e293b; font-size: 1.5rem; margin-top: 0.5rem;">${assignment.title}</h2>
                         <p style="color: #64748b; font-size: 0.85rem; font-weight: 550; margin-top: 4px;">DUE: ${assignment.due_date ? new Date(assignment.due_date).toLocaleString() : 'No deadline'} | Max marks: ${assignment.max_marks}</p>
-                        <p style="color: #334155; font-size: 0.95rem; margin-top: 1rem; border-left: 3px solid #cbd5e1; padding-left: 1rem; line-height: 1.5;">${assignment.instructions || 'No instructions provided.'}</p>
-                    </div>
-
-                    <div class="card" style="border-radius: 20px; padding: 1.5rem; background: white; border: 1px solid #f1f5f9;">
-                        <h3 style="font-weight: 800; color: #1e293b; font-size: 1.15rem; margin-bottom: 1.5rem;">Submitted Solutions (${submissions.length})</h3>
-                        
-                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <p style="color: #334155; font-size: 0.95rem; margin-top: 1rem; border-left: 3px solid #cbd5e1; padding-left: 0.75rem;">
+                            <strong>Instructions:</strong> ${assignment.instructions || 'No detailed instructions provided.'}
+                        </p>
+                        <div style="display: flex; flex-direction: column; gap: 1rem; margin-top: 2rem;">
+                            ${submissions.length === 0 ? '<p style="color: #94a3b8; font-size: 0.85rem; font-style: italic; text-align: center; padding: 2rem 0;">No student solutions submitted yet.</p>' : ''}
                             ${submissions.map(s => {
                                 const stud = studentMap[s.student_id];
                                 const isGraded = s.grade !== null;
                                 return `
-                                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
-                                        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px dashed #e2e8f0; padding-bottom: 0.75rem;">
+                                    <details style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; margin-bottom: 0.5rem; overflow: hidden; display: block;" ${!isGraded ? 'open' : ''}>
+                                        <summary style="padding: 1.25rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 800; list-style: none; user-select: none;">
+                                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                <i data-lucide="chevron-right" style="width: 16px; height: 16px; color: #64748b;"></i>
+                                                <div>
+                                                    <h4 style="font-weight: 850; color: #1e293b; font-size: 0.95rem; display: inline-block;">${stud ? stud.name : 'Unknown Student'}</h4>
+                                                    <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; margin-left: 8px; text-transform: uppercase;">SUBMITTED ON: ${new Date(s.submitted_at).toLocaleString()}</span>
+                                                </div>
+                                            </div>
                                             <div>
-                                                <h4 style="font-weight: 850; color: #1e293b; font-size: 1rem;">${stud ? stud.name : 'Unknown Student'}</h4>
-                                                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">SUBMITTED ON: ${new Date(s.submitted_at).toLocaleString()}</span>
+                                                ${isGraded ? `<span class="badge" style="background: #ecfdf5; color: #059669; font-weight: 850;">Graded: ${s.grade} / ${assignment.max_marks}</span>` : '<span class="badge animate-pulse" style="background: #fee2e2; color: #ef4444; font-weight: 850;">Pending Review</span>'}
                                             </div>
+                                        </summary>
+                                        <div style="padding: 1.25rem; border-top: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 1rem; background: white;">
                                             <div>
-                                                ${isGraded ? `<span class="badge" style="background: #ecfdf5; color: #059669; font-weight: 850;">Graded: ${s.grade} / ${assignment.max_marks}</span>` : '<span class="badge" style="background: #fffbeb; color: #b45309; font-weight: 800;">Pending Assessment</span>'}
+                                                <span style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">SUBMISSION TEXT</span>
+                                                <p style="font-size: 0.85rem; color: #334155; line-height: 1.4; margin-top: 4px; white-space: pre-wrap;">${s.submission_text || 'No text answer.'}</p>
+                                                ${s.attachment_url ? `
+                                                    <div style="margin-top: 0.75rem;">
+                                                        <a href="${s.attachment_url}" target="_blank" style="font-size: 0.8rem; font-weight: 700; color: #4f46e5; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                                            <i data-lucide="download-cloud" style="width: 14px;"></i> View Attached File
+                                                        </a>
+                                                    </div>
+                                                ` : ''}
                                             </div>
-                                        </div>
 
-                                        <div>
-                                            <span style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">SUBMISSION TEXT</span>
-                                            <p style="font-size: 0.85rem; color: #334155; line-height: 1.4; margin-top: 4px;">${s.submission_text || 'No text answer.'}</p>
-                                            ${s.attachment_url ? `
-                                                <div style="margin-top: 0.75rem;">
-                                                    <a href="${s.attachment_url}" target="_blank" style="font-size: 0.8rem; font-weight: 700; color: #4f46e5; display: inline-flex; align-items: center; gap: 0.25rem;">
-                                                        <i data-lucide="download-cloud" style="width: 14px;"></i> View Attached File
-                                                    </a>
-                                                </div>
-                                            ` : ''}
-                                        </div>
-
-                                        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
-                                            <h5 style="font-weight: 800; color: #1e293b; font-size: 0.8rem;">Evaluate Submission</h5>
-                                            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                                                <div style="flex: 1; min-width: 150px;">
-                                                    <label style="font-size: 0.65rem; font-weight: 800; color: #64748b; display: block; margin-bottom: 2px;">AWARD SCORE (MAX: ${assignment.max_marks})</label>
-                                                    <input type="number" id="grade-score-${s.id}" min="0" max="${assignment.max_marks}" class="input" style="height: 40px;" value="${s.grade || ''}">
-                                                </div>
-                                                <div style="flex: 3; min-width: 250px;">
-                                                    <label style="font-size: 0.65rem; font-weight: 800; color: #64748b; display: block; margin-bottom: 2px;">CONSTRUCTIVE FEEDBACK</label>
-                                                    <input type="text" id="grade-feedback-${s.id}" class="input" style="height: 40px;" placeholder="Keep it up!..." value="${s.feedback || ''}">
-                                                </div>
-                                                <div style="display: flex; align-items: flex-end;">
-                                                    <button class="btn btn-primary btn-sm" style="height: 40px; border-radius: 8px; font-weight: 750;" onclick="UI.submitAssignmentGrade('${s.id}')">
-                                                        Submit Assessment
-                                                    </button>
+                                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                                                <h5 style="font-weight: 800; color: #1e293b; font-size: 0.8rem;">Evaluate Submission</h5>
+                                                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                                    <div style="flex: 1; min-width: 150px;">
+                                                        <label style="font-size: 0.65rem; font-weight: 800; color: #64748b; display: block; margin-bottom: 2px;">AWARD SCORE (MAX: ${assignment.max_marks})</label>
+                                                        <input type="number" id="grade-score-${s.id}" min="0" max="${assignment.max_marks}" class="input" style="height: 40px; width: 100%; box-sizing: border-box; border-radius: 8px;" value="${s.grade || ''}">
+                                                    </div>
+                                                    <div style="flex: 3; min-width: 250px;">
+                                                        <label style="font-size: 0.65rem; font-weight: 800; color: #64748b; display: block; margin-bottom: 2px;">CONSTRUCTIVE FEEDBACK</label>
+                                                        <input type="text" id="grade-feedback-${s.id}" class="input" style="height: 40px; width: 100%; box-sizing: border-box; border-radius: 8px;" placeholder="Keep it up!..." value="${s.feedback || ''}">
+                                                    </div>
+                                                    <div style="display: flex; align-items: flex-end;">
+                                                        <button class="btn btn-primary btn-sm" style="height: 40px; border-radius: 8px; font-weight: 750;" onclick="UI.submitAssignmentGrade('${s.id}')">
+                                                            Submit Assessment
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    </details>
                                 `;
                             }).join('')}
                         </div>
@@ -15980,7 +16022,7 @@ export const UI = {
                             
                             <div style="margin-top: 1rem; border-top: 1px dashed #bbf7d0; padding-top: 1rem; font-size: 0.85rem; color: #14532d;">
                                 <strong>YOUR RESPONSE:</strong>
-                                <p style="margin-top: 4px; font-style: italic;">${sub.submission_text || 'No text answer submitted.'}</p>
+                                <p style="margin-top: 4px; font-style: italic; white-space: pre-wrap;">${sub.submission_text || 'No text answer submitted.'}</p>
                                 ${sub.attachment_url ? `<a href="${sub.attachment_url}" target="_blank" style="margin-top: 0.5rem; display: inline-flex; align-items: center; gap: 4px; color: #166534; font-weight: 700;"><i data-lucide="file" style="width: 14px;"></i> View Attached File</a>` : ''}
                             </div>
                             
@@ -16009,7 +16051,7 @@ export const UI = {
                             
                             <div style="color: #334155; font-size: 0.9rem; line-height: 1.5; margin-top: 1.5rem; background: #f8fafc; padding: 1.25rem; border-radius: 12px; border: 1px solid #e2e8f0;">
                                 <strong>INSTRUCTIONS:</strong>
-                                <p class="mt-2">${assignment.instructions || 'No detailed instructions provided.'}</p>
+                                <p class="mt-2" style="white-space: pre-wrap;">${assignment.instructions || 'No detailed instructions provided.'}</p>
                             </div>
                         </div>
 
@@ -16186,9 +16228,8 @@ export const UI = {
                         const client = getSupabase();
                         if (!client) throw new Error('Supabase client offline.');
                         
-                        // Upload to passports storage bucket as fallback if learning_materials doesn't exist
-                        const filePath = `elearning/${activeTenantId}/${targetStudentId}/${Date.now()}_${file.name}`;
-                        let bucketName = 'passports'; // Fallback to passports bucket which exists in schema
+                        const filePath = `${activeTenantId}/${targetStudentId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+                        const bucketName = 'elearning';
                         
                         const { error: storageError } = await client.storage.from(bucketName).upload(filePath, file, { upsert: true });
                         if (storageError) throw storageError;
@@ -16306,28 +16347,28 @@ export const UI = {
             title = 'Publish New Module';
             fieldsHtml = `
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">MODULE TITLE</label>
-                    <input type="text" id="m-title" class="input" placeholder="e.g. Chapter 1: Introduction to Calculus" required>
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">MODULE TITLE</label>
+                    <input type="text" id="m-title" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 44px; display: block;" placeholder="e.g. Chapter 1: Introduction to Calculus" required>
                 </div>
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">DESCRIPTION / SUMMARY</label>
-                    <textarea id="m-desc" class="input" style="height: 80px; resize: vertical;" placeholder="Overview of learning outcomes..."></textarea>
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">DESCRIPTION / SUMMARY</label>
+                    <textarea id="m-desc" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 100px; resize: vertical; display: block;" placeholder="Overview of learning outcomes..."></textarea>
                 </div>
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">DISPLAY SORT ORDER</label>
-                    <input type="number" id="m-order" class="input" value="0">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">DISPLAY SORT ORDER</label>
+                    <input type="number" id="m-order" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 44px; display: block;" value="0">
                 </div>
             `;
         } else if (type === 'content') {
             title = 'Publish Lesson Topic';
             fieldsHtml = `
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">LESSON TITLE</label>
-                    <input type="text" id="c-title" class="input" placeholder="e.g. Derivative Rules" required>
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">LESSON TITLE</label>
+                    <input type="text" id="c-title" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 44px; display: block;" placeholder="e.g. Derivative Rules" required>
                 </div>
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">LESSON TYPE</label>
-                    <select id="c-type" class="input" style="height: 44px;">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">LESSON TYPE</label>
+                    <select id="c-type" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 44px; display: block;">
                         <option value="notes">Written Study Notes</option>
                         <option value="video">Lecture Video URL</option>
                         <option value="document">Reference Attachment URL</option>
@@ -16335,46 +16376,52 @@ export const UI = {
                     </select>
                 </div>
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">WRITTEN LECTURE NOTES (Supports MathJax & HTML)</label>
-                    <textarea id="c-body" class="input" style="height: 180px; resize: vertical;" placeholder="Write body text or paste notes here. Wrap math in $ ... $ or $$ ... $$ for equations."></textarea>
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">UPLOAD LESSON FILE / INTRO VIDEO (Optional)</label>
+                    <input type="file" id="c-file" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; padding: 8px; display: block;" accept="video/*,application/pdf,image/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                    <small style="color: #94a3b8; font-size: 0.65rem; display: block; margin-top: 4px;">Directly upload a video/document. Uploaded files will automatically configure URLs and type below.</small>
+                    <div id="c-upload-status" style="display: none; font-size: 0.75rem; font-weight: 700; color: #4f46e5; margin-top: 0.25rem;">Uploading file... Please wait.</div>
                 </div>
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">RESOURCE / ATTACHMENT URL</label>
-                    <input type="url" id="c-attachment" class="input" placeholder="https://drive.google.com/file/d/...">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">WRITTEN LECTURE NOTES (Supports MathJax & HTML)</label>
+                    <textarea id="c-body" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 180px; resize: vertical; display: block;" placeholder="Write body text or paste notes here. Wrap math in $ ... $ or $$ ... $$ for equations."></textarea>
                 </div>
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">YOUTUBE VIDEO LINK</label>
-                    <input type="url" id="c-video" class="input" placeholder="https://www.youtube.com/watch?v=...">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">RESOURCE / ATTACHMENT URL</label>
+                    <input type="url" id="c-attachment" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 44px; display: block;" placeholder="https://drive.google.com/file/d/...">
                 </div>
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">DISPLAY SORT ORDER</label>
-                    <input type="number" id="c-order" class="input" value="0">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">YOUTUBE VIDEO LINK</label>
+                    <input type="url" id="c-video" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 44px; display: block;" placeholder="https://www.youtube.com/watch?v=...">
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">DISPLAY SORT ORDER</label>
+                    <input type="number" id="c-order" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 44px; display: block;" value="0">
                 </div>
             `;
         } else if (type === 'assignment') {
             title = 'Publish Virtual Assignment';
             fieldsHtml = `
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">ASSIGNMENT TITLE</label>
-                    <input type="text" id="a-title" class="input" placeholder="e.g. Assignment 1: Matrix Multiplication" required>
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">ASSIGNMENT TITLE</label>
+                    <input type="text" id="a-title" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 44px; display: block;" placeholder="e.g. Assignment 1: Matrix Multiplication" required>
                 </div>
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">INSTRUCTIONS & DESCRIPTION</label>
-                    <textarea id="a-instructions" class="input" style="height: 100px; resize: vertical;" placeholder="Enter instructions, questions list, or brief details..."></textarea>
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">INSTRUCTIONS & DESCRIPTION</label>
+                    <textarea id="a-instructions" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 120px; resize: vertical; display: block;" placeholder="Enter instructions, questions list, or brief details..."></textarea>
                 </div>
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">DUE DATE & DEADLINE</label>
-                    <input type="datetime-local" id="a-duedate" class="input">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">DUE DATE & DEADLINE</label>
+                    <input type="datetime-local" id="a-duedate" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 44px; display: block;">
                 </div>
                 <div class="form-group mb-4">
-                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">MAX POINTS / MARKS</label>
-                    <input type="number" id="a-maxmarks" class="input" value="100">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">MAX POINTS / MARKS</label>
+                    <input type="number" id="a-maxmarks" class="input" style="width: 100%; box-sizing: border-box; border-radius: 10px; height: 44px; display: block;" value="100">
                 </div>
             `;
         }
 
         modal.innerHTML = `
-            <div class="modal-card card" style="max-width: 540px; border-radius: 20px; padding: 2rem; animation: scaleIn 0.3s ease;">
+            <div class="modal-card card" style="width: 95%; max-width: ${type === 'module' ? '540px' : '760px'}; border-radius: 20px; padding: 2rem; box-sizing: border-box; overflow-y: auto; max-height: 90vh; animation: scaleIn 0.3s ease;">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 1rem; margin-bottom: 1.5rem;">
                     <h3 style="font-weight: 900; color: #1e293b; font-size: 1.25rem;">${title}</h3>
                     <button class="btn-xs" style="background: #f1f5f9; color: #64748b;" onclick="document.getElementById('elearning-entry-modal').remove()">✕</button>
@@ -16383,7 +16430,7 @@ export const UI = {
                     ${fieldsHtml}
                     <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('elearning-entry-modal').remove()">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Publish Entry</button>
+                        <button type="submit" class="btn btn-primary" id="btn-elearning-publish">Publish Entry</button>
                     </div>
                 </form>
             </div>
@@ -16394,6 +16441,11 @@ export const UI = {
         document.getElementById('elearning-modal-form').onsubmit = async (e) => {
             e.preventDefault();
             const activeTenantId = localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
+            const publishBtn = document.getElementById('btn-elearning-publish');
+            if (publishBtn) {
+                publishBtn.disabled = true;
+                publishBtn.textContent = 'Publishing...';
+            }
 
             try {
                 if (type === 'module') {
@@ -16407,14 +16459,41 @@ export const UI = {
                     };
                     await db.elearning_modules.add(prepareForSync(newMod));
                 } else if (type === 'content') {
+                    let attachmentUrl = document.getElementById('c-attachment').value.trim();
+                    let videoUrl = document.getElementById('c-video').value.trim();
+                    let contentType = document.getElementById('c-type').value;
+
+                    const fileInput = document.getElementById('c-file');
+                    if (fileInput && fileInput.files && fileInput.files[0]) {
+                        if (!navigator.onLine) {
+                            throw new Error('Local file upload requires active internet connection. Please connect to the internet or provide a URL.');
+                        }
+                        const file = fileInput.files[0];
+                        const statusDiv = document.getElementById('c-upload-status');
+                        if (statusDiv) statusDiv.style.display = 'block';
+
+                        const uploadRes = await uploadElearningFile(file);
+                        if (uploadRes.error) {
+                            throw new Error(`Upload failed: ${uploadRes.error}`);
+                        }
+
+                        if (file.type.startsWith('video/')) {
+                            videoUrl = uploadRes.url;
+                            contentType = 'video';
+                        } else {
+                            attachmentUrl = uploadRes.url;
+                            contentType = 'document';
+                        }
+                    }
+
                     const newContent = {
                         id: `CON${Math.random().toString(36).substr(2,9).toUpperCase()}`,
                         module_id: targetModuleId,
                         title: document.getElementById('c-title').value.trim(),
-                        content_type: document.getElementById('c-type').value,
+                        content_type: contentType,
                         body_text: document.getElementById('c-body').value.trim(),
-                        attachment_url: document.getElementById('c-attachment').value.trim(),
-                        video_url: document.getElementById('c-video').value.trim(),
+                        attachment_url: attachmentUrl,
+                        video_url: videoUrl,
                         sort_order: parseInt(document.getElementById('c-order').value) || 0
                     };
                     await db.elearning_contents.add(prepareForSync(newContent));
@@ -16436,7 +16515,12 @@ export const UI = {
                 this.debouncedSync();
             } catch (err) {
                 console.error(err);
-                Notifications.show('Failed to save learning entry.', 'error');
+                Notifications.show(err.message || 'Failed to save learning entry.', 'error');
+            } finally {
+                if (publishBtn) {
+                    publishBtn.disabled = false;
+                    publishBtn.textContent = 'Publish Entry';
+                }
             }
         };
     },
