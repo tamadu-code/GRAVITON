@@ -143,6 +143,17 @@ db.version(41).stores({
     audit_logs: 'id, operation, table, record_id, timestamp, user_id, tenant_id, is_synced'
 });
 
+// Version 42: E-Learning Hub Support
+db.version(42).stores({
+    elearning_modules: 'id, subject_id, class_name, title, sort_order, tenant_id, updated_at, is_synced',
+    elearning_contents: 'id, module_id, title, content_type, sort_order, tenant_id, updated_at, is_synced',
+    elearning_progress: 'id, student_id, content_id, [student_id+content_id], tenant_id, updated_at, is_synced',
+    elearning_assignments: 'id, module_id, title, tenant_id, updated_at, is_synced',
+    elearning_submissions: 'id, assignment_id, student_id, [student_id+assignment_id], tenant_id, updated_at, is_synced',
+    elearning_comments: 'id, content_id, user_id, tenant_id, updated_at, is_synced'
+});
+
+
 db.audit_logs.hook('creating', (primKey, obj, transaction) => {
     const tenantId = localStorage.getItem('tenant_id');
     if (tenantId && obj.tenant_id === undefined) {

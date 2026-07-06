@@ -66,7 +66,7 @@ export async function syncToCloud() {
         return { success: false, message: 'Subscription inactive' };
     }
 
-    const tables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections', 'cbt_question_bank', 'cbt_options', 'exam_progress'];
+    const tables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections', 'cbt_question_bank', 'cbt_options', 'exam_progress', 'elearning_modules', 'elearning_contents', 'elearning_progress', 'elearning_assignments', 'elearning_submissions', 'elearning_comments'];
     let syncCount = 0;
     const failedTables = new Set();
 
@@ -80,6 +80,11 @@ export async function syncToCloud() {
             if (table === 'cbt_questions' && failedTables.has('cbt_exams')) continue;
             if (table === 'cbt_results' && failedTables.has('students')) continue;
             if (table === 'cbt_options' && failedTables.has('cbt_question_bank')) continue;
+            if (table === 'elearning_contents' && failedTables.has('elearning_modules')) continue;
+            if (table === 'elearning_assignments' && failedTables.has('elearning_modules')) continue;
+            if (table === 'elearning_submissions' && (failedTables.has('elearning_assignments') || failedTables.has('students'))) continue;
+            if (table === 'elearning_progress' && (failedTables.has('elearning_contents') || failedTables.has('students'))) continue;
+            if (table === 'elearning_comments' && failedTables.has('elearning_contents')) continue;
 
             try {
                 const unsynced = await db[table].filter(r => r.is_synced === 0 || r.is_synced === -1).toArray();
@@ -114,7 +119,13 @@ export async function syncToCloud() {
                     parent_links: ['id', 'parent_id', 'student_id', 'tenant_id', 'updated_at'],
                     cbt_question_bank: ['id', 'subject_id', 'class_name', 'question_text', 'passage_text', 'term', 'session', 'topic_area', 'difficulty_level', 'tenant_id', 'updated_at'],
                     cbt_options: ['id', 'question_id', 'option_label', 'option_text', 'is_correct', 'tenant_id', 'updated_at'],
-                    exam_progress: ['id', 'exam_id', 'student_id', 'current_question', 'answers', 'started_at', 'tenant_id', 'updated_at']
+                    exam_progress: ['id', 'exam_id', 'student_id', 'current_question', 'answers', 'started_at', 'tenant_id', 'updated_at'],
+                    elearning_modules: ['id', 'subject_id', 'class_name', 'title', 'description', 'sort_order', 'tenant_id', 'updated_at'],
+                    elearning_contents: ['id', 'module_id', 'title', 'content_type', 'body_text', 'attachment_url', 'video_url', 'sort_order', 'tenant_id', 'updated_at'],
+                    elearning_progress: ['id', 'student_id', 'content_id', 'completed_at', 'tenant_id', 'updated_at'],
+                    elearning_assignments: ['id', 'module_id', 'title', 'instructions', 'due_date', 'max_marks', 'tenant_id', 'updated_at'],
+                    elearning_submissions: ['id', 'assignment_id', 'student_id', 'submission_text', 'attachment_url', 'submitted_at', 'grade', 'feedback', 'graded_by', 'graded_at', 'tenant_id', 'updated_at'],
+                    elearning_comments: ['id', 'content_id', 'user_id', 'comment_text', 'created_at', 'tenant_id', 'updated_at']
                 };
 
                 const CHUNK_SIZE = 50;
@@ -341,7 +352,7 @@ export async function syncFromCloud(options = false) {
     const forceAll = (options === true);
     const specificTables = Array.isArray(options) ? options : null;
 
-    const allTables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 'cbt_exam_sections', 'exam_progress'];
+    const allTables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 'cbt_exam_sections', 'exam_progress', 'elearning_modules', 'elearning_contents', 'elearning_progress', 'elearning_assignments', 'elearning_submissions', 'elearning_comments'];
     const tables = specificTables ? allTables.filter(t => specificTables.includes(t)) : allTables;
     
     // ── Block sync during active exam to prevent flickering and state resets ──

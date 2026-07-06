@@ -8,7 +8,7 @@ import db, { prepareForSync } from './db.js';
 import { Notifications } from './utils.js';
 import { initPushNotifications } from './push.js';
 
-console.log("--- GRAVITON CORE v27.8 (BUILD v364) - INITIALIZING ---");
+console.log("--- GRAVITON CORE v27.9 (BUILD v365) - INITIALIZING ---");
 window.UI = UI;
 
 // Expose utilities to window for HTML event attributes (e.g. onclick="Notifications.show()")
@@ -536,9 +536,9 @@ async function loadAuthenticatedApp(authUser) {
         }
     }
 
-    const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights', 'profile'];
-    const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances'];
-    const parentAllowed = ['dashboard'];
+    const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights', 'profile', 'elearning'];
+    const studentAllowed = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'elearning'];
+    const parentAllowed = ['dashboard', 'elearning'];
     const accountsAllowed = ['dashboard', 'finances', 'noticeboard'];
     const superAdminAllowed = ['superadmin', 'profile'];
 

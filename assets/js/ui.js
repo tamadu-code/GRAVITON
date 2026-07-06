@@ -922,6 +922,7 @@ export const UI = {
                 case 'staff': await this.renderStaff(); break;
                 case 'cbt': await this.renderCBT(); break;
                 case 'lessons': await this.renderLessons(); break;
+                case 'elearning': await this.renderELearning(); break;
                 case 'timetables': await this.renderTimetable(); break;
                 case 'promotion': await this.renderPromotionEngine(); break;
                 case 'keys': await this.renderKeys(); break;
@@ -15248,6 +15249,1196 @@ export const UI = {
                 this.debouncedSync();
             }
         }
+    },
+
+    async renderELearning() {
+        this._elearningState = this._elearningState || {
+            view: 'subjects', // 'subjects', 'workspace', 'content_view', 'assignment_view'
+            subjectId: null,
+            className: null,
+            selectedStudentId: null, // Used for parent view-only selection
+            viewContentId: null,
+            viewAssignmentId: null,
+            currentTab: 'modules' // 'modules', 'assignments', 'forum'
+        };
+
+        const state = this._elearningState;
+        const role = this.currentUser?.role || localStorage.getItem('user_role') || 'Student';
+        const isTeacher = role === 'Teacher' || role === 'Admin' || role === 'Principal';
+        const isParent = role === 'Parent';
+        const isStudent = role === 'Student';
+        const activeTenantId = localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
+
+        // 1. Fetch relevant infrastructure data
+        const subjects = await db.subjects.toArray();
+        const assignments = await db.subject_assignments.toArray();
+        const classes = await db.classes.toArray();
+        const profiles = await db.profiles.toArray();
+
+        // 2. Parent-specific child resolution
+        let parentChildren = [];
+        if (isParent) {
+            const parentId = this.currentUser?.assigned_id || '';
+            const links = await db.parent_links.filter(l => l.parent_id === parentId).toArray();
+            const childIds = links.map(l => l.student_id);
+            parentChildren = await db.students.filter(s => childIds.includes(s.student_id)).toArray();
+            
+            if (parentChildren.length > 0 && !state.selectedStudentId) {
+                state.selectedStudentId = parentChildren[0].student_id;
+            }
+        }
+
+        // Determine target student context (direct student or parent's selected child)
+        const targetStudentId = isStudent ? (this.currentUser?.assigned_id || '') : (isParent ? state.selectedStudentId : '');
+        let targetStudent = null;
+        if (targetStudentId) {
+            targetStudent = await db.students.get(targetStudentId);
+        }
+
+        // Render functions based on view states
+        const renderHeader = () => {
+            let roleBadge = `<span class="badge" style="background: #e0e7ff; color: #4338ca; font-weight: 700;">${role}</span>`;
+            if (isParent && targetStudent) {
+                roleBadge += ` <span class="badge" style="background: #f0fdf4; color: #16a34a; font-weight: 700;">Viewing: ${targetStudent.name} (${targetStudent.class_name})</span>`;
+            }
+
+            return `
+                <header class="view-header" style="margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h1 class="text-3xl font-extrabold tracking-tight" style="color: #1e293b; display: flex; align-items: center; gap: 0.75rem;">
+                            <i data-lucide="graduation-cap" style="color: #4f46e5; width: 36px; height: 36px;"></i>
+                            E-Learning Hub
+                        </h1>
+                        <p class="text-secondary">Access virtual study notes, download resources, watch lessons, and manage assignments.</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        ${roleBadge}
+                        ${state.view !== 'subjects' ? `
+                            <button id="btn-elearning-back" class="btn btn-secondary" style="border-radius: 12px; height: 44px; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="arrow-left" style="width: 18px;"></i> Back
+                            </button>
+                        ` : ''}
+                    </div>
+                </header>
+            `;
+        };
+
+        const renderParentChildSelector = () => {
+            if (!isParent || parentChildren.length <= 1) return '';
+            return `
+                <div class="card" style="border-radius: 16px; padding: 1rem; margin-bottom: 1.5rem; background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(10px); border: 1px solid #f1f5f9;">
+                    <label style="font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select Child Portfolio</label>
+                    <select id="parent-child-select" class="input" style="max-width: 320px; font-weight: 700; height: 44px; border-radius: 10px;">
+                        ${parentChildren.map(c => `<option value="${c.student_id}" ${state.selectedStudentId === c.student_id ? 'selected' : ''}>${c.name} (${c.class_name})</option>`).join('')}
+                    </select>
+                </div>
+            `;
+        };
+
+        const loadSubjectList = async () => {
+            let activeWorkspaces = [];
+
+            if (isTeacher) {
+                // Teachers see workspaces they are assigned to
+                const teacherId = this.currentUser?.id || '';
+                const teacherAssignments = assignments.filter(a => a.teacher_id === teacherId);
+                
+                activeWorkspaces = teacherAssignments.map(a => {
+                    const sub = subjects.find(s => s.id === a.subject_id);
+                    return {
+                        subjectId: a.subject_id,
+                        subjectName: sub ? sub.name : 'Unknown Subject',
+                        className: a.class_name,
+                        specialization: a.specialization || 'Common Subject'
+                    };
+                });
+            } else if (role === 'Admin' || role === 'Principal') {
+                // Admins see all school subject assignments
+                activeWorkspaces = assignments.map(a => {
+                    const sub = subjects.find(s => s.id === a.subject_id);
+                    return {
+                        subjectId: a.subject_id,
+                        subjectName: sub ? sub.name : 'Unknown Subject',
+                        className: a.class_name,
+                        specialization: a.specialization || 'Common'
+                    };
+                });
+            } else {
+                // Students and Parents see subjects assigned to the student's class
+                if (targetStudent) {
+                    const targetClass = targetStudent.class_name;
+                    const classAssignments = assignments.filter(a => a.class_name === targetClass);
+                    
+                    activeWorkspaces = classAssignments.map(a => {
+                        const sub = subjects.find(s => s.id === a.subject_id);
+                        return {
+                            subjectId: a.subject_id,
+                            subjectName: sub ? sub.name : 'Unknown Subject',
+                            className: targetClass,
+                            specialization: a.specialization || 'Common'
+                        };
+                    });
+                }
+            }
+
+            // Deduplicate lists
+            const uniqueKeys = new Set();
+            activeWorkspaces = activeWorkspaces.filter(w => {
+                const key = `${w.subjectId}_${w.className}`;
+                if (uniqueKeys.has(key)) return false;
+                uniqueKeys.add(key);
+                return true;
+            }).sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+
+            if (activeWorkspaces.length === 0) {
+                return `
+                    <div class="card text-center" style="padding: 3rem; border-radius: 20px;">
+                        <i data-lucide="book-open" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 1rem;"></i>
+                        <h3 style="font-weight: 700; color: #334155;">No classrooms available</h3>
+                        <p style="color: #64748b; font-size: 0.9rem;" class="mt-1">
+                            ${isTeacher ? 'You have not been assigned to any subjects or classes. Please check with the administrator.' : 'No active learning classrooms found for your class.'}
+                        </p>
+                    </div>
+                `;
+            }
+
+            // Fetch progress rates for students/parents
+            const progressMap = {};
+            if (targetStudentId) {
+                for (const w of activeWorkspaces) {
+                    const modules = await db.elearning_modules.where({ subject_id: w.subjectId, class_name: w.className }).toArray();
+                    const moduleIds = modules.map(m => m.id);
+                    const contents = await db.elearning_contents.filter(c => moduleIds.includes(c.module_id)).toArray();
+                    const contentIds = contents.map(c => c.id);
+                    
+                    if (contentIds.length > 0) {
+                        const completed = await db.elearning_progress.filter(p => p.student_id === targetStudentId && contentIds.includes(p.content_id)).toArray();
+                        progressMap[`${w.subjectId}_${w.className}`] = Math.round((completed.length / contentIds.length) * 100);
+                    } else {
+                        progressMap[`${w.subjectId}_${w.className}`] = 0;
+                    }
+                }
+            }
+
+            return `
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem;">
+                    ${activeWorkspaces.map(w => {
+                        const prog = progressMap[`${w.subjectId}_${w.className}`];
+                        const progressHtml = targetStudentId ? `
+                            <div class="mt-4">
+                                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">
+                                    <span>LEARNING PROGRESS</span>
+                                    <span>${prog}%</span>
+                                </div>
+                                <div style="height: 6px; background: #e2e8f0; border-radius: 9999px; overflow: hidden;">
+                                    <div style="width: ${prog}%; height: 100%; background: linear-gradient(to right, #4f46e5, #6366f1); border-radius: 9999px;"></div>
+                                </div>
+                            </div>
+                        ` : '';
+
+                        return `
+                            <div class="card hover-lift" style="border-radius: 20px; padding: 1.5rem; cursor: pointer; border: 1px solid #f1f5f9; background: white;" onclick="UI.enterELearningWorkspace('${w.subjectId}', '${w.className}')">
+                                <div style="display: flex; align-items: flex-start; justify-content: space-between;">
+                                    <div style="width: 48px; height: 48px; background: #eef2ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #4f46e5;">
+                                        <i data-lucide="book-open"></i>
+                                    </div>
+                                    <span class="badge" style="background: #f1f5f9; color: #475569; font-weight: 700; font-size: 0.75rem;">${w.className}</span>
+                                </div>
+                                <h3 style="font-weight: 800; color: #1e293b; font-size: 1.15rem; margin-top: 1rem;">${w.subjectName}</h3>
+                                <p style="font-size: 0.8rem; color: #64748b; font-weight: 500;" class="mt-0-5">${w.specialization}</p>
+                                ${progressHtml}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        };
+
+        const renderWorkspace = async () => {
+            const subject = subjects.find(s => s.id === state.subjectId);
+            const subjectName = subject ? subject.name : 'Classroom';
+            
+            const modules = (await db.elearning_modules.where({ subject_id: state.subjectId, class_name: state.className }).toArray())
+                .sort((a, b) => a.sort_order - b.sort_order);
+
+            // Fetch contents for progress calculation
+            const moduleIds = modules.map(m => m.id);
+            const contents = await db.elearning_contents.filter(c => moduleIds.includes(c.module_id)).toArray();
+            const contentMap = {};
+            contents.forEach(c => {
+                if (!contentMap[c.module_id]) contentMap[c.module_id] = [];
+                contentMap[c.module_id].push(c);
+            });
+            Object.keys(contentMap).forEach(k => contentMap[k].sort((a,b) => a.sort_order - b.sort_order));
+
+            const localAssignments = await db.elearning_assignments.filter(a => moduleIds.includes(a.module_id)).toArray();
+
+            // Progress tracking
+            const completedContentIds = new Set();
+            if (targetStudentId) {
+                const progress = await db.elearning_progress.filter(p => p.student_id === targetStudentId).toArray();
+                progress.forEach(p => completedContentIds.add(p.content_id));
+            }
+
+            const renderModulesTab = () => {
+                const addModuleBtn = isTeacher ? `
+                    <button class="btn btn-primary btn-sm" onclick="UI.showElearningModal('module')" style="border-radius: 8px;">
+                        <i data-lucide="plus" style="width: 16px;"></i> Create Module
+                    </button>
+                ` : '';
+
+                if (modules.length === 0) {
+                    return `
+                        <div class="text-center" style="padding: 4rem 2rem;">
+                            <i data-lucide="layers" style="width: 48px; height: 48px; color: #cbd5e1; margin-bottom: 1rem;"></i>
+                            <h4 style="font-weight: 700; color: #475569;">No learning modules published</h4>
+                            <p style="color: #94a3b8; font-size: 0.85rem;" class="mt-1">Check back later or compile syllabus entries.</p>
+                            <div class="mt-4">${addModuleBtn}</div>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <h3 style="font-weight: 800; color: #1e293b; font-size: 1.2rem;">Syllabus Modules</h3>
+                        ${addModuleBtn}
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        ${modules.map((m, idx) => {
+                            const modContents = contentMap[m.id] || [];
+                            const modAssignments = localAssignments.filter(a => a.module_id === m.id);
+                            
+                            return `
+                                <div class="card" style="border-radius: 16px; border: 1px solid #f1f5f9; background: white; padding: 1.25rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.75rem; margin-bottom: 0.75rem;">
+                                        <div>
+                                            <span style="font-size: 0.7rem; font-weight: 800; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.05em;">MODULE ${idx + 1}</span>
+                                            <h4 style="font-weight: 800; color: #1e293b; font-size: 1.1rem; margin-top: 2px;">${m.title}</h4>
+                                            ${m.description ? `<p style="color: #64748b; font-size: 0.8rem; margin-top: 4px;">${m.description}</p>` : ''}
+                                        </div>
+                                        ${isTeacher ? `
+                                            <div style="display: flex; gap: 0.25rem;">
+                                                <button class="btn-xs" style="background: #f8fafc;" onclick="UI.showElearningModal('content', '${m.id}')" title="Add Lesson Topic">
+                                                    <i data-lucide="plus" style="width: 14px;"></i> Add Lesson
+                                                </button>
+                                                <button class="btn-xs" style="background: #f8fafc;" onclick="UI.showElearningModal('assignment', '${m.id}')" title="Create Assignment">
+                                                    <i data-lucide="clipboard-list" style="width: 14px;"></i> Add Assignment
+                                                </button>
+                                                <button class="btn-xs" style="background: #fff; color: #ef4444;" onclick="UI.deleteElearningItem('elearning_modules', '${m.id}')">
+                                                    <i data-lucide="trash-2" style="width: 14px;"></i>
+                                                </button>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+
+                                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                        ${modContents.map(c => {
+                                            const isDone = completedContentIds.has(c.id);
+                                            const typeIcons = {
+                                                notes: 'file-text',
+                                                video: 'video',
+                                                document: 'download-cloud',
+                                                link: 'link'
+                                            };
+                                            const typeLabels = {
+                                                notes: 'Study Notes',
+                                                video: 'Lecture Video',
+                                                document: 'Resource PDF/File',
+                                                link: 'Reference Link'
+                                            };
+
+                                            const doneBadge = isDone ? `
+                                                <span class="badge" style="background: #ecfdf5; color: #059669; font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; gap: 2px;">
+                                                    <i data-lucide="check" style="width: 12px;"></i> Done
+                                                </span>
+                                            ` : '';
+
+                                            return `
+                                                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 0.75rem 1rem; transition: background 0.2s;" class="hover-bg">
+                                                    <div style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; flex: 1;" onclick="UI.viewElearningContent('${c.id}')">
+                                                        <div style="color: #6366f1;">
+                                                            <i data-lucide="${typeIcons[c.content_type] || 'book-open'}" style="width: 18px;"></i>
+                                                        </div>
+                                                        <div>
+                                                            <span style="font-weight: 700; color: #1e293b; font-size: 0.9rem;">${c.title}</span>
+                                                            <span style="font-size: 0.7rem; color: #94a3b8; margin-left: 8px;">${typeLabels[c.content_type]}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                        ${doneBadge}
+                                                        ${isTeacher ? `
+                                                            <button class="btn-xs" style="background: white; color: #ef4444;" onclick="UI.deleteElearningItem('elearning_contents', '${c.id}')">
+                                                                <i data-lucide="trash-2" style="width: 12px;"></i>
+                                                            </button>
+                                                        ` : ''}
+                                                    </div>
+                                                </div>
+                                            `;
+                                        }).join('')}
+
+                                        ${modAssignments.map(a => {
+                                            return `
+                                                <div style="display: flex; justify-content: space-between; align-items: center; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px; padding: 0.75rem 1rem; cursor: pointer;" onclick="UI.viewElearningAssignment('${a.id}')">
+                                                    <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1;">
+                                                        <div style="color: #d97706;">
+                                                            <i data-lucide="clipboard-list" style="width: 18px;"></i>
+                                                        </div>
+                                                        <div>
+                                                            <span style="font-weight: 850; color: #78350f; font-size: 0.9rem;">Assignment: ${a.title}</span>
+                                                            <span style="font-size: 0.7rem; color: #b45309; margin-left: 8px;">Max Marks: ${a.max_marks}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        ${isTeacher ? `
+                                                            <button class="btn-xs" style="background: white; color: #ef4444;" onclick="event.stopPropagation(); UI.deleteElearningItem('elearning_assignments', '${a.id}')">
+                                                                <i data-lucide="trash-2" style="width: 12px;"></i>
+                                                            </button>
+                                                        ` : ''}
+                                                    </div>
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            };
+
+            const renderAssignmentsTab = async () => {
+                const allAss = await db.elearning_assignments.toArray();
+                const subjModules = modules.map(m => m.id);
+                const subjAssignments = allAss.filter(a => subjModules.includes(a.module_id));
+
+                if (subjAssignments.length === 0) {
+                    return `
+                        <div class="text-center" style="padding: 4rem 2rem;">
+                            <i data-lucide="clipboard-list" style="width: 48px; height: 48px; color: #cbd5e1; margin-bottom: 1rem;"></i>
+                            <h4 style="font-weight: 700; color: #475569;">No assignments set</h4>
+                            <p style="color: #94a3b8; font-size: 0.85rem;" class="mt-1">Tasks and grades will appear here once published by teachers.</p>
+                        </div>
+                    `;
+                }
+
+                if (isTeacher) {
+                    // Teachers view list of assignments + submission counts
+                    const submissions = await db.elearning_submissions.toArray();
+                    
+                    return `
+                        <h3 style="font-weight: 800; color: #1e293b; font-size: 1.2rem; margin-bottom: 1.5rem;">Grade Assessment Center</h3>
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                            ${subjAssignments.map(a => {
+                                const subList = submissions.filter(s => s.assignment_id === a.id);
+                                const gradedCount = subList.filter(s => s.grade !== null).length;
+                                const pendingCount = subList.length - gradedCount;
+
+                                return `
+                                    <div class="card hover-lift" style="border-radius: 16px; padding: 1.25rem; background: white; border: 1px solid #f1f5f9; cursor: pointer;" onclick="UI.viewElearningAssignment('${a.id}')">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div>
+                                                <h4 style="font-weight: 800; color: #1e293b; font-size: 1.05rem;">${a.title}</h4>
+                                                <div style="font-size: 0.75rem; color: #64748b; font-weight: 600; margin-top: 4px;" class="flex gap-2">
+                                                    <span>DUE DATE: ${a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No deadline'}</span>
+                                                    <span>•</span>
+                                                    <span>MAX MARKS: ${a.max_marks}</span>
+                                                </div>
+                                            </div>
+                                            <div style="display: flex; gap: 0.5rem;">
+                                                <span class="badge" style="background: #f1f5f9; color: #475569; font-weight: 700;">${subList.length} Submissions</span>
+                                                ${pendingCount > 0 ? `<span class="badge" style="background: #fef3c7; color: #d97706; font-weight: 700;">${pendingCount} Needs Grading</span>` : '<span class="badge" style="background: #ecfdf5; color: #059669; font-weight: 700;">All Graded</span>'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                } else {
+                    // Students / Parents view their own submission status
+                    const submissions = await db.elearning_submissions.filter(s => s.student_id === targetStudentId).toArray();
+
+                    return `
+                        <h3 style="font-weight: 800; color: #1e293b; font-size: 1.2rem; margin-bottom: 1.5rem;">Virtual Tasks & Reports</h3>
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                            ${subjAssignments.map(a => {
+                                const sub = submissions.find(s => s.assignment_id === a.id);
+                                let statusHtml = '';
+                                if (!sub) {
+                                    statusHtml = `<span class="badge" style="background: #fef2f2; color: #ef4444; font-weight: 800;">Not Submitted</span>`;
+                                } else if (sub.grade === null) {
+                                    statusHtml = `<span class="badge" style="background: #eef2ff; color: #4f46e5; font-weight: 800;">Submitted (Awaiting Grade)</span>`;
+                                } else {
+                                    statusHtml = `<span class="badge" style="background: #ecfdf5; color: #059669; font-weight: 850;">Graded: ${sub.grade} / ${a.max_marks}</span>`;
+                                }
+
+                                return `
+                                    <div class="card hover-lift" style="border-radius: 16px; padding: 1.25rem; background: white; border: 1px solid #f1f5f9; cursor: pointer;" onclick="UI.viewElearningAssignment('${a.id}')">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div>
+                                                <h4 style="font-weight: 800; color: #1e293b; font-size: 1.05rem;">${a.title}</h4>
+                                                <p style="font-size: 0.75rem; color: #64748b; font-weight: 600; margin-top: 4px;">DUE: ${a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No deadline'}</p>
+                                            </div>
+                                            <div>${statusHtml}</div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                }
+            };
+
+            const renderForumTab = async () => {
+                // Flat list of comments on this subject
+                const allContents = await db.elearning_contents.filter(c => moduleIds.includes(c.module_id)).toArray();
+                const contentIds = allContents.map(c => c.id);
+                const comments = (await db.elearning_comments.filter(c => contentIds.includes(c.content_id)).toArray())
+                    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+
+                if (comments.length === 0) {
+                    return `
+                        <div class="text-center" style="padding: 4rem 2rem;">
+                            <i data-lucide="message-square" style="width: 48px; height: 48px; color: #cbd5e1; margin-bottom: 1rem;"></i>
+                            <h4 style="font-weight: 700; color: #475569;">Discussion forum empty</h4>
+                            <p style="color: #94a3b8; font-size: 0.85rem;" class="mt-1">Students can post Q&A queries from inside any lesson notes.</p>
+                        </div>
+                    `;
+                }
+
+                const profileMap = {};
+                profiles.forEach(p => profileMap[p.id] = p);
+
+                return `
+                    <h3 style="font-weight: 800; color: #1e293b; font-size: 1.2rem; margin-bottom: 1.5rem;">Subject Discussion Feed</h3>
+                    <div style="display: flex; flex-direction: column; gap: 1rem; max-height: 500px; overflow-y: auto; padding-right: 0.5rem;">
+                        ${comments.map(c => {
+                            const prof = profileMap[c.user_id];
+                            const content = allContents.find(cn => cn.id === c.content_id);
+                            return `
+                                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; box-shadow: var(--shadow-sm);">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                            <span style="font-weight: 800; color: #1e293b; font-size: 0.85rem;">${prof ? prof.full_name : 'Unknown User'}</span>
+                                            <span class="badge" style="background: #f1f5f9; color: #64748b; font-size: 0.65rem;">${prof ? prof.role : 'Member'}</span>
+                                        </div>
+                                        <span style="font-size: 0.7rem; color: #94a3b8;">${new Date(c.created_at).toLocaleString()}</span>
+                                    </div>
+                                    <p style="font-size: 0.85rem; color: #334155; line-height: 1.4;">${c.comment_text}</p>
+                                    ${content ? `
+                                        <div style="margin-top: 0.75rem; font-size: 0.7rem; color: #4f46e5; font-weight: 700; border-top: 1px dashed #f1f5f9; padding-top: 0.5rem; cursor: pointer;" onclick="UI.viewElearningContent('${content.id}')">
+                                            <i data-lucide="arrow-right" style="width: 10px; display: inline-block; vertical-align: middle;"></i> View Lesson: ${content.title}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            };
+
+            const tabContent = state.currentTab === 'assignments' 
+                ? await renderAssignmentsTab() 
+                : (state.currentTab === 'forum' ? await renderForumTab() : renderModulesTab());
+
+            return `
+                <div class="card" style="border-radius: 24px; padding: 2rem; background: #fff; border: 1px solid #f1f5f9;">
+                    <div style="border-bottom: 1px solid #f1f5f9; padding-bottom: 1rem; margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                        <div>
+                            <span class="badge" style="background: #e0f2fe; color: #0369a1; font-weight: 800;">${state.className}</span>
+                            <h2 style="font-weight: 800; color: #1e293b; font-size: 1.5rem; margin-top: 4px;">${subjectName} Workspace</h2>
+                        </div>
+                    </div>
+
+                    <!-- Tabs -->
+                    <div style="display: flex; gap: 0.5rem; background: #f8fafc; padding: 0.4rem; border-radius: 12px; margin-bottom: 2rem; border: 1px solid #e2e8f0; width: max-content;">
+                        <button class="btn-xs ${state.currentTab === 'modules' ? 'active-tab' : ''}" onclick="UI.switchElearningTab('modules')" style="padding: 0.5rem 1.25rem; font-weight: 700; border-radius: 8px; border: none; cursor: pointer;">
+                            Syllabus & Lessons
+                        </button>
+                        <button class="btn-xs ${state.currentTab === 'assignments' ? 'active-tab' : ''}" onclick="UI.switchElearningTab('assignments')" style="padding: 0.5rem 1.25rem; font-weight: 700; border-radius: 8px; border: none; cursor: pointer;">
+                            Assignments & Grading
+                        </button>
+                        <button class="btn-xs ${state.currentTab === 'forum' ? 'active-tab' : ''}" onclick="UI.switchElearningTab('forum')" style="padding: 0.5rem 1.25rem; font-weight: 700; border-radius: 8px; border: none; cursor: pointer;">
+                            Discussion Forum
+                        </button>
+                    </div>
+
+                    <style>
+                        .active-tab {
+                            background: white !important;
+                            color: #4f46e5 !important;
+                            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+                        }
+                    </style>
+
+                    <div id="elearning-tab-workspace-content">
+                        ${tabContent}
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderContentReader = async () => {
+            const content = await db.elearning_contents.get(state.viewContentId);
+            if (!content) return '<div>Content not found.</div>';
+
+            const comments = (await db.elearning_comments.where('content_id').equals(state.viewContentId).toArray())
+                .sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+
+            const isDone = targetStudentId ? (await db.elearning_progress.where({ student_id: targetStudentId, content_id: state.viewContentId }).first() !== undefined) : false;
+
+            // Render attachment link
+            let attachmentHtml = '';
+            if (content.attachment_url) {
+                const isPdf = content.attachment_url.toLowerCase().endsWith('.pdf') || content.attachment_url.includes('pdf');
+                attachmentHtml = `
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; margin-top: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <i data-lucide="file" style="color: #4f46e5;"></i>
+                            <div>
+                                <span style="font-weight: 700; font-size: 0.85rem; color: #1e293b;">Lesson Attachment</span>
+                                <p style="font-size: 0.7rem; color: #64748b; margin-top: 2px;">Support material for this topic.</p>
+                            </div>
+                        </div>
+                        <a href="${content.attachment_url}" target="_blank" class="btn" style="background: #eef2ff; color: #4f46e5; border: none; font-weight: 700; font-size: 0.8rem; border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.25rem;">
+                            <i data-lucide="external-link" style="width: 14px;"></i> Open / View
+                        </a>
+                    </div>
+                `;
+            }
+
+            // Render video player
+            let videoHtml = '';
+            if (content.video_url) {
+                let embedUrl = content.video_url;
+                // Basic conversion from regular link to embed link
+                if (embedUrl.includes('youtube.com/watch?v=')) {
+                    embedUrl = embedUrl.replace('youtube.com/watch?v=', 'youtube.com/embed/');
+                } else if (embedUrl.includes('youtu.be/')) {
+                    embedUrl = embedUrl.replace('youtu.be/', 'youtube.com/embed/');
+                }
+                videoHtml = `
+                    <div style="margin-top: 1.5rem; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;">
+                        <iframe width="100%" height="360" src="${embedUrl}" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                    </div>
+                `;
+            }
+
+            const profileMap = {};
+            profiles.forEach(p => profileMap[p.id] = p);
+
+            // Hide checkbox / comments input in Parent mode
+            const isProgressAllowed = targetStudentId && !isParent;
+
+            return `
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; align-items: start;">
+                    <!-- Content Panel -->
+                    <div class="card" style="border-radius: 24px; padding: 2rem; background: white; border: 1px solid #f1f5f9;">
+                        <span class="badge" style="background: #e0f2fe; color: #0369a1; font-weight: 800;">STUDY NOTES</span>
+                        <h2 style="font-weight: 900; color: #1e293b; font-size: 1.75rem; margin-top: 0.5rem;">${content.title}</h2>
+                        
+                        <div style="font-size: 0.95rem; color: #334155; line-height: 1.6; margin-top: 1.5rem;" class="mathjax-render-area">
+                            ${content.body_text ? content.body_text.replace(/\n/g, '<br>') : 'No written notes provided for this topic.'}
+                        </div>
+
+                        ${videoHtml}
+                        ${attachmentHtml}
+
+                        ${isProgressAllowed ? `
+                            <div style="border-top: 1px solid #f1f5f9; padding-top: 1.5rem; margin-top: 2rem; display: flex; justify-content: flex-end;">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 800; cursor: pointer; color: #1e293b;">
+                                    <input type="checkbox" id="elearning-progress-chk" style="width: 20px; height: 20px;" ${isDone ? 'checked' : ''}>
+                                    Mark Lesson as Completed
+                                </label>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Forum / Comment Panel -->
+                    <div class="card" style="border-radius: 20px; padding: 1.5rem; background: #fff; border: 1px solid #f1f5f9; max-height: 600px; display: flex; flex-direction: column;">
+                        <h3 style="font-weight: 800; color: #1e293b; font-size: 1.1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                            Lesson Q&A Discussion
+                        </h3>
+                        
+                        <div id="elearning-comments-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; padding-right: 0.25rem; margin-bottom: 1rem;">
+                            ${comments.map(c => {
+                                const prof = profileMap[c.user_id];
+                                return `
+                                    <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 0.75rem; font-size: 0.8rem;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                            <span style="font-weight: 800; color: #1e293b;">${prof ? prof.full_name : 'Unknown User'}</span>
+                                            <span style="font-size: 0.65rem; color: #94a3b8;">${new Date(c.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                        </div>
+                                        <p style="color: #475569; line-height: 1.35;">${c.comment_text}</p>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+
+                        ${!isParent ? `
+                            <div style="display: flex; gap: 0.5rem; border-top: 1px solid #f1f5f9; padding-top: 1rem;">
+                                <input type="text" id="elearning-comment-input" class="input" placeholder="Ask a question..." style="height: 40px; font-size: 0.85rem; border-radius: 8px; flex: 1;">
+                                <button id="btn-post-comment" class="btn btn-primary btn-sm" style="border-radius: 8px; height: 40px; display: flex; align-items: center; justify-content: center; width: 40px; padding: 0;">
+                                    <i data-lucide="send" style="width: 16px;"></i>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderAssignmentWorkspace = async () => {
+            const assignment = await db.elearning_assignments.get(state.viewAssignmentId);
+            if (!assignment) return '<div>Assignment not found.</div>';
+
+            if (isTeacher) {
+                // Teacher Workspace: grading dashboard
+                const submissions = (await db.elearning_submissions.where('assignment_id').equals(state.viewAssignmentId).toArray())
+                    .sort((a,b) => new Date(b.submitted_at) - new Date(a.submitted_at));
+                
+                const studentsList = await db.students.filter(s => s.class_name === state.className).toArray();
+                const studentMap = {};
+                studentsList.forEach(s => studentMap[s.student_id] = s);
+
+                return `
+                    <div class="card" style="border-radius: 24px; padding: 2rem; background: white; border: 1px solid #f1f5f9; margin-bottom: 2rem;">
+                        <span class="badge" style="background: #fffbeb; color: #b45309; font-weight: 800;">GRADER GATEWAY</span>
+                        <h2 style="font-weight: 900; color: #1e293b; font-size: 1.5rem; margin-top: 0.5rem;">${assignment.title}</h2>
+                        <p style="color: #64748b; font-size: 0.85rem; font-weight: 550; margin-top: 4px;">DUE: ${assignment.due_date ? new Date(assignment.due_date).toLocaleString() : 'No deadline'} | Max marks: ${assignment.max_marks}</p>
+                        <p style="color: #334155; font-size: 0.95rem; margin-top: 1rem; border-left: 3px solid #cbd5e1; padding-left: 1rem; line-height: 1.5;">${assignment.instructions || 'No instructions provided.'}</p>
+                    </div>
+
+                    <div class="card" style="border-radius: 20px; padding: 1.5rem; background: white; border: 1px solid #f1f5f9;">
+                        <h3 style="font-weight: 800; color: #1e293b; font-size: 1.15rem; margin-bottom: 1.5rem;">Submitted Solutions (${submissions.length})</h3>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                            ${submissions.map(s => {
+                                const stud = studentMap[s.student_id];
+                                const isGraded = s.grade !== null;
+                                return `
+                                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                                        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px dashed #e2e8f0; padding-bottom: 0.75rem;">
+                                            <div>
+                                                <h4 style="font-weight: 850; color: #1e293b; font-size: 1rem;">${stud ? stud.name : 'Unknown Student'}</h4>
+                                                <span style="font-size: 0.7rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">SUBMITTED ON: ${new Date(s.submitted_at).toLocaleString()}</span>
+                                            </div>
+                                            <div>
+                                                ${isGraded ? `<span class="badge" style="background: #ecfdf5; color: #059669; font-weight: 850;">Graded: ${s.grade} / ${assignment.max_marks}</span>` : '<span class="badge" style="background: #fffbeb; color: #b45309; font-weight: 800;">Pending Assessment</span>'}
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <span style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase;">SUBMISSION TEXT</span>
+                                            <p style="font-size: 0.85rem; color: #334155; line-height: 1.4; margin-top: 4px;">${s.submission_text || 'No text answer.'}</p>
+                                            ${s.attachment_url ? `
+                                                <div style="margin-top: 0.75rem;">
+                                                    <a href="${s.attachment_url}" target="_blank" style="font-size: 0.8rem; font-weight: 700; color: #4f46e5; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                                        <i data-lucide="download-cloud" style="width: 14px;"></i> View Attached File
+                                                    </a>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+
+                                        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                                            <h5 style="font-weight: 800; color: #1e293b; font-size: 0.8rem;">Evaluate Submission</h5>
+                                            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                                <div style="flex: 1; min-width: 150px;">
+                                                    <label style="font-size: 0.65rem; font-weight: 800; color: #64748b; display: block; margin-bottom: 2px;">AWARD SCORE (MAX: ${assignment.max_marks})</label>
+                                                    <input type="number" id="grade-score-${s.id}" min="0" max="${assignment.max_marks}" class="input" style="height: 40px;" value="${s.grade || ''}">
+                                                </div>
+                                                <div style="flex: 3; min-width: 250px;">
+                                                    <label style="font-size: 0.65rem; font-weight: 800; color: #64748b; display: block; margin-bottom: 2px;">CONSTRUCTIVE FEEDBACK</label>
+                                                    <input type="text" id="grade-feedback-${s.id}" class="input" style="height: 40px;" placeholder="Keep it up!..." value="${s.feedback || ''}">
+                                                </div>
+                                                <div style="display: flex; align-items: flex-end;">
+                                                    <button class="btn btn-primary btn-sm" style="height: 40px; border-radius: 8px; font-weight: 750;" onclick="UI.submitAssignmentGrade('${s.id}')">
+                                                        Submit Assessment
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            } else {
+                // Student / Parent Workspace: display instruction and submission form
+                const sub = await db.elearning_submissions.where({ student_id: targetStudentId, assignment_id: state.viewAssignmentId }).first();
+
+                let submissionStatusHtml = '';
+                if (sub) {
+                    submissionStatusHtml = `
+                        <div class="card" style="border-radius: 20px; padding: 1.5rem; background: #f0fdf4; border: 1px solid #bbf7d0; margin-bottom: 1.5rem;">
+                            <h3 style="font-weight: 850; color: #166534; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="check-circle" style="color: #166534;"></i> Submission Confirmed
+                            </h3>
+                            <p style="color: #166534; font-size: 0.85rem; margin-top: 4px;">Submitted on: ${new Date(sub.submitted_at).toLocaleString()}</p>
+                            
+                            <div style="margin-top: 1rem; border-top: 1px dashed #bbf7d0; padding-top: 1rem; font-size: 0.85rem; color: #14532d;">
+                                <strong>YOUR RESPONSE:</strong>
+                                <p style="margin-top: 4px; font-style: italic;">${sub.submission_text || 'No text answer submitted.'}</p>
+                                ${sub.attachment_url ? `<a href="${sub.attachment_url}" target="_blank" style="margin-top: 0.5rem; display: inline-flex; align-items: center; gap: 4px; color: #166534; font-weight: 700;"><i data-lucide="file" style="width: 14px;"></i> View Attached File</a>` : ''}
+                            </div>
+                            
+                            ${sub.grade !== null ? `
+                                <div style="margin-top: 1rem; background: white; border: 1px solid #bbf7d0; border-radius: 12px; padding: 1rem;">
+                                    <div style="font-weight: 850; color: #166534; font-size: 0.95rem;">GRADE AWARDED: ${sub.grade} / ${assignment.max_marks}</div>
+                                    ${sub.feedback ? `<p style="color: #475569; margin-top: 4px; font-size: 0.8rem;"><strong>TEACHER FEEDBACK:</strong> ${sub.feedback}</p>` : ''}
+                                </div>
+                            ` : `
+                                <p style="color: #166534; font-size: 0.8rem; font-weight: 700; margin-top: 8px;">Awaiting evaluation from subject teacher.</p>
+                            `}
+                        </div>
+                    `;
+                }
+
+                // If not submitted, and we are not in Parent mode, display submit form
+                const showSubmissionForm = !sub && !isParent;
+
+                return `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start;">
+                        <!-- Instructions card -->
+                        <div class="card" style="border-radius: 24px; padding: 2rem; background: white; border: 1px solid #f1f5f9;">
+                            <span class="badge" style="background: #fffbeb; color: #b45309; font-weight: 800;">TASK BRIEF</span>
+                            <h2 style="font-weight: 900; color: #1e293b; font-size: 1.5rem; margin-top: 0.5rem;">${assignment.title}</h2>
+                            <p style="color: #64748b; font-size: 0.85rem; font-weight: 600; margin-top: 4px;">DEADLINE: ${assignment.due_date ? new Date(assignment.due_date).toLocaleString() : 'No deadline'} | Max marks: ${assignment.max_marks}</p>
+                            
+                            <div style="color: #334155; font-size: 0.9rem; line-height: 1.5; margin-top: 1.5rem; background: #f8fafc; padding: 1.25rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+                                <strong>INSTRUCTIONS:</strong>
+                                <p class="mt-2">${assignment.instructions || 'No detailed instructions provided.'}</p>
+                            </div>
+                        </div>
+
+                        <!-- Submission Status / Upload panel -->
+                        <div>
+                            ${submissionStatusHtml}
+
+                            ${showSubmissionForm ? `
+                                <div class="card" style="border-radius: 24px; padding: 2rem; background: white; border: 1px solid #f1f5f9;">
+                                    <h3 style="font-weight: 800; color: #1e293b; font-size: 1.2rem; margin-bottom: 1.5rem;">Submit Solution</h3>
+                                    <form id="elearning-submission-form">
+                                        <div class="form-group mb-4">
+                                            <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">SOLUTION TEXT / NOTES</label>
+                                            <textarea id="submit-text" class="input" style="height: 120px; padding: 0.75rem; border-radius: 10px; resize: vertical;" placeholder="Type your written answer/notes here..."></textarea>
+                                        </div>
+
+                                        <div class="form-group mb-4">
+                                            <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">ATTACH EXTERNAL DRIVE LINK (OR CLOUD DOC)</label>
+                                            <input type="url" id="submit-link" class="input" style="height: 44px; border-radius: 10px;" placeholder="https://docs.google.com/document/d/... (Google Drive, OneDrive, etc.)">
+                                        </div>
+
+                                        <div class="form-group mb-4">
+                                            <label style="font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 4px; display: block;">UPLOAD LOCAL FILE</label>
+                                            <input type="file" id="submit-file" class="input" style="height: 44px; border-radius: 10px; padding: 8px;">
+                                            <p style="font-size: 0.65rem; color: #94a3b8; margin-top: 4px;">PDFs, images, or document files. Active internet connection required to upload local file.</p>
+                                        </div>
+
+                                        <button type="submit" id="btn-submit-solution" class="btn btn-primary w-100" style="height: 48px; border-radius: 12px; font-weight: 800;">
+                                            Upload & Send Assessment
+                                        </button>
+                                    </form>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+        };
+
+        // Assemble Content Area
+        let subContentHtml = '';
+        if (state.view === 'workspace') {
+            subContentHtml = await renderWorkspace();
+        } else if (state.view === 'content_view') {
+            subContentHtml = await renderContentReader();
+        } else if (state.view === 'assignment_view') {
+            subContentHtml = await renderAssignmentWorkspace();
+        } else {
+            subContentHtml = await loadSubjectList();
+        }
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in-up">
+                ${renderHeader()}
+                ${renderParentChildSelector()}
+                <div id="elearning-viewport-content">
+                    ${subContentHtml}
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // MathJax formulas typesetting
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            window.MathJax.typesetPromise();
+        }
+
+        // Attach event listeners
+        const backBtn = document.getElementById('btn-elearning-back');
+        if (backBtn) {
+            backBtn.onclick = () => {
+                if (state.view === 'content_view' || state.view === 'assignment_view') {
+                    state.view = 'workspace';
+                } else if (state.view === 'workspace') {
+                    state.view = 'subjects';
+                }
+                this.renderELearning();
+            };
+        }
+
+        const childSelect = document.getElementById('parent-child-select');
+        if (childSelect) {
+            childSelect.onchange = (e) => {
+                state.selectedStudentId = e.target.value;
+                this.renderELearning();
+            };
+        }
+
+        const commentInput = document.getElementById('elearning-comment-input');
+        const postCommentBtn = document.getElementById('btn-post-comment');
+        if (postCommentBtn && commentInput) {
+            const handleCommentPost = async () => {
+                const text = commentInput.value.trim();
+                if (!text) return;
+                
+                try {
+                    postCommentBtn.disabled = true;
+                    const newComment = {
+                        id: `COM${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        content_id: state.viewContentId,
+                        user_id: this.currentUser.id,
+                        comment_text: text,
+                        created_at: new Date().toISOString()
+                    };
+                    await db.elearning_comments.add(prepareForSync(newComment));
+                    commentInput.value = '';
+                    this.renderELearning();
+                    this.debouncedSync();
+                } catch (err) {
+                    console.error(err);
+                    Notifications.show('Failed to post comment.', 'error');
+                } finally {
+                    postCommentBtn.disabled = false;
+                }
+            };
+
+            postCommentBtn.onclick = handleCommentPost;
+            commentInput.onkeydown = (e) => { if (e.key === 'Enter') handleCommentPost(); };
+        }
+
+        const progressChk = document.getElementById('elearning-progress-chk');
+        if (progressChk) {
+            progressChk.onchange = async (e) => {
+                const checked = e.target.checked;
+                const progressId = `PRG${targetStudentId}_${state.viewContentId}`.replace(/[^A-Za-z0-9]/g, '');
+                
+                try {
+                    if (checked) {
+                        const newProg = {
+                            id: progressId,
+                            student_id: targetStudentId,
+                            content_id: state.viewContentId,
+                            completed_at: new Date().toISOString()
+                        };
+                        await db.elearning_progress.put(prepareForSync(newProg));
+                    } else {
+                        await db.elearning_progress.delete(progressId);
+                    }
+                    this.debouncedSync();
+                } catch (err) {
+                    console.error(err);
+                    Notifications.show('Failed to update progress.', 'error');
+                }
+            };
+        }
+
+        const submissionForm = document.getElementById('elearning-submission-form');
+        if (submissionForm) {
+            submissionForm.onsubmit = async (e) => {
+                e.preventDefault();
+                const text = document.getElementById('submit-text').value.trim();
+                const link = document.getElementById('submit-link').value.trim();
+                const fileInput = document.getElementById('submit-file');
+                const btn = document.getElementById('btn-submit-solution');
+
+                if (!text && !link && (!fileInput || !fileInput.files[0])) {
+                    return Notifications.show('Please enter some text, paste a cloud link, or upload a file.', 'error');
+                }
+
+                btn.disabled = true;
+                btn.textContent = 'Uploading Submissions...';
+
+                try {
+                    let attachmentUrl = link || null;
+                    
+                    // Upload local file if provided and online
+                    if (fileInput && fileInput.files[0]) {
+                        if (!navigator.onLine) {
+                            throw new Error('Local file upload requires active internet connection. Please paste an external drive link or connect to the internet.');
+                        }
+                        
+                        const file = fileInput.files[0];
+                        const client = getSupabase();
+                        if (!client) throw new Error('Supabase client offline.');
+                        
+                        // Upload to passports storage bucket as fallback if learning_materials doesn't exist
+                        const filePath = `elearning/${activeTenantId}/${targetStudentId}/${Date.now()}_${file.name}`;
+                        let bucketName = 'passports'; // Fallback to passports bucket which exists in schema
+                        
+                        const { error: storageError } = await client.storage.from(bucketName).upload(filePath, file, { upsert: true });
+                        if (storageError) throw storageError;
+
+                        const { data: { publicUrl } } = client.storage.from(bucketName).getPublicUrl(filePath);
+                        attachmentUrl = publicUrl;
+                    }
+
+                    const subId = `SUB${state.viewAssignmentId}_${targetStudentId}`.replace(/[^A-Za-z0-9]/g, '');
+                    const newSub = {
+                        id: subId,
+                        assignment_id: state.viewAssignmentId,
+                        student_id: targetStudentId,
+                        submission_text: text,
+                        attachment_url: attachmentUrl,
+                        submitted_at: new Date().toISOString(),
+                        grade: null,
+                        feedback: null,
+                        graded_by: null,
+                        graded_at: null
+                    };
+
+                    await db.elearning_submissions.put(prepareForSync(newSub));
+                    Notifications.show('Assignment submitted successfully!', 'success');
+                    this.renderELearning();
+                    this.debouncedSync();
+                } catch (err) {
+                    console.error(err);
+                    Notifications.show(err.message, 'error');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Upload & Send Assessment';
+                }
+            };
+        }
+    },
+
+    enterELearningWorkspace(subjectId, className) {
+        this._elearningState.view = 'workspace';
+        this._elearningState.subjectId = subjectId;
+        this._elearningState.className = className;
+        this._elearningState.currentTab = 'modules';
+        this.renderELearning();
+    },
+
+    switchElearningTab(tab) {
+        this._elearningState.currentTab = tab;
+        this.renderELearning();
+    },
+
+    viewElearningContent(contentId) {
+        this._elearningState.view = 'content_view';
+        this._elearningState.viewContentId = contentId;
+        this.renderELearning();
+    },
+
+    viewElearningAssignment(assignmentId) {
+        this._elearningState.view = 'assignment_view';
+        this._elearningState.viewAssignmentId = assignmentId;
+        this.renderELearning();
+    },
+
+    async submitAssignmentGrade(subId) {
+        const gradeInput = document.getElementById(`grade-score-${subId}`);
+        const feedbackInput = document.getElementById(`grade-feedback-${subId}`);
+        const grade = parseFloat(gradeInput.value);
+        const feedback = feedbackInput.value.trim();
+
+        if (isNaN(grade)) {
+            return Notifications.show('Please enter a valid numeric grade.', 'error');
+        }
+
+        try {
+            const sub = await db.elearning_submissions.get(subId);
+            if (!sub) return;
+
+            const updatedSub = {
+                ...sub,
+                grade: grade,
+                feedback: feedback,
+                graded_by: this.currentUser.id,
+                graded_at: new Date().toISOString()
+            };
+
+            await db.elearning_submissions.put(prepareForSync(updatedSub));
+            Notifications.show('Submission evaluated successfully.', 'success');
+            this.renderELearning();
+            this.debouncedSync();
+        } catch (err) {
+            console.error(err);
+            Notifications.show('Failed to submit grade evaluation.', 'error');
+        }
+    },
+
+    async deleteElearningItem(table, id) {
+        if (confirm('Are you sure you want to delete this learning item?')) {
+            const success = await this.safeDelete(table, id, 'Item removed successfully.');
+            if (success) {
+                this.renderELearning();
+                this.debouncedSync();
+            }
+        }
+    },
+
+    showElearningModal(type, targetModuleId = null) {
+        const modal = document.createElement('div');
+        modal.id = 'elearning-entry-modal';
+        modal.className = 'modal-backdrop active animate-fade-in';
+        modal.style.zIndex = '99999';
+
+        let fieldsHtml = '';
+        let title = '';
+
+        if (type === 'module') {
+            title = 'Publish New Module';
+            fieldsHtml = `
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">MODULE TITLE</label>
+                    <input type="text" id="m-title" class="input" placeholder="e.g. Chapter 1: Introduction to Calculus" required>
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">DESCRIPTION / SUMMARY</label>
+                    <textarea id="m-desc" class="input" style="height: 80px; resize: vertical;" placeholder="Overview of learning outcomes..."></textarea>
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">DISPLAY SORT ORDER</label>
+                    <input type="number" id="m-order" class="input" value="0">
+                </div>
+            `;
+        } else if (type === 'content') {
+            title = 'Publish Lesson Topic';
+            fieldsHtml = `
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">LESSON TITLE</label>
+                    <input type="text" id="c-title" class="input" placeholder="e.g. Derivative Rules" required>
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">LESSON TYPE</label>
+                    <select id="c-type" class="input" style="height: 44px;">
+                        <option value="notes">Written Study Notes</option>
+                        <option value="video">Lecture Video URL</option>
+                        <option value="document">Reference Attachment URL</option>
+                        <option value="link">External Web Link</option>
+                    </select>
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">WRITTEN LECTURE NOTES (Supports MathJax & HTML)</label>
+                    <textarea id="c-body" class="input" style="height: 180px; resize: vertical;" placeholder="Write body text or paste notes here. Wrap math in $ ... $ or $$ ... $$ for equations."></textarea>
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">RESOURCE / ATTACHMENT URL</label>
+                    <input type="url" id="c-attachment" class="input" placeholder="https://drive.google.com/file/d/...">
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">YOUTUBE VIDEO LINK</label>
+                    <input type="url" id="c-video" class="input" placeholder="https://www.youtube.com/watch?v=...">
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">DISPLAY SORT ORDER</label>
+                    <input type="number" id="c-order" class="input" value="0">
+                </div>
+            `;
+        } else if (type === 'assignment') {
+            title = 'Publish Virtual Assignment';
+            fieldsHtml = `
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">ASSIGNMENT TITLE</label>
+                    <input type="text" id="a-title" class="input" placeholder="e.g. Assignment 1: Matrix Multiplication" required>
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">INSTRUCTIONS & DESCRIPTION</label>
+                    <textarea id="a-instructions" class="input" style="height: 100px; resize: vertical;" placeholder="Enter instructions, questions list, or brief details..."></textarea>
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">DUE DATE & DEADLINE</label>
+                    <input type="datetime-local" id="a-duedate" class="input">
+                </div>
+                <div class="form-group mb-4">
+                    <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">MAX POINTS / MARKS</label>
+                    <input type="number" id="a-maxmarks" class="input" value="100">
+                </div>
+            `;
+        }
+
+        modal.innerHTML = `
+            <div class="modal-card card" style="max-width: 540px; border-radius: 20px; padding: 2rem; animation: scaleIn 0.3s ease;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 1rem; margin-bottom: 1.5rem;">
+                    <h3 style="font-weight: 900; color: #1e293b; font-size: 1.25rem;">${title}</h3>
+                    <button class="btn-xs" style="background: #f1f5f9; color: #64748b;" onclick="document.getElementById('elearning-entry-modal').remove()">✕</button>
+                </div>
+                <form id="elearning-modal-form">
+                    ${fieldsHtml}
+                    <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('elearning-entry-modal').remove()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Publish Entry</button>
+                    </div>
+                </form>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        document.getElementById('elearning-modal-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const activeTenantId = localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
+
+            try {
+                if (type === 'module') {
+                    const newMod = {
+                        id: `MOD${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        subject_id: this._elearningState.subjectId,
+                        class_name: this._elearningState.className,
+                        title: document.getElementById('m-title').value.trim(),
+                        description: document.getElementById('m-desc').value.trim(),
+                        sort_order: parseInt(document.getElementById('m-order').value) || 0
+                    };
+                    await db.elearning_modules.add(prepareForSync(newMod));
+                } else if (type === 'content') {
+                    const newContent = {
+                        id: `CON${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        module_id: targetModuleId,
+                        title: document.getElementById('c-title').value.trim(),
+                        content_type: document.getElementById('c-type').value,
+                        body_text: document.getElementById('c-body').value.trim(),
+                        attachment_url: document.getElementById('c-attachment').value.trim(),
+                        video_url: document.getElementById('c-video').value.trim(),
+                        sort_order: parseInt(document.getElementById('c-order').value) || 0
+                    };
+                    await db.elearning_contents.add(prepareForSync(newContent));
+                } else if (type === 'assignment') {
+                    const newAssignment = {
+                        id: `ASN${Math.random().toString(36).substr(2,9).toUpperCase()}`,
+                        module_id: targetModuleId,
+                        title: document.getElementById('a-title').value.trim(),
+                        instructions: document.getElementById('a-instructions').value.trim(),
+                        due_date: document.getElementById('a-duedate').value ? new Date(document.getElementById('a-duedate').value).toISOString() : null,
+                        max_marks: parseFloat(document.getElementById('a-maxmarks').value) || 100
+                    };
+                    await db.elearning_assignments.add(prepareForSync(newAssignment));
+                }
+
+                modal.remove();
+                Notifications.show('Learning entry published successfully!', 'success');
+                this.renderELearning();
+                this.debouncedSync();
+            } catch (err) {
+                console.error(err);
+                Notifications.show('Failed to save learning entry.', 'error');
+            }
+        };
     },
 
     async renderTimetable() {
