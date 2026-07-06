@@ -626,6 +626,17 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.text(`Name: ${schoolInfo.teacherName || 'Form Teacher'}`, 12, currentY + (numSubjects > 15 ? 10 : (numSubjects > 10 ? 12.5 : 17)));
     doc.text(`Sign: ____________________`, pageWidth - 60, currentY + (numSubjects > 15 ? 10 : (numSubjects > 10 ? 12.5 : 17)));
     
+    if (schoolInfo.teacherSignature) {
+        try {
+            const tSigH = numSubjects > 15 ? 4 : (numSubjects > 10 ? 5 : 6);
+            const tSigW = numSubjects > 15 ? 16 : (numSubjects > 10 ? 20 : 22);
+            const tSigY = numSubjects > 15 ? 5.5 : (numSubjects > 10 ? 7 : 10);
+            doc.addImage(schoolInfo.teacherSignature, 'PNG', pageWidth - 55, currentY + tSigY, tSigW, tSigH);
+        } catch (e) {
+            console.warn('Failed to add teacher signature inside comment box:', e);
+        }
+    }
+    
     currentY += commentBoxHeight + secSpacing;
     
     // --- Principal's Comment ---
@@ -647,10 +658,10 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     
     if (schoolInfo.principalSignature) {
         try {
-            const sigH = numSubjects > 15 ? 4.5 : (numSubjects > 10 ? 5.5 : 7);
-            const sigW = numSubjects > 15 ? 18 : (numSubjects > 10 ? 22 : 25);
-            const sigOffset = numSubjects > 15 ? 6.5 : (numSubjects > 10 ? 8.5 : 11);
-            doc.addImage(schoolInfo.principalSignature, 'PNG', pageWidth - 55, currentY + sigOffset, sigW, sigH);
+            const sigH = numSubjects > 15 ? 4 : (numSubjects > 10 ? 5 : 6);
+            const sigW = numSubjects > 15 ? 16 : (numSubjects > 10 ? 20 : 22);
+            const sigY = numSubjects > 15 ? 5.5 : (numSubjects > 10 ? 7 : 10);
+            doc.addImage(schoolInfo.principalSignature, 'PNG', pageWidth - 55, currentY + sigY, sigW, sigH);
         } catch (e) {
             console.warn('Failed to add signature inside comment box:', e);
         }

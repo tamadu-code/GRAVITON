@@ -2493,6 +2493,7 @@ export const UI = {
                 motto: settings.schoolMotto || '',
                 principalName: settings.principalName || '',
                 principalSignature: settings.principalSignature || null,
+                teacherSignature: settings.teacherSignature || null,
                 logo: settings.schoolLogo || null,
                 themeColor: settings.themeColor || '#060495',
                 schoolManager: settings.schoolManager || 'TAMADU CODE',
@@ -9277,6 +9278,7 @@ export const UI = {
                             motto: settings.schoolMotto || '',
                             principalName: settings.principalName || '',
                             principalSignature: settings.principalSignature || null,
+                            teacherSignature: settings.teacherSignature || null,
                             logo: settings.schoolLogo || null,
                             themeColor: settings.themeColor || '#060495',
                             schoolManager: settings.schoolManager || '',
@@ -9328,6 +9330,7 @@ export const UI = {
                         motto: settings.schoolMotto || '',
                         principalName: settings.principalName || '',
                         principalSignature: settings.principalSignature || null,
+                        teacherSignature: settings.teacherSignature || null,
                         logo: settings.schoolLogo || null,
                         themeColor: settings.themeColor || '#060495',
                         termEnd: closureDate,
@@ -16908,6 +16911,7 @@ export const UI = {
             gradingSystem: settings.gradingSystem || 'Grade-Based (A1, B2, etc.)',
             principalName: settings.principalName || '',
             principalSignature: settings.principalSignature || null,
+            teacherSignature: settings.teacherSignature || null,
             schoolLogo: settings.schoolLogo || null,
             themeColor: settings.themeColor || '#060495',
             holidays: settings.holidays || '',
@@ -17020,6 +17024,19 @@ export const UI = {
                             </button>
                             <div id="sig-preview" style="height: 40px;">
                                 ${config.principalSignature ? `<img src="${config.principalSignature}" style="max-height: 100%;">` : '<span style="color: #94a3b8; font-size: 0.85rem;">No signature</span>'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 1.5rem;">
+                        <label>Teacher's Signature</label>
+                        <div style="display: flex; align-items: center; gap: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 16px; border: 1px dashed #cbd5e1;">
+                            <input type="file" id="set-teacher-sig-file" accept="image/*" style="display: none;">
+                            <button class="btn btn-secondary" onclick="document.getElementById('set-teacher-sig-file').click()">
+                                <i data-lucide="upload"></i> Upload Signature
+                            </button>
+                            <div id="teacher-sig-preview" style="height: 40px;">
+                                ${config.teacherSignature ? `<img src="${config.teacherSignature}" style="max-height: 100%;">` : '<span style="color: #94a3b8; font-size: 0.85rem;">No signature</span>'}
                             </div>
                         </div>
                     </div>
@@ -17360,6 +17377,19 @@ export const UI = {
                     document.getElementById('sig-preview').innerHTML = `<img src="${re.target.result}" style="max-height: 100%;">`;
                     this.pendingSignature = re.target.result;
                     await this.saveSingleSetting('principalSignature', re.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        document.getElementById('set-teacher-sig-file').onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = async (re) => {
+                    document.getElementById('teacher-sig-preview').innerHTML = `<img src="${re.target.result}" style="max-height: 100%;">`;
+                    this.pendingTeacherSignature = re.target.result;
+                    await this.saveSingleSetting('teacherSignature', re.target.result);
                 };
                 reader.readAsDataURL(file);
             }
@@ -18259,6 +18289,9 @@ export const UI = {
 
         if (this.pendingSignature) {
             settingsToSave.push({ key: 'principalSignature', value: this.pendingSignature });
+        }
+        if (this.pendingTeacherSignature) {
+            settingsToSave.push({ key: 'teacherSignature', value: this.pendingTeacherSignature });
         }
         if (this.pendingLogo) {
             settingsToSave.push({ key: 'schoolLogo', value: this.pendingLogo });
