@@ -15338,7 +15338,18 @@ export const UI = {
         const loadSubjectList = async () => {
             let activeWorkspaces = [];
 
-            if (isTeacher) {
+            if (role === 'Admin' || role === 'Principal') {
+                // Admins see all school subject assignments
+                activeWorkspaces = assignments.map(a => {
+                    const sub = subjects.find(s => s.id === a.subject_id);
+                    return {
+                        subjectId: a.subject_id,
+                        subjectName: sub ? sub.name : 'Unknown Subject',
+                        className: a.class_name,
+                        specialization: a.specialization || 'Common'
+                    };
+                });
+            } else if (role === 'Teacher') {
                 // Teachers see workspaces they are assigned to
                 const teacherId = this.currentUser?.id || '';
                 const teacherAssignments = assignments.filter(a => a.teacher_id === teacherId);
@@ -15350,17 +15361,6 @@ export const UI = {
                         subjectName: sub ? sub.name : 'Unknown Subject',
                         className: a.class_name,
                         specialization: a.specialization || 'Common Subject'
-                    };
-                });
-            } else if (role === 'Admin' || role === 'Principal') {
-                // Admins see all school subject assignments
-                activeWorkspaces = assignments.map(a => {
-                    const sub = subjects.find(s => s.id === a.subject_id);
-                    return {
-                        subjectId: a.subject_id,
-                        subjectName: sub ? sub.name : 'Unknown Subject',
-                        className: a.class_name,
-                        specialization: a.specialization || 'Common'
                     };
                 });
             } else {
