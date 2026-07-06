@@ -1069,7 +1069,7 @@ navItems.forEach(item => {
 
         // Strict Role-Based Protection
         const role = UI.currentUser?.role;
-        const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights', 'profile'];
+        const teacherAllowed = ['dashboard', 'students', 'classes', 'subjects', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'insights', 'profile', 'elearning'];
         const accountsAllowed = ['dashboard', 'finances', 'noticeboard'];
 
         if (role === 'Teacher' && !teacherAllowed.includes(view)) {

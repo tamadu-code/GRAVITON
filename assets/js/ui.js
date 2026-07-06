@@ -828,8 +828,8 @@ export const UI = {
             }
 
             const restrictedForTeachers = ['academic', 'bulkimport', 'staff', 'promotion', 'config', 'reports'];
-            const allowedForStudents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins'];
-            const allowedForParents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins', 'timetables', 'profile'];
+            const allowedForStudents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins', 'elearning'];
+            const allowedForParents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins', 'timetables', 'profile', 'elearning'];
             const isFinance = role === 'finance' || role === 'finance officer' || role === 'finance manager';
             const allowedForFinance = ['dashboard', 'finances', 'pins', 'profile', 'noticeboard'];
             
