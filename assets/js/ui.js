@@ -10034,51 +10034,91 @@ export const UI = {
         if (btnUpdate) {
             btnUpdate.onclick = () => {
                 const modalHtml = `
-                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                    <div style="display: flex; flex-direction: column; gap: 1.25rem; max-height: 70vh; overflow-y: auto; padding-right: 0.5rem;">
                         <div class="form-group">
-                         <div class="form-group">
-                            <label>Full Name</label>
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">FULL LEGAL NAME *</label>
                             <input type="text" id="edit-staff-name" class="input" value="${staff.full_name || ''}" style="width: 100%;">
                         </div>
-                        <div class="form-group">
-                            <label>Email Address / Login</label>
-                            <input type="email" id="edit-staff-email" class="input" value="${staff.email || ''}" style="width: 100%;" placeholder="e.g. teacher@gmail.com">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+                            <div class="form-group">
+                                <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">EMAIL ADDRESS / LOGIN *</label>
+                                <input type="email" id="edit-staff-email" class="input" value="${staff.email || ''}" style="width: 100%;" placeholder="e.g. teacher@gmail.com">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">SYSTEM ROLE *</label>
+                                <select id="edit-staff-role" class="input" style="width: 100%;">
+                                    <option value="Teacher" ${staff.role === 'Teacher' ? 'selected' : ''}>Teacher</option>
+                                    <option value="Admin" ${staff.role === 'Admin' ? 'selected' : ''}>Administrator</option>
+                                    <option value="Principal" ${staff.role === 'Principal' ? 'selected' : ''}>Principal</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                            <div class="form-group">
+                                <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PHONE NUMBER</label>
+                                <input type="text" id="edit-staff-phone" class="input" value="${staff.phone || ''}" placeholder="080XXXXXXXX" style="width: 100%;">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">EMPLOYMENT TYPE</label>
+                                <select id="edit-staff-employment-type" class="input" style="width: 100%;">
+                                    <option value="Full-Time" ${staff.employment_type === 'Full-Time' || !staff.employment_type ? 'selected' : ''}>Full-Time</option>
+                                    <option value="Part-Time" ${staff.employment_type === 'Part-Time' ? 'selected' : ''}>Part-Time</option>
+                                    <option value="Contract" ${staff.employment_type === 'Contract' ? 'selected' : ''}>Contract</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="form-group">
-                            <label>Role</label>
-                            <select id="edit-staff-role" class="input" style="width: 100%;">
-                                <option value="Teacher" ${staff.role === 'Teacher' ? 'selected' : ''}>Teacher</option>
-                                <option value="Admin" ${staff.role === 'Admin' ? 'selected' : ''}>Administrator</option>
-                                <option value="Principal" ${staff.role === 'Principal' ? 'selected' : ''}>Principal</option>
-                            </select>
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">ACADEMIC DEPARTMENT</label>
+                            <input type="text" id="edit-staff-dept" class="input" value="${staff.department || ''}" placeholder="e.g. Sciences, Arts, Languages" style="width: 100%;">
                         </div>
                         <div class="form-group">
-                            <label>Employment Type</label>
-                            <select id="edit-staff-employment-type" class="input" style="width: 100%;">
-                                <option value="Full-Time" ${staff.employment_type === 'Full-Time' || !staff.employment_type ? 'selected' : ''}>Full-Time</option>
-                                <option value="Part-Time" ${staff.employment_type === 'Part-Time' ? 'selected' : ''}>Part-Time</option>
-                                <option value="Contract" ${staff.employment_type === 'Contract' ? 'selected' : ''}>Contract</option>
-                            </select>
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PROFESSIONAL QUALIFICATIONS</label>
+                            <textarea id="edit-staff-quals" class="input" placeholder="Degrees, certifications, etc." style="width: 100%; height: 60px; resize: none;">${staff.qualifications || ''}</textarea>
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">DIGITAL SIGNATURE</label>
+                            <div style="display: flex; align-items: center; gap: 1rem; margin-top: 0.25rem;">
+                                <input type="file" id="edit-staff-sig" accept="image/*" style="display: none;">
+                                <button type="button" class="btn btn-secondary" onclick="document.getElementById('edit-staff-sig').click()" style="padding: 0.5rem 1rem; border-radius: 8px;">
+                                    <i data-lucide="upload" style="width: 16px; margin-right: 4px;"></i> Upload Signature
+                                </button>
+                                <div id="edit-sig-preview" style="height: 35px; border: 1px dashed #cbd5e1; border-radius: 8px; flex: 1; display: flex; align-items: center; justify-content: center; background: #f8fafc; overflow: hidden;">
+                                    ${staff.signature ? `<img src="${staff.signature}" style="max-height: 100%; object-fit: contain;">` : '<span style="color: #94a3b8; font-size: 0.75rem;">No file uploaded</span>'}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 `;
+                
+                let editSignatureBase64 = staff.signature || null;
+                
                 this.showModal('Update Staff Records', modalHtml, async () => {
-                    const name = document.getElementById('edit-staff-name').value;
+                    const name = document.getElementById('edit-staff-name').value.trim();
                     const email = document.getElementById('edit-staff-email').value.trim();
                     const role = document.getElementById('edit-staff-role').value;
                     const empType = document.getElementById('edit-staff-employment-type').value;
+                    const phone = document.getElementById('edit-staff-phone').value.trim();
+                    const dept = document.getElementById('edit-staff-dept').value.trim();
+                    const quals = document.getElementById('edit-staff-quals').value.trim();
                     
                     if (!email) return Notifications.show('Email is required for staff login.', 'warning');
                     
                     const oldStaff = await db.profiles.get(staffId);
                     const oldEmail = oldStaff ? oldStaff.email : '';
                     
-                    await db.profiles.update(staffId, prepareForSync({ 
+                    const updatedFields = { 
                         full_name: name, 
                         email: email,
                         role: role, 
-                        employment_type: empType
-                    }));
+                        employment_type: empType,
+                        phone: phone,
+                        department: dept,
+                        qualifications: quals,
+                        signature: editSignatureBase64,
+                        updated_at: new Date().toISOString()
+                    };
+                    
+                    await db.profiles.update(staffId, prepareForSync(updatedFields));
                     
                     // Immediately push to Supabase so the change takes effect without waiting for background sync
                     const client = window.getSupabase ? window.getSupabase() : null;
@@ -10091,6 +10131,10 @@ export const UI = {
                                 email: email,
                                 role: role,
                                 employment_type: empType,
+                                phone: phone,
+                                department: dept,
+                                qualifications: quals,
+                                signature: editSignatureBase64,
                                 assigned_id: updatedProfile.assigned_id,
                                 status: updatedProfile.status || 'Active',
                                 updated_at: new Date().toISOString()
@@ -10132,10 +10176,29 @@ export const UI = {
                         }
                     }
                     
-                    Notifications.show('Staff records updated', 'success');
+                    Notifications.show('Staff records updated successfully!', 'success');
                     this.renderStaffDetail(staffId);
                     this.debouncedSync();
-                }, 'Save Updates');
+                }, 'Save Updates', 'save');
+
+                // Re-render icons inside modal and setup signature change listener
+                setTimeout(() => {
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                    const editSigFile = document.getElementById('edit-staff-sig');
+                    if (editSigFile) {
+                        editSigFile.onchange = (e) => {
+                            const file = e.target.files[0];
+                            if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (re) => {
+                                    editSignatureBase64 = re.target.result;
+                                    document.getElementById('edit-sig-preview').innerHTML = `<img src="${editSignatureBase64}" style="max-height: 100%; object-fit: contain;">`;
+                                };
+                                reader.readAsDataURL(file);
+                            }
+                        };
+                    }
+                }, 100);
             };
         }
 
