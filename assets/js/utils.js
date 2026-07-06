@@ -246,9 +246,9 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     const getTermVal = (t) => {
         if (!t) return 0;
         const norm = t.toLowerCase();
-        if (norm.includes('first')) return 1;
-        if (norm.includes('second')) return 2;
-        if (norm.includes('third')) return 3;
+        if (norm.includes('first') || norm.includes('1st') || norm.includes('1')) return 1;
+        if (norm.includes('second') || norm.includes('2nd') || norm.includes('2')) return 2;
+        if (norm.includes('third') || norm.includes('3rd') || norm.includes('3')) return 3;
         return 0;
     };
 
@@ -446,7 +446,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     y += 7;
     // Row 4
     doc.text(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'}`, leftX, y);
-    const isThirdTerm = (schoolInfo.term || '').toLowerCase().includes('third');
+    const isThirdTerm = (schoolInfo.term || '').toLowerCase().includes('third') || (schoolInfo.term || '').toLowerCase().includes('3rd');
     const getNextClass = (currentClass) => {
         const upper = String(currentClass || '').toUpperCase().trim();
         if (upper.includes('JSS 1') || upper.includes('JS 1') || upper === 'JSS1' || upper === 'JS1') return 'JSS 2';
@@ -690,7 +690,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     }
     
     qrLines.push(`TERM: ${scores[0]?.term || 'N/A'} AVERAGE: ${avg}%`);
-    const isThirdTermQR = (schoolInfo.term || '').toLowerCase().includes('third');
+    const isThirdTermQR = (schoolInfo.term || '').toLowerCase().includes('third') || (schoolInfo.term || '').toLowerCase().includes('3rd');
     let qrDecision = 'REPEAT';
     if (isThirdTermQR) {
         const scoreClass = String(scores[0]?.class_name || student.class_name || '').toUpperCase().trim();
