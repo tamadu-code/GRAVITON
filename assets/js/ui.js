@@ -9651,8 +9651,22 @@ export const UI = {
                         <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">PROFESSIONAL QUALIFICATIONS</label>
                         <textarea id="staff-quals" class="input" placeholder="Degrees, certifications, etc." style="width: 100%; height: 60px; resize: none;"></textarea>
                     </div>
+                    <div class="form-group">
+                        <label style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em;">DIGITAL SIGNATURE</label>
+                        <div style="display: flex; align-items: center; gap: 1rem; margin-top: 0.25rem;">
+                            <input type="file" id="onboard-staff-sig" accept="image/*" style="display: none;">
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('onboard-staff-sig').click()" style="padding: 0.5rem 1rem; border-radius: 8px;">
+                                <i data-lucide="upload" style="width: 16px; margin-right: 4px;"></i> Upload Signature
+                            </button>
+                            <div id="onboard-sig-preview" style="height: 35px; border: 1px dashed #cbd5e1; border-radius: 8px; flex: 1; display: flex; align-items: center; justify-content: center; background: #f8fafc; overflow: hidden;">
+                                <span style="color: #94a3b8; font-size: 0.75rem;">No file selected</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             `;
+            
+            let onboardSignatureBase64 = null;
             
             this.showModal('Onboard New Staff Member', modalHtml, async () => {
                 const name = document.getElementById('staff-name').value.trim();
@@ -9712,6 +9726,7 @@ export const UI = {
                         employment_type: empType,
                         department: dept,
                         qualifications: quals,
+                        signature: onboardSignatureBase64,
                         status: 'Active',
                         assigned_id: staffAssignedId
                     });
@@ -9730,8 +9745,24 @@ export const UI = {
                 }
             }, 'Create Account & Register', 'user-plus');
 
-            // Re-render icons inside modal
-            setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); }, 100);
+            // Re-render icons inside modal and setup signature change listener
+            setTimeout(() => { 
+                if (typeof lucide !== 'undefined') lucide.createIcons(); 
+                const onboardSigFile = document.getElementById('onboard-staff-sig');
+                if (onboardSigFile) {
+                    onboardSigFile.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (re) => {
+                                onboardSignatureBase64 = re.target.result;
+                                document.getElementById('onboard-sig-preview').innerHTML = `<img src="${onboardSignatureBase64}" style="max-height: 100%; object-fit: contain;">`;
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    };
+                }
+            }, 100);
         };
     },
 
