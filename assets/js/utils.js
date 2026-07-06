@@ -505,13 +505,37 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         ];
     });
     
+    const numSubjects = tableBody.length;
+    
+    // Default layout values for <= 10 subjects
+    let tableFontSize = 8;
+    let tableCellPadding = 2;
+    let secSpacing = 5; // spacing between major sections
+    let affectiveRowHeight = 6;
+    let commentBoxHeight = 18;
+    
+    // Dynamic adjustments
+    if (numSubjects > 15) {
+        tableFontSize = 6.5;
+        tableCellPadding = 1.0;
+        secSpacing = 3;
+        affectiveRowHeight = 4.5;
+        commentBoxHeight = 11;
+    } else if (numSubjects > 10) {
+        tableFontSize = 7.5;
+        tableCellPadding = 1.5;
+        secSpacing = 4;
+        affectiveRowHeight = 5;
+        commentBoxHeight = 14;
+    }
+
     doc.autoTable({
         startY: y + 5,
         head: tableHead,
         body: tableBody,
         theme: 'grid',
-        headStyles: { fillStyle: [37, 99, 235], textColor: 255, fontSize: 8, fontStyle: 'bold' },
-        styles: { fontSize: 8, textColor: 0, cellPadding: 2 },
+        headStyles: { fillStyle: [37, 99, 235], textColor: 255, fontSize: tableFontSize, fontStyle: 'bold' },
+        styles: { fontSize: tableFontSize, textColor: 0, cellPadding: tableCellPadding },
         columnStyles: {
             0: { fontStyle: 'bold', halign: 'left', cellWidth: 50 },
             9: { cellWidth: 25 }
@@ -519,16 +543,17 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         margin: { left: 10, right: 10 }
     });
     
-    let currentY = doc.lastAutoTable.finalY + 5;
+    let currentY = doc.lastAutoTable.finalY + secSpacing;
     
     // --- Affective & Psychomotor Domain ---
     doc.setFillColor(230, 242, 255);
-    doc.rect(10, currentY, pageWidth - 20, 6, 'F');
+    const affectiveHeaderHeight = numSubjects > 15 ? 4.5 : (numSubjects > 10 ? 5 : 6);
+    doc.rect(10, currentY, pageWidth - 20, affectiveHeaderHeight, 'F');
     doc.setTextColor(37, 99, 235);
-    doc.setFontSize(9);
-    doc.text("AFFECTIVE & PSYCHOMOTOR DOMAIN", pageWidth / 2, currentY + 4.5, { align: 'center' });
+    doc.setFontSize(numSubjects > 15 ? 8 : (numSubjects > 10 ? 8.5 : 9));
+    doc.text("AFFECTIVE & PSYCHOMOTOR DOMAIN", pageWidth / 2, currentY + (numSubjects > 15 ? 3.2 : (numSubjects > 10 ? 3.7 : 4.5)), { align: 'center' });
     
-    currentY += 10;
+    currentY += affectiveHeaderHeight + (numSubjects > 15 ? 3 : (numSubjects > 10 ? 3.5 : 4));
     doc.setTextColor(0, 0, 0);
     
     // AUTOMATED SCORES
@@ -539,6 +564,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         ['Courage', autoScores.courage, 'Creativity', autoScores.creativity, 'Participation', autoScores.participation, 'Compliance', autoScores.compliance]
     ];
     
+    doc.setFontSize(numSubjects > 15 ? 7 : (numSubjects > 10 ? 7.5 : 8));
     domainData.forEach(row => {
         let x = 12;
         row.forEach((item, idx) => {
@@ -551,51 +577,60 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
                 x += 20;
             }
         });
-        currentY += 6;
+        currentY += affectiveRowHeight;
     });
     
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'italic');
-    doc.text("Rating Scale: 5-Excellent, 4-Very Good, 3-Good, 2-Fair, 1-Needs Imp.", pageWidth / 2, currentY, { align: 'center' });
+    // Removed rating scale and description writeups completely
     
-    currentY += 4;
-    doc.setFontSize(6);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 116, 139);
-    doc.text("Punctuality: Based on daily attendance sign-in times | Participation: Frequency of class engagement | Compliance: Adherence to school rules", pageWidth / 2, currentY, { align: 'center' });
-    currentY += 3;
-    doc.text("Honesty/Self-Control: Behavioural compliance record | Neatness/Creativity/Courage: Attendance & engagement-derived indicators", pageWidth / 2, currentY, { align: 'center' });
-    doc.setTextColor(0, 0, 0);
-    
-    currentY += 10;
+    currentY += secSpacing;
     
     // --- Teacher's Comment ---
     doc.setDrawColor(37, 99, 235);
-    doc.rect(10, currentY, pageWidth - 20, 20);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(37, 99, 235);
-    doc.text("TEACHER'S COMMENT:", 12, currentY + 5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0, 0, 0);
-    doc.text(schoolInfo.teacherComment || ScoringEngine.getTeacherRemark(avg), 12, currentY + 10, { maxWidth: pageWidth - 25 });
-    doc.text(`Name: ${schoolInfo.teacherName || 'Form Teacher'}`, 12, currentY + 18);
-    doc.text(`Sign: ____________________`, pageWidth - 60, currentY + 18);
+    doc.rect(10, currentY, pageWidth - 20, commentBoxHeight);
     
-    currentY += 25;
+    const commentTitleFontSize = numSubjects > 15 ? 7.5 : (numSubjects > 10 ? 8 : 9);
+    const commentTextFontSize = numSubjects > 15 ? 7 : (numSubjects > 10 ? 7.5 : 8.5);
+    const commentSignFontSize = numSubjects > 15 ? 7 : (numSubjects > 10 ? 7.5 : 8);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(commentTitleFontSize);
+    doc.setTextColor(37, 99, 235);
+    doc.text("TEACHER'S COMMENT:", 12, currentY + (numSubjects > 15 ? 3.5 : (numSubjects > 10 ? 4 : 5)));
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(commentTextFontSize);
+    doc.setTextColor(0, 0, 0);
+    doc.text(schoolInfo.teacherComment || ScoringEngine.getTeacherRemark(avg), 12, currentY + (numSubjects > 15 ? 7 : (numSubjects > 10 ? 8.5 : 10)), { maxWidth: pageWidth - 25 });
+    
+    doc.setFontSize(commentSignFontSize);
+    doc.text(`Name: ${schoolInfo.teacherName || 'Form Teacher'}`, 12, currentY + (numSubjects > 15 ? 10 : (numSubjects > 10 ? 12.5 : 17)));
+    doc.text(`Sign: ____________________`, pageWidth - 60, currentY + (numSubjects > 15 ? 10 : (numSubjects > 10 ? 12.5 : 17)));
+    
+    currentY += commentBoxHeight + secSpacing;
     
     // --- Principal's Comment ---
-    doc.rect(10, currentY, pageWidth - 20, 20);
+    doc.rect(10, currentY, pageWidth - 20, commentBoxHeight);
+    
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(commentTitleFontSize);
     doc.setTextColor(37, 99, 235);
-    doc.text("PRINCIPAL'S COMMENT:", 12, currentY + 5);
+    doc.text("PRINCIPAL'S COMMENT:", 12, currentY + (numSubjects > 15 ? 3.5 : (numSubjects > 10 ? 4 : 5)));
+    
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(commentTextFontSize);
     doc.setTextColor(0, 0, 0);
-    doc.text(schoolInfo.principalComment || ScoringEngine.getPrincipalRemark(avg), 12, currentY + 10, { maxWidth: pageWidth - 25 });
-    doc.text(`Name: ${schoolInfo.principalName || ''}`, 12, currentY + 18);
-    doc.text(`Sign: ____________________`, pageWidth - 60, currentY + 18);
+    doc.text(schoolInfo.principalComment || ScoringEngine.getPrincipalRemark(avg), 12, currentY + (numSubjects > 15 ? 7 : (numSubjects > 10 ? 8.5 : 10)), { maxWidth: pageWidth - 25 });
+    
+    doc.setFontSize(commentSignFontSize);
+    doc.text(`Name: ${schoolInfo.principalName || ''}`, 12, currentY + (numSubjects > 15 ? 10 : (numSubjects > 10 ? 12.5 : 17)));
+    doc.text(`Sign: ____________________`, pageWidth - 60, currentY + (numSubjects > 15 ? 10 : (numSubjects > 10 ? 12.5 : 17)));
+    
     if (schoolInfo.principalSignature) {
         try {
-            doc.addImage(schoolInfo.principalSignature, 'PNG', pageWidth - 55, currentY + 11, 25, 7);
+            const sigH = numSubjects > 15 ? 4.5 : (numSubjects > 10 ? 5.5 : 7);
+            const sigW = numSubjects > 15 ? 18 : (numSubjects > 10 ? 22 : 25);
+            const sigOffset = numSubjects > 15 ? 6.5 : (numSubjects > 10 ? 8.5 : 11);
+            doc.addImage(schoolInfo.principalSignature, 'PNG', pageWidth - 55, currentY + sigOffset, sigW, sigH);
         } catch (e) {
             console.warn('Failed to add signature inside comment box:', e);
         }
@@ -838,11 +873,12 @@ export async function generateMastersheet(className, students, subjects, scores,
     let bodyData = students.map(student => {
         const studentScores = subjects.map(subject => {
             const score = scores.find(s => s.student_id === student.student_id && s.subject_id === subject.id);
-            return score && score.total != null ? parseFloat(score.total) : '-';
+            return score && score.total != null && score.total !== '' ? parseFloat(score.total) : '-';
         });
         
         const total = studentScores.reduce((acc, s) => acc + (s === '-' ? 0 : s), 0);
-        const avg = subjects.length > 0 ? (total / subjects.length).toFixed(1) : 0;
+        const scoredCount = studentScores.filter(s => s !== '-').length;
+        const avg = scoredCount > 0 ? (total / scoredCount).toFixed(1) : 0;
         
         return { name: student.name, scores: studentScores, total, avg };
     });

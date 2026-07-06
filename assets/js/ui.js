@@ -2419,7 +2419,7 @@ export const UI = {
             });
             
             const studentStats = classStudents.map(s => {
-                const sScores = classScores.filter(sc => sc.student_id === s.student_id);
+                const sScores = classScores.filter(sc => sc.student_id === s.student_id && sc.total !== null && sc.total !== undefined && sc.total !== '');
                 let totalScore = 0;
                 sScores.forEach(sc => { totalScore += Number(sc.total) || 0; });
                 const average = sScores.length > 0 ? (totalScore / sScores.length) : 0;
@@ -9085,7 +9085,7 @@ export const UI = {
 
                 // 1. First Pass: Calculate averages for all students (full precision for accurate ranking)
                 let studentStats = loadedStudents.map(student => {
-                    const studentScores = loadedScores.filter(s => s.student_id === student.student_id);
+                    const studentScores = loadedScores.filter(s => s.student_id === student.student_id && s.total !== null && s.total !== undefined && s.total !== '');
                     let totalScore = 0;
                     let subjectCount = studentScores.length;
                     
