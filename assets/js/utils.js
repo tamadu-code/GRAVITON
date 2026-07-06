@@ -420,8 +420,8 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     
     y += 7;
     // Row 2
-    let displayClass = student.class_name;
-    if (student.sub_class && (student.class_name.includes('SSS') || student.class_name.includes('SS '))) {
+    let displayClass = scores[0]?.class_name || student.class_name;
+    if (student.sub_class && (displayClass.includes('SSS') || displayClass.includes('SS '))) {
         displayClass += ` (${student.sub_class})`;
     }
     doc.text(`CLASS: ${displayClass}`, leftX, y);
@@ -447,9 +447,29 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     // Row 4
     doc.text(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'}`, leftX, y);
     const isThirdTerm = (schoolInfo.term || '').toLowerCase().includes('third');
+    const getNextClass = (currentClass) => {
+        const upper = String(currentClass || '').toUpperCase().trim();
+        if (upper.includes('JSS 1') || upper.includes('JS 1') || upper === 'JSS1' || upper === 'JS1') return 'JSS 2';
+        if (upper.includes('JSS 2') || upper.includes('JS 2') || upper === 'JSS2' || upper === 'JS2') return 'JSS 3';
+        if (upper.includes('JSS 3') || upper.includes('JS 3') || upper === 'JSS3' || upper === 'JS3') return 'SSS 1';
+        if (upper.includes('SSS 1') || upper.includes('SS 1') || upper === 'SSS1' || upper === 'SS1') return 'SSS 2';
+        if (upper.includes('SSS 2') || upper.includes('SS 2') || upper === 'SSS2' || upper === 'SS2') return 'SSS 3';
+        if (upper.includes('SSS 3') || upper.includes('SS 3') || upper === 'SSS3' || upper === 'SS3') return 'GRADUATED';
+        return '';
+    };
     if (isThirdTerm) {
-        const decision = parseFloat(avg) >= 40 ? 'PROMOTED' : 'REPEAT';
-        const decisionColor = parseFloat(avg) >= 40 ? [0, 128, 0] : [200, 0, 0];
+        const scoreClass = String(scores[0]?.class_name || student.class_name || '').toUpperCase().trim();
+        const currentDbClass = String(student.class_name || '').toUpperCase().trim();
+        const nextClass = getNextClass(scoreClass);
+        
+        let isPromoted = parseFloat(avg) >= 40;
+        // Count as promoted if already in the next class or higher class in DB (manually/previously promoted)
+        if (currentDbClass !== scoreClass && currentDbClass === nextClass) {
+            isPromoted = true;
+        }
+
+        const decision = isPromoted ? (nextClass === 'GRADUATED' ? 'GRADUATED' : `PROMOTED TO ${nextClass}`) : 'REPEAT';
+        const decisionColor = isPromoted ? [0, 128, 0] : [200, 0, 0];
         doc.setTextColor(...decisionColor);
         doc.setFont('helvetica', 'bold');
         doc.text(`DECISION: ${decision}`, midX, y);
@@ -660,8 +680,19 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     
     qrLines.push(`TERM: ${scores[0]?.term || 'N/A'} AVERAGE: ${avg}%`);
     const isThirdTermQR = (schoolInfo.term || '').toLowerCase().includes('third');
+    let qrDecision = 'REPEAT';
+    if (isThirdTermQR) {
+        const scoreClass = String(scores[0]?.class_name || student.class_name || '').toUpperCase().trim();
+        const currentDbClass = String(student.class_name || '').toUpperCase().trim();
+        const nextClass = getNextClass(scoreClass);
+        let isPromoted = parseFloat(avg) >= 40;
+        if (currentDbClass !== scoreClass && currentDbClass === nextClass) {
+            isPromoted = true;
+        }
+        qrDecision = isPromoted ? (nextClass === 'GRADUATED' ? 'GRADUATED' : `PROMOTED TO ${nextClass}`) : 'REPEAT';
+    }
     const passFailOrDecision = isThirdTermQR
-        ? `DECISION: ${parseFloat(avg) >= 40 ? 'PROMOTED' : 'REPEAT'}`
+        ? `DECISION: ${qrDecision}`
         : `PASS/FAIL: ${parseFloat(avg) >= 40 ? 'PASS' : 'FAIL'}`;
     qrLines.push(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'} ${passFailOrDecision} NEXT BEGINS: ${schoolInfo.termStart || '13th April, 2026'}`);
 
