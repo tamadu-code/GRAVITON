@@ -9155,7 +9155,7 @@ export const UI = {
                 }
 
                 // Final Analytics for Header
-                let qualifiedPass = studentStats.filter(s => s.average >= 50).length;
+                let qualifiedPass = studentStats.filter(s => s.average >= 40).length;
                 let eliteCount = studentStats.filter(s => s.average >= 75).length;
 
                 // Update Header
@@ -9202,7 +9202,7 @@ export const UI = {
                                             
                                             if (s.average >= 75) { badgeClass = 'grade-gold'; statusText = 'Elite (A)'; avgClass = 'avg-pass'; }
                                             else if (s.average >= 60) { badgeClass = 'grade-silver'; statusText = 'Credit (B/C)'; avgClass = 'avg-pass'; }
-                                            else if (s.average >= 50) { badgeClass = 'grade-bronze'; statusText = 'Pass (D/E)'; avgClass = 'avg-pass'; }
+                                            else if (s.average >= 40) { badgeClass = 'grade-bronze'; statusText = 'Pass (D/E)'; avgClass = 'avg-pass'; }
                                             
                                             let groupHeader = '';
                                             const curGroup = (s.sub_class || '').trim();
