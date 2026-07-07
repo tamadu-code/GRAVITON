@@ -124,7 +124,7 @@ export async function syncToCloud() {
                     elearning_contents: ['id', 'module_id', 'title', 'content_type', 'body_text', 'attachment_url', 'video_url', 'sort_order', 'tenant_id', 'updated_at'],
                     elearning_progress: ['id', 'student_id', 'content_id', 'completed_at', 'tenant_id', 'updated_at'],
                     elearning_assignments: ['id', 'module_id', 'title', 'instructions', 'due_date', 'max_marks', 'tenant_id', 'updated_at'],
-                    elearning_submissions: ['id', 'assignment_id', 'student_id', 'submission_text', 'attachment_url', 'submitted_at', 'grade', 'feedback', 'graded_by', 'graded_at', 'tenant_id', 'updated_at'],
+                    elearning_submissions: ['id', 'assignment_id', 'student_id', 'submission_text', 'attachment_url', 'submitted_at', 'grade', 'feedback', 'graded_by', 'graded_at', 'ai_scan_local', 'ai_scan_result', 'tenant_id', 'updated_at'],
                     elearning_comments: ['id', 'content_id', 'user_id', 'comment_text', 'created_at', 'tenant_id', 'updated_at']
                 };
 

@@ -8,6 +8,7 @@ import db, { prepareForSync, generateStudentId } from './db.js';
 import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses, generateRegistrationFormPDF } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase, uploadElearningFile } from './supabase-client.js';
 import { initPushNotifications, unsubscribeUser } from './push.js';
+import { analyzeText } from './aiDetector.js';
 
 /**
  * Multi-Tenancy: Returns profiles filtered by the current tenant_id.
@@ -15982,6 +15983,66 @@ export const UI = {
                                                 ` : ''}
                                             </div>
 
+                                            ${(() => {
+                                                const scan = s.ai_scan_local;
+                                                if (!scan || scan.insufficient) {
+                                                    return `
+                                                        <div style="background: #f8fafc; border: 1px dashed #e2e8f0; border-radius: 12px; padding: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                                                            <i data-lucide="bot" style="width: 16px; color: #94a3b8;"></i>
+                                                            <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">AI scan unavailable (insufficient text)</span>
+                                                        </div>
+                                                    `;
+                                                }
+                                                const bgColor = scan.score > 60 ? '#fef2f2' : scan.score > 30 ? '#fffbeb' : '#f0fdf4';
+                                                const borderColor = scan.score > 60 ? '#fecaca' : scan.score > 30 ? '#fef3c7' : '#bbf7d0';
+                                                const icon = scan.score > 60 ? '🔴' : scan.score > 30 ? '🟡' : '🟢';
+                                                const signals = scan.signals || {};
+                                                const deepScan = s.ai_scan_result;
+                                                return `
+                                                    <details style="background: ${bgColor}; border: 1px solid ${borderColor}; border-radius: 12px; overflow: hidden;">
+                                                        <summary style="padding: 0.75rem 1rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; list-style: none; user-select: none;">
+                                                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                                                <i data-lucide="bot" style="width: 16px; color: ${scan.color};"></i>
+                                                                <span style="font-size: 0.75rem; font-weight: 800; color: #1e293b;">AI CONTENT ANALYSIS</span>
+                                                            </div>
+                                                            <span style="font-size: 0.8rem; font-weight: 850; color: ${scan.color};">${icon} ${scan.score}% — ${scan.label}</span>
+                                                        </summary>
+                                                        <div style="padding: 1rem; border-top: 1px solid ${borderColor}; background: white; display: flex; flex-direction: column; gap: 0.5rem;">
+                                                            <div style="font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 0.25rem;">HEURISTIC SIGNAL BREAKDOWN</div>
+                                                            ${signals.sentenceUniformity ? `<div style="display: flex; justify-content: space-between; font-size: 0.75rem; padding: 4px 0; border-bottom: 1px solid #f8fafc;"><span style="color: #475569;">Sentence Uniformity</span><span style="font-weight: 700; color: ${signals.sentenceUniformity.score > 60 ? '#ef4444' : signals.sentenceUniformity.score > 30 ? '#d97706' : '#059669'};">${signals.sentenceUniformity.score}/100 — ${signals.sentenceUniformity.verdict}</span></div>` : ''}
+                                                            ${signals.vocabularyDiversity ? `<div style="display: flex; justify-content: space-between; font-size: 0.75rem; padding: 4px 0; border-bottom: 1px solid #f8fafc;"><span style="color: #475569;">Vocabulary Diversity</span><span style="font-weight: 700; color: ${signals.vocabularyDiversity.score > 60 ? '#ef4444' : signals.vocabularyDiversity.score > 30 ? '#d97706' : '#059669'};">${signals.vocabularyDiversity.score}/100 — ${signals.vocabularyDiversity.verdict}</span></div>` : ''}
+                                                            ${signals.burstiness ? `<div style="display: flex; justify-content: space-between; font-size: 0.75rem; padding: 4px 0; border-bottom: 1px solid #f8fafc;"><span style="color: #475569;">Burstiness (Rhythm)</span><span style="font-weight: 700; color: ${signals.burstiness.score > 60 ? '#ef4444' : signals.burstiness.score > 30 ? '#d97706' : '#059669'};">${signals.burstiness.score}/100 — ${signals.burstiness.verdict}</span></div>` : ''}
+                                                            ${signals.aiPhrases ? `<div style="display: flex; justify-content: space-between; font-size: 0.75rem; padding: 4px 0; border-bottom: 1px solid #f8fafc;"><span style="color: #475569;">AI Phrase Detection</span><span style="font-weight: 700; color: ${signals.aiPhrases.score > 60 ? '#ef4444' : signals.aiPhrases.score > 30 ? '#d97706' : '#059669'};">${signals.aiPhrases.score}/100 — ${signals.aiPhrases.verdict}</span></div>` : ''}
+                                                            ${signals.paragraphSymmetry ? `<div style="display: flex; justify-content: space-between; font-size: 0.75rem; padding: 4px 0; border-bottom: 1px solid #f8fafc;"><span style="color: #475569;">Paragraph Symmetry</span><span style="font-weight: 700; color: ${signals.paragraphSymmetry.score > 60 ? '#ef4444' : signals.paragraphSymmetry.score > 30 ? '#d97706' : '#059669'};">${signals.paragraphSymmetry.score}/100 — ${signals.paragraphSymmetry.verdict}</span></div>` : ''}
+                                                            ${signals.avgWordLength ? `<div style="display: flex; justify-content: space-between; font-size: 0.75rem; padding: 4px 0;"><span style="color: #475569;">Avg Word Length</span><span style="font-weight: 700; color: ${signals.avgWordLength.score > 60 ? '#ef4444' : signals.avgWordLength.score > 30 ? '#d97706' : '#059669'};">${signals.avgWordLength.score}/100 — ${signals.avgWordLength.verdict}</span></div>` : ''}
+
+                                                            <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #e2e8f0;">
+                                                                <div style="font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem;">ML DEEP SCAN (GPTZero)</div>
+                                                                ${deepScan ? `
+                                                                    <div style="background: ${deepScan.ai_probability > 60 ? '#fef2f2' : deepScan.ai_probability > 30 ? '#fffbeb' : '#f0fdf4'}; border: 1px solid ${deepScan.ai_probability > 60 ? '#fecaca' : deepScan.ai_probability > 30 ? '#fef3c7' : '#bbf7d0'}; border-radius: 8px; padding: 0.75rem;">
+                                                                        <div style="font-size: 0.85rem; font-weight: 850; color: ${deepScan.ai_probability > 60 ? '#ef4444' : deepScan.ai_probability > 30 ? '#d97706' : '#059669'};">
+                                                                            ${deepScan.ai_probability > 60 ? '🔴' : deepScan.ai_probability > 30 ? '🟡' : '🟢'} ${deepScan.ai_probability}% AI-Generated
+                                                                            <span style="font-size: 0.65rem; font-weight: 600; color: #94a3b8; margin-left: 0.5rem;">(${deepScan.predicted_class})</span>
+                                                                        </div>
+                                                                        ${deepScan.flagged_sentences && deepScan.flagged_sentences.length > 0 ? `
+                                                                            <div style="margin-top: 0.5rem; font-size: 0.7rem; color: #64748b;">${deepScan.flagged_sentences.length} sentences flagged as AI-generated</div>
+                                                                        ` : ''}
+                                                                        <div style="font-size: 0.6rem; color: #94a3b8; margin-top: 0.25rem;">Scanned: ${new Date(deepScan.scanned_at).toLocaleString()}</div>
+                                                                    </div>
+                                                                ` : `
+                                                                    <button class="btn btn-sm" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 8px; font-weight: 700; font-size: 0.75rem; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="UI.deepScanSubmission('${s.id}')" ${!navigator.onLine ? 'disabled title=\'Requires internet connection\'' : ''}>
+                                                                        <i data-lucide="scan-search" style="width: 14px;"></i> Run Deep Scan
+                                                                    </button>
+                                                                    <span style="font-size: 0.6rem; color: #94a3b8; margin-left: 0.5rem;">Requires internet • Uses GPTZero ML API</span>
+                                                                `}
+                                                            </div>
+
+                                                            <div style="font-size: 0.6rem; color: #94a3b8; margin-top: 0.25rem; font-style: italic;">⚠ AI detection is advisory only — not a definitive verdict. Scanned: ${scan.scanned_at ? new Date(scan.scanned_at).toLocaleString() : 'N/A'}</div>
+                                                        </div>
+                                                    </details>
+                                                `;
+                                            })()}
+
                                             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
                                                 <h5 style="font-weight: 800; color: #1e293b; font-size: 0.8rem;">Evaluate Submission</h5>
                                                 <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
@@ -16239,6 +16300,17 @@ export const UI = {
                     }
 
                     const subId = `SUB${state.viewAssignmentId}_${targetStudentId}`.replace(/[^A-Za-z0-9]/g, '');
+
+                    // Run heuristic AI scan on submission text
+                    let aiScanLocal = null;
+                    if (text && text.trim().split(/\s+/).length >= 50) {
+                        try {
+                            aiScanLocal = analyzeText(text);
+                        } catch (aiErr) {
+                            console.warn('AI heuristic scan failed:', aiErr);
+                        }
+                    }
+
                     const newSub = {
                         id: subId,
                         assignment_id: state.viewAssignmentId,
@@ -16249,7 +16321,9 @@ export const UI = {
                         grade: null,
                         feedback: null,
                         graded_by: null,
-                        graded_at: null
+                        graded_at: null,
+                        ai_scan_local: aiScanLocal,
+                        ai_scan_result: null
                     };
 
                     await db.elearning_submissions.put(prepareForSync(newSub));
@@ -16321,6 +16395,49 @@ export const UI = {
         } catch (err) {
             console.error(err);
             Notifications.show('Failed to submit grade evaluation.', 'error');
+        }
+    },
+
+    async deepScanSubmission(subId) {
+        if (!navigator.onLine) {
+            return Notifications.show('Requires active internet connection for Deep Scan.', 'error');
+        }
+
+        try {
+            const sub = await db.elearning_submissions.get(subId);
+            if (!sub) return Notifications.show('Submission not found.', 'error');
+
+            if (!sub.submission_text || sub.submission_text.trim().split(/\s+/).length < 50) {
+                return Notifications.show('Text is too short for AI analysis. Minimum 50 words required.', 'error');
+            }
+
+            Notifications.show('Initiating deep AI analysis via GPTZero...', 'info');
+
+            const client = getSupabase();
+            if (!client) throw new Error('Supabase client offline.');
+
+            const { data, error } = await client.functions.invoke('ai-detect', {
+                body: { submission_id: subId, text: sub.submission_text }
+            });
+
+            if (error || !data || !data.success) {
+                throw new Error(error?.message || data?.error || 'Unknown error occurred.');
+            }
+
+            // Update local IndexedDB
+            const updatedSub = {
+                ...sub,
+                ai_scan_result: data.result,
+                updated_at: new Date().toISOString()
+            };
+
+            await db.elearning_submissions.put(prepareForSync(updatedSub));
+            Notifications.show('Deep AI analysis completed successfully!', 'success');
+            this.renderELearning();
+            this.debouncedSync();
+        } catch (err) {
+            console.error('Deep AI scan failed:', err);
+            Notifications.show(`Deep scan failed: ${err.message}`, 'error');
         }
     },
 

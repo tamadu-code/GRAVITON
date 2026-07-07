@@ -153,6 +153,12 @@ db.version(42).stores({
     elearning_comments: 'id, content_id, user_id, tenant_id, updated_at, is_synced'
 });
 
+// Version 43: AI Detection columns on submissions
+db.version(43).stores({
+    elearning_submissions: 'id, assignment_id, student_id, [student_id+assignment_id], tenant_id, updated_at, is_synced'
+});
+
+
 
 db.audit_logs.hook('creating', (primKey, obj, transaction) => {
     const tenantId = localStorage.getItem('tenant_id');
