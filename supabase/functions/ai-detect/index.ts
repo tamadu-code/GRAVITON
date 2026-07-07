@@ -15,15 +15,10 @@ const corsHeaders = {
 function getValidApiKey(key: string | undefined): string | null {
   if (!key) return null;
   const normalized = key.trim().replace(/['"“”]/g, ''); // strip quotes
-  if (
-    normalized === "" || 
-    normalized === "your_free_huggingface_token" || 
-    normalized === "your_api_key_here" ||
-    normalized.startsWith("your_free_")
-  ) {
-    return null;
+  if (normalized.startsWith('hf_')) {
+    return normalized;
   }
-  return normalized;
+  return null;
 }
 
 serve(async (req) => {
