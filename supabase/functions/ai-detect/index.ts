@@ -57,7 +57,7 @@ serve(async (req) => {
       headers['Authorization'] = `Bearer ${activeApiKey}`
     }
 
-    const hfRes = await fetch('https://api-inference.huggingface.co/models/roberta-base-openai-detector', {
+    const hfRes = await fetch('https://router.huggingface.co/hf-inference/models/roberta-base-openai-detector', {
       method: 'POST',
       headers,
       body: JSON.stringify({ inputs: text })
