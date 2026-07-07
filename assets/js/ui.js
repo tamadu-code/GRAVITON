@@ -16017,7 +16017,7 @@ export const UI = {
                                                             ${signals.avgWordLength ? `<div style="display: flex; justify-content: space-between; font-size: 0.75rem; padding: 4px 0;"><span style="color: #475569;">Avg Word Length</span><span style="font-weight: 700; color: ${signals.avgWordLength.score > 60 ? '#ef4444' : signals.avgWordLength.score > 30 ? '#d97706' : '#059669'};">${signals.avgWordLength.score}/100 — ${signals.avgWordLength.verdict}</span></div>` : ''}
 
                                                             <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #e2e8f0;">
-                                                                <div style="font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem;">ML DEEP SCAN (GPTZero)</div>
+                                                                <div style="font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 0.5rem;">ML DEEP SCAN (Hugging Face)</div>
                                                                 ${deepScan ? `
                                                                     <div style="background: ${deepScan.ai_probability > 60 ? '#fef2f2' : deepScan.ai_probability > 30 ? '#fffbeb' : '#f0fdf4'}; border: 1px solid ${deepScan.ai_probability > 60 ? '#fecaca' : deepScan.ai_probability > 30 ? '#fef3c7' : '#bbf7d0'}; border-radius: 8px; padding: 0.75rem;">
                                                                         <div style="font-size: 0.85rem; font-weight: 850; color: ${deepScan.ai_probability > 60 ? '#ef4444' : deepScan.ai_probability > 30 ? '#d97706' : '#059669'};">
@@ -16033,7 +16033,7 @@ export const UI = {
                                                                     <button class="btn btn-sm" style="background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; border-radius: 8px; font-weight: 700; font-size: 0.75rem; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="UI.deepScanSubmission('${s.id}')" ${!navigator.onLine ? 'disabled title=\'Requires internet connection\'' : ''}>
                                                                         <i data-lucide="scan-search" style="width: 14px;"></i> Run Deep Scan
                                                                     </button>
-                                                                    <span style="font-size: 0.6rem; color: #94a3b8; margin-left: 0.5rem;">Requires internet • Uses GPTZero ML API</span>
+                                                                    <span style="font-size: 0.65rem; color: #94a3b8; margin-left: 0.5rem;">Requires internet • Uses Hugging Face RoBERTa ML API</span>
                                                                 `}
                                                             </div>
 
@@ -16411,7 +16411,7 @@ export const UI = {
                 return Notifications.show('Text is too short for AI analysis. Minimum 50 words required.', 'error');
             }
 
-            Notifications.show('Initiating deep AI analysis via GPTZero...', 'info');
+            Notifications.show('Initiating deep AI analysis via Hugging Face...', 'info');
 
             const client = getSupabase();
             if (!client) throw new Error('Supabase client offline.');

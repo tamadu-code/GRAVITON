@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
-const GPTZERO_API_KEY = Deno.env.get('GPTZERO_API_KEY')
+const HF_API_KEY = Deno.env.get('HF_API_KEY') || Deno.env.get('GPTZERO_API_KEY') // Allow fallback to the old key name
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
@@ -18,9 +18,6 @@ serve(async (req) => {
   }
 
   try {
-    if (!GPTZERO_API_KEY) {
-      throw new Error('GPTZERO_API_KEY is not configured. Please add it to your Edge Function secrets.')
-    }
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Supabase environment variables are missing.')
     }
@@ -35,44 +32,53 @@ serve(async (req) => {
       throw new Error('Text is too short for AI analysis. Minimum 50 words required.')
     }
 
-    // ── Call GPTZero API ──────────────────────────────────────────
-    const gptzeroRes = await fetch('https://api.gptzero.me/v2/predict/text', {
+    // ── Call Hugging Face Inference API ────────────────────────────
+    const hfRes = await fetch('https://api-inference.huggingface.co/models/roberta-base-openai-detector', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': GPTZERO_API_KEY
+        ...(HF_API_KEY ? { 'Authorization': `Bearer ${HF_API_KEY}` } : {})
       },
-      body: JSON.stringify({
-        document: text,
-        version: '2024-04-04'
-      })
+      body: JSON.stringify({ inputs: text })
     })
 
-    if (!gptzeroRes.ok) {
-      const errBody = await gptzeroRes.text()
-      throw new Error(`GPTZero API error (${gptzeroRes.status}): ${errBody}`)
+    if (!hfRes.ok) {
+      const errBody = await hfRes.text()
+      try {
+        const parsedErr = JSON.parse(errBody)
+        if (parsedErr.error && parsedErr.error.includes('loading')) {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: `AI model is currently loading on Hugging Face. Estimated time: ${Math.round(parsedErr.estimated_time || 20)}s. Please try again shortly.` 
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+          )
+        }
+      } catch (_) {}
+      throw new Error(`Hugging Face API error (${hfRes.status}): ${errBody}`)
     }
 
-    const gptzeroData = await gptzeroRes.json()
+    const hfData = await hfRes.json()
+    
+    // Hugging Face returns [[{"label": "Real", "score": ...}, {"label": "Fake", "score": ...}]]
+    const predictions = Array.isArray(hfData[0]) ? hfData[0] : (Array.isArray(hfData) ? hfData : [])
+    
+    const fakePred = predictions.find((p: any) => p.label === 'Fake' || p.label === 'LABEL_1')
+    const realPred = predictions.find((p: any) => p.label === 'Real' || p.label === 'LABEL_0')
 
-    // ── Extract results ───────────────────────────────────────────
-    const doc = gptzeroData.documents?.[0] || {}
+    const aiProb = fakePred ? Math.round(fakePred.score * 100) : 0
+    const predictedClass = aiProb > 50 ? 'AI-Generated' : 'Human-Written'
+
     const result = {
-      ai_probability: Math.round((doc.completely_generated_prob || 0) * 100),
-      predicted_class: doc.predicted_class || 'unknown',
-      class_probabilities: doc.class_probabilities || {},
-      average_perplexity: doc.average_generated_prob != null
-        ? Math.round(doc.average_generated_prob * 100) : null,
-      sentence_count: doc.sentences?.length || 0,
-      flagged_sentences: (doc.sentences || [])
-        .filter(s => s.generated_prob > 0.7)
-        .map(s => ({
-          text: s.sentence,
-          ai_prob: Math.round(s.generated_prob * 100)
-        }))
-        .slice(0, 10), // Cap at 10 flagged sentences
+      ai_probability: aiProb,
+      predicted_class: predictedClass,
+      class_probabilities: {
+        fake: fakePred ? fakePred.score : 0,
+        real: realPred ? realPred.score : 0
+      },
       scanned_at: new Date().toISOString(),
-      provider: 'gptzero'
+      provider: 'huggingface'
     }
 
     // ── Persist result to Supabase ────────────────────────────────
@@ -88,7 +94,6 @@ serve(async (req) => {
 
     if (updateError) {
       console.error('Failed to persist AI scan result:', updateError)
-      // Don't throw — still return the result to the client
     }
 
     return new Response(
