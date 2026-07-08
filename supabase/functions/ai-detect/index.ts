@@ -45,6 +45,13 @@ serve(async (req) => {
     const activeApiKey = getValidApiKey(HF_API_KEY)
 
     // ── Call Hugging Face Inference API ────────────────────────────
+    // Primary: Serverless Inference API (works with Read tokens)
+    // Fallback: Inference Providers router (requires Inference Provider permissions)
+    const HF_ENDPOINTS = [
+      'https://api-inference.huggingface.co/models/openai-community/roberta-base-openai-detector',
+      'https://router.huggingface.co/hf-inference/models/roberta-base-openai-detector',
+    ]
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     }
@@ -52,11 +59,45 @@ serve(async (req) => {
       headers['Authorization'] = `Bearer ${activeApiKey}`
     }
 
-    const hfRes = await fetch('https://router.huggingface.co/hf-inference/models/roberta-base-openai-detector', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ inputs: text })
-    })
+    let hfRes: Response | null = null
+    let lastError = ''
+
+    for (const endpoint of HF_ENDPOINTS) {
+      try {
+        hfRes = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ inputs: text })
+        })
+        if (hfRes.ok) break // Success, stop trying
+        
+        // If auth error on this endpoint, try next one
+        if (hfRes.status === 401 || hfRes.status === 403) {
+          lastError = await hfRes.text()
+          console.log(`Auth failed on ${endpoint}, trying next...`)
+          hfRes = null
+          continue
+        }
+
+        // For other errors (loading, etc.), handle below
+        break
+      } catch (fetchErr) {
+        lastError = fetchErr.message
+        console.log(`Fetch failed for ${endpoint}: ${fetchErr.message}`)
+        hfRes = null
+        continue
+      }
+    }
+
+    if (!hfRes) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `All Hugging Face endpoints failed. Please verify your HF_API_KEY has correct permissions. Last error: ${lastError}`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      )
+    }
 
     if (!hfRes.ok) {
       const errBody = await hfRes.text()
