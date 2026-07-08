@@ -6560,8 +6560,8 @@ export const UI = {
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="project" value="${isN(score?.project) ? '' : score.project}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
                         <td class="ca-cell" style="text-align:center; font-weight:700; color:#2563eb;">${isN(ca) ? '-' : ca}</td>
                         <td style="text-align:center;"><input type="number" class="score-input" data-field="exam" value="${isN(score?.exam) ? '' : score.exam}" style="width:50px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px; font-weight:700;"></td>
-                        <td class="total-cell" style="text-align:center; font-weight:800; color:#15803d; background:#f0fdf4;">${isN(total) ? '-' : total}</td>
-                        <td class="grade-cell" style="text-align:center; font-weight:700;">${isN(total) ? '-' : ScoringEngine.getGrade(total)}</td>
+                        <td class="total-cell" style="text-align:center; font-weight:800; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')};">${isN(total) ? '-' : total}</td>
+                        <td class="grade-cell" style="text-align:center; font-weight:700; color:${isN(total) ? 'inherit' : (total < 40 ? '#dc2626' : 'inherit')};">${isN(total) ? '-' : ScoringEngine.getGrade(total)}</td>
                         <td class="rnk-cell" style="text-align:center; font-weight:700; color:var(--text-muted);">${score?.rank || '-'}</td>
                     </tr>
                 `;
@@ -6599,7 +6599,7 @@ export const UI = {
                             <div class="score-card-header" onclick="this.parentElement.classList.toggle('collapsed')">
                                 <div class="score-card-title">${s.name}</div>
                                 <div style="display:flex; align-items:center; gap:0.5rem;">
-                                    <span class="badge" style="background:#f0fdf4; color:#15803d; font-weight:800; border-radius:6px; padding:2px 8px;">${isN(total) ? '-' : total}</span>
+                                    <span class="badge" style="background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')}; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; font-weight:800; border-radius:6px; padding:2px 8px;">${isN(total) ? '-' : total}</span>
                                     <i data-lucide="chevron-down" style="width:16px;"></i>
                                 </div>
                             </div>
@@ -6610,8 +6610,8 @@ export const UI = {
                                 <div class="score-field"><label>Project</label><input type="number" class="score-input" data-field="project" value="${isN(score?.project) ? '' : score.project}"></div>
                                 <div class="score-field"><label>Exam (60)</label><input type="number" class="score-input" data-field="exam" value="${isN(score?.exam) ? '' : score.exam}" style="border-color:#2563eb; background:#eff6ff;"></div>
                                 <div class="score-field"><label>CA Score</label><div class="ca-cell" style="font-weight:700; color:#2563eb; padding:0.6rem;">${isN(ca) ? '-' : ca}</div></div>
-                                <div class="score-field"><label>Grand Total</label><div class="total-cell" style="font-weight:800; color:#15803d; background:#f0fdf4; padding:0.6rem; border-radius:8px;">${isN(total) ? '-' : total}</div></div>
-                                <div class="score-field"><label>Letter Grade</label><div class="grade-cell" style="font-weight:700; padding:0.6rem;">${isN(total) ? '-' : ScoringEngine.getGrade(total)}</div></div>
+                                <div class="score-field"><label>Grand Total</label><div class="total-cell" style="font-weight:800; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')}; padding:0.6rem; border-radius:8px;">${isN(total) ? '-' : total}</div></div>
+                                <div class="score-field"><label>Letter Grade</label><div class="grade-cell" style="font-weight:700; padding:0.6rem; color:${isN(total) ? 'inherit' : (total < 40 ? '#dc2626' : 'inherit')};">${isN(total) ? '-' : ScoringEngine.getGrade(total)}</div></div>
                                 <div class="score-field"><label>Class Rank</label><div class="rnk-cell" style="font-weight:700; color:#64748b; padding:0.6rem;">${score?.rank || '-'}</div></div>
                             </div>
                         </div>
@@ -6679,9 +6679,23 @@ export const UI = {
                     const badge = node.querySelector('.score-card-header .badge');
                     
                     if (caCell) caCell.textContent = (ca === null) ? '-' : ca;
-                    if (totalCell) totalCell.textContent = (total === null) ? '-' : total;
-                    if (gradeCell) gradeCell.textContent = grade;
-                    if (badge) badge.textContent = (total === null) ? '-' : total;
+                    if (totalCell) {
+                        totalCell.textContent = (total === null) ? '-' : total;
+                        const isFail = total !== null && total < 40;
+                        totalCell.style.color = isFail ? '#dc2626' : '#15803d';
+                        totalCell.style.background = isFail ? '#fef2f2' : '#f0fdf4';
+                    }
+                    if (gradeCell) {
+                        gradeCell.textContent = grade;
+                        const isFail = total !== null && total < 40;
+                        gradeCell.style.color = isFail ? '#dc2626' : 'inherit';
+                    }
+                    if (badge) {
+                        badge.textContent = (total === null) ? '-' : total;
+                        const isFail = total !== null && total < 40;
+                        badge.style.color = isFail ? '#dc2626' : '#15803d';
+                        badge.style.background = isFail ? '#fef2f2' : '#f0fdf4';
+                    }
                     
                     const fieldInput = node.querySelector(`[data-field="${field}"]`);
                     if (fieldInput && fieldInput !== e.target) fieldInput.value = e.target.value;
