@@ -2510,12 +2510,6 @@ async function drawStudentIDCardFront(doc, student, schoolInfo, theme) {
     doc.setTextColor(theme.r, theme.g, theme.b);
     doc.text(student.student_id || 'ID: PENDING', 27, 59, { align: 'center' });
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139); // slate-500
-    const subClassStr = student.sub_class ? ` - ${student.sub_class}` : '';
-    doc.text(`Class: ${student.class_name || 'N/A'}${subClassStr}`, 27, 63, { align: 'center' });
-
     // QR Code
     let qrDataURL = null;
     if (typeof QRCode !== 'undefined' || window.QRCode) {
@@ -2531,7 +2525,7 @@ async function drawStudentIDCardFront(doc, student, schoolInfo, theme) {
 
     if (qrDataURL) {
         try {
-            doc.addImage(qrDataURL, 'PNG', 20, 66, 14, 14);
+            doc.addImage(qrDataURL, 'PNG', 20, 62, 14, 14);
         } catch (e) {
             console.warn('Failed to add QR image:', e);
         }
