@@ -2389,3 +2389,281 @@ export async function generateRegistrationFormPDF(student, schoolInfo = {}) {
     return doc;
 }
 
+// Helper to preload images for ID Cards
+async function preloadIDCardImage(src) {
+    if (!src || typeof src !== 'string' || (!src.startsWith('http') && !src.startsWith('data:'))) {
+        return null;
+    }
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) resolve(img);
+            else resolve(null);
+        };
+        img.onerror = () => resolve(null);
+        img.src = src;
+    });
+}
+
+// Helper to parse hex colors to RGB
+const parseHexColor = (hex) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 79, g: 70, b: 229 };
+};
+
+// Private helper to draw the front side of a student ID card
+async function drawStudentIDCardFront(doc, student, schoolInfo, theme) {
+    // Background Card Border & Styling
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, 54, 85.6, 'F');
+
+    // Header Banner
+    doc.setFillColor(theme.r, theme.g, theme.b);
+    doc.rect(0, 0, 54, 18, 'F');
+    
+    // Draw Logo in Header
+    let logoImg = null;
+    if (schoolInfo.logo) {
+        logoImg = await preloadIDCardImage(schoolInfo.logo);
+    }
+    
+    if (logoImg) {
+        try {
+            doc.addImage(logoImg, 'PNG', 3, 3.5, 11, 11);
+        } catch (e) {
+            console.warn('Failed to render logo on ID card:', e);
+        }
+    } else {
+        // Draw elegant default logo icon
+        doc.setFillColor(255, 255, 255, 0.2);
+        doc.rect(3, 3.5, 11, 11, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text("CMS", 8.5, 10.5, { align: 'center' });
+    }
+
+    // School Details
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text((schoolInfo.schoolName || 'GRAVITON ACADEMY').toUpperCase(), 16, 7, { maxWidth: 35 });
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(4.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("STUDENT IDENTITY CARD", 16, 13.5);
+
+    // Card Side/Accent lines
+    doc.setDrawColor(theme.r, theme.g, theme.b);
+    doc.setLineWidth(0.75);
+    doc.line(0, 18, 54, 18);
+
+    // Passport Photo Frame
+    const passportW = 24;
+    const passportH = 28;
+    const passportX = 15; // Centered: (54 - 24) / 2
+    const passportY = 22;
+
+    const renderSilhouette = () => {
+        doc.setFillColor(241, 245, 249);
+        doc.rect(passportX, passportY, passportW, passportH, 'F');
+        doc.setFillColor(148, 163, 184);
+        doc.ellipse(passportX + passportW / 2, passportY + passportH / 3 + 0.5, 3.5, 4.0, 'F');
+        doc.ellipse(passportX + passportW / 2, passportY + passportH - 2, 7.5, 5.0, 'F');
+    };
+
+    let passportImg = null;
+    const passportSrc = student?.passport_url || student?.passport;
+    if (passportSrc) {
+        passportImg = await preloadIDCardImage(passportSrc);
+    }
+
+    if (passportImg) {
+        try {
+            doc.addImage(passportImg, 'JPEG', passportX, passportY, passportW, passportH);
+        } catch (e) {
+            renderSilhouette();
+        }
+    } else {
+        renderSilhouette();
+    }
+    
+    // Passport Border
+    doc.setDrawColor(theme.r, theme.g, theme.b);
+    doc.setLineWidth(0.4);
+    doc.rect(passportX, passportY, passportW, passportH);
+
+    // Student Bio Info
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42); // slate-900
+    doc.text(student.name || 'Student Name', 27, 54, { align: 'center', maxWidth: 50 });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(theme.r, theme.g, theme.b);
+    doc.text(student.student_id || 'ID: PENDING', 27, 59, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139); // slate-500
+    const subClassStr = student.sub_class ? ` - ${student.sub_class}` : '';
+    doc.text(`Class: ${student.class_name || 'N/A'}${subClassStr}`, 27, 63, { align: 'center' });
+
+    // QR Code
+    let qrDataURL = null;
+    if (typeof QRCode !== 'undefined' || window.QRCode) {
+        try {
+            const qrLib = typeof QRCode !== 'undefined' ? QRCode : window.QRCode;
+            // Encode the student's attendance_code which is expected by the Attendance System
+            const qrPayload = String(student.attendance_code || student.student_id || 'UNKNOWN');
+            qrDataURL = await qrLib.toDataURL(qrPayload, { margin: 1, width: 150 });
+        } catch (e) {
+            console.warn('QR Code generation failed for ID card:', e);
+        }
+    }
+
+    if (qrDataURL) {
+        try {
+            doc.addImage(qrDataURL, 'PNG', 20, 66, 14, 14);
+        } catch (e) {
+            console.warn('Failed to add QR image:', e);
+        }
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(4.5);
+    doc.setTextColor(theme.r, theme.g, theme.b);
+    doc.text("SCAN FOR ATTENDANCE", 27, 82.5, { align: 'center' });
+}
+
+// Private helper to draw the back side of a student ID card
+function drawStudentIDCardBack(doc, student, schoolInfo, theme) {
+    // Background Card Border & Styling
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, 54, 85.6, 'F');
+
+    // Inner Border Line
+    doc.setDrawColor(theme.r, theme.g, theme.b);
+    doc.setLineWidth(0.4);
+    doc.rect(1.5, 1.5, 51, 82.6);
+
+    // Back Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(theme.r, theme.g, theme.b);
+    doc.text("CARD HOLDER INFO", 27, 7, { align: 'center' });
+    
+    // Decorative line under title
+    doc.line(18, 8.5, 36, 8.5);
+
+    // Helper to draw back field
+    const drawBackField = (label, value, fieldY) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`${label}:`, 4, fieldY);
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6);
+        doc.setTextColor(15, 23, 42);
+        doc.text(String(value || 'N/A'), 20, fieldY);
+    };
+
+    let backY = 13;
+    drawBackField("D.O.B", student.dob, backY); backY += 4.5;
+    drawBackField("Blood Group", student.blood_group, backY); backY += 4.5;
+    drawBackField("Genotype", student.genotype, backY); backY += 4.5;
+    
+    // Divider
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.2);
+    doc.line(4, backY - 1, 50, backY - 1);
+    
+    drawBackField("Parent Name", student.parent_name, backY); backY += 4.5;
+    drawBackField("Parent Phone", student.parent_phone, backY); backY += 4.5;
+    drawBackField("Emergency", student.phone || student.parent_phone, backY); backY += 6;
+
+    // Disclaimer
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(4.5);
+    doc.setTextColor(100, 116, 139);
+    const disclaimer = "This card is the official property of the school and must be produced on request. If found, please return to the administration office.";
+    doc.text(disclaimer, 27, backY, { align: 'center', maxWidth: 46 });
+    backY += 12;
+
+    // Principal Signature Line
+    doc.setDrawColor(100, 116, 139);
+    doc.setLineWidth(0.2);
+    doc.line(17, backY, 37, backY);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(4.5);
+    doc.text("AUTHORISED SIGNATURE", 27, backY + 2.5, { align: 'center' });
+    
+    backY += 10;
+
+    // School contacts
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(4);
+    doc.setTextColor(100, 116, 139);
+    const schoolEmail = schoolInfo.email ? `Email: ${schoolInfo.email}` : '';
+    const schoolPhone = schoolInfo.phone ? `Tel: ${schoolInfo.phone}` : '';
+    let contactStr = [schoolPhone, schoolEmail].filter(Boolean).join("  |  ");
+    doc.text(contactStr, 27, backY, { align: 'center' });
+}
+
+export async function generateStudentIDCardPDF(student, schoolInfo = {}) {
+    const { jsPDF } = window.jspdf;
+    
+    // Create portrait ID Card with custom size (54mm x 85.6mm)
+    const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: [54, 85.6]
+    });
+
+    const themeColor = schoolInfo.themeColor || '#4338ca';
+    const theme = parseHexColor(themeColor);
+
+    // Draw Front
+    await drawStudentIDCardFront(doc, student, schoolInfo, theme);
+    
+    // Draw Back
+    doc.addPage([54, 85.6]);
+    drawStudentIDCardBack(doc, student, schoolInfo, theme);
+
+    return doc;
+}
+
+export async function generateBulkStudentIDCardsPDF(students, schoolInfo = {}) {
+    const { jsPDF } = window.jspdf;
+    if (students.length === 0) return null;
+    
+    const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: [54, 85.6]
+    });
+
+    const themeColor = schoolInfo.themeColor || '#4338ca';
+    const theme = parseHexColor(themeColor);
+
+    for (let i = 0; i < students.length; i++) {
+        if (i > 0) {
+            doc.addPage([54, 85.6]);
+        }
+        await drawStudentIDCardFront(doc, students[i], schoolInfo, theme);
+        
+        doc.addPage([54, 85.6]);
+        drawStudentIDCardBack(doc, students[i], schoolInfo, theme);
+    }
+
+    return doc;
+}
+

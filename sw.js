@@ -1,15 +1,15 @@
-const CACHE_NAME = 'graviton-cache-v380';
+const CACHE_NAME = 'graviton-cache-v382';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './assets/css/style.css?v=380',
-  './assets/js/main.js?v=380',
-  './assets/js/ui.js?v=380',
-  './assets/js/db.js?v=380',
-  './assets/js/utils.js?v=380',
-  './assets/js/supabase-client.js?v=380',
-  './assets/js/aiDetector.js?v=380',
+  './assets/css/style.css?v=382',
+  './assets/js/main.js?v=382',
+  './assets/js/ui.js?v=382',
+  './assets/js/db.js?v=382',
+  './assets/js/utils.js?v=382',
+  './assets/js/supabase-client.js?v=382',
+  './assets/js/aiDetector.js?v=382',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap',
@@ -19,7 +19,9 @@ const ASSETS_TO_CACHE = [
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js',
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js'
+  'https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js',
+  'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
 ];
 
 // Install event - cache static assets

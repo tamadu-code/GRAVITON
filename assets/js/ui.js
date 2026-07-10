@@ -5,7 +5,7 @@
 console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
-import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses, generateRegistrationFormPDF } from './utils.js';
+import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses, generateRegistrationFormPDF, generateStudentIDCardPDF, generateBulkStudentIDCardsPDF } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase, uploadElearningFile } from './supabase-client.js';
 import { initPushNotifications, unsubscribeUser } from './push.js';
 import { analyzeText } from './aiDetector.js';
@@ -4736,6 +4736,9 @@ export const UI = {
                         <button id="btn-print-credentials" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); font-size: 0.75rem;">
                             <i data-lucide="printer" style="width: 14px;"></i> Credentials
                         </button>
+                        <button id="btn-print-id-cards-bulk" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; font-size: 0.75rem; font-weight: 700;">
+                            <i data-lucide="contact" style="width: 14px;"></i> Bulk ID Cards
+                        </button>
                         <button id="btn-bulk-repair-students" class="btn btn-secondary" style="border-radius: 8px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; font-size: 0.75rem; font-weight: 700;">
                             <i data-lucide="shield-alert" style="width: 14px;"></i> Bulk Repair Auth
                         </button>
@@ -4954,6 +4957,56 @@ export const UI = {
                     Notifications.show('Failed to generate credentials.', 'error');
                 } finally {
                     printBtn.innerHTML = '<i data-lucide="printer"></i> Credentials';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            });
+        }
+
+        const bulkIdBtn = document.getElementById('btn-print-id-cards-bulk');
+        if (bulkIdBtn) {
+            bulkIdBtn.addEventListener('click', async () => {
+                bulkIdBtn.disabled = true;
+                const originalHtml = bulkIdBtn.innerHTML;
+                bulkIdBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Generating...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                try {
+                    const term = document.getElementById('directory-search')?.value?.toLowerCase() || '';
+                    const filterClass = document.getElementById('class-filter')?.value || '';
+                    const includeInactive = document.getElementById('show-inactive-toggle')?.checked || false;
+                    
+                    const allStudents = await db.students.toArray();
+                    const filtered = allStudents.filter(s => 
+                        (s.name.toLowerCase().includes(term) || s.student_id.toLowerCase().includes(term)) &&
+                        (!filterClass || s.class_name === filterClass) &&
+                        (includeInactive || s.is_active !== false)
+                    );
+
+                    if (filtered.length === 0) {
+                        Notifications.show('No students match the current filters.', 'warning');
+                        return;
+                    }
+
+                    const schoolInfo = {
+                        schoolName: localStorage.getItem('tenant_school_name') || 'GRAVITON ACADEMY',
+                        logo: localStorage.getItem('tenant_school_logo') || '',
+                        address: localStorage.getItem('tenant_school_address') || '',
+                        phone: localStorage.getItem('tenant_school_phone') || '',
+                        email: localStorage.getItem('tenant_school_email') || '',
+                        themeColor: localStorage.getItem('tenant_theme_color') || '#4338ca'
+                    };
+
+                    const doc = await generateBulkStudentIDCardsPDF(filtered, schoolInfo);
+                    if (doc) {
+                        this.showPDFPreview(doc, `Student_ID_Cards_${new Date().toISOString().split('T')[0]}.pdf`);
+                        Notifications.show(`Generated ${filtered.length} ID cards successfully.`, 'success');
+                    }
+                } catch (err) {
+                    console.error('Error generating bulk ID cards:', err);
+                    Notifications.show(`Failed to generate bulk ID cards: ${err.message}`, 'error');
+                } finally {
+                    bulkIdBtn.disabled = false;
+                    bulkIdBtn.innerHTML = originalHtml;
                     if (typeof lucide !== 'undefined') lucide.createIcons();
                 }
             });
@@ -5368,6 +5421,7 @@ export const UI = {
                             </div>
                               <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
                                  <button id="btn-print-reg-form" class="btn btn-secondary" title="Print Registration Form" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;"><i data-lucide="printer"></i> Print Form</button>
+                                 <button id="btn-print-id-card" class="btn btn-secondary" title="Print Student ID Card" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe;"><i data-lucide="contact"></i> ID Card</button>
                                  ${!((this.currentUser.role || '').toLowerCase() === 'teacher') ? `
                                  <button id="btn-sync-biometric" class="btn btn-secondary" title="Update Biometric Record" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;"><i data-lucide="refresh-cw"></i> Sync Biometric</button>
                                  <button id="btn-repair-auth" class="btn btn-secondary" title="Fix Login Issues" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #fef9c3; color: #854d0e; border: 1px solid #fef08a;"><i data-lucide="shield-alert"></i> Repair Auth</button>
@@ -5582,6 +5636,39 @@ export const UI = {
                 } finally {
                     printRegBtn.disabled = false;
                     printRegBtn.innerHTML = originalHtml;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            };
+        }
+
+
+        // Print Student ID Card Logic
+        const printIdCardBtn = document.getElementById('btn-print-id-card');
+        if (printIdCardBtn) {
+            printIdCardBtn.onclick = async () => {
+                printIdCardBtn.disabled = true;
+                const originalHtml = printIdCardBtn.innerHTML;
+                printIdCardBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Generating...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                try {
+                    const schoolInfo = {
+                        schoolName: localStorage.getItem('tenant_school_name') || 'GRAVITON ACADEMY',
+                        logo: localStorage.getItem('tenant_school_logo') || '',
+                        address: localStorage.getItem('tenant_school_address') || '',
+                        phone: localStorage.getItem('tenant_school_phone') || '',
+                        email: localStorage.getItem('tenant_school_email') || '',
+                        themeColor: localStorage.getItem('tenant_theme_color') || '#4338ca'
+                    };
+
+                    const doc = await generateStudentIDCardPDF(student, schoolInfo);
+                    this.showPDFPreview(doc, `ID_Card_${student.name.replace(/\s+/g, '_')}.pdf`);
+                } catch (err) {
+                    console.error('Error generating ID card:', err);
+                    Notifications.show(`Generation failed: ${err.message}`, 'error');
+                } finally {
+                    printIdCardBtn.disabled = false;
+                    printIdCardBtn.innerHTML = originalHtml;
                     if (typeof lucide !== 'undefined') lucide.createIcons();
                 }
             };
