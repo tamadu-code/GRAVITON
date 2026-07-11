@@ -232,16 +232,22 @@ export async function syncToCloud() {
                                     let missingCol = null;
                                     
                                     // Format B: "Could not find the 'is_late' column of..."
-                                    const colMatch2 = healError.message.match(/Could not find the\s+["']?([a-zA-Z0-9_]+)["']?\s+column/i);
-                                    // Format A: "column is_late does not exist" or "column \"is_late\" does not exist"
-                                    const colMatch1 = healError.message.match(/column\s+["']?([a-zA-Z0-9_]+)["']?/i);
+                                    const isMissingColErr = healError.message.toLowerCase().includes('does not exist') || 
+                                                             healError.message.toLowerCase().includes('not found') || 
+                                                             healError.message.toLowerCase().includes('could not find');
                                     
-                                    if (colMatch2 && colMatch2[1]) {
-                                        missingCol = colMatch2[1];
-                                    } else if (colMatch1 && colMatch1[1]) {
-                                        const parsedCol = colMatch1[1].toLowerCase();
-                                        if (parsedCol !== 'of' && parsedCol !== 'relation' && parsedCol !== 'in' && parsedCol !== 'table' && parsedCol !== 'schema') {
-                                            missingCol = colMatch1[1];
+                                    if (isMissingColErr) {
+                                        const colMatch2 = healError.message.match(/Could not find the\s+["']?([a-zA-Z0-9_]+)["']?\s+column/i);
+                                        // Format A: "column is_late does not exist" or "column \"is_late\" does not exist"
+                                        const colMatch1 = healError.message.match(/column\s+["']?([a-zA-Z0-9_]+)["']?/i);
+                                        
+                                        if (colMatch2 && colMatch2[1]) {
+                                            missingCol = colMatch2[1];
+                                        } else if (colMatch1 && colMatch1[1]) {
+                                            const parsedCol = colMatch1[1].toLowerCase();
+                                            if (parsedCol !== 'of' && parsedCol !== 'relation' && parsedCol !== 'in' && parsedCol !== 'table' && parsedCol !== 'schema') {
+                                                missingCol = colMatch1[1];
+                                            }
                                         }
                                     }
                                     

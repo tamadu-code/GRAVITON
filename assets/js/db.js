@@ -222,4 +222,22 @@ export function prepareForSync(data) {
     return { ...sanitized, updated_at: new Date().toISOString(), is_synced: 0 };
 }
 
+// Self-heal/migrate existing grade_finalizations records with null/empty teacher_id
+db.on('ready', () => {
+    db.grade_finalizations.toArray().then(async (records) => {
+        let updatedCount = 0;
+        for (const rec of records) {
+            if (!rec.teacher_id) {
+                rec.teacher_id = rec.finalized_by_id || 'unknown_teacher';
+                rec.is_synced = 0;
+                await db.grade_finalizations.put(rec);
+                updatedCount++;
+            }
+        }
+        if (updatedCount > 0) {
+            console.log(`[Self-Heal] Fixed ${updatedCount} grade_finalizations records with null/empty teacher_id.`);
+        }
+    }).catch(e => console.warn('[Self-Heal] Failed to heal grade_finalizations:', e));
+});
+
 export default db;

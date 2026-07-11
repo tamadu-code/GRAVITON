@@ -7356,14 +7356,14 @@ export const UI = {
             if (!subId || !className) return Notifications.show('Select a Stream and Course first', 'error');
 
             const role = (this.currentUser.role || '').toLowerCase();
-            const currentUserId = this.currentUser.id;
-            const currentUserName = this.currentUser.full_name || this.currentUser.name || 'Unknown';
+            const currentUserId = this.currentUser ? (this.currentUser.id || this.currentUser.username || 'unknown') : 'unknown';
+            const currentUserName = this.currentUser ? (this.currentUser.full_name || this.currentUser.name || 'Unknown') : 'Unknown';
             const isAdmin = role === 'admin' || role === 'super_admin';
             const isTeacherRole = role === 'teacher';
 
             // Get the assigned teacher for this subject+class
             const asgn = (await db.subject_assignments.where('class_name').anyOf([className, className.split(' (')[0].split(/[A-Z]$/)[0].trim()]).toArray()).find(a => String(a.subject_id) === String(subId));
-            const assignedTeacherId = asgn ? asgn.teacher_id : currentUserId;
+            const assignedTeacherId = (asgn && asgn.teacher_id) ? asgn.teacher_id : currentUserId;
 
             // Compute summary stats resiliantly
             const targetClsLower = String(className).toLowerCase().trim();
