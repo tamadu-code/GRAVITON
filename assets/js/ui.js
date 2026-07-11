@@ -5408,13 +5408,22 @@ export const UI = {
         const allAssignments = await db.subject_assignments.toArray().catch(() => []);
         const rawSubjects = await db.subjects.toArray().catch(() => []);
         
-        // Filter subjects based on junior/senior level and specialization/stream
-        const studClassUpper = (student.class_name || '').toUpperCase();
-        const studClassLower = (student.class_name || '').trim().toLowerCase();
-        const isStudentJSS = studClassUpper.includes('JSS') || studClassUpper.includes('JS ') || studClassUpper.includes('JUNIOR');
-        const isStudentSSS = studClassUpper.includes('SSS') || studClassUpper.includes('SS ') || studClassUpper.includes('SENIOR');
+        // Robust class level detector to prevent 'JSS' matching 'SS ' false-positives
+        const getClassLevel = (clsName) => {
+            if (!clsName) return null;
+            const nameUpper = String(clsName).toUpperCase();
+            const parts = nameUpper.split(/[^A-Z0-9]/);
+            const hasJSS = parts.some(p => p.startsWith('JSS') || p.startsWith('JS') || p === 'JUNIOR');
+            const hasSSS = parts.some(p => p.startsWith('SSS') || p.startsWith('SS') || p === 'SENIOR') && !parts.some(p => p.startsWith('JSS') || p.startsWith('JS'));
+            if (hasJSS) return 'JSS';
+            if (hasSSS) return 'SSS';
+            return null;
+        };
+
+        const studentLevel = getClassLevel(student.class_name);
         const studentSpec = (student.sub_class || '').trim().toLowerCase();
         const studentClassBase = student.class_name ? student.class_name.split(' (')[0].split(/[A-Z]$/)[0].trim().toLowerCase() : '';
+        const studClassLower = (student.class_name || '').trim().toLowerCase();
 
         const allSubjects = rawSubjects.filter(sub => {
             const subAssignments = allAssignments.filter(a => String(a.subject_id) === String(sub.id));
@@ -5422,26 +5431,19 @@ export const UI = {
             let hasJSSAssignment = false;
             let hasSSSAssignment = false;
             subAssignments.forEach(a => {
-                const aClass = (a.class_name || '').toUpperCase();
-                if (aClass.includes('JSS') || aClass.includes('JS ') || aClass.includes('JUNIOR')) {
-                    hasJSSAssignment = true;
-                }
-                if (aClass.includes('SSS') || aClass.includes('SS ') || aClass.includes('SENIOR')) {
-                    hasSSSAssignment = true;
-                }
+                const lvl = getClassLevel(a.class_name);
+                if (lvl === 'JSS') hasJSSAssignment = true;
+                if (lvl === 'SSS') hasSSSAssignment = true;
             });
 
             if (!hasJSSAssignment && !hasSSSAssignment) {
-                const subNameUpper = (sub.name || '').toUpperCase();
-                if (subNameUpper.includes('JSS') || subNameUpper.includes('JUNIOR')) {
-                    hasJSSAssignment = true;
-                } else if (subNameUpper.includes('SSS') || subNameUpper.includes('SENIOR')) {
-                    hasSSSAssignment = true;
-                }
+                const nameLevel = getClassLevel(sub.name);
+                if (nameLevel === 'JSS') hasJSSAssignment = true;
+                if (nameLevel === 'SSS') hasSSSAssignment = true;
             }
 
-            if (isStudentJSS && !hasJSSAssignment) return false;
-            if (isStudentSSS && !hasSSSAssignment) return false;
+            if (studentLevel === 'JSS' && !hasJSSAssignment) return false;
+            if (studentLevel === 'SSS' && !hasSSSAssignment) return false;
 
             const relevantAsgn = subAssignments.find(a => {
                 const aClassLower = (a.class_name || '').trim().toLowerCase();
