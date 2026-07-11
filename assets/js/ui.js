@@ -6354,12 +6354,15 @@ export const UI = {
                 <!-- Status Indicator -->
                 <div id="gradebook-mismatch-warning" style="display:none;"></div>
 
+                <!-- Finalization Status Banner -->
+                <div id="gradebook-finalization-banner" style="display:none; margin-top: 0.75rem; padding: 0.65rem 1rem; border-radius: 12px; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;"></div>
+
                 <!-- Dedicated Action Bar -->
                 <div class="action-bar-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding: 0.6rem 1rem; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: var(--shadow-sm);">
                     <div style="display: flex; align-items: center; gap: 0.75rem; color: #64748b; font-size: 0.85rem; font-weight: 600;">
                         <i data-lucide="info" style="width:16px;"></i> <span>Draft scores are saved locally until committed.</span>
                     </div>
-                    <div style="display: flex; gap: 1rem;">
+                    <div style="display: flex; gap: 0.75rem; align-items: center;">
                         <button id="btn-sync-ledger" class="btn" style="background: #fff; color: #2563eb; border: 1px solid #2563eb; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                             <i data-lucide="refresh-cw" style="width: 16px;"></i> Refresh Data
                         </button>
@@ -6368,6 +6371,9 @@ export const UI = {
                         </button>
                         <button id="btn-commit-grades" class="btn" style="background: #2563eb; color: white; border: none; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 12px rgba(37,99,235,0.25); cursor: pointer;">
                             <i data-lucide="save" style="width: 16px;"></i> Commit Grades
+                        </button>
+                        <button id="btn-finalize-grading" class="btn" style="background: #059669; color: white; border: none; border-radius: 10px; padding: 0.6rem 1.25rem; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 12px rgba(5,150,105,0.25); cursor: pointer;">
+                            <i data-lucide="check-circle" style="width: 16px;"></i> Finalize Grading
                         </button>
                     </div>
                 </div>
@@ -6407,6 +6413,7 @@ export const UI = {
                     <button id="mobile-btn-sync" class="btn" style="background:#fff; color:#2563eb; border:1px solid #2563eb; border-radius:12px;"><i data-lucide="refresh-cw"></i></button>
                     <button id="mobile-btn-print" class="btn" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; border-radius:12px;"><i data-lucide="printer"></i></button>
                     <button id="mobile-btn-commit" class="btn" style="background:#2563eb; color:white; flex:1; border-radius:12px; font-weight:800;">Commit All Grades</button>
+                    <button id="mobile-btn-finalize" class="btn" style="background:#059669; color:white; border-radius:12px; padding: 0.5rem 1rem; font-weight:800;"><i data-lucide="check-circle"></i></button>
                 </div>
             </div>
         `;
@@ -6602,6 +6609,58 @@ export const UI = {
 
             // Update Statistics
             updateStatsUI(filteredScores);
+
+            // Check finalization status and update banner
+            const finalizationId = `finalize_${teacherId}_${subId}_${cls}_${term}_${session}`;
+            const finalizationBanner = document.getElementById('gradebook-finalization-banner');
+            const finalizeBtn = document.getElementById('btn-finalize-grading');
+            try {
+                // Check for ANY finalization for this subject+class+term+session (could be by another user/admin)
+                const allFinalizations = await db.grade_finalizations.where('[teacher_id+subject_id+class_name+term+session]').equals([teacherId, subId, cls, term, session]).toArray();
+                // Also check if admin finalized on behalf of this teacher
+                const anyFinalization = allFinalizations.length > 0 ? allFinalizations[0] : 
+                    await db.grade_finalizations.filter(f => 
+                        String(f.subject_id) === String(subId) && 
+                        String(f.class_name).toLowerCase().trim() === String(cls).toLowerCase().trim() && 
+                        String(f.term).toLowerCase().trim() === String(term).toLowerCase().trim() && 
+                        String(f.session).toLowerCase().trim() === String(session).toLowerCase().trim()
+                    ).first();
+
+                if (anyFinalization) {
+                    const fDate = new Date(anyFinalization.finalized_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                    const roleLabel = anyFinalization.finalized_by_role === 'admin' ? ' (Admin)' : '';
+                    if (finalizationBanner) {
+                        finalizationBanner.style.display = 'flex';
+                        finalizationBanner.style.background = '#f0fdf4';
+                        finalizationBanner.style.border = '1px solid #bbf7d0';
+                        finalizationBanner.style.color = '#166534';
+                        finalizationBanner.innerHTML = `<i data-lucide="check-circle" style="width:18px; height:18px; color:#16a34a;"></i> <span>Grading finalized by <strong>${anyFinalization.finalized_by || 'Teacher'}${roleLabel}</strong> on <strong>${fDate}</strong> — ${anyFinalization.missing_count || 0} student(s) without scores, ${anyFinalization.incomplete_fields || 0} empty field(s)</span>`;
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    }
+                    if (finalizeBtn) {
+                        finalizeBtn.innerHTML = '<i data-lucide="check-circle" style="width:16px;"></i> Re-Finalize';
+                        finalizeBtn.style.background = '#059669';
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    }
+                } else {
+                    if (finalizationBanner) {
+                        finalizationBanner.style.display = 'flex';
+                        finalizationBanner.style.background = '#fffbeb';
+                        finalizationBanner.style.border = '1px solid #fde68a';
+                        finalizationBanner.style.color = '#92400e';
+                        finalizationBanner.innerHTML = `<i data-lucide="clock" style="width:18px; height:18px; color:#d97706;"></i> <span>Grading <strong>not finalized</strong> — Click "Finalize Grading" when all scores are entered to confirm completion.</span>`;
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    }
+                    if (finalizeBtn) {
+                        finalizeBtn.innerHTML = '<i data-lucide="check-circle" style="width:16px;"></i> Finalize Grading';
+                        finalizeBtn.style.background = '#059669';
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    }
+                }
+            } catch (e) {
+                console.warn('[Gradebook] Could not check finalization status:', e);
+                if (finalizationBanner) finalizationBanner.style.display = 'none';
+            }
 
             // Update Desktop Table
             gradeBody.innerHTML = targetStudents.map(s => {
@@ -6899,6 +6958,9 @@ export const UI = {
         const mobileCommit = document.getElementById('mobile-btn-commit');
         if (mobileCommit) mobileCommit.addEventListener('click', () => document.getElementById('btn-commit-grades').click());
 
+        const mobileFinalize = document.getElementById('mobile-btn-finalize');
+        if (mobileFinalize) mobileFinalize.addEventListener('click', () => document.getElementById('btn-finalize-grading').click());
+
         // Initial Load Trigger
         if (classFilter.value) {
             classFilter.dispatchEvent(new Event('change'));
@@ -7019,7 +7081,198 @@ export const UI = {
                 Notifications.show('Grades saved locally. Sync will complete when online.', 'info');
             }
             
+            // Auto-revoke finalization for this specific subject+class+term+session on re-commit
+            try {
+                const revokeMatches = await db.grade_finalizations.filter(f =>
+                    String(f.subject_id) === String(subId) &&
+                    String(f.class_name).toLowerCase().trim() === String(className).toLowerCase().trim() &&
+                    String(f.term).toLowerCase().trim() === String(term).toLowerCase().trim() &&
+                    String(f.session).toLowerCase().trim() === String(session).toLowerCase().trim()
+                ).toArray();
+                for (const match of revokeMatches) {
+                    await db.grade_finalizations.delete(match.id);
+                    console.log(`[Grade Commit] Auto-revoked finalization: ${match.id}`);
+                }
+                if (revokeMatches.length > 0) {
+                    Notifications.show('Finalization revoked — please re-finalize after reviewing scores.', 'info');
+                }
+            } catch (e) {
+                console.warn('[Grade Commit] Could not revoke finalization:', e);
+            }
+
             loadAcademicLedger(); // Refresh to show ranks
+        });
+
+        // ── Finalize Grading Handler ──
+        document.getElementById('btn-finalize-grading').addEventListener('click', async () => {
+            const subId = subjectFilter.value;
+            const term = termFilter.value;
+            const session = sessionFilter.value;
+            const className = classFilter.value;
+
+            if (!subId || !className) return Notifications.show('Select a Stream and Course first', 'error');
+
+            const role = (this.currentUser.role || '').toLowerCase();
+            const currentUserId = this.currentUser.id;
+            const currentUserName = this.currentUser.full_name || this.currentUser.name || 'Unknown';
+            const isAdmin = role === 'admin' || role === 'super_admin';
+            const isTeacherRole = role === 'teacher';
+
+            // Get the assigned teacher for this subject+class
+            const asgn = (await db.subject_assignments.where('class_name').anyOf([className, className.split(' (')[0].split(/[A-Z]$/)[0].trim()]).toArray()).find(a => String(a.subject_id) === String(subId));
+            const assignedTeacherId = asgn ? asgn.teacher_id : currentUserId;
+
+            // Compute summary stats
+            const targetClsLower = String(className).toLowerCase().trim();
+            const allStudents = students.filter(s => s.class_name && String(s.class_name).trim().toLowerCase() === targetClsLower && s.is_active !== false);
+            const allScores = await db.scores.where('[student_id+subject_id+term+session]').between(
+                [Dexie.minKey, subId, term, session],
+                [Dexie.maxKey, subId, term, session]
+            ).toArray().catch(() => []);
+            const matchedScores = allScores.filter(sc => sc.class_name && String(sc.class_name).toLowerCase().trim() === targetClsLower);
+
+            const studentsWithScores = allStudents.filter(st => matchedScores.some(sc => String(sc.student_id).toLowerCase().trim() === String(st.student_id).toLowerCase().trim())).length;
+            const missingCount = allStudents.length - studentsWithScores;
+            const gradeFields = ['assignment', 'test1', 'test2', 'project', 'exam'];
+            let incompleteFields = 0;
+            matchedScores.forEach(sc => {
+                gradeFields.forEach(f => {
+                    if (sc[f] === null || sc[f] === undefined || sc[f] === '') incompleteFields++;
+                });
+            });
+            // Also count students with NO scores at all (5 fields each)
+            incompleteFields += missingCount * gradeFields.length;
+
+            // Get the subject name
+            const activeSub = subjects.find(s => String(s.id) === String(subId));
+            const subName = activeSub ? activeSub.name : 'Unknown Subject';
+
+            // Show confirmation modal
+            const modalId = 'finalize-grading-modal';
+            let existingModal = document.getElementById(modalId);
+            if (existingModal) existingModal.remove();
+
+            const modal = document.createElement('div');
+            modal.id = modalId;
+            modal.style.cssText = 'position:fixed; inset:0; z-index:10000; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); animation: fadeIn 0.2s ease;';
+            modal.innerHTML = `
+                <div style="background:white; border-radius:20px; padding:2rem; max-width:480px; width:90%; box-shadow: 0 25px 50px rgba(0,0,0,0.25); animation: slideUp 0.3s ease;">
+                    <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.5rem;">
+                        <div style="background:#ecfdf5; padding:0.6rem; border-radius:12px;"><i data-lucide="check-circle" style="width:28px; height:28px; color:#059669;"></i></div>
+                        <div>
+                            <h3 style="margin:0; font-size:1.15rem; font-weight:800; color:#1e293b;">Finalize Grading</h3>
+                            <p style="margin:0; font-size:0.8rem; color:#64748b;">${subName} — ${className}</p>
+                        </div>
+                    </div>
+
+                    <div style="background:#f8fafc; border-radius:12px; padding:1rem; margin-bottom:1.25rem;">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                            <div style="text-align:center; padding:0.5rem; background:white; border-radius:8px; border:1px solid #e2e8f0;">
+                                <div style="font-size:1.5rem; font-weight:900; color:#1e293b;">${allStudents.length}</div>
+                                <div style="font-size:0.7rem; color:#64748b; text-transform:uppercase; font-weight:700;">Total Students</div>
+                            </div>
+                            <div style="text-align:center; padding:0.5rem; background:white; border-radius:8px; border:1px solid #e2e8f0;">
+                                <div style="font-size:1.5rem; font-weight:900; color:#16a34a;">${studentsWithScores}</div>
+                                <div style="font-size:0.7rem; color:#64748b; text-transform:uppercase; font-weight:700;">Have Scores</div>
+                            </div>
+                            <div style="text-align:center; padding:0.5rem; background:white; border-radius:8px; border:1px solid ${missingCount > 0 ? '#fde68a' : '#e2e8f0'};">
+                                <div style="font-size:1.5rem; font-weight:900; color:${missingCount > 0 ? '#d97706' : '#16a34a'};">${missingCount}</div>
+                                <div style="font-size:0.7rem; color:#64748b; text-transform:uppercase; font-weight:700;">No Scores</div>
+                            </div>
+                            <div style="text-align:center; padding:0.5rem; background:white; border-radius:8px; border:1px solid ${incompleteFields > 0 ? '#fde68a' : '#e2e8f0'};">
+                                <div style="font-size:1.5rem; font-weight:900; color:${incompleteFields > 0 ? '#d97706' : '#16a34a'};">${incompleteFields}</div>
+                                <div style="font-size:0.7rem; color:#64748b; text-transform:uppercase; font-weight:700;">Empty Fields</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    ${missingCount > 0 ? `
+                    <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:0.75rem; margin-bottom:1.25rem; display:flex; align-items:flex-start; gap:0.5rem;">
+                        <i data-lucide="alert-triangle" style="width:16px; height:16px; color:#d97706; flex-shrink:0; margin-top:2px;"></i>
+                        <span style="font-size:0.8rem; color:#92400e;"><strong>${missingCount} student(s)</strong> have no scores at all. By finalizing, you confirm these are intentional absences and not data entry errors.</span>
+                    </div>` : `
+                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:0.75rem; margin-bottom:1.25rem; display:flex; align-items:center; gap:0.5rem;">
+                        <i data-lucide="check-circle" style="width:16px; height:16px; color:#16a34a;"></i>
+                        <span style="font-size:0.8rem; color:#166534;">All students have at least one score entry. Ready to finalize!</span>
+                    </div>`}
+
+                    <p style="font-size:0.8rem; color:#64748b; margin-bottom:1.25rem;">You can still edit scores and re-commit after finalizing. Re-committing will require you to finalize again.</p>
+
+                    <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
+                        <button id="finalize-cancel-btn" class="btn" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; border-radius:10px; padding:0.6rem 1.5rem; font-weight:700; font-size:0.85rem; cursor:pointer;">Cancel</button>
+                        <button id="finalize-confirm-btn" class="btn" style="background:#059669; color:white; border:none; border-radius:10px; padding:0.6rem 1.5rem; font-weight:700; font-size:0.85rem; box-shadow:0 4px 12px rgba(5,150,105,0.25); cursor:pointer; display:flex; align-items:center; gap:0.5rem;"><i data-lucide="check" style="width:16px;"></i> Confirm Finalization</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            // Cancel handler
+            document.getElementById('finalize-cancel-btn').addEventListener('click', () => modal.remove());
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+            // Confirm handler
+            document.getElementById('finalize-confirm-btn').addEventListener('click', async () => {
+                const finId = `finalize_${assignedTeacherId}_${subId}_${className}_${term}_${session}`;
+                const finRecord = {
+                    id: finId,
+                    teacher_id: assignedTeacherId,
+                    subject_id: subId,
+                    class_name: className,
+                    term: term,
+                    session: session,
+                    finalized_at: new Date().toISOString(),
+                    finalized_by: currentUserName,
+                    finalized_by_id: currentUserId,
+                    finalized_by_role: isAdmin ? 'admin' : 'teacher',
+                    total_students: allStudents.length,
+                    students_with_scores: studentsWithScores,
+                    missing_count: missingCount,
+                    incomplete_fields: incompleteFields,
+                    updated_at: new Date().toISOString(),
+                    is_synced: 0
+                };
+
+                try {
+                    await db.grade_finalizations.put(prepareForSync(finRecord));
+                    
+                    // Audit log
+                    await db.audit_logs.add({
+                        id: crypto.randomUUID(),
+                        operation: 'INSERT',
+                        table: 'grade_finalizations',
+                        record_id: finId,
+                        timestamp: new Date().toISOString(),
+                        user_id: currentUserId,
+                        details: JSON.stringify({
+                            action: 'finalize_grading',
+                            teacher_id: assignedTeacherId,
+                            subject_id: subId,
+                            class_name: className,
+                            term, session,
+                            finalized_by: currentUserName,
+                            finalized_by_role: isAdmin ? 'admin' : 'teacher',
+                            missing_count: missingCount,
+                            incomplete_fields: incompleteFields
+                        }),
+                        is_synced: 0
+                    }).catch(() => {});
+
+                    // Sync
+                    try {
+                        if (window.UI && typeof window.UI.debouncedSync === 'function') await window.UI.debouncedSync();
+                        else if (typeof debouncedSync === 'function') await debouncedSync();
+                    } catch (e) { /* offline — will sync later */ }
+
+                    modal.remove();
+                    Notifications.show('Grading finalized successfully! ✅', 'success');
+                    loadAcademicLedger(); // Refresh banner
+                } catch (err) {
+                    console.error('[Finalize] Error:', err);
+                    Notifications.show('Failed to finalize grading. Please try again.', 'error');
+                }
+            });
         });
 
 
@@ -20485,6 +20738,20 @@ export const UI = {
         const gradeFields = ['assignment','test1','test2','project','exam'];
         const fieldLabels = { assignment:'Assignment', test1:'Test 1', test2:'Test 2', project:'Project', exam:'Exam' };
 
+        // --- Load Grade Finalizations ---
+        let allFinalizations = [];
+        try { allFinalizations = await db.grade_finalizations.toArray().catch(() => []); } catch (e) { allFinalizations = []; }
+
+        // Helper: check if a subject+class+term+session is finalized
+        const isFinalized = (subjectId, className, term, session) => {
+            return allFinalizations.find(f =>
+                String(f.subject_id) === String(subjectId) &&
+                String(f.class_name).toLowerCase().trim() === String(className).toLowerCase().trim() &&
+                isTermMatch(f.term, term) &&
+                isSessionMatch(f.session, session)
+            );
+        };
+
         // --- Compute Global KPIs ---
         const _siComputeKPIs = () => {
             const filteredScores = scores.filter(s => isTermMatch(s.term, selectedTerm) && isSessionMatch(s.session, selectedSession));
@@ -20499,13 +20766,20 @@ export const UI = {
                 const targetClsLower = String(c.class_name || '').toLowerCase().trim();
                 const cls = students.filter(s => s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
                 const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
+                
+                const finalizedRec = isFinalized(c.subject_id, c.class_name, selectedTerm, selectedSession);
+                
                 gradeFields.forEach(f => {
                     totalExpectedEntries += cls.length;
-                    totalActualEntries += cScores.filter(s => s[f] !== null && s[f] !== undefined && s[f] !== '').length;
+                    if (finalizedRec) {
+                        totalActualEntries += cls.length;
+                    } else {
+                        totalActualEntries += cScores.filter(s => s[f] !== null && s[f] !== undefined && s[f] !== '').length;
+                    }
                 });
                 // Count missing > 50%
                 const enteredStudents = cScores.length;
-                if (cls.length > 0 && enteredStudents / cls.length < 0.5) pendingAudits++;
+                if (!finalizedRec && cls.length > 0 && enteredStudents / cls.length < 0.5) pendingAudits++;
                 cScores.forEach(s => { if (s.total != null) { totalSum += s.total; totalCount++; } });
             });
 
@@ -20536,6 +20810,7 @@ export const UI = {
             const filteredScores = scores.filter(s => isTermMatch(s.term, selectedTerm) && isSessionMatch(s.session, selectedSession));
             const missing = [];
             courses.forEach(c => {
+                if (isFinalized(c.subject_id, c.class_name, selectedTerm, selectedSession)) return; // Exclude finalized
                 const targetClsLower = String(c.class_name || '').toLowerCase().trim();
                 const cls = students.filter(s => s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
                 const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
@@ -20566,6 +20841,7 @@ export const UI = {
             const filteredScores = scores.filter(s => isTermMatch(s.term, selectedTerm) && isSessionMatch(s.session, selectedSession));
             const alerts = [];
             courses.forEach(c => {
+                if (isFinalized(c.subject_id, c.class_name, selectedTerm, selectedSession)) return; // Suppress finalized
                 const targetClsLower = String(c.class_name || '').toLowerCase().trim();
                 const cls = students.filter(s => s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
                 if (cls.length === 0) return;
@@ -21227,12 +21503,21 @@ export const UI = {
                 const targetClsLower = String(c.class_name || '').toLowerCase().trim();
                 const cls = students.filter(s => s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
                 const cScores = filteredScores.filter(s => String(s.subject_id) === String(c.subject_id) && s.class_name && String(s.class_name).toLowerCase().trim() === targetClsLower);
+                
+                const finalizedRec = isFinalized(c.subject_id, c.class_name, selectedTerm, selectedSession);
+                
                 let expected = 0, entered = 0;
                 gradeFields.forEach(f => {
                     expected += cls.length;
-                    entered += cScores.filter(s => s[f] !== null && s[f] !== undefined && s[f] !== '').length;
+                    if (finalizedRec) {
+                        entered += cls.length;
+                    } else {
+                        entered += cScores.filter(s => s[f] !== null && s[f] !== undefined && s[f] !== '').length;
+                    }
                 });
-                teacherMap[c.teacher_id].courses.push(`${c.subject_name} (${c.class_name})`);
+                
+                const isFinText = finalizedRec ? ' (Finalized ✅)' : '';
+                teacherMap[c.teacher_id].courses.push(`${c.subject_name} (${c.class_name})${isFinText}`);
                 if (c.class_name) teacherMap[c.teacher_id].classes.add(c.class_name);
                 teacherMap[c.teacher_id].totalExpected += expected;
                 teacherMap[c.teacher_id].totalEntered += entered;

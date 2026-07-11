@@ -158,6 +158,10 @@ db.version(43).stores({
     elearning_submissions: 'id, assignment_id, student_id, [student_id+assignment_id], tenant_id, updated_at, is_synced'
 });
 
+// Version 44: Grade Finalizations — teachers can declare grading complete even with missing scores
+db.version(44).stores({
+    grade_finalizations: 'id, teacher_id, subject_id, class_name, term, session, [teacher_id+subject_id+class_name+term+session], tenant_id, updated_at, is_synced'
+});
 
 
 db.audit_logs.hook('creating', (primKey, obj, transaction) => {

@@ -66,7 +66,7 @@ export async function syncToCloud() {
         return { success: false, message: 'Subscription inactive' };
     }
 
-    const tables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections', 'cbt_question_bank', 'cbt_options', 'exam_progress', 'elearning_modules', 'elearning_contents', 'elearning_progress', 'elearning_assignments', 'elearning_submissions', 'elearning_comments'];
+    const tables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'audit_logs', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_exam_sections', 'cbt_question_bank', 'cbt_options', 'exam_progress', 'elearning_modules', 'elearning_contents', 'elearning_progress', 'elearning_assignments', 'elearning_submissions', 'elearning_comments', 'grade_finalizations'];
     let syncCount = 0;
     const failedTables = new Set();
 
@@ -352,7 +352,7 @@ export async function syncFromCloud(options = false) {
     const forceAll = (options === true);
     const specificTables = Array.isArray(options) ? options : null;
 
-    const allTables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 'cbt_exam_sections', 'exam_progress', 'elearning_modules', 'elearning_contents', 'elearning_progress', 'elearning_assignments', 'elearning_submissions', 'elearning_comments'];
+    const allTables = ['settings', 'profiles', 'students', 'classes', 'subjects', 'subject_assignments', 'form_teachers', 'scores', 'attendance', 'attendance_records', 'timetable', 'notices', 'pins', 'payments', 'fee_structures', 'student_analytics', 'duty_assignments', 'parent_links', 'cbt_exams', 'cbt_questions', 'cbt_results', 'cbt_question_bank', 'cbt_options', 'cbt_exam_questions', 'cbt_exam_sections', 'exam_progress', 'elearning_modules', 'elearning_contents', 'elearning_progress', 'elearning_assignments', 'elearning_submissions', 'elearning_comments', 'grade_finalizations'];
     const tables = specificTables ? allTables.filter(t => specificTables.includes(t)) : allTables;
     
     // ── Block sync during active exam to prevent flickering and state resets ──
@@ -1044,7 +1044,8 @@ export function initRealtimeSync() {
         'subjects',
         'notices',
         'payments',
-        'exam_progress'
+        'exam_progress',
+        'grade_finalizations'
     ];
 
     console.log('[Realtime] Initializing realtime subscriptions for tenant:', tenantId);
