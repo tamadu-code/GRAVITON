@@ -5405,7 +5405,61 @@ export const UI = {
             return dbs === fls || (dbs && fls && (dbs.includes(fls) || fls.includes(dbs)));
         };
 
-        const allSubjects = (await db.subjects.toArray().catch(() => [])).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        const allAssignments = await db.subject_assignments.toArray().catch(() => []);
+        const rawSubjects = await db.subjects.toArray().catch(() => []);
+        
+        // Filter subjects based on junior/senior level and specialization/stream
+        const studClassUpper = (student.class_name || '').toUpperCase();
+        const studClassLower = (student.class_name || '').trim().toLowerCase();
+        const isStudentJSS = studClassUpper.includes('JSS') || studClassUpper.includes('JS ') || studClassUpper.includes('JUNIOR');
+        const isStudentSSS = studClassUpper.includes('SSS') || studClassUpper.includes('SS ') || studClassUpper.includes('SENIOR');
+        const studentSpec = (student.sub_class || '').trim().toLowerCase();
+        const studentClassBase = student.class_name ? student.class_name.split(' (')[0].split(/[A-Z]$/)[0].trim().toLowerCase() : '';
+
+        const allSubjects = rawSubjects.filter(sub => {
+            const subAssignments = allAssignments.filter(a => String(a.subject_id) === String(sub.id));
+            
+            let hasJSSAssignment = false;
+            let hasSSSAssignment = false;
+            subAssignments.forEach(a => {
+                const aClass = (a.class_name || '').toUpperCase();
+                if (aClass.includes('JSS') || aClass.includes('JS ') || aClass.includes('JUNIOR')) {
+                    hasJSSAssignment = true;
+                }
+                if (aClass.includes('SSS') || aClass.includes('SS ') || aClass.includes('SENIOR')) {
+                    hasSSSAssignment = true;
+                }
+            });
+
+            if (!hasJSSAssignment && !hasSSSAssignment) {
+                const subNameUpper = (sub.name || '').toUpperCase();
+                if (subNameUpper.includes('JSS') || subNameUpper.includes('JUNIOR')) {
+                    hasJSSAssignment = true;
+                } else if (subNameUpper.includes('SSS') || subNameUpper.includes('SENIOR')) {
+                    hasSSSAssignment = true;
+                }
+            }
+
+            if (isStudentJSS && !hasJSSAssignment) return false;
+            if (isStudentSSS && !hasSSSAssignment) return false;
+
+            const relevantAsgn = subAssignments.find(a => {
+                const aClassLower = (a.class_name || '').trim().toLowerCase();
+                return aClassLower === studClassLower || aClassLower === studentClassBase;
+            });
+
+            if (relevantAsgn) {
+                const asgnSpec = (relevantAsgn.specialization || '').trim().toLowerCase();
+                if (asgnSpec && asgnSpec !== 'common subject' && asgnSpec !== 'general') {
+                    const normalizeSpec = (s) => s === 'art' ? 'arts' : s;
+                    if (normalizeSpec(studentSpec) !== normalizeSpec(asgnSpec)) {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         const currentRegs = await db.student_subject_registrations.where('student_id').equals(studentId).toArray().catch(() => []);
         const activeRegs = currentRegs.filter(r => isTermMatchLocal(r.term, term) && isSessionMatchLocal(r.session, session));
         const registeredSubjectIds = new Set(activeRegs.map(r => String(r.subject_id)));
