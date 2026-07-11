@@ -163,6 +163,11 @@ db.version(44).stores({
     grade_finalizations: 'id, teacher_id, subject_id, class_name, term, session, [teacher_id+subject_id+class_name+term+session], tenant_id, updated_at, is_synced'
 });
 
+// Version 45: Student Subject Registrations
+db.version(45).stores({
+    student_subject_registrations: 'id, student_id, subject_id, term, session, [student_id+subject_id+term+session], tenant_id, updated_at, is_synced'
+});
+
 
 db.audit_logs.hook('creating', (primKey, obj, transaction) => {
     const tenantId = localStorage.getItem('tenant_id');

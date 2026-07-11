@@ -5396,6 +5396,23 @@ export const UI = {
         const session = (await db.settings.where('key').equals('currentSession').first())?.value || '2025/2026';
         const term = (await db.settings.where('key').equals('currentTerm').first())?.value || '1st Term';
 
+        // Load subjects and registrations for the current student
+        const normalizeLocal = (t) => String(t || '').toLowerCase().replace(/\s+/g, '').replace('1st', 'first').replace('2nd', 'second').replace('3rd', 'third');
+        const isTermMatchLocal = (dbTerm, filterTerm) => normalizeLocal(dbTerm) === normalizeLocal(filterTerm);
+        const isSessionMatchLocal = (dbSession, filterSession) => {
+            const dbs = String(dbSession || '').toLowerCase().replace(/\s+/g, '');
+            const fls = String(filterSession || '').toLowerCase().replace(/\s+/g, '');
+            return dbs === fls || (dbs && fls && (dbs.includes(fls) || fls.includes(dbs)));
+        };
+
+        const allSubjects = (await db.subjects.toArray().catch(() => [])).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        const currentRegs = await db.student_subject_registrations.where('student_id').equals(studentId).toArray().catch(() => []);
+        const activeRegs = currentRegs.filter(r => isTermMatchLocal(r.term, term) && isSessionMatchLocal(r.session, session));
+        const registeredSubjectIds = new Set(activeRegs.map(r => String(r.subject_id)));
+
+        const userRole = (this.currentUser.role || '').toLowerCase();
+        const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+
         detailView.innerHTML = `
             <div style="padding: 1.5rem;">
                 <!-- Mobile Back Button -->
@@ -5462,6 +5479,7 @@ export const UI = {
                 <div class="profile-tabs" style="border-bottom: 2px solid #f1f5f9; display: flex; gap: 3rem; margin-bottom: 2rem;">
                     <button class="profile-tab-btn active" data-tab="general" style="background: none; border: none; border-bottom: 2px solid #2563eb; padding: 1rem 0; font-weight: 800; color: #1e293b; cursor: pointer; transition: all 0.3s;">General Profile</button>
                     <button class="profile-tab-btn" data-tab="academic" style="background: none; border: none; padding: 1rem 0; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.3s;">Academic Records</button>
+                    ${isAdmin ? `<button class="profile-tab-btn" data-tab="subject-reg" style="background: none; border: none; padding: 1rem 0; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.3s;">Subject Registration</button>` : ''}
                 </div>
 
                 <div id="profile-tab-content">
@@ -5566,6 +5584,58 @@ export const UI = {
                             </div>
                         </div>
                     </div>
+                    ${isAdmin ? `
+                    <div id="tab-subject-reg" class="tab-pane" style="display: none;">
+                        <div class="card" style="padding: 1.5rem; background: white; border-radius: 20px; border: 1px solid #f1f5f9;">
+                            <h4 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                                <i data-lucide="clipboard-list" style="width: 18px; color: #2563eb;"></i> Subject Registration
+                            </h4>
+                            <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.25rem; line-height: 1.5;">
+                                Select the subjects this student is offering for <strong>${term}</strong> — <strong>${session}</strong>. 
+                                Students not registered for a subject will not appear in that subject's gradebook.
+                                <br><em style="color:#94a3b8; font-size:0.8rem;">If no registrations exist for a subject+class, the system falls back to track/specialization filtering.</em>
+                            </p>
+                            <div style="display:flex; gap:0.75rem; margin-bottom:1rem; flex-wrap:wrap;">
+                                <button id="btn-reg-select-all" class="btn btn-secondary" style="border-radius:8px; padding:0.4rem 1rem; font-size:0.75rem; font-weight:700; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe;">Select All</button>
+                                <button id="btn-reg-deselect-all" class="btn btn-secondary" style="border-radius:8px; padding:0.4rem 1rem; font-size:0.75rem; font-weight:700; background:#fef2f2; color:#ef4444; border:1px solid #fecaca;">Deselect All</button>
+                                <span id="reg-count-badge" style="display:inline-flex; align-items:center; gap:0.4rem; padding:0.4rem 0.8rem; background:#f0fdf4; color:#16a34a; border-radius:8px; font-size:0.75rem; font-weight:700; border:1px solid #bbf7d0;">${registeredSubjectIds.size} / ${allSubjects.length} registered</span>
+                            </div>
+                            <div style="max-height: 420px; overflow-y: auto; border: 1px solid #f1f5f9; border-radius: 12px;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="border-bottom: 2px solid #f1f5f9; background: #f8fafc; position: sticky; top: 0; z-index: 10;">
+                                            <th style="text-align: center; padding: 0.75rem 1rem; color: #64748b; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; width: 60px;">Register</th>
+                                            <th style="text-align: left; padding: 0.75rem 1rem; color: #64748b; font-size: 0.7rem; font-weight: 800; text-transform: uppercase;">Subject Name</th>
+                                            <th style="text-align: left; padding: 0.75rem 1rem; color: #64748b; font-size: 0.7rem; font-weight: 800; text-transform: uppercase;">Type</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${allSubjects.length === 0 ? '<tr><td colspan="3" style="padding: 2rem; text-align: center; color: #94a3b8; font-weight: 600;">No subjects found. Please create subjects first.</td></tr>' : 
+                                            allSubjects.map(sub => {
+                                                const isReg = registeredSubjectIds.has(String(sub.id));
+                                                const typeColor = (sub.type || '').toLowerCase() === 'elective' ? '#7c3aed' : '#2563eb';
+                                                return '<tr style="border-bottom: 1px solid #f8fafc; transition: background 0.15s;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'transparent\'">' +
+                                                    '<td style="padding: 0.75rem 1rem; text-align: center;">' +
+                                                        '<input type="checkbox" class="subject-reg-checkbox" data-subject-id="' + sub.id + '" style="width: 18px; height: 18px; cursor: pointer; accent-color: #2563eb;" ' + (isReg ? 'checked' : '') + '>' +
+                                                    '</td>' +
+                                                    '<td style="padding: 0.75rem 1rem; font-weight: 700; color: #1e293b;">' + sub.name + '</td>' +
+                                                    '<td style="padding: 0.75rem 1rem;">' +
+                                                        '<span style="background: ' + typeColor + '12; color: ' + typeColor + '; padding: 2px 10px; border-radius: 6px; font-weight: 700; font-size: 0.75rem;">' + (sub.type || 'Core') + '</span>' +
+                                                    '</td>' +
+                                                '</tr>';
+                                            }).join('')
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div style="display: flex; justify-content: flex-end; margin-top: 1.5rem;">
+                                <button id="btn-save-subject-reg" class="btn btn-primary" style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; border-radius: 12px; padding: 0.75rem 1.75rem; background: #2563eb;">
+                                    <i data-lucide="save" style="width: 16px;"></i> Save Registration
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -5973,8 +6043,100 @@ export const UI = {
 
                 document.getElementById('tab-general').style.display = tab === 'general' ? 'block' : 'none';
                 document.getElementById('tab-academic').style.display = tab === 'academic' ? 'block' : 'none';
+                const regTab = document.getElementById('tab-subject-reg');
+                if (regTab) regTab.style.display = tab === 'subject-reg' ? 'block' : 'none';
             });
         });
+
+        // --- Subject Registration Handlers (Admin only) ---
+        const updateRegCount = () => {
+            const badge = document.getElementById('reg-count-badge');
+            if (!badge) return;
+            const checked = document.querySelectorAll('.subject-reg-checkbox:checked').length;
+            const total = document.querySelectorAll('.subject-reg-checkbox').length;
+            badge.textContent = `${checked} / ${total} registered`;
+        };
+
+        const regSelectAll = document.getElementById('btn-reg-select-all');
+        if (regSelectAll) regSelectAll.addEventListener('click', () => {
+            document.querySelectorAll('.subject-reg-checkbox').forEach(cb => cb.checked = true);
+            updateRegCount();
+        });
+
+        const regDeselectAll = document.getElementById('btn-reg-deselect-all');
+        if (regDeselectAll) regDeselectAll.addEventListener('click', () => {
+            document.querySelectorAll('.subject-reg-checkbox').forEach(cb => cb.checked = false);
+            updateRegCount();
+        });
+
+        // Live count update on checkbox change
+        document.querySelectorAll('.subject-reg-checkbox').forEach(cb => {
+            cb.addEventListener('change', updateRegCount);
+        });
+
+        const saveRegBtn = document.getElementById('btn-save-subject-reg');
+        if (saveRegBtn) {
+            saveRegBtn.addEventListener('click', async () => {
+                saveRegBtn.disabled = true;
+                const origHTML = saveRegBtn.innerHTML;
+                saveRegBtn.innerHTML = '<i data-lucide="loader" class="spin" style="width:16px;"></i> Saving...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                try {
+                    const tenantId = localStorage.getItem('tenant_id') || '';
+                    const checkboxes = document.querySelectorAll('.subject-reg-checkbox');
+                    const checkedSubjectIds = new Set();
+                    checkboxes.forEach(cb => { if (cb.checked) checkedSubjectIds.add(String(cb.dataset.subjectId)); });
+
+                    // Upsert registrations for checked subjects
+                    for (const subId of checkedSubjectIds) {
+                        const regId = `reg_${studentId}_${subId}_${term}_${session}`.replace(/[^a-zA-Z0-9_/-]/g, '_');
+                        const existing = await db.student_subject_registrations.get(regId).catch(() => null);
+                        if (!existing) {
+                            await db.student_subject_registrations.put({
+                                id: regId,
+                                student_id: studentId,
+                                subject_id: subId,
+                                term: term,
+                                session: session,
+                                tenant_id: tenantId,
+                                updated_at: new Date().toISOString(),
+                                is_synced: 0
+                            });
+                        }
+                    }
+
+                    // Delete registrations for unchecked subjects
+                    const allCurrentRegs = await db.student_subject_registrations.where('student_id').equals(studentId).toArray();
+                    for (const reg of allCurrentRegs) {
+                        if (isTermMatchLocal(reg.term, term) && isSessionMatchLocal(reg.session, session)) {
+                            if (!checkedSubjectIds.has(String(reg.subject_id))) {
+                                await db.student_subject_registrations.delete(reg.id);
+                                // Log deletion for cloud sync
+                                await db.audit_logs.add({
+                                    id: (typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : `del_${Date.now()}_${reg.id}`,
+                                    operation: 'DELETE',
+                                    table: 'student_subject_registrations',
+                                    record_id: reg.id,
+                                    timestamp: new Date().toISOString(),
+                                    is_synced: 0
+                                });
+                            }
+                        }
+                    }
+
+                    Notifications.show(`Subject registration saved for ${student.name}. ${checkedSubjectIds.size} subject(s) registered.`, 'success');
+                    if (this.debouncedSync) this.debouncedSync();
+                } catch (err) {
+                    console.error('[SubjectReg] Save error:', err);
+                    Notifications.show('Failed to save subject registration.', 'error');
+                } finally {
+                    saveRegBtn.disabled = false;
+                    saveRegBtn.innerHTML = origHTML;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            });
+        }
     },
 
     generateStudentListItems(students) {
@@ -6498,6 +6660,31 @@ export const UI = {
                 });
             }
 
+            // Filter by subject registrations (if any exist for this subject+class+term+session)
+            try {
+                const clsLower = String(cls).trim().toLowerCase();
+                const allRegsForSubject = await db.student_subject_registrations
+                    .where('subject_id').equals(subId).toArray();
+                const clsRegs = allRegsForSubject.filter(r => {
+                    const rTerm = String(r.term || '').toLowerCase().replace(/\s+/g, '').replace('1st','first').replace('2nd','second').replace('3rd','third');
+                    const fTerm = String(term || '').toLowerCase().replace(/\s+/g, '').replace('1st','first').replace('2nd','second').replace('3rd','third');
+                    const rSess = String(r.session || '').toLowerCase().replace(/\s+/g, '');
+                    const fSess = String(session || '').toLowerCase().replace(/\s+/g, '');
+                    const termOk = rTerm === fTerm;
+                    const sessOk = rSess === fSess || (rSess && fSess && (rSess.includes(fSess) || fSess.includes(rSess)));
+                    // Check if the registered student belongs to this class
+                    const regStudent = students.find(st => String(st.student_id) === String(r.student_id));
+                    const classOk = regStudent && String(regStudent.class_name || '').trim().toLowerCase() === clsLower;
+                    return termOk && sessOk && classOk;
+                });
+                if (clsRegs.length > 0) {
+                    const registeredIds = new Set(clsRegs.map(r => String(r.student_id)));
+                    targetStudents = targetStudents.filter(s => registeredIds.has(String(s.student_id)));
+                    console.log(`[Gradebook] Subject registration filter active: ${clsRegs.length} registrations → ${targetStudents.length} students`);
+                }
+            } catch (regErr) {
+                console.warn('[Gradebook] Subject registration check failed, falling back to specialization:', regErr);
+            }
             if (targetStudents.length === 0) {
                 gradeBody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted);">No students matching track <strong>"${subSpecialization.toUpperCase()}"</strong> found in <strong>${cls}</strong>.</td></tr>`;
                 const mobileContainer = document.getElementById('mobile-score-entry');
@@ -7122,14 +7309,69 @@ export const UI = {
             const asgn = (await db.subject_assignments.where('class_name').anyOf([className, className.split(' (')[0].split(/[A-Z]$/)[0].trim()]).toArray()).find(a => String(a.subject_id) === String(subId));
             const assignedTeacherId = asgn ? asgn.teacher_id : currentUserId;
 
-            // Compute summary stats
+            // Compute summary stats resiliantly
             const targetClsLower = String(className).toLowerCase().trim();
-            const allStudents = students.filter(s => s.class_name && String(s.class_name).trim().toLowerCase() === targetClsLower && s.is_active !== false);
-            const allScores = await db.scores.where('[student_id+subject_id+term+session]').between(
-                [Dexie.minKey, subId, term, session],
-                [Dexie.maxKey, subId, term, session]
-            ).toArray().catch(() => []);
-            const matchedScores = allScores.filter(sc => sc.class_name && String(sc.class_name).toLowerCase().trim() === targetClsLower);
+            const baseClass = className.split(' (')[0].split(/[A-Z]$/)[0].trim();
+            const assignments = await db.subject_assignments.where('class_name').anyOf([className, baseClass]).toArray();
+            const currentAsgn = assignments.find(a => String(a.subject_id) === String(subId));
+            const subSpecialization = currentAsgn ? (currentAsgn.specialization || '').trim().toLowerCase() : '';
+
+            // 1. Filter students in class
+            let allStudents = students.filter(s => 
+                s.class_name && String(s.class_name).trim().toLowerCase() === targetClsLower &&
+                s.is_active !== false
+            );
+
+            // 2. Track Specialization check
+            if (subSpecialization && subSpecialization !== 'common subject' && subSpecialization !== 'general') {
+                allStudents = allStudents.filter(s => {
+                    const studentTrack = (s.sub_class || '').trim().toLowerCase();
+                    return studentTrack === subSpecialization || studentTrack === 'general';
+                });
+            }
+
+            // 3. Subject Registration check
+            try {
+                const allRegsForSubject = await db.student_subject_registrations
+                    .where('subject_id').equals(subId).toArray();
+                const clsRegs = allRegsForSubject.filter(r => {
+                    const rTerm = String(r.term || '').toLowerCase().replace(/\s+/g, '').replace('1st','first').replace('2nd','second').replace('3rd','third');
+                    const fTerm = String(term || '').toLowerCase().replace(/\s+/g, '').replace('1st','first').replace('2nd','second').replace('3rd','third');
+                    const rSess = String(r.session || '').toLowerCase().replace(/\s+/g, '');
+                    const fSess = String(session || '').toLowerCase().replace(/\s+/g, '');
+                    const termOk = rTerm === fTerm;
+                    const sessOk = rSess === fSess || (rSess && fSess && (rSess.includes(fSess) || fSess.includes(rSess)));
+                    // Check if the registered student belongs to this class
+                    const regStudent = students.find(st => String(st.student_id) === String(r.student_id));
+                    const classOk = regStudent && String(regStudent.class_name || '').trim().toLowerCase() === targetClsLower;
+                    return termOk && sessOk && classOk;
+                });
+                if (clsRegs.length > 0) {
+                    const registeredIds = new Set(clsRegs.map(r => String(r.student_id)));
+                    allStudents = allStudents.filter(s => registeredIds.has(String(s.student_id)));
+                }
+            } catch (regErr) {
+                console.warn('[Finalize] Subject registration check failed:', regErr);
+            }
+
+            // 4. Query all scores for the subject resiliantly (legacy scores check)
+            const allScores = await db.scores.where('subject_id').equals(subId).toArray().catch(() => []);
+            const targetStudentIds = new Set(allStudents.map(s => String(s.student_id).toLowerCase().trim()));
+            const matchedScores = allScores.filter(sc => {
+                const dbTerm = String(sc.term || '').toLowerCase().replace(/\s+/g, '').replace('1st','first').replace('2nd','second').replace('3rd','third');
+                const fTerm = String(term || '').toLowerCase().replace(/\s+/g, '').replace('1st','first').replace('2nd','second').replace('3rd','third');
+                const dbSess = String(sc.session || '').toLowerCase().replace(/\s+/g, '');
+                const fSess = String(session || '').toLowerCase().replace(/\s+/g, '');
+                if (dbTerm !== fTerm || (dbSess !== fSess && (!dbSess || !fSess || (!dbSess.includes(fSess) && !fSess.includes(dbSess))))) {
+                    return false;
+                }
+                const scId = String(sc.student_id || '').toLowerCase().trim();
+                if (targetStudentIds.has(scId)) return true;
+                // Fallback to class name check
+                if (sc.class_name && String(sc.class_name).toLowerCase().trim() === targetClsLower) return true;
+                return false;
+            });
+
 
             const studentsWithScores = allStudents.filter(st => matchedScores.some(sc => String(sc.student_id).toLowerCase().trim() === String(st.student_id).toLowerCase().trim())).length;
             const missingCount = allStudents.length - studentsWithScores;
