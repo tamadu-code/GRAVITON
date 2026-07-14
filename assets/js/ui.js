@@ -5,7 +5,7 @@
 console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
-import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses, generateRegistrationFormPDF, generateStudentIDCardPDF, generateBulkStudentIDCardsPDF } from './utils.js';
+import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses, generateRegistrationFormPDF, generateStudentIDCardPDF, generateBulkStudentIDCardsPDF, truncateToTwoDecimals } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase, uploadElearningFile } from './supabase-client.js';
 import { initPushNotifications, unsubscribeUser } from './push.js';
 import { analyzeText } from './aiDetector.js';
@@ -2404,31 +2404,132 @@ export const UI = {
             
             const studentIds = classStudents.map(s => s.student_id);
 
-            const rawScores = await db.scores.toArray();
-            const classScores = rawScores.filter(sc => {
-                if (!studentIds.includes(sc.student_id)) return false;
-                
-                const dbSessionNorm = normalizeSession(sc.session);
-                const dbTermNorm = normalizeTerm(sc.term);
+            const getTermIndex = (t) => {
+                if (!t) return 0;
+                const norm = String(t).toLowerCase();
+                if (norm.includes('first') || norm.includes('1st') || norm.includes('1')) return 1;
+                if (norm.includes('second') || norm.includes('2nd') || norm.includes('2')) return 2;
+                if (norm.includes('third') || norm.includes('3rd') || norm.includes('3')) return 3;
+                return 0;
+            };
 
+            const isScoreValidForAverage = (s) => {
+                if (!s) return false;
+                const hasExam = s.exam !== null && s.exam !== undefined && s.exam !== '';
+                const componentCount = [s.assignment, s.test1, s.test2, s.project, s.exam].filter(v => v !== null && v !== undefined && v !== '').length;
+                return hasExam || componentCount >= 3;
+            };
+
+            const getStudentTermAverage = (studId, tIdx, allSessScores) => {
+                const termScores = allSessScores.filter(sc => 
+                    String(sc.student_id) === String(studId) && 
+                    getTermIndex(sc.term) === tIdx && 
+                    isScoreValidForAverage(sc)
+                );
+                if (termScores.length === 0) return null;
+                const sum = termScores.reduce((acc, sc) => acc + (parseFloat(sc.total) || 0), 0);
+                return truncateToTwoDecimals(sum / termScores.length);
+            };
+
+            const targetTermIdx = getTermIndex(targetTerm);
+            const cumulativeGradingSetting = settings.cumulativeGrading === 'Enabled';
+
+            const rawScores = await db.scores.toArray();
+            let classScores = rawScores.filter(sc => {
+                if (!studentIds.includes(sc.student_id)) return false;
+                const dbSessionNorm = normalizeSession(sc.session);
+                const dbTermIdx = getTermIndex(sc.term);
                 const sesMatch = dbSessionNorm === targetSessionNorm || 
                     (dbSessionNorm && targetSessionNorm && (dbSessionNorm.includes(targetSessionNorm) || targetSessionNorm.includes(dbSessionNorm)));
-                
-                const termMatch = dbTermNorm === targetTermNorm || 
-                    (dbTermNorm && targetTermNorm && (dbTermNorm.includes(targetTermNorm) || targetTermNorm.includes(dbTermNorm)));
-
+                const termMatch = cumulativeGradingSetting 
+                    ? (dbTermIdx <= targetTermIdx)
+                    : (dbTermIdx === targetTermIdx);
                 return sesMatch && termMatch;
             });
-            
+
+            if (cumulativeGradingSetting && targetTermIdx > 1) {
+                const currentTermScores = classScores.filter(sc => getTermIndex(sc.term) === targetTermIdx);
+                const previousTermScores = classScores.filter(sc => getTermIndex(sc.term) < targetTermIdx);
+
+                for (const currentScore of currentTermScores) {
+                    let sum = 0;
+                    let count = 0;
+
+                    if (isScoreValidForAverage(currentScore)) {
+                        sum += parseFloat(currentScore.total) || 0;
+                        count++;
+                    }
+
+                    for (let t = 1; t < targetTermIdx; t++) {
+                        const prevScore = previousTermScores.find(sc => 
+                            String(sc.student_id) === String(currentScore.student_id) && 
+                            String(sc.subject_id) === String(currentScore.subject_id) && 
+                            getTermIndex(sc.term) === t
+                        );
+                        if (prevScore) {
+                            if (t === 1) currentScore.firstTermTotal = prevScore.total;
+                            if (t === 2) currentScore.secondTermTotal = prevScore.total;
+                            if (isScoreValidForAverage(prevScore)) {
+                                sum += parseFloat(prevScore.total) || 0;
+                                count++;
+                            }
+                        }
+                    }
+
+                    if (count > 0) {
+                        const cumulativeTotal = truncateToTwoDecimals(sum / count);
+                        currentScore.originalTotal = currentScore.total;
+                        currentScore.total = cumulativeTotal;
+                    }
+                    currentScore.grade = ScoringEngine.getGrade(currentScore.total);
+                    currentScore.remark = ScoringEngine.getRemark(currentScore.total);
+                }
+
+                // Recalculate subject ranks in memory
+                const subjectGroups = {};
+                currentTermScores.forEach(s => {
+                    if (!subjectGroups[s.subject_id]) subjectGroups[s.subject_id] = [];
+                    subjectGroups[s.subject_id].push(s);
+                });
+
+                for (const subId in subjectGroups) {
+                    const subScores = subjectGroups[subId];
+                    subScores.sort((a, b) => b.total - a.total);
+                    let currentRank = 1;
+                    for (let i = 0; i < subScores.length; i++) {
+                        const s = subScores[i];
+                        if (i > 0 && s.total < subScores[i-1].total) currentRank = i + 1;
+                        s.rank = ScoringEngine.getOrdinal(currentRank);
+                    }
+                }
+
+                classScores = currentTermScores;
+            }
+
             const studentStats = classStudents.map(s => {
-                const sScores = classScores.filter(sc => sc.student_id === s.student_id && sc.total !== null && sc.total !== undefined && sc.total !== '');
+                const sScores = classScores.filter(sc => String(sc.student_id) === String(s.student_id) && sc.total !== null && sc.total !== undefined && sc.total !== '');
+                
+                // For report cards in cumulative mode: average = sum of cum totals / number of subjects
+                // (each score's .total has already been replaced with the per-subject cumulative average)
+                let average = 0;
                 let totalScore = 0;
-                sScores.forEach(sc => { totalScore += Number(sc.total) || 0; });
-                const average = sScores.length > 0 ? (totalScore / sScores.length) : 0;
+                sScores.forEach(sc => {
+                    const rawVal = sc.originalTotal !== undefined ? sc.originalTotal : sc.total;
+                    totalScore += Number(rawVal) || 0;
+                });
+
+                if (cumulativeGradingSetting && targetTermIdx > 1) {
+                    // Sum the cumulative totals (s.total = per-subject cum avg) and divide by subject count
+                    const cumTotalSum = sScores.reduce((sum, sc) => sum + (parseFloat(sc.total) || 0), 0);
+                    average = sScores.length > 0 ? truncateToTwoDecimals(cumTotalSum / sScores.length) : 0;
+                } else {
+                    average = sScores.length > 0 ? truncateToTwoDecimals(totalScore / sScores.length) : 0;
+                }
+
                 return {
                     ...s,
                     totalScore,
-                    average: average // full precision for accurate ranking
+                    average // full precision for accurate ranking
                 };
             });
 
@@ -9679,18 +9780,93 @@ export const UI = {
                 loadedStudents = await db.students.where('class_name').equals(className).filter(s => s.is_active !== false).toArray();
                 loadedStudents.sort((a,b) => a.name.localeCompare(b.name));
                 const studentIds = loadedStudents.map(s => s.student_id);
+
+                const settingsArray = await db.settings.toArray();
+                const settings = {};
+                settingsArray.forEach(s => settings[s.key] = s.value);
+
+                const getTermIndex = (t) => {
+                    if (!t) return 0;
+                    const norm = String(t).toLowerCase();
+                    if (norm.includes('first') || norm.includes('1st') || norm.includes('1')) return 1;
+                    if (norm.includes('second') || norm.includes('2nd') || norm.includes('2')) return 2;
+                    if (norm.includes('third') || norm.includes('3rd') || norm.includes('3')) return 3;
+                    return 0;
+                };
+
+                const isScoreValidForAverage = (s) => {
+                    if (!s) return false;
+                    const hasExam = s.exam !== null && s.exam !== undefined && s.exam !== '';
+                    const componentCount = [s.assignment, s.test1, s.test2, s.project, s.exam].filter(v => v !== null && v !== undefined && v !== '').length;
+                    return hasExam || componentCount >= 3;
+                };
+
+                const getStudentTermAverage = (studId, tIdx, allSessScores) => {
+                    const termScores = allSessScores.filter(sc => 
+                        String(sc.student_id) === String(studId) && 
+                        getTermIndex(sc.term) === tIdx && 
+                        isScoreValidForAverage(sc)
+                    );
+                    if (termScores.length === 0) return null;
+                    const sum = termScores.reduce((acc, sc) => acc + (parseFloat(sc.total) || 0), 0);
+                    return truncateToTwoDecimals(sum / termScores.length);
+                };
+
+                const getStudentCumulativeAverage = (studId, tIdx, allScores) => {
+                    const studentSessScores = allScores.filter(sc => String(sc.student_id) === String(studId));
+                    if (studentSessScores.length === 0) return null;
+                    
+                    const subjectIds = [...new Set(studentSessScores.map(sc => sc.subject_id))];
+                    let cumTotalSum = 0;
+                    let validSubjectsCount = 0;
+                    
+                    for (const subId of subjectIds) {
+                        const targetScore = studentSessScores.find(sc => sc.subject_id === subId && getTermIndex(sc.term) === tIdx);
+                        if (!targetScore || !isScoreValidForAverage(targetScore)) continue;
+                        
+                        let sum = parseFloat(targetScore.total) || 0;
+                        let count = 1;
+                        
+                        for (let prevT = 1; prevT < tIdx; prevT++) {
+                            const prevScore = studentSessScores.find(sc => sc.subject_id === subId && getTermIndex(sc.term) === prevT);
+                            if (prevScore && isScoreValidForAverage(prevScore)) {
+                                sum += parseFloat(prevScore.total) || 0;
+                                count++;
+                            }
+                        }
+                        
+                        cumTotalSum += sum / count;
+                        validSubjectsCount++;
+                    }
+                    return validSubjectsCount > 0 ? truncateToTwoDecimals(cumTotalSum / validSubjectsCount) : null;
+                };
+
+                const normalizeTerm = (t) => String(t || '').toLowerCase().replace(/\s+/g, '').replace('1st', 'first').replace('2nd', 'second').replace('3rd', 'third');
+                const normalizeSession = (s) => String(s || '').toLowerCase().trim();
+
+                const targetTermNorm = normalizeTerm(term);
+                const targetSessionNorm = normalizeSession(session);
+                const targetTermIdx = getTermIndex(term);
+                const cumulativeGradingSetting = settings.cumulativeGrading === 'Enabled';
                 
-                // Fetch scores for these students specifically
-                loadedScores = await db.scores
+                // Fetch scores for these students specifically for the entire session (to calculate cumulative and previous terms)
+                const rawScores = await db.scores
                     .where('student_id')
                     .anyOf(studentIds)
-                    .filter(s => s.term === term && s.session === session)
                     .toArray();
+
+                const allSessScores = rawScores.filter(sc => {
+                    const dbSessionNorm = normalizeSession(sc.session);
+                    return dbSessionNorm === targetSessionNorm;
+                });
+
+                // Auto-finalize only current term scores
+                const currentTermScores = allSessScores.filter(sc => getTermIndex(sc.term) === targetTermIdx);
 
                 // --- AUTO-FINALIZE ANALYTICS (Commit scores to ledger automatically) ---
                 // This ensures CBT and manual entries have Ranks/Grades without manual commitment.
                 const subjectGroups = {};
-                loadedScores.forEach(s => {
+                currentTermScores.forEach(s => {
                     if (!subjectGroups[s.subject_id]) subjectGroups[s.subject_id] = [];
                     subjectGroups[s.subject_id].push(s);
                 });
@@ -9731,6 +9907,64 @@ export const UI = {
                     }
                 }
                 // --- END AUTO-FINALIZE ---
+
+                if (cumulativeGradingSetting && targetTermIdx > 1) {
+                    const previousTermScores = allSessScores.filter(sc => getTermIndex(sc.term) < targetTermIdx);
+
+                    for (const currentScore of currentTermScores) {
+                        let sum = 0;
+                        let count = 0;
+
+                        if (isScoreValidForAverage(currentScore)) {
+                            sum += parseFloat(currentScore.total) || 0;
+                            count++;
+                        }
+
+                        for (let t = 1; t < targetTermIdx; t++) {
+                            const prevScore = previousTermScores.find(sc => 
+                                String(sc.student_id) === String(currentScore.student_id) && 
+                                String(sc.subject_id) === String(currentScore.subject_id) && 
+                                getTermIndex(sc.term) === t
+                            );
+                            if (prevScore) {
+                                if (t === 1) currentScore.firstTermTotal = prevScore.total;
+                                if (t === 2) currentScore.secondTermTotal = prevScore.total;
+                                if (isScoreValidForAverage(prevScore)) {
+                                    sum += parseFloat(prevScore.total) || 0;
+                                    count++;
+                                }
+                            }
+                        }
+
+                        if (count > 0) {
+                            const cumulativeTotal = truncateToTwoDecimals(sum / count);
+                            currentScore.originalTotal = currentScore.total;
+                            currentScore.total = cumulativeTotal;
+                        }
+                        currentScore.grade = ScoringEngine.getGrade(currentScore.total);
+                        currentScore.remark = ScoringEngine.getRemark(currentScore.total);
+                    }
+
+                    // Recalculate subject ranks in memory
+                    const subGroups = {};
+                    currentTermScores.forEach(s => {
+                        if (!subGroups[s.subject_id]) subGroups[s.subject_id] = [];
+                        subGroups[s.subject_id].push(s);
+                    });
+
+                    for (const subId in subGroups) {
+                        const subScores = subGroups[subId];
+                        subScores.sort((a, b) => b.total - a.total);
+                        let currentRank = 1;
+                        for (let i = 0; i < subScores.length; i++) {
+                            const s = subScores[i];
+                            if (i > 0 && s.total < subScores[i-1].total) currentRank = i + 1;
+                            s.rank = ScoringEngine.getOrdinal(currentRank);
+                        }
+                    }
+                }
+
+                loadedScores = currentTermScores;
                 
                 // Fetch attendance for these students specifically (combined detailed & daily biometric/CSV records)
                 loadedAttendance = await getCombinedAttendance(studentIds, term, session);
@@ -9744,20 +9978,35 @@ export const UI = {
 
                 // 1. First Pass: Calculate averages for all students (full precision for accurate ranking)
                 let studentStats = loadedStudents.map(student => {
-                    const studentScores = loadedScores.filter(s => s.student_id === student.student_id && s.total !== null && s.total !== undefined && s.total !== '');
+                    const studentScores = loadedScores.filter(s => String(s.student_id) === String(student.student_id) && s.total !== null && s.total !== undefined && s.total !== '');
+                    
                     let totalScore = 0;
-                    let subjectCount = studentScores.length;
+                    if (cumulativeGradingSetting && targetTermIdx > 1) {
+                        totalScore = studentScores.reduce((sum, sc) => sum + (parseFloat(sc.total) || 0), 0);
+                    } else {
+                        studentScores.forEach(s => {
+                            const rawVal = s.originalTotal !== undefined ? s.originalTotal : s.total;
+                            totalScore += Number(rawVal) || 0;
+                        });
+                    }
                     
-                    studentScores.forEach(s => {
-                        totalScore += Number(s.total) || 0;
-                    });
+                    const average = studentScores.length > 0 ? truncateToTwoDecimals(totalScore / studentScores.length) : 0;
                     
-                    const average = subjectCount > 0 ? (totalScore / subjectCount) : 0;
+                    let firstCumAvg = null;
+                    let secondCumAvg = null;
+                    if (cumulativeGradingSetting && targetTermIdx > 1) {
+                        firstCumAvg = getStudentCumulativeAverage(student.student_id, 1, allSessScores);
+                        if (targetTermIdx === 3) {
+                            secondCumAvg = getStudentCumulativeAverage(student.student_id, 2, allSessScores);
+                        }
+                    }
                     
                     return {
                         ...student,
                         totalScore,
-                        average: average // full precision — 70.01% ranks above 70.00%
+                        average,
+                        firstCumAvg,
+                        secondCumAvg
                     };
                 });
 
@@ -9822,11 +10071,22 @@ export const UI = {
                 document.getElementById('stat-elite').textContent = eliteCount;
                 document.getElementById('stat-records').textContent = loadedScores.length;
 
+                // Calculate dynamic column count for table colspan
+                const hasCumCols = cumulativeGradingSetting && targetTermIdx > 1;
+                const colCount = 7 + (hasCumCols ? (targetTermIdx === 3 ? 2 : 1) : 0);
+
                 // Render Table
                 mainContent.innerHTML = `
                     <div class="card animate-fade-in-up" style="margin: 0 1.5rem; padding: 1.5rem; border-radius: 16px; box-shadow: var(--shadow-sm);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                            <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800;">Academic Roster</h3>
+                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; display: flex; align-items: center; gap: 0.5rem;">
+                                Academic Roster
+                                ${cumulativeGradingSetting && targetTermIdx > 1 ? `
+                                    <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.3); font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.03em;">
+                                        Cumulative Grading
+                                    </span>
+                                ` : ''}
+                            </h3>
                             <div style="display: flex; gap: 0.5rem;">
                                 <button id="btn-batch-print" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; border-radius: 8px;">
                                     <i data-lucide="printer" style="width: 14px; height: 14px;"></i> Batch Print
@@ -9844,6 +10104,10 @@ export const UI = {
                                         <th>S/N</th>
                                         <th>Student Name</th>
                                         <th>Total Score</th>
+                                        ${hasCumCols ? `
+                                            <th>1st Cum. Avg</th>
+                                            ${targetTermIdx === 3 ? '<th>2nd Cum. Avg</th>' : ''}
+                                        ` : ''}
                                         <th>Average</th>
                                         <th>Position</th>
                                         <th>Status</th>
@@ -9870,7 +10134,7 @@ export const UI = {
                                                 lastGroup = curGroup;
                                                 const groupSize = studentStats.filter(st => (st.sub_class || '').trim() === curGroup).length;
                                                 groupHeader = `<tr style="background: linear-gradient(135deg, #0f172a, #1e293b);">
-                                                    <td colspan="7" style="color: #f8fafc; font-weight: 800; padding: 0.7rem 1rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; border: none;">
+                                                    <td colspan="${colCount}" style="color: #f8fafc; font-weight: 800; padding: 0.7rem 1rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; border: none;">
                                                         <span style="display: inline-flex; align-items: center; gap: 0.5rem;">
                                                             <span style="width: 8px; height: 8px; border-radius: 50%; background: #818cf8; display: inline-block;"></span>
                                                             ${curGroup || 'General'} — ${groupSize} Student${groupSize !== 1 ? 's' : ''}
@@ -9885,6 +10149,10 @@ export const UI = {
                                                 <td>${groupCounter}</td>
                                                 <td style="font-weight: 600;">${s.name}</td>
                                                 <td>${s.totalScore}</td>
+                                                ${hasCumCols ? `
+                                                    <td>${s.firstCumAvg !== null && s.firstCumAvg !== undefined ? s.firstCumAvg.toFixed(2) + '%' : '-'}</td>
+                                                    ${targetTermIdx === 3 ? `<td>${s.secondCumAvg !== null && s.secondCumAvg !== undefined ? s.secondCumAvg.toFixed(2) + '%' : '-'}</td>` : ''}
+                                                ` : ''}
                                                 <td class="${avgClass}">${s.average.toFixed(2)}%</td>
                                                 <td style="font-weight: 700;">${s.rank || 'N/A'}${hasSubGroups ? ' / ' + s.specializationSize : ''}</td>
                                                 <td><span class="grade-badge ${badgeClass}">${statusText}</span></td>
@@ -19083,6 +19351,7 @@ export const UI = {
             currentSession: settings.currentSession || settings.current_session || '2025/2026',
             currentTerm: settings.currentTerm || settings.current_term || '1st Term',
             gradingSystem: settings.gradingSystem || 'Grade-Based (A1, B2, etc.)',
+            cumulativeGrading: settings.cumulativeGrading || 'Disabled',
             principalName: settings.principalName || '',
             principalSignature: settings.principalSignature || null,
             schoolLogo: settings.schoolLogo || null,
@@ -19253,6 +19522,17 @@ export const UI = {
                             <option value="Positional Ranking" ${config.gradingSystem === 'Positional Ranking' ? 'selected' : ''}>Positional Ranking</option>
                             <option value="Point System (5.0 CGPA)" ${config.gradingSystem === 'Point System (5.0 CGPA)' ? 'selected' : ''}>Point System (5.0 CGPA)</option>
                         </select>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 2rem;">
+                        <label>Cumulative Term Grading</label>
+                        <select id="set-cumulative-grading" class="input">
+                            <option value="Disabled" ${config.cumulativeGrading === 'Disabled' ? 'selected' : ''}>Disabled (Current Term Scores Only)</option>
+                            <option value="Enabled" ${config.cumulativeGrading === 'Enabled' ? 'selected' : ''}>Enabled (Average with Previous Terms of the Session)</option>
+                        </select>
+                        <span style="font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; display: block;">
+                            If enabled, second term scores will average 1st & 2nd terms; third term scores will average 1st, 2nd & 3rd terms.
+                        </span>
                     </div>
 
                     <div style="background: #f5f3ff; border: 1px solid #ddd6fe; padding: 1.5rem; border-radius: 20px;">
@@ -19583,6 +19863,7 @@ export const UI = {
             { id: 'set-current-session', key: 'currentSession' },
             { id: 'set-current-term', key: 'currentTerm' },
             { id: 'set-grading-system', key: 'gradingSystem' },
+            { id: 'set-cumulative-grading', key: 'cumulativeGrading' },
             { id: 'set-theme-color', key: 'themeColor' },
             { id: 'set-term-status', key: 'termStatus' },
             { id: 'set-term-closure', key: 'termClosure' },
@@ -20426,6 +20707,7 @@ export const UI = {
             { key: 'currentSession', value: document.getElementById('set-current-session').value },
             { key: 'currentTerm', value: document.getElementById('set-current-term').value },
             { key: 'gradingSystem', value: document.getElementById('set-grading-system').value },
+            { key: 'cumulativeGrading', value: document.getElementById('set-cumulative-grading').value },
             { key: 'themeColor', value: document.getElementById('set-theme-color').value },
             { key: 'holidays', value: document.getElementById('set-school-holidays').value },
             { key: 'termStatus', value: document.getElementById('set-term-status').value },

@@ -203,11 +203,16 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         if (schoolInfo.termStart) schoolInfo.termStart = formatTermDate(schoolInfo.termStart);
     }
     
-    // Fetch all student scores and subjects to compute GPA/CGPA if needed
-    const [allScores, loadedSubjects] = await Promise.all([
+    // Fetch all student scores, subjects, and settings to compute GPA/CGPA if needed
+    const [allScores, loadedSubjects, settingsArray] = await Promise.all([
         db.scores.where('student_id').equals(student.student_id).toArray(),
-        db.subjects.toArray()
+        db.subjects.toArray(),
+        db.settings.toArray().catch(() => [])
     ]);
+
+    const settings = {};
+    settingsArray.forEach(s => settings[s.key] = s.value);
+    const cumulativeGradingSetting = settings.cumulativeGrading === 'Enabled';
 
     const getGradePoint = (total) => {
         const s = parseFloat(total) || 0;
@@ -404,7 +409,23 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     const rightX = 145;
     
     const scoredEntries = scores.filter(s => s.total !== null && s.total !== undefined && s.total !== '');
-    const avg = scoredEntries.length > 0 ? (scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0) / scoredEntries.length).toFixed(2) : 0;
+    
+    // Calculate student overall average: use pre-calculated student.average if available
+    let avg;
+    if (cumulativeGradingSetting && currentTermVal > 1) {
+        // Report card average in cumulative mode = sum of subject cumulative totals / number of subjects
+        avg = scoredEntries.length > 0 ? truncateToTwoDecimals(scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0) / scoredEntries.length).toFixed(2) : '0.00';
+    } else if (student.average !== undefined && student.average !== null) {
+        avg = truncateToTwoDecimals(student.average).toFixed(2);
+    } else {
+        avg = scoredEntries.length > 0 ? truncateToTwoDecimals(scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0) / scoredEntries.length).toFixed(2) : '0.00';
+    }
+    
+    // Sum totals for TOTAL MARKS display: use cumulative total if enabled, otherwise raw total
+    const currentTermTotalSum = scoredEntries.reduce((a, b) => {
+        const val = (cumulativeGradingSetting && currentTermVal > 1) ? b.total : (b.originalTotal !== undefined ? b.originalTotal : b.total);
+        return a + (parseFloat(val) || 0);
+    }, 0);
     
     // Row 1
     doc.setTextColor(0, 0, 0);
@@ -416,7 +437,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     // Dynamic SEX position: push it past the name with a minimum gap
     const sexX = Math.max(midX, leftX + nameWidth + 5);
     doc.text(`SEX: ${student.gender || 'N/A'}`, sexX, y);
-    doc.text(`TOTAL MARKS: ${scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0)}`, rightX, y);
+    doc.text(`TOTAL MARKS: ${currentTermTotalSum}`, rightX, y);
     
     y += 7;
     // Row 2
@@ -441,7 +462,8 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     y += 7;
     // Row 3
     doc.text(`TERM: ${scores[0]?.term || 'N/A'}`, leftX, y);
-    doc.text(`AVERAGE: ${avg}%`, midX, y);
+    const isCumulative = scores.some(s => s.originalTotal !== undefined);
+    doc.text(isCumulative ? `CUM. AVERAGE: ${avg}%` : `AVERAGE: ${avg}%`, midX, y);
     // Blank right side to respect the "one or the other" rule
     y += 7;
     // Row 4
@@ -483,7 +505,44 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     // --- Subjects Table ---
     const sortedScores = [...scores].sort((a, b) => (a.subject_name || '').localeCompare(b.subject_name || ''));
     
-    const tableHead = [['SUBJECTS', 'ASS', 'T1', 'T2', 'PROJ', 'CA', 'EXAM', 'TOTAL', 'GRADE', 'REMARK']];
+    // (Settings already loaded at the top of generateReportCard)
+
+    const getTermIndex = (t) => {
+        if (!t) return 0;
+        const norm = String(t).toLowerCase();
+        if (norm.includes('first') || norm.includes('1st') || norm.includes('1')) return 1;
+        if (norm.includes('second') || norm.includes('2nd') || norm.includes('2')) return 2;
+        if (norm.includes('third') || norm.includes('3rd') || norm.includes('3')) return 3;
+        return 0;
+    };
+
+    const isScoreValidForAverage = (s) => {
+        if (!s) return false;
+        const hasExam = s.exam !== null && s.exam !== undefined && s.exam !== '';
+        const componentCount = [s.assignment, s.test1, s.test2, s.project, s.exam].filter(v => v !== null && v !== undefined && v !== '').length;
+        return hasExam || componentCount >= 3;
+    };
+
+    const normalizeSession = (sess) => String(sess || '').toLowerCase().trim();
+    const targetSessionNorm = normalizeSession(schoolInfo.session || scores[0]?.session);
+
+    const getScoreForTerm = (subjectId, termVal) => {
+        return allScores.find(sc => 
+            normalizeSession(sc.session) === targetSessionNorm && 
+            getTermVal(sc.term) === termVal && 
+            String(sc.subject_id) === String(subjectId)
+        );
+    };
+
+    let tableHead;
+    if (cumulativeGradingSetting && currentTermVal === 2) {
+        tableHead = [['SUBJECTS', 'ASS', 'T1', 'T2', 'PROJ', 'CA', 'EXAM', 'TOTAL', '1ST TRM', 'CUM. TOT', 'GRADE', 'REMARK']];
+    } else if (cumulativeGradingSetting && currentTermVal === 3) {
+        tableHead = [['SUBJECTS', 'ASS', 'T1', 'T2', 'PROJ', 'CA', 'EXAM', 'TOTAL', '1ST TRM', '2ND TRM', 'CUM. TOT', 'GRADE', 'REMARK']];
+    } else {
+        tableHead = [['SUBJECTS', 'ASS', 'T1', 'T2', 'PROJ', 'CA', 'EXAM', 'TOTAL', 'GRADE', 'REMARK']];
+    }
+
     // Helper: treat null/undefined/'' as "no score entered" -> display blank
     const _scVal = (v) => (v !== null && v !== undefined && v !== '' && v !== 0) ? v : (v === 0 ? 0 : '');
     const _scNum = (v) => (v !== null && v !== undefined && v !== '') ? (parseFloat(v) || 0) : null;
@@ -505,9 +564,49 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         const caComponents = [assRaw, t1Raw, t2Raw, projRaw].map(_scNum).filter(v => v !== null);
         const ca = caComponents.length > 0 ? caComponents.reduce((a, b) => a + b, 0) : '';
 
-        // Total, grade, remark: use the stored total if it exists, else blank
+        // Current term total: raw total before cumulative average
+        const currentTermRawTotal = s.originalTotal !== undefined ? parseFloat(s.originalTotal) : (s.total !== null && s.total !== undefined && s.total !== '' ? parseFloat(s.total) : null);
+        const totalDisp = currentTermRawTotal !== null && !isNaN(currentTermRawTotal) ? currentTermRawTotal.toFixed(0) : '';
+
+        if (cumulativeGradingSetting && currentTermVal > 1) {
+            // Use pre-calculated cumulative values attached by the caller
+            // s.originalTotal = raw current term total, s.total = cumulative average
+            // s.firstTermTotal / s.secondTermTotal = previous term raw totals per subject
+            const firstTermVal = (s.firstTermTotal !== undefined && s.firstTermTotal !== '') ? parseFloat(s.firstTermTotal) : null;
+            const secondTermVal = (s.secondTermTotal !== undefined && s.secondTermTotal !== '') ? parseFloat(s.secondTermTotal) : null;
+
+            // If the caller pre-calculated cumulative values, s.originalTotal exists
+            const grandTotal = s.originalTotal !== undefined ? parseFloat(s.total) : currentTermRawTotal;
+            const grandTotalDisp = grandTotal !== null && !isNaN(grandTotal) ? truncateToTwoDecimals(grandTotal).toFixed(2) : '';
+
+            const grade = grandTotalDisp !== '' ? ScoringEngine.getGrade(grandTotal) : '';
+            const remark = grandTotalDisp !== '' ? ScoringEngine.getRemark(grandTotal) : '';
+
+            if (currentTermVal === 2) {
+                return [
+                    s.subject_name,
+                    ass, t1, t2, proj, ca, exam,
+                    totalDisp,
+                    firstTermVal !== null ? firstTermVal.toFixed(0) : '-',
+                    grandTotalDisp,
+                    grade, remark
+                ];
+            } else if (currentTermVal === 3) {
+                return [
+                    s.subject_name,
+                    ass, t1, t2, proj, ca, exam,
+                    totalDisp,
+                    firstTermVal !== null ? firstTermVal.toFixed(0) : '-',
+                    secondTermVal !== null ? secondTermVal.toFixed(0) : '-',
+                    grandTotalDisp,
+                    grade, remark
+                ];
+            }
+        }
+
+        // Standard flow (cumulative grading is disabled or it's first term)
         const hasTotal = s.total !== null && s.total !== undefined && s.total !== '';
-        const total = hasTotal ? s.total : '';
+        const total = hasTotal ? parseFloat(s.total).toFixed(0) : '';
         const grade = hasTotal ? (s.grade || ScoringEngine.getGrade(s.total)) : '';
         const remark = hasTotal ? (s.remark || ScoringEngine.getRemark(s.total)) : '';
 
@@ -519,7 +618,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
             proj,
             ca,
             exam,
-            total,
+            totalDisp !== '' ? totalDisp : total,
             grade,
             remark
         ];
@@ -549,6 +648,26 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         commentBoxHeight = 14;
     }
 
+    if (cumulativeGradingSetting && currentTermVal > 1) {
+        tableFontSize = Math.max(5.5, tableFontSize - 1.0);
+        tableCellPadding = Math.max(0.8, tableCellPadding - 0.5);
+    }
+
+    let columnStyles = {
+        0: { fontStyle: 'bold', halign: 'left', cellWidth: 40 }
+    };
+
+    if (cumulativeGradingSetting && currentTermVal === 2) {
+        columnStyles[10] = { cellWidth: 12 }; // GRADE
+        columnStyles[11] = { cellWidth: 18 }; // REMARK
+    } else if (cumulativeGradingSetting && currentTermVal === 3) {
+        columnStyles[11] = { cellWidth: 12 }; // GRADE
+        columnStyles[12] = { cellWidth: 18 }; // REMARK
+    } else {
+        columnStyles[8] = { cellWidth: 15 }; // GRADE
+        columnStyles[9] = { cellWidth: 22 }; // REMARK
+    }
+
     doc.autoTable({
         startY: y + 5,
         head: tableHead,
@@ -556,10 +675,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
         theme: 'grid',
         headStyles: { fillStyle: [37, 99, 235], textColor: 255, fontSize: tableFontSize, fontStyle: 'bold' },
         styles: { fontSize: tableFontSize, textColor: 0, cellPadding: tableCellPadding },
-        columnStyles: {
-            0: { fontStyle: 'bold', halign: 'left', cellWidth: 50 },
-            9: { cellWidth: 25 }
-        },
+        columnStyles: columnStyles,
         margin: { left: 10, right: 10 }
     });
     
@@ -681,7 +797,7 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     }
 
     const qrLines = [
-        `NAME: ${student.name.toUpperCase()} SEX: ${student.gender || 'N/A'} TOTAL MARKS: ${scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0)}`,
+        `NAME: ${student.name.toUpperCase()} SEX: ${student.gender || 'N/A'} TOTAL MARKS: ${currentTermTotalSum}`,
         `CLASS: ${displayClass} SESSION: ${scores[0]?.session || '2025/2026'} ${gpaCgpaDetails.split('\n')[0]}`,
     ];
     
@@ -879,6 +995,7 @@ export async function generateMastersheet(className, students, subjects, scores,
     const sPhone = getVal('schoolPhone', '');
     const sMotto = getVal('schoolMotto', '');
     const logoBase64 = getVal('schoolLogo', null);
+    const cumulativeGradingSetting = getVal('cumulativeGrading', 'Disabled') === 'Enabled';
     
     // Header
     let startY = 12;
@@ -909,43 +1026,334 @@ export async function generateMastersheet(className, students, subjects, scores,
     doc.setTextColor(15, 23, 42);
     doc.text(`ACADEMIC MASTERSHEET: ${className} | ${term} | ${session}`, 148, startY + 22, { align: 'center' });
     
+    const getTermIndex = (t) => {
+        if (!t) return 0;
+        const norm = String(t).toLowerCase();
+        if (norm.includes('first') || norm.includes('1st') || norm.includes('1')) return 1;
+        if (norm.includes('second') || norm.includes('2nd') || norm.includes('2')) return 2;
+        if (norm.includes('third') || norm.includes('3rd') || norm.includes('3')) return 3;
+        return 0;
+    };
+
+    const isScoreValidForAverage = (s) => {
+        if (!s) return false;
+        const hasExam = s.exam !== null && s.exam !== undefined && s.exam !== '';
+        const componentCount = [s.assignment, s.test1, s.test2, s.project, s.exam].filter(v => v !== null && v !== undefined && v !== '').length;
+        return hasExam || componentCount >= 3;
+    };
+
+    const currentTermVal = getTermIndex(term);
+    const normalizeSession = (sess) => String(sess || '').toLowerCase().trim();
+    const targetSessionNorm = normalizeSession(session);
+
+    // Fetch all scores for these students to get previous term averages
+    const studentIds = students.map(s => s.student_id);
+    const allSessionScores = await db.scores
+        .where('student_id')
+        .anyOf(studentIds)
+        .toArray().catch(() => []);
+
+    const getStudentTermAverage = (studentId, termVal) => {
+        const termScores = allSessionScores.filter(sc => 
+            String(sc.student_id) === String(studentId) && 
+            normalizeSession(sc.session) === targetSessionNorm && 
+            getTermIndex(sc.term) === termVal && 
+            isScoreValidForAverage(sc)
+        );
+        if (termScores.length === 0) return null;
+        const totalSum = termScores.reduce((sum, sc) => sum + (parseFloat(sc.total) || 0), 0);
+        return truncateToTwoDecimals(totalSum / termScores.length);
+    };
+
+    // Construct Head columns dynamically
+    let head = ['S/N', 'NAMES OF STUDENTS', ...subjects.map(s => s.name), 'total', 'Average'];
+    if (cumulativeGradingSetting && currentTermVal > 1) {
+        head.push('cum total');
+        head.push('cum. average');
+    }
+    head.push('Rank');
+    head.push('Status');
+
     // Matrix Construction
-    const head = ['Student Name', ...subjects.map(s => s.name.substring(0, 4)), 'Total', 'Avg', 'Rank'];
-    
     let bodyData = students.map(student => {
+        let total = 0;
+        let cumTotal = 0;
+        let validScoresCount = 0;
+        
         const studentScores = subjects.map(subject => {
-            const score = scores.find(s => s.student_id === student.student_id && s.subject_id === subject.id);
-            return score && score.total != null && score.total !== '' ? parseFloat(score.total) : '-';
+            const score = scores.find(s => String(s.student_id) === String(student.student_id) && String(s.subject_id) === String(subject.id));
+            if (!score) return '-';
+            
+            const rawVal = score.originalTotal !== undefined ? score.originalTotal : score.total;
+            if (rawVal === null || rawVal === undefined || rawVal === '') return '-';
+            
+            const parsedRaw = parseFloat(rawVal);
+            total += parsedRaw;
+            validScoresCount++;
+            
+            // Find previous terms' scores
+            const subScores = allSessionScores.filter(sc => 
+                String(sc.student_id) === String(student.student_id) && 
+                String(sc.subject_id) === String(subject.id) &&
+                isScoreValidForAverage(sc)
+            );
+            const prevScores = subScores.filter(sc => getTermIndex(sc.term) < currentTermVal);
+            const prevSum = prevScores.reduce((acc, sc) => acc + (parseFloat(sc.total) || 0), 0);
+            const prevCount = prevScores.length;
+            const hasPrev = cumulativeGradingSetting && currentTermVal > 1 && prevCount > 0;
+            
+            let subjectCum = parsedRaw;
+            if (hasPrev) {
+                const prevVal = prevSum / prevCount;
+                const prevValTrunc = truncateToTwoDecimals(prevVal);
+                
+                // Cumulative total for this subject
+                subjectCum = (parsedRaw + prevSum) / (1 + prevCount);
+                cumTotal += subjectCum;
+                
+                return `${parsedRaw.toFixed(1)}\n${prevValTrunc.toFixed(2)}`;
+            } else {
+                cumTotal += subjectCum;
+                return parsedRaw.toFixed(1);
+            }
         });
         
-        const total = studentScores.reduce((acc, s) => acc + (s === '-' ? 0 : s), 0);
-        const scoredCount = studentScores.filter(s => s !== '-').length;
-        const avg = scoredCount > 0 ? (total / scoredCount).toFixed(1) : 0;
+        const currentTermAvg = validScoresCount > 0 ? truncateToTwoDecimals(total / validScoresCount) : 0;
         
-        return { name: student.name, scores: studentScores, total, avg };
+        // Calculate cumulative average: use pre-calculated student.average (which is already subject-cumulative based) if available
+        // Fallback: calculate subject-cumulative average
+        let avg;
+        if (student.average !== undefined) {
+            avg = student.average;
+            cumTotal = student.totalScore !== undefined ? student.totalScore : (avg * validScoresCount);
+        } else if (cumulativeGradingSetting && currentTermVal > 1) {
+            avg = validScoresCount > 0 ? truncateToTwoDecimals(cumTotal / validScoresCount) : 0;
+        } else {
+            avg = currentTermAvg;
+            cumTotal = total;
+        }
+        
+        const rankRaw = student.rankRaw !== undefined ? student.rankRaw : null;
+        
+        return { 
+            name: student.name, 
+            scores: studentScores, 
+            total, 
+            currentTermAvg,
+            cumTotal,
+            avg,
+            rankRaw
+        };
     });
     
-    // Fix Numerical Ranking Sort (Descending by Average)
+    // Sort descending by average
     bodyData.sort((a, b) => parseFloat(b.avg) - parseFloat(a.avg));
     
     let currentRank = 1;
     const body = bodyData.map((row, index) => {
         if (index > 0 && parseFloat(bodyData[index - 1].avg) > parseFloat(row.avg)) {
-            currentRank++; // Dense ranking: no gaps after ties
+            currentRank++;
         }
-        return [row.name, ...row.scores, row.total, row.avg, currentRank];
+        
+        const displayRank = currentRank;
+        
+        // Calculate promotion status
+        let status = '-';
+        if (currentTermVal === 3) {
+            const isPromoted = parseFloat(row.avg) >= 40;
+            status = isPromoted ? 'P' : 'R';
+        }
+        
+        let rowCells = [index + 1, row.name, ...row.scores, row.total, row.currentTermAvg.toFixed(2)];
+        if (cumulativeGradingSetting && currentTermVal > 1) {
+            rowCells.push(row.cumTotal.toFixed(2));
+            rowCells.push(row.avg.toFixed(2));
+        }
+        rowCells.push(displayRank);
+        rowCells.push(status);
+        return rowCells;
     });
+
+    // Dynamically calculate column widths to fit landscape A4 page (297mm width)
+    const numRotatedCols = head.length - 2;
+    let nameColWidth = 45;
+    let snColWidth = 10;
+    if (numRotatedCols > 20) {
+        nameColWidth = 35;
+        snColWidth = 7;
+    } else if (numRotatedCols > 15) {
+        nameColWidth = 40;
+        snColWidth = 8.5;
+    }
+    
+    const remainingWidth = 277 - nameColWidth - snColWidth;
+    
+    const getTargetWidth = (name) => {
+        const n = String(name || '').toLowerCase();
+        if (n === 'total' || n === 'cum total') return { target: 11, min: 9 };
+        if (n === 'average' || n === 'cum. average') return { target: 13, min: 10 };
+        if (n === 'rank') return { target: 10, min: 8 };
+        if (n === 'status') return { target: 10, min: 8 };
+        return { target: 8, min: 4.5 };
+    };
+
+    let totalTarget = 0;
+    for (let i = 2; i < head.length; i++) {
+        totalTarget += getTargetWidth(head[i]).target;
+    }
+
+    let totalMin = 0;
+    for (let i = 2; i < head.length; i++) {
+        totalMin += getTargetWidth(head[i]).min;
+    }
+
+    const colWidths = [];
+    if (totalTarget <= remainingWidth) {
+        const scale = remainingWidth / totalTarget;
+        for (let i = 2; i < head.length; i++) {
+            const { target } = getTargetWidth(head[i]);
+            colWidths.push(Math.min(target * 1.5, target * scale));
+        }
+    } else if (totalMin <= remainingWidth) {
+        const w = (remainingWidth - totalMin) / (totalTarget - totalMin);
+        for (let i = 2; i < head.length; i++) {
+            const { target, min } = getTargetWidth(head[i]);
+            colWidths.push(min + w * (target - min));
+        }
+    } else {
+        const scale = remainingWidth / totalMin;
+        for (let i = 2; i < head.length; i++) {
+            const { min } = getTargetWidth(head[i]);
+            colWidths.push(min * scale);
+        }
+    }
+
+    const columnStyles = {
+        0: { halign: 'center', cellWidth: snColWidth },
+        1: { halign: 'left', cellWidth: nameColWidth }
+    };
+    for (let i = 2; i < head.length; i++) {
+        columnStyles[i] = { cellWidth: colWidths[i - 2] };
+    }
+
+    let bodyFontSize = 7;
+    if (numRotatedCols > 25) {
+        bodyFontSize = 4.6;
+    } else if (numRotatedCols > 20) {
+        bodyFontSize = 5.2;
+    } else if (numRotatedCols > 15) {
+        bodyFontSize = 5.8;
+    } else if (numRotatedCols > 10) {
+        bodyFontSize = 6.5;
+    }
     
     doc.autoTable({
         startY: startY + 28,
         head: [head],
         body: body,
         theme: 'grid',
-        styles: { fontSize: 7, cellPadding: 1.5, halign: 'center', lineColor: [0, 0, 0], lineWidth: 0.2 },
-        columnStyles: {
-            0: { halign: 'left', cellWidth: 35 } // Ensure name column doesn't wrap awkwardly
+        margin: { left: 10, right: 10 },
+        styles: { fontSize: bodyFontSize, cellPadding: 1.0, halign: 'center', lineColor: [0, 0, 0], lineWidth: 0.2 },
+        columnStyles: columnStyles,
+        headStyles: { 
+            fillColor: [255, 255, 255], 
+            textColor: [0, 0, 0], 
+            halign: 'center', 
+            valign: 'bottom', 
+            fontSize: bodyFontSize, 
+            lineColor: [0, 0, 0], 
+            lineWidth: 0.2,
+            minCellHeight: 38 // 38mm is the perfect height for vertical bottom-up headers
         },
-        headStyles: { fillColor: [30, 41, 59], textColor: 255, halign: 'center', fontSize: 6, lineColor: [0, 0, 0], lineWidth: 0.2 }
+        willDrawCell: (data) => {
+            // Clear default text rendering for all rotated header columns (indexes >= 2)
+            if (data.section === 'head' && data.column.index >= 2) {
+                data.cell.text = '';
+            }
+            if (data.section === 'body' && data.column.index >= 2 && data.column.index < 2 + subjects.length) {
+                data.cell.rawTextLines = [...data.cell.text];
+                data.cell.text = ''; // Clear default autoTable rendering
+            }
+        },
+        didDrawCell: (data) => {
+            // Draw rotated text for subject and summary header cells
+            if (data.section === 'head' && data.column.index >= 2) {
+                const cell = data.cell;
+                const headerText = head[data.column.index];
+                
+                doc.saveGraphicsState();
+                doc.setTextColor(0, 0, 0);
+                doc.setFont('helvetica', 'bold');
+                
+                // Choose font size dynamically to fit vertical text neatly
+                let fSize = 6.0;
+                doc.setFontSize(fSize);
+                const maxAvailableHeight = cell.height - 4; // in mm
+                
+                while (fSize > 3.8 && doc.getTextWidth(headerText) > maxAvailableHeight) {
+                    fSize -= 0.2;
+                    doc.setFontSize(fSize);
+                }
+                
+                const fontSizeInMm = fSize * 0.352778;
+                // Center text horizontally within the cell width (rotated height is horizontal width)
+                const lineX = cell.x + cell.width / 2 + (fontSizeInMm / 3);
+                // Draw starting near the bottom of the cell (2.5mm margin) angled at 90 degrees (bottom to top)
+                const lineY = cell.y + cell.height - 2.5;
+                
+                // Crop text to cell height to prevent overflow as a last resort
+                let dispText = headerText;
+                if (doc.getTextWidth(dispText) > maxAvailableHeight) {
+                    while (dispText.length > 5 && doc.getTextWidth(dispText + '...') > maxAvailableHeight) {
+                        dispText = dispText.substring(0, dispText.length - 1);
+                    }
+                    dispText = dispText + '...';
+                }
+                
+                doc.text(dispText, lineX, lineY, { angle: 90 });
+                doc.restoreGraphicsState();
+            }
+            
+            // Draw custom stacked raw and cumulative text for subject scores in body
+            if (data.section === 'body' && data.column.index >= 2 && data.column.index < 2 + subjects.length) {
+                const cell = data.cell;
+                const rawTextLines = cell.rawTextLines;
+                if (rawTextLines && rawTextLines.length > 0) {
+                    const rawVal = rawTextLines[0] || '';
+                    const cumVal = rawTextLines[1] || '';
+                    
+                    doc.saveGraphicsState();
+                    doc.setTextColor(0, 0, 0);
+                    
+                    // Draw raw score (primary)
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(bodyFontSize);
+                    
+                    const fSizeMm = bodyFontSize * 0.352778;
+                    const cumFontSize = bodyFontSize * 0.85;
+                    const cumFSizeMm = cumFontSize * 0.352778;
+                    const lineSpacing = 0.8; // mm
+                    
+                    // Total block height
+                    const textHeight = fSizeMm + (cumVal ? (cumFSizeMm + lineSpacing) : 0);
+                    const startYText = cell.y + (cell.height - textHeight) / 2 + fSizeMm - 0.2;
+                    
+                    const rawWidth = doc.getTextWidth(rawVal);
+                    const rawX = cell.x + (cell.width - rawWidth) / 2;
+                    doc.text(rawVal, rawX, startYText);
+                    
+                    // Draw cumulative score (secondary, smaller, gray)
+                    if (cumVal) {
+                        doc.setFontSize(cumFontSize);
+                        doc.setTextColor(100, 116, 139); // Slate-500
+                        const cumWidth = doc.getTextWidth(cumVal);
+                        const cumX = cell.x + (cell.width - cumWidth) / 2;
+                        doc.text(cumVal, cumX, startYText + cumFSizeMm + lineSpacing);
+                    }
+                    doc.restoreGraphicsState();
+                }
+            }
+        }
     });
     
     return doc; // Return for preview
@@ -1149,6 +1557,35 @@ export async function generateBlankScoreSheet(className, students, subjects, ter
                 const studentTrack = (s.sub_class || '').trim().toLowerCase();
                 return studentTrack === track || studentTrack === 'general';
             });
+        }
+
+        // Filter by subject registrations (mirrors gradebook & finalize logic)
+        try {
+            const subjectId = subject.id;
+            if (subjectId) {
+                const clsLower = String(className).trim().toLowerCase();
+                const allRegsForSubject = await db.student_subject_registrations
+                    .where('subject_id').equals(subjectId).toArray();
+                const clsRegs = allRegsForSubject.filter(r => {
+                    const rTerm = String(r.term || '').toLowerCase().replace(/\s+/g, '').replace('1st','first').replace('2nd','second').replace('3rd','third');
+                    const fTerm = String(term || '').toLowerCase().replace(/\s+/g, '').replace('1st','first').replace('2nd','second').replace('3rd','third');
+                    const rSess = String(r.session || '').toLowerCase().replace(/\s+/g, '');
+                    const fSess = String(session || '').toLowerCase().replace(/\s+/g, '');
+                    const termOk = rTerm === fTerm;
+                    const sessOk = rSess === fSess || (rSess && fSess && (rSess.includes(fSess) || fSess.includes(rSess)));
+                    // Check if the registered student belongs to this class
+                    const regStudent = students.find(st => String(st.student_id) === String(r.student_id));
+                    const classOk = regStudent && String(regStudent.class_name || '').trim().toLowerCase() === clsLower;
+                    return termOk && sessOk && classOk;
+                });
+                if (clsRegs.length > 0) {
+                    const registeredIds = new Set(clsRegs.map(r => String(r.student_id)));
+                    targetStudents = targetStudents.filter(s => registeredIds.has(String(s.student_id)));
+                    console.log(`[PrintEmpty] Subject registration filter active for "${subjectName}": ${clsRegs.length} registrations → ${targetStudents.length} students`);
+                }
+            }
+        } catch (regErr) {
+            console.warn('[PrintEmpty] Subject registration check failed, falling back to specialization:', regErr);
         }
         
         const totalPages = Math.ceil(targetStudents.length / pageSize) || 1;
@@ -2145,35 +2582,45 @@ export async function generateGeneralSchoolTimetablePDF(classes, subjects, schoo
 export function getClassNameRank(name) {
     const n = (name || '').trim().toLowerCase();
     
-    // Define ordering groups
-    if (n.includes('pre-nursery') || n.includes('prenursery') || n.includes('playgroup') || n.includes('creche')) return 10;
-    if (n.includes('nursery 1') || n.includes('nursery1')) return 20;
-    if (n.includes('nursery 2') || n.includes('nursery2')) return 30;
-    if (n.includes('nursery 3') || n.includes('nursery3')) return 40;
-    if (n.includes('nursery') && !n.match(/\d/)) return 15; // default nursery
-    
-    // Primary 1 to 6
-    const primMatch = n.match(/primary\s*(\d)/) || n.match(/pri\s*(\d)/);
-    if (primMatch) {
-        return 100 + parseInt(primMatch[1]) * 10;
+    const romanOrWordToDigit = (str) => {
+        if (str.includes('one') || str.includes(' 1') || str.includes(' i')) return 1;
+        if (str.includes('two') || str.includes(' 2') || str.includes(' ii')) return 2;
+        if (str.includes('three') || str.includes(' 3') || str.includes(' iii')) return 3;
+        if (str.includes('four') || str.includes(' 4') || str.includes(' iv')) return 4;
+        if (str.includes('five') || str.includes(' 5') || str.includes(' v')) return 5;
+        if (str.includes('six') || str.includes(' 6') || str.includes(' vi')) return 6;
+        return null;
+    };
+
+    // Nursery / Playgroup / Creche / Kindergarten / Preschool
+    if (n.includes('pre-nursery') || n.includes('prenursery') || n.includes('playgroup') || n.includes('creche') || n.includes('pre-school') || n.includes('preschool')) return 10;
+    if (n.includes('kindergarten') || n.includes('kg')) {
+        const d = romanOrWordToDigit(n);
+        return d ? 15 + d : 15;
     }
-    if (n.includes('primary') || n.includes('pri')) return 105; // default primary
-    
-    // JSS 1 to 3
-    const jssMatch = n.match(/jss\s*(\d)/) || n.match(/js\s*(\d)/);
-    if (jssMatch) {
-        return 1000 + parseInt(jssMatch[1]) * 10;
+    if (n.includes('nursery')) {
+        const d = romanOrWordToDigit(n);
+        return d ? 20 + d * 10 : 25;
     }
-    if (n.includes('jss') || n.includes('junior secondary')) return 1005; // default jss
     
-    // SSS 1 to 3
-    const sssMatch = n.match(/sss\s*(\d)/) || n.match(/ss\s*(\d)/);
-    if (sssMatch) {
-        return 2000 + parseInt(sssMatch[1]) * 10;
+    // Primary / Basic / Grade
+    if (n.includes('primary') || n.includes('pri') || n.includes('basic') || n.includes('grade')) {
+        const d = romanOrWordToDigit(n);
+        return d ? 100 + d * 10 : 105;
     }
-    if (n.includes('sss') || n.includes('senior secondary')) return 2005; // default sss
     
-    // Fallback: alphabetical
+    // Junior Secondary / JSS / JS
+    if (n.includes('jss') || n.includes('js ') || n.includes('junior secondary') || n.includes('junior high') || n.includes('j.s.s')) {
+        const d = romanOrWordToDigit(n);
+        return d ? 1000 + d * 10 : 1005;
+    }
+    
+    // Senior Secondary / SSS / SS
+    if (n.includes('sss') || n.includes('ss ') || n.includes('senior secondary') || n.includes('senior high') || n.includes('s.s.s')) {
+        const d = romanOrWordToDigit(n);
+        return d ? 2000 + d * 10 : 2005;
+    }
+    
     return 10000;
 }
 
@@ -2659,5 +3106,10 @@ export async function generateBulkStudentIDCardsPDF(students, schoolInfo = {}) {
     }
 
     return doc;
+}
+
+export function truncateToTwoDecimals(val) {
+    if (val === null || val === undefined || isNaN(val)) return 0;
+    return Math.floor(parseFloat(Number(val).toFixed(4)) * 100) / 100;
 }
 

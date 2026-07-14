@@ -240,4 +240,20 @@ db.on('ready', () => {
     }).catch(e => console.warn('[Self-Heal] Failed to heal grade_finalizations:', e));
 });
 
+/**
+ * Returns only classes that have at least one active student.
+ * Use this for dropdown filters (Gradebook, Attendance, Reports, etc.)
+ * Do NOT use this in Academic Setup, Add/Edit Student, Promotion, or Staff Assignment.
+ */
+export async function getPopulatedClasses() {
+    const [classes, students] = await Promise.all([
+        db.classes.toArray(),
+        db.students.filter(s => s.is_active !== false).toArray()
+    ]);
+    const populatedNames = new Set(
+        students.map(s => String(s.class_name || '').trim().toLowerCase())
+    );
+    return classes.filter(c => populatedNames.has(String(c.name || '').trim().toLowerCase()));
+}
+
 export default db;
