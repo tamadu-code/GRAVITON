@@ -6301,7 +6301,7 @@ export const UI = {
     generateStudentListItems(students) {
         if (students.length === 0) return `<div style="padding: 2rem; text-align: center; color: #94a3b8; font-weight: 600;">No students found in this stream</div>`;
         return students.map(s => `
-            <div class="glass-collapse-card student-card" data-id="${s.student_id}" style="margin-bottom: 0.75rem; opacity: ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive') ? '1' : '0.7'};">
+            <div class="glass-collapse-card student-card" data-id="${s.student_id}" style="margin-bottom: 0.75rem; background: ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive') ? 'white' : (s.status === 'Graduated' ? '#eff6ff' : '#fef2f2')}; border: 1px solid ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive') ? '#e2e8f0' : (s.status === 'Graduated' ? '#bfdbfe' : '#fecaca')}; opacity: 1;">
                 <input type="checkbox" id="toggle-std-${s.student_id}" class="glass-collapse-checkbox student-toggle">
                 <label for="toggle-std-${s.student_id}" class="glass-collapse-header" style="padding: 1rem;">
                     <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1; overflow: hidden;">
@@ -6321,7 +6321,7 @@ export const UI = {
                     </div>
                     <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                 </label>
-                <div class="glass-collapse-content" style="background: #f8fafc; border-top: 1px solid #f1f5f9;">
+                <div class="glass-collapse-content" style="background: ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive') ? '#f8fafc' : (s.status === 'Graduated' ? '#f5f9ff' : '#fff5f5')}; border-top: 1px solid ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive') ? '#f1f5f9' : (s.status === 'Graduated' ? '#dbeafe' : '#fecaca')};">
                     <div class="student-quick-info-container" id="info-${s.student_id.replace(/\//g, '_')}" style="padding: 1rem;">
                          <div style="display: flex; justify-content: center; padding: 1rem;"><div class="loader-sm"></div></div>
                     </div>
