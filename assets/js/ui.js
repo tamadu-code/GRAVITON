@@ -5653,7 +5653,7 @@ export const UI = {
                                     </div>
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
                                         <span style="color: #94a3b8; font-weight: 600;">Status</span>
-                                        <span class="badge" style="background: ${student.is_active !== false ? '#ecfdf5' : '#fef2f2'}; color: ${student.is_active !== false ? '#10b981' : '#ef4444'}; font-weight: 700; border-radius: 8px; padding: 2px 8px;">${student.is_active !== false ? 'Active' : 'Deactivated'}</span>
+                                        <span class="badge" style="background: ${student.is_active !== false ? '#ecfdf5' : (student.status === 'Graduated' ? '#eff6ff' : '#fef2f2')}; color: ${student.is_active !== false ? '#10b981' : (student.status === 'Graduated' ? '#2563eb' : '#ef4444')}; font-weight: 700; border-radius: 8px; padding: 2px 8px;">${student.is_active !== false ? 'Active' : (student.status === 'Graduated' ? 'Graduated' : 'Deactivated')}</span>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
                                         <span style="color: #94a3b8; font-weight: 600;">Blood Group</span>
