@@ -49,7 +49,9 @@ serve(async (req) => {
         body: JSON.stringify({
           name: record.name,
           class: classNameFull,
-          tenant_id: tenantIdVal
+          tenant_id: tenantIdVal,
+          is_active: record.is_active !== false && record.is_active !== 0 && record.status !== 'Graduated' && record.status !== 'Inactive',
+          status: record.status || 'Active'
         }),
       })
 
@@ -57,7 +59,7 @@ serve(async (req) => {
         console.error(`Failed to update biometric record: ${response.statusText}`)
       }
 
-      return new Response(JSON.stringify({ success: true, updated: true, attendance_code: record.attendance_code }), {
+      return new Response(JSON.stringify({ success: true, updated: true, attendance_code: record.attendance_code, is_active: record.is_active, status: record.status }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       })
