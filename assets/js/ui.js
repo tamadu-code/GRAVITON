@@ -4806,7 +4806,7 @@ export const UI = {
 
         // Default: Only show active students
         let showAll = false;
-        let activeStudents = students.filter(s => s.is_active !== false);
+        let activeStudents = students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive');
         
         this.contentArea.innerHTML = `
             <div class="view-container" style="padding: 0.75rem;">
@@ -4905,7 +4905,7 @@ export const UI = {
             const filtered = students.filter(s => 
                 (s.name.toLowerCase().includes(term) || s.student_id.toLowerCase().includes(term)) &&
                 (!filterClass || s.class_name === filterClass) &&
-                (includeInactive || s.is_active !== false)
+                (includeInactive || (s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive'))
             );
             listContainer.innerHTML = this.generateStudentListItems(filtered);
             if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -6299,18 +6299,23 @@ export const UI = {
     generateStudentListItems(students) {
         if (students.length === 0) return `<div style="padding: 2rem; text-align: center; color: #94a3b8; font-weight: 600;">No students found in this stream</div>`;
         return students.map(s => `
-            <div class="glass-collapse-card student-card" data-id="${s.student_id}" style="margin-bottom: 0.75rem; opacity: ${s.is_active !== false ? '1' : '0.7'};">
+            <div class="glass-collapse-card student-card" data-id="${s.student_id}" style="margin-bottom: 0.75rem; opacity: ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive') ? '1' : '0.7'};">
                 <input type="checkbox" id="toggle-std-${s.student_id}" class="glass-collapse-checkbox student-toggle">
                 <label for="toggle-std-${s.student_id}" class="glass-collapse-header" style="padding: 1rem;">
                     <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1; overflow: hidden;">
-                        <div style="width: 44px; height: 44px; border-radius: 12px; background: ${s.is_active !== false ? '#eff6ff' : '#fee2e2'}; display: flex; align-items: center; justify-content: center; border: 1px solid ${s.is_active !== false ? '#dbeafe' : '#fecaca'}; flex-shrink: 0;">
+                        <div style="width: 44px; height: 44px; border-radius: 12px; background: ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive') ? '#eff6ff' : (s.status === 'Graduated' ? '#eff6ff' : '#fee2e2')}; display: flex; align-items: center; justify-content: center; border: 1px solid ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive') ? '#dbeafe' : (s.status === 'Graduated' ? '#dbeafe' : '#fecaca')}; flex-shrink: 0;">
                              <img src="${s.passport_url || s.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.name}`}" style="width: 34px; height: 34px; object-fit: cover; border-radius: 8px;" alt="${s.name}">
                         </div>
                         <div style="flex: 1; overflow: hidden;">
                             <div style="font-weight: 800; color: #1e293b; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.name}</div>
                             <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">${s.student_id} • ${s.class_name}</div>
                         </div>
-                        ${s.is_active === false ? '<span class="badge" style="background: #fee2e2; color: #ef4444; font-size: 0.55rem; padding: 2px 6px;">INACTIVE</span>' : ''}
+                        ${(s.is_active === false || s.is_active === 0 || s.status === 'Graduated' || s.status === 'Inactive') ? 
+                            (s.status === 'Graduated' ? 
+                                '<span class="badge" style="background: #eff6ff; color: #2563eb; font-size: 0.55rem; padding: 2px 6px;">GRADUATED</span>' : 
+                                '<span class="badge" style="background: #fee2e2; color: #ef4444; font-size: 0.55rem; padding: 2px 6px;">INACTIVE</span>'
+                            ) : ''
+                        }
                     </div>
                     <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                 </label>
