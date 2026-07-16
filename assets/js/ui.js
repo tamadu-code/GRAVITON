@@ -8521,7 +8521,7 @@ export const UI = {
         }
         
         // Optimize fetching
-        const students = await db.students.filter(s => s.is_active !== false).toArray();
+        const students = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive').toArray();
         const classes = await db.classes.toArray();
         const subjects = await db.subjects.toArray();
         const settings = await db.settings.toArray();
@@ -28378,13 +28378,27 @@ export const UI = {
         }
 
         const students = await db.students.toArray();
-        const studentMap = students.reduce((acc, s) => {
+        // Only allow active students — graduated/deactivated codes are blocked
+        const activeStudents = students.filter(s => 
+            s.is_active !== false && s.is_active !== 0 && 
+            s.status !== 'Graduated' && s.class_name !== 'Graduated' && 
+            s.status !== 'Inactive'
+        );
+        const blockedStudents = students.filter(s => 
+            s.is_active === false || s.is_active === 0 || 
+            s.status === 'Graduated' || s.class_name === 'Graduated' || 
+            s.status === 'Inactive'
+        );
+        if (blockedStudents.length > 0) {
+            console.log(`[Harvest] Blocking ${blockedStudents.length} graduated/inactive student codes from attendance matching.`);
+        }
+        const studentMap = activeStudents.reduce((acc, s) => {
             if (s.attendance_code) acc[s.attendance_code.toString().toLowerCase()] = s.student_id;
             if (s.legacy_student_id) acc[s.legacy_student_id.toString().toLowerCase()] = s.student_id;
             return acc;
         }, {});
 
-        const nameMap = students.reduce((acc, s) => {
+        const nameMap = activeStudents.reduce((acc, s) => {
             if (s.name) acc[s.name.toLowerCase().trim()] = s.student_id;
             return acc;
         }, {});
