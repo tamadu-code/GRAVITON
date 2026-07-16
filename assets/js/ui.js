@@ -6370,7 +6370,8 @@ export const UI = {
                     </div>
                 </div>
             </div>
-        `).join('');
+            `;
+        }).join('');
     },
 
     async renderBulkImport() {
