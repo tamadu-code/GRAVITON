@@ -4936,6 +4936,10 @@ export const UI = {
                 if (detailArea && (detailArea.innerHTML.includes('loader-sm') || !detailArea.innerHTML.trim())) {
                     const student = await db.students.get(studentId);
                     if (student) {
+                        const isGraduated = student.status === 'Graduated' || student.class_name === 'Graduated';
+                        const isInactive = student.is_active === false || student.is_active === 0 || student.status === 'Inactive';
+                        const isActive = !isGraduated && !isInactive;
+
                         const statusColor = isActive ? '#a7f3d0' : (isGraduated ? '#93c5fd' : '#fecaca');
                         const statusText = isActive ? 'Active' : (isGraduated ? 'Graduated' : 'Inactive');
 
