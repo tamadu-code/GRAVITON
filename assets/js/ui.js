@@ -3903,7 +3903,7 @@ export const UI = {
         // Alphabetical sort (Natural sort)
         streams.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
         
-        let activeStudents = await db.students.filter(s => s.is_active !== false).toArray();
+        let activeStudents = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.status !== 'Inactive').toArray();
         const formTeachers = await db.form_teachers.toArray().catch(() => []);
         const profiles = await getTenantProfiles().catch(() => []);
 
@@ -4942,7 +4942,7 @@ export const UI = {
                         detailArea.innerHTML = `
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
                                 <div class="stat-box-sm"><strong>GENDER</strong><span>${student.gender || 'N/A'}</span></div>
-                                <div class="stat-box-sm"><strong>STATUS</strong><span style="color: ${student.is_active !== false ? '#10b981' : '#ef4444'};">${student.is_active !== false ? 'Active' : 'Inactive'}</span></div>
+                                <div class="stat-box-sm"><strong>STATUS</strong><span style="color: ${(student.is_active !== false && student.is_active !== 0 && student.status !== 'Graduated' && student.status !== 'Inactive') ? '#10b981' : (student.status === 'Graduated' ? '#2563eb' : '#ef4444')};">${(student.is_active !== false && student.is_active !== 0 && student.status !== 'Graduated' && student.status !== 'Inactive') ? 'Active' : (student.status === 'Graduated' ? 'Graduated' : 'Inactive')}</span></div>
                                 <div class="stat-box-sm"><strong>AVG SCORE</strong><span>${avg > 0 ? avg + '%' : 'No scores'}</span></div>
                                 <div class="stat-box-sm"><strong>GENOTYPE</strong><span>${student.genotype || 'N/A'}</span></div>
                             </div>
@@ -5485,6 +5485,8 @@ export const UI = {
         const container = document.querySelector('.directory-container');
         if (!student || !detailView) return;
 
+        const isStudentActive = student.is_active !== false && student.is_active !== 0 && student.status !== 'Graduated' && student.status !== 'Inactive';
+
         // On mobile, show detail and hide sidebar
         if (window.innerWidth < 1024 && container) {
             container.classList.add('mobile-show-detail');
@@ -5602,7 +5604,7 @@ export const UI = {
                                  <button id="btn-promote-student" class="btn btn-secondary" title="Promote Student" style="border-radius: 14px; padding: 0.75rem 1.25rem; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;"><i data-lucide="trending-up"></i> Promote</button>
                                  <button id="btn-modify-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem;"><i data-lucide="edit"></i> Modify</button>
                                  <button id="btn-delete-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fee2e2; border: 1px solid #fecaca;"><i data-lucide="trash-2"></i> Delete</button>
-                                 ${student.is_active !== false ? 
+                                 ${isStudentActive ? 
                                     `<button id="btn-deactivate-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #ef4444; background: #fef2f2; border: none;"><i data-lucide="user-x"></i> Deactivate</button>` :
                                     `<button id="btn-reactivate-student" class="btn btn-secondary" style="border-radius: 14px; padding: 0.75rem 1.25rem; color: #10b981; background: #ecfdf5; border: none;"><i data-lucide="user-check"></i> Reactivate</button>`
                                  }
@@ -5653,7 +5655,7 @@ export const UI = {
                                     </div>
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
                                         <span style="color: #94a3b8; font-weight: 600;">Status</span>
-                                        <span class="badge" style="background: ${student.is_active !== false ? '#ecfdf5' : (student.status === 'Graduated' ? '#eff6ff' : '#fef2f2')}; color: ${student.is_active !== false ? '#10b981' : (student.status === 'Graduated' ? '#2563eb' : '#ef4444')}; font-weight: 700; border-radius: 8px; padding: 2px 8px;">${student.is_active !== false ? 'Active' : (student.status === 'Graduated' ? 'Graduated' : 'Deactivated')}</span>
+                                        <span class="badge" style="background: ${isStudentActive ? '#ecfdf5' : (student.status === 'Graduated' ? '#eff6ff' : '#fef2f2')}; color: ${isStudentActive ? '#10b981' : (student.status === 'Graduated' ? '#2563eb' : '#ef4444')}; font-weight: 700; border-radius: 8px; padding: 2px 8px;">${isStudentActive ? 'Active' : (student.status === 'Graduated' ? 'Graduated' : 'Deactivated')}</span>
                                     </div>
                                     <div style="display: flex; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid #f8fafc;">
                                         <span style="color: #94a3b8; font-weight: 600;">Blood Group</span>
