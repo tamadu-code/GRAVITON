@@ -20778,13 +20778,14 @@ export const UI = {
             const allScores = await db.scores.toArray();
             const termScores = allScores.filter(sc => sc.term === currentTerm && sc.session === currentSession);
 
-            const students = await db.students.where('is_active').equals(1).toArray();
+            const students = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status === 'Active').toArray();
             let promoted = 0;
             let graduated = 0;
             let repeated = 0;
+            const repeatedStudents = [];
 
             for (const s of students) {
-                const currentClass = s.class_name.toUpperCase();
+                const currentClass = (s.class_name || '').toUpperCase();
                 let nextClass = '';
 
                 // Calculate average for current term/session
@@ -20794,6 +20795,12 @@ export const UI = {
 
                 if (average < 40) {
                     repeated++;
+                    repeatedStudents.push({
+                        student_id: s.student_id,
+                        name: s.name,
+                        class_name: s.class_name,
+                        average: average
+                    });
                     continue; // Skip promotion, student repeats/retains current class
                 }
 
@@ -20805,18 +20812,135 @@ export const UI = {
                 else if (currentClass.includes('SSS 2') || currentClass.includes('SS 2')) nextClass = 'SSS 3';
                 else if (currentClass.includes('SSS 3') || currentClass.includes('SS 3')) {
                     await db.students.update(s.student_id, prepareForSync({ status: 'Graduated', is_active: 0, deactivated_at: new Date().toISOString() }));
+                    await this.refreshStudentFinancials(s.student_id);
                     graduated++;
                     continue;
                 }
 
                 if (nextClass) {
                     await db.students.update(s.student_id, prepareForSync({ class_name: nextClass }));
+                    await this.refreshStudentFinancials(s.student_id);
                     promoted++;
                 }
             }
 
             Notifications.show(`Promotion Complete! ${promoted} students promoted, ${graduated} graduated, ${repeated} repeated.`, 'success');
             this.debouncedSync();
+
+            if (repeatedStudents.length > 0) {
+                let tbodyHtml = repeatedStudents.map(rs => {
+                    const currentClass = rs.class_name.toUpperCase();
+                    let nextClass = '';
+                    if (currentClass.includes('JSS 1') || currentClass.includes('JS 1')) nextClass = 'JSS 2';
+                    else if (currentClass.includes('JSS 2') || currentClass.includes('JS 2')) nextClass = 'JSS 3';
+                    else if (currentClass.includes('JSS 3') || currentClass.includes('JS 3')) nextClass = 'SSS 1';
+                    else if (currentClass.includes('SSS 1') || currentClass.includes('SS 1')) nextClass = 'SSS 2';
+                    else if (currentClass.includes('SSS 2') || currentClass.includes('SS 2')) nextClass = 'SSS 3';
+                    else if (currentClass.includes('SSS 3') || currentClass.includes('SS 3')) nextClass = 'Graduated';
+                    else nextClass = 'Next Class'; // fallback
+
+                    return `
+                        <tr id="promo-row-${rs.student_id}" style="border-bottom: 1px solid #f1f5f9;">
+                            <td style="padding: 0.75rem; font-weight: 700; color: #1e293b;">${rs.name}</td>
+                            <td style="padding: 0.75rem; color: #475569;">${rs.class_name}</td>
+                            <td style="padding: 0.75rem; font-weight: 700; color: #ef4444;">${rs.average.toFixed(1)}%</td>
+                            <td style="padding: 0.75rem; text-align: right;">
+                                <button class="btn btn-sm btn-primary promote-repeated-btn" 
+                                    data-sid="${rs.student_id}" 
+                                    data-name="${rs.name}" 
+                                    data-next="${nextClass}"
+                                    style="height: 32px; border-radius: 8px; font-weight: 700; padding: 0 0.75rem; border: none; color: white; background: #0284c7; cursor: pointer; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    <i data-lucide="trending-up" style="width: 14px; height: 14px;"></i> Promote to ${nextClass}
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                const modalHtml = `
+                    <div style="color: #1e293b; max-height: 400px; overflow-y: auto;">
+                        <p style="margin-bottom: 1rem; font-size: 0.875rem; color: #64748b;">
+                            The following students did not meet the minimum pass mark (40% average) and were repeated. Use the actions below to manually promote any of them if necessary.
+                        </p>
+                        <div class="table-responsive">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                                <thead>
+                                    <tr style="border-bottom: 2px solid #e2e8f0; text-align: left; color: #64748b; font-weight: 700;">
+                                        <th style="padding: 0.75rem;">Student Name</th>
+                                        <th style="padding: 0.75rem;">Current Class</th>
+                                        <th style="padding: 0.75rem;">Average</th>
+                                        <th style="padding: 0.75rem; text-align: right;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${tbodyHtml}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+
+                this.showModal(
+                    `<i data-lucide="alert-triangle" style="color: #eab308; vertical-align: middle; margin-right: 0.5rem;"></i> Repeated Students List`,
+                    modalHtml,
+                    async () => {
+                        document.getElementById('ui-modal')?.remove();
+                    },
+                    'Done',
+                    'check'
+                );
+
+                // Add event listeners to the promote buttons in the modal
+                document.querySelectorAll('.promote-repeated-btn').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const sid = btn.getAttribute('data-sid');
+                        const sname = btn.getAttribute('data-name');
+                        const target = btn.getAttribute('data-next');
+
+                        if (confirm(`Are you sure you want to promote ${sname} manually to ${target}?`)) {
+                            try {
+                                btn.disabled = true;
+                                btn.innerHTML = '<i data-lucide="loader" class="spin" style="width:14px; height:14px;"></i> Promoting...';
+                                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                                if (target === 'Graduated') {
+                                    await db.students.update(sid, prepareForSync({ status: 'Graduated', is_active: 0, deactivated_at: new Date().toISOString() }));
+                                } else {
+                                    await db.students.update(sid, prepareForSync({ class_name: target }));
+                                }
+                                await this.refreshStudentFinancials(sid);
+                                
+                                Notifications.show(`${sname} promoted manually to ${target}`, 'success');
+                                
+                                // Update row UI
+                                const row = document.getElementById(`promo-row-${sid}`);
+                                if (row) {
+                                    row.style.background = '#f8fafc';
+                                    const actionTd = row.querySelector('td:last-child');
+                                    if (actionTd) {
+                                        actionTd.innerHTML = `<span style="color: #10b981; font-weight: 700; display: inline-flex; align-items: center; gap: 0.25rem;"><i data-lucide="check" style="width:14px; height:14px;"></i> Promoted</span>`;
+                                    }
+                                    const classTd = row.querySelector('td:nth-child(2)');
+                                    if (classTd) {
+                                        classTd.innerHTML = `<span style="text-decoration: line-through; color: #94a3b8;">${classTd.textContent}</span> <i data-lucide="arrow-right" style="width:12px; vertical-align: middle;"></i> <strong style="color: #0f766e;">${target}</strong>`;
+                                    }
+                                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                                }
+                                
+                                this.renderPromotionEngine();
+                                this.debouncedSync();
+                            } catch (err) {
+                                console.error(err);
+                                Notifications.show(`Failed to promote ${sname}`, 'error');
+                                btn.disabled = false;
+                                btn.innerHTML = `<i data-lucide="trending-up" style="width: 14px; height: 14px;"></i> Promote to ${target}`;
+                                if (typeof lucide !== 'undefined') lucide.createIcons();
+                            }
+                        }
+                    });
+                });
+            }
+
             return true;
         } catch (e) {
             console.error(e);
