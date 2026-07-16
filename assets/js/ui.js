@@ -4936,25 +4936,29 @@ export const UI = {
                 if (detailArea && (detailArea.innerHTML.includes('loader-sm') || !detailArea.innerHTML.trim())) {
                     const student = await db.students.get(studentId);
                     if (student) {
+                        const isGraduated = student.status === 'Graduated' || student.class_name === 'Graduated';
+                        const isInactive = student.is_active === false || student.is_active === 0 || student.status === 'Inactive';
+                        const isActive = !isGraduated && !isInactive;
+
                         const scores = await db.scores.where('student_id').equals(studentId).toArray();
                         const avg = scores.length > 0 ? Math.round(scores.reduce((a, s) => a + (s.total || 0), 0) / scores.length) : 0;
                         
                         detailArea.innerHTML = `
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-                                <div class="stat-box-sm"><strong>GENDER</strong><span>${student.gender || 'N/A'}</span></div>
-                                <div class="stat-box-sm"><strong>STATUS</strong><span style="color: ${(student.is_active !== false && student.is_active !== 0 && student.status !== 'Graduated' && student.class_name !== 'Graduated' && student.status !== 'Inactive') ? '#10b981' : (student.status === 'Graduated' || student.class_name === 'Graduated' ? '#2563eb' : '#ef4444')};">${(student.is_active !== false && student.is_active !== 0 && student.status !== 'Graduated' && student.class_name !== 'Graduated' && student.status !== 'Inactive') ? 'Active' : (student.status === 'Graduated' || student.class_name === 'Graduated' ? 'Graduated' : 'Inactive')}</span></div>
-                                <div class="stat-box-sm"><strong>AVG SCORE</strong><span>${avg > 0 ? avg + '%' : 'No scores'}</span></div>
-                                <div class="stat-box-sm"><strong>GENOTYPE</strong><span>${student.genotype || 'N/A'}</span></div>
+                                <div class="stat-box-sm" style="${isActive ? '' : 'background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.15); color: #ffffff;'}"><strong>GENDER</strong><span>${student.gender || 'N/A'}</span></div>
+                                <div class="stat-box-sm" style="${isActive ? '' : 'background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.15); color: #ffffff;'}"><strong>STATUS</strong><span style="color: ${isActive ? '#10b981' : (isGraduated ? '#93c5fd' : '#fecaca')};">${isActive ? 'Active' : (isGraduated ? 'Graduated' : 'Inactive')}</span></div>
+                                <div class="stat-box-sm" style="${isActive ? '' : 'background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.15); color: #ffffff;'}"><strong>AVG SCORE</strong><span>${avg > 0 ? avg + '%' : 'No scores'}</span></div>
+                                <div class="stat-box-sm" style="${isActive ? '' : 'background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.15); color: #ffffff;'}"><strong>GENOTYPE</strong><span>${student.genotype || 'N/A'}</span></div>
                             </div>
-                            <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
-                                <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; margin-bottom: 0.5rem;">Residential Address</div>
-                                <div style="font-size: 0.85rem; color: #1e293b; font-weight: 600;">${student.address || 'No address provided'}</div>
+                            <div style="background: ${isActive ? 'white' : 'rgba(0,0,0,0.15)'}; border: 1px solid ${isActive ? '#e2e8f0' : 'rgba(255,255,255,0.15)'}; border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+                                <div style="font-size: 0.65rem; color: ${isActive ? '#94a3b8' : 'rgba(255,255,255,0.6)'}; font-weight: 800; text-transform: uppercase; margin-bottom: 0.5rem;">Residential Address</div>
+                                <div style="font-size: 0.85rem; color: ${isActive ? '#1e293b' : '#ffffff'}; font-weight: 600;">${student.address || 'No address provided'}</div>
                             </div>
                             <div style="display: flex; gap: 0.5rem;">
-                                <button class="btn btn-secondary" onclick="UI.provisionStudentAccess('${studentId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; height: 44px; font-size: 0.8rem;">
+                                <button class="btn btn-secondary" onclick="UI.provisionStudentAccess('${studentId}')" style="flex: 1; border-radius: 10px; font-weight: 700; background: ${isActive ? '#f1f5f9' : 'rgba(255,255,255,0.15)'}; color: ${isActive ? '#475569' : '#ffffff'}; border: 1px solid ${isActive ? '#e2e8f0' : 'rgba(255,255,255,0.2)'}; height: 44px; font-size: 0.8rem;">
                                     <i data-lucide="shield-check" style="width: 14px;"></i> Provision Access
                                 </button>
-                                <button class="btn btn-primary" onclick="UI.editStudent('${studentId}')" style="flex: 1; border-radius: 10px; font-weight: 700; height: 44px; font-size: 0.8rem;">
+                                <button class="btn btn-primary" onclick="UI.editStudent('${studentId}')" style="flex: 1; border-radius: 10px; font-weight: 700; height: 44px; font-size: 0.8rem; background: ${isActive ? '' : '#3b82f6'}; border: none;">
                                     <i data-lucide="edit-3" style="width: 14px;"></i> Edit Details
                                 </button>
                             </div>
@@ -4962,7 +4966,7 @@ export const UI = {
                                 <button class="btn btn-secondary view-full-profile-btn" data-id="${student.student_id}" style="flex: 1; border-radius: 10px; font-size: 0.75rem; height: 44px; background: #2563eb; color: white; border: none; font-weight: 700;">
                                     <i data-lucide="user" style="width: 14px;"></i> View Full Profile
                                 </button>
-                                <button class="btn btn-secondary mobile-edit-std-btn" data-id="${student.student_id}" style="border-radius: 10px; font-size: 0.75rem; height: 44px; font-weight: 700; width: 44px; display: flex; align-items: center; justify-content: center; padding: 0;">
+                                <button class="btn btn-secondary mobile-edit-std-btn" data-id="${student.student_id}" style="border-radius: 10px; font-size: 0.75rem; height: 44px; font-weight: 700; width: 44px; display: flex; align-items: center; justify-content: center; padding: 0; background: ${isActive ? '#f1f5f9' : 'rgba(255,255,255,0.15)'}; color: ${isActive ? '#475569' : '#ffffff'}; border: 1px solid ${isActive ? '#e2e8f0' : 'rgba(255,255,255,0.2)'};">
                                     <i data-lucide="edit-3" style="width: 16px;"></i>
                                 </button>
                             </div>
@@ -6310,28 +6314,57 @@ export const UI = {
 
     generateStudentListItems(students) {
         if (students.length === 0) return `<div style="padding: 2rem; text-align: center; color: #94a3b8; font-weight: 600;">No students found in this stream</div>`;
-        return students.map(s => `
-            <div class="glass-collapse-card student-card" data-id="${s.student_id}" style="margin-bottom: 0.75rem; background: ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive') ? 'white' : (s.status === 'Graduated' || s.class_name === 'Graduated' ? '#eff6ff' : '#fef2f2')}; border: 1px solid ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive') ? '#e2e8f0' : (s.status === 'Graduated' || s.class_name === 'Graduated' ? '#bfdbfe' : '#fecaca')}; opacity: 1;">
+        return students.map(s => {
+            const isGraduated = s.status === 'Graduated' || s.class_name === 'Graduated';
+            const isInactive = s.is_active === false || s.is_active === 0 || s.status === 'Inactive';
+            const isActive = !isGraduated && !isInactive;
+
+            let cardBg = 'white';
+            let cardBorder = '#e2e8f0';
+            let nameColor = '#1e293b';
+            let metaColor = '#94a3b8';
+            let chevronColor = '#475569';
+            let contentBg = '#f8fafc';
+            let contentBorder = '#f1f5f9';
+            let badgeHtml = '';
+
+            if (isGraduated) {
+                cardBg = '#1e3a8a'; // Dark blue
+                cardBorder = '#1e40af';
+                nameColor = '#ffffff';
+                metaColor = '#93c5fd';
+                chevronColor = '#ffffff';
+                contentBg = '#1e40af';
+                contentBorder = '#1e3a8a';
+                badgeHtml = '<span class="badge" style="background: rgba(255,255,255,0.15); color: #ffffff; font-size: 0.55rem; padding: 2px 6px;">GRADUATED</span>';
+            } else if (isInactive) {
+                cardBg = '#991b1b'; // Dark red
+                cardBorder = '#b91c1c';
+                nameColor = '#ffffff';
+                metaColor = '#fca5a5';
+                chevronColor = '#ffffff';
+                contentBg = '#b91c1c';
+                contentBorder = '#991b1b';
+                badgeHtml = '<span class="badge" style="background: rgba(255,255,255,0.15); color: #ffffff; font-size: 0.55rem; padding: 2px 6px;">INACTIVE</span>';
+            }
+
+            return `
+            <div class="glass-collapse-card student-card" data-id="${s.student_id}" style="margin-bottom: 0.75rem; background: ${cardBg}; border: 1px solid ${cardBorder}; opacity: 1;">
                 <input type="checkbox" id="toggle-std-${s.student_id}" class="glass-collapse-checkbox student-toggle">
                 <label for="toggle-std-${s.student_id}" class="glass-collapse-header" style="padding: 1rem;">
                     <div style="display: flex; align-items: center; gap: 0.85rem; flex: 1; overflow: hidden;">
-                        <div style="width: 44px; height: 44px; border-radius: 12px; background: ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive') ? '#eff6ff' : (s.status === 'Graduated' || s.class_name === 'Graduated' ? '#eff6ff' : '#fee2e2')}; display: flex; align-items: center; justify-content: center; border: 1px solid ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive') ? '#dbeafe' : (s.status === 'Graduated' || s.class_name === 'Graduated' ? '#dbeafe' : '#fecaca')}; flex-shrink: 0;">
+                        <div style="width: 44px; height: 44px; border-radius: 12px; background: ${isActive ? '#eff6ff' : 'rgba(255,255,255,0.15)'}; display: flex; align-items: center; justify-content: center; border: 1px solid ${isActive ? '#dbeafe' : 'rgba(255,255,255,0.2)'}; flex-shrink: 0;">
                              <img src="${s.passport_url || s.passport || `https://api.dicebear.com/7.x/avataaars/svg?seed=${s.name}`}" style="width: 34px; height: 34px; object-fit: cover; border-radius: 8px;" alt="${s.name}">
                         </div>
                         <div style="flex: 1; overflow: hidden;">
-                            <div style="font-weight: 800; color: #1e293b; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.name}</div>
-                            <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">${s.student_id} • ${s.class_name}</div>
+                            <div style="font-weight: 800; color: ${nameColor}; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.name}</div>
+                            <div style="font-size: 0.65rem; color: ${metaColor}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">${s.student_id} • ${s.class_name}</div>
                         </div>
-                        ${(s.is_active === false || s.is_active === 0 || s.status === 'Graduated' || s.class_name === 'Graduated' || s.status === 'Inactive') ? 
-                            (s.status === 'Graduated' || s.class_name === 'Graduated' ? 
-                                '<span class="badge" style="background: #eff6ff; color: #2563eb; font-size: 0.55rem; padding: 2px 6px;">GRADUATED</span>' : 
-                                '<span class="badge" style="background: #fee2e2; color: #ef4444; font-size: 0.55rem; padding: 2px 6px;">INACTIVE</span>'
-                            ) : ''
-                        }
+                        ${badgeHtml}
                     </div>
-                    <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                    <span class="glass-collapse-chevron" style="color: ${chevronColor};"><i data-lucide="chevron-down"></i></span>
                 </label>
-                <div class="glass-collapse-content" style="background: ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive') ? '#f8fafc' : (s.status === 'Graduated' || s.class_name === 'Graduated' ? '#f5f9ff' : '#fff5f5')}; border-top: 1px solid ${(s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive') ? '#f1f5f9' : (s.status === 'Graduated' || s.class_name === 'Graduated' ? '#dbeafe' : '#fecaca')};">
+                <div class="glass-collapse-content" style="background: ${contentBg}; border-top: 1px solid ${contentBorder};">
                     <div class="student-quick-info-container" id="info-${s.student_id.replace(/\//g, '_')}" style="padding: 1rem;">
                          <div style="display: flex; justify-content: center; padding: 1rem;"><div class="loader-sm"></div></div>
                     </div>
