@@ -624,11 +624,9 @@ export const UI = {
                         try {
                             const success = await this.executePromotion();
                             if (success) {
-                                nextTerm = '1st Term';
-                                const years = nextSession.split('/').map(Number);
-                                if (years.length === 2 && !isNaN(years[0]) && !isNaN(years[1])) {
-                                    nextSession = `${years[0] + 1}/${years[1] + 1}`;
-                                }
+                                // Since executePromotion now transitions the session and term settings internally,
+                                // we set nextTerm to '' so that we don't repeat the updates here.
+                                nextTerm = '';
                             } else {
                                 console.log('[CycleAutoTransition] Auto promotion was canceled or failed. Halting transition.');
                             }
@@ -1107,7 +1105,7 @@ export const UI = {
     async renderAdminDashboard() {
         // ── Core counts ──────────────────────────────────────────────────
         // Filter to only active students - Use count() instead of filter().length
-        const studentCount = await db.students.filter(s => s.is_active !== false).count();
+        const studentCount = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive').count();
         const classCount   = await db.classes.count();
         
         // Optimize subject count
@@ -1464,12 +1462,12 @@ export const UI = {
         const isAdmin = (this.currentUser.role || '').toLowerCase() === 'admin' || (this.currentUser.role || '').toLowerCase() === 'principal';
         let myStudents = [];
         if (isAdmin) {
-            myStudents = await db.students.filter(s => s.is_active !== false).toArray();
+            myStudents = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive').toArray();
         } else {
             // Ensure assignedClasses is a flat array of strings and non-empty to prevent Dexie errors
             const validClasses = Array.isArray(assignedClasses) ? assignedClasses.filter(c => typeof c === 'string' && c.trim() !== '') : [];
             if (validClasses.length > 0) {
-                const studentsInClasses = await db.students.where('class_name').anyOf(validClasses).filter(s => s.is_active !== false).toArray();
+                const studentsInClasses = await db.students.where('class_name').anyOf(validClasses).filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive').toArray();
                 myStudents = studentsInClasses.filter(student => {
                     const studentClass = (student.class_name || '').trim().toLowerCase();
                     const studentTrack = (student.sub_class || '').trim().toLowerCase();
@@ -5307,7 +5305,7 @@ export const UI = {
                     }
 
                     // ── Subscription Student Limit Enforcement ──
-                    const currentActiveCount = await db.students.filter(s => s.is_active !== false).count();
+                    const currentActiveCount = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive').count();
                     const maxStudentLimit = parseInt(localStorage.getItem('tenant_max_student_limit') || '200');
                     if (currentActiveCount >= maxStudentLimit) {
                         Notifications.show(`Enrollment blocked: You have reached your plan's student limit (${currentActiveCount}/${maxStudentLimit}). Please upgrade your subscription in Settings → Subscription & Billing.`, 'error');
@@ -19316,7 +19314,7 @@ export const UI = {
 
     async renderSettings() {
         // Load settings and subscription details
-        const enrolledCount = await db.students.filter(s => s.is_active !== false).count();
+        const enrolledCount = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive').count();
         let subStatus = localStorage.getItem('tenant_subscription_status') || 'trialing';
         let planLimit = localStorage.getItem('tenant_max_student_limit') || '200';
         let planTier = localStorage.getItem('tenant_plan_tier') || 'standard';
@@ -20877,6 +20875,31 @@ export const UI = {
                     promoted++;
                 }
             }
+
+            // Automatically transition session to next session and term to 1st Term
+            let nextSession = currentSession;
+            const years = currentSession.split('/').map(Number);
+            if (years.length === 2 && !isNaN(years[0]) && !isNaN(years[1])) {
+                nextSession = `${years[0] + 1}/${years[1] + 1}`;
+            }
+            const nextTerm = '1st Term';
+
+            const updateSetting = async (k, val) => {
+                const existing = await db.settings.where('key').equals(k).first();
+                if (existing) {
+                    await db.settings.update(existing.id, prepareForSync({ key: k, value: val, is_synced: 0 }));
+                } else {
+                    await db.settings.add(prepareForSync({ id: `SET_${k.toUpperCase()}`, key: k, value: val, is_synced: 0 }));
+                }
+            };
+            
+            await updateSetting('currentTerm', nextTerm);
+            await updateSetting('currentSession', nextSession);
+            await updateSetting('termClosure', '');
+            await updateSetting('nextTermBegins', '');
+            await updateSetting('termStatus', 'Active');
+
+            Notifications.show(`Academic cycle automatically moved to ${nextTerm} (${nextSession})`, 'info');
 
             Notifications.show(`Promotion Complete! ${promoted} students promoted, ${graduated} graduated, ${repeated} repeated.`, 'success');
             this.debouncedSync();
