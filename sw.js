@@ -1,15 +1,15 @@
-const CACHE_NAME = 'graviton-cache-v390';
+const CACHE_NAME = 'graviton-cache-v391';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './assets/css/style.css?v=390',
-  './assets/js/main.js?v=390',
-  './assets/js/ui.js?v=390',
-  './assets/js/db.js?v=390',
-  './assets/js/utils.js?v=390',
-  './assets/js/supabase-client.js?v=390',
-  './assets/js/aiDetector.js?v=390',
+  './assets/css/style.css?v=391',
+  './assets/js/main.js?v=391',
+  './assets/js/ui.js?v=391',
+  './assets/js/db.js?v=391',
+  './assets/js/utils.js?v=391',
+  './assets/js/supabase-client.js?v=391',
+  './assets/js/aiDetector.js?v=391',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap',

@@ -73,6 +73,25 @@ export async function syncToCloud() {
     if (window._isSyncingToCloud) return { success: false, message: 'Sync already in progress' };
     window._isSyncingToCloud = true;
 
+    let validClassNames = [];
+    let validClassNamesLower = [];
+    let studentClassMap = {};
+
+    try {
+        const dbClasses = await db.classes.toArray().catch(() => []);
+        validClassNames = dbClasses.map(c => c.name).filter(Boolean);
+        validClassNamesLower = validClassNames.map(name => name.trim().toLowerCase());
+
+        const dbStudents = await db.students.toArray().catch(() => []);
+        dbStudents.forEach(s => {
+            if (s.student_id && s.class_name) {
+                studentClassMap[String(s.student_id).trim().toLowerCase()] = s.class_name;
+            }
+        });
+    } catch (e) {
+        console.warn('[Sync Push] Failed to load classes or students for validation:', e);
+    }
+
     try {
         for (const table of tables) {
             // Skip tables based on dependencies
@@ -100,7 +119,7 @@ export async function syncToCloud() {
                     subjects: ['id', 'name', 'type', 'credits', 'tenant_id', 'updated_at'],
                     subject_assignments: ['id', 'teacher_id', 'subject_id', 'class_name', 'specialization', 'tenant_id', 'updated_at'],
                     form_teachers: ['id', 'teacher_id', 'class_name', 'tenant_id', 'updated_at'],
-                    scores: ['id', 'student_id', 'subject_id', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'tenant_id', 'updated_at'],
+                    scores: ['id', 'student_id', 'subject_id', 'class_name', 'term', 'session', 'assignment', 'test1', 'test2', 'project', 'exam', 'total', 'grade', 'rank', 'tenant_id', 'updated_at'],
                     attendance: ['id', 'student_id', 'date', 'status', 'sign_in', 'sign_out', 'is_late', 'tenant_id', 'updated_at'],
                     attendance_records: ['id', 'student_id', 'date', 'status', 'subject_name', 'period_number', 'is_subject_based', 'tenant_id', 'updated_at'],
                     timetable: ['id', 'class_name', 'sub_class', 'day_of_week', 'period_number', 'subject_id', 'teacher_id', 'tenant_id', 'updated_at'],
@@ -166,8 +185,48 @@ export async function syncToCloud() {
                             db.duty_assignments.update(item.id, { staff_id: null }).catch(e => {});
                         }
 
+                        // Value-level class_name whitelist/normalization check
+                        const classValTables = ['scores', 'subject_assignments', 'form_teachers', 'timetable', 'fee_structures', 'cbt_exams', 'cbt_exam_sections', 'cbt_question_bank', 'elearning_modules'];
+                        if (sanitized.class_name !== undefined && sanitized.class_name !== null) {
+                            const currentClassName = String(sanitized.class_name).trim();
+                            const lowerClassName = currentClassName.toLowerCase();
+                            const matchIndex = validClassNamesLower.indexOf(lowerClassName);
+                            
+                            if (matchIndex !== -1) {
+                                const exactClassName = validClassNames[matchIndex];
+                                if (sanitized.class_name !== exactClassName) {
+                                    sanitized.class_name = exactClassName;
+                                    const pkVal = item[pk];
+                                    db[table].update(pkVal, { class_name: exactClassName }).catch(() => {});
+                                }
+                            } else {
+                                let resolved = false;
+                                if (table === 'scores' && sanitized.student_id) {
+                                    const stdId = String(sanitized.student_id).trim().toLowerCase();
+                                    const stdClass = studentClassMap[stdId];
+                                    if (stdClass) {
+                                        const stdClassLower = String(stdClass).trim().toLowerCase();
+                                        const stdMatchIdx = validClassNamesLower.indexOf(stdClassLower);
+                                        if (stdMatchIdx !== -1) {
+                                            const exactClassName = validClassNames[stdMatchIdx];
+                                            sanitized.class_name = exactClassName;
+                                            resolved = true;
+                                            const pkVal = item[pk];
+                                            db[table].update(pkVal, { class_name: exactClassName }).catch(() => {});
+                                            console.log(`[Sync Push] Resolved invalid class_name "${currentClassName}" for score of student "${sanitized.student_id}" to student's current class "${exactClassName}"`);
+                                        }
+                                    }
+                                }
+                                
+                                if (!resolved && classValTables.includes(table)) {
+                                    console.warn(`[Sync Push] Invalid class_name "${currentClassName}" in table "${table}" (ID: ${item[pk] || item.id}). Skipping record.`);
+                                    sanitized._skipSync = true;
+                                }
+                            }
+                        }
+
                         return sanitized;
-                    });
+                    }).filter(item => !item._skipSync);
 
                     // --- NEW: Cloud Protection ---
                     // Prevent local stale records from overwriting newer cloud data (e.g. Admin re-opens or corrections)
@@ -518,6 +577,29 @@ export async function syncFromCloud(options = false) {
                                     finalResults.push(cloudItem);
                                 }
                                 processedData = finalResults;
+                            }
+
+                            // --- 1B2: class_name Normalization for scores ---
+                            if (table === 'scores') {
+                                try {
+                                    const dbClasses = await db.classes.toArray();
+                                    const validClassNames = dbClasses.map(c => c.name).filter(Boolean);
+                                    const validClassNamesLower = validClassNames.map(name => name.trim().toLowerCase());
+                                    
+                                    processedData = processedData.map(score => {
+                                        if (score.class_name) {
+                                            const cnTrim = score.class_name.trim();
+                                            const cnLower = cnTrim.toLowerCase();
+                                            const matchIdx = validClassNamesLower.indexOf(cnLower);
+                                            if (matchIdx !== -1) {
+                                                score.class_name = validClassNames[matchIdx];
+                                            }
+                                        }
+                                        return score;
+                                    });
+                                } catch (e) {
+                                    console.warn('[Sync Pull] Failed to normalize scores class_name:', e);
+                                }
                             }
 
                             // --- 1C: Local Modification Shield (Generic) ---

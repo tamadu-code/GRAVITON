@@ -6803,7 +6803,7 @@ export const UI = {
         currentSettings.forEach(s => settingsMap[s.key] = s.value);
 
         const loadAcademicLedger = async () => {
-            const cls = classFilter.value;
+            let cls = classFilter.value;
             const subId = subjectFilter.value;
             const term = termFilter.value;
             const session = sessionFilter.value;
@@ -6842,6 +6842,13 @@ export const UI = {
                 if (mobileContainer) mobileContainer.innerHTML = '';
                 resetStatsUI();
                 return;
+            }
+
+            const matchedClass = classes.find(c => c.name && c.name.trim().toLowerCase() === cls.trim().toLowerCase());
+            if (matchedClass) {
+                cls = matchedClass.name;
+            } else {
+                console.warn(`[Gradebook] Selected class "${cls}" is not in the classes database/whitelist.`);
             }
 
             const activeSub = subjects.find(s => String(s.id) === String(subId));
@@ -7391,7 +7398,15 @@ export const UI = {
             const subId = subjectFilter.value;
             const term = termFilter.value;
             const session = sessionFilter.value;
-            const className = classFilter.value;
+            let className = classFilter.value;
+
+            if (!className) return Notifications.show('Select a class/stream first', 'error');
+            const allDbClasses = await db.classes.toArray().catch(() => []);
+            const matchedClass = allDbClasses.find(c => c.name && c.name.trim().toLowerCase() === className.trim().toLowerCase());
+            if (!matchedClass) {
+                return Notifications.show(`Invalid class/stream selected: ${className}. It must exist in the classes database.`, 'error');
+            }
+            className = matchedClass.name; // Normalize to exact DB case
 
             console.log(`[Grade Commit] Starting commit for ${className} | Sub: ${subId} | Term: ${term} | Sess: ${session}`);
             console.log(`[Grade Commit] Found ${rows.length} desktop rows to process.`);
