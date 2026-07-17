@@ -6861,6 +6861,23 @@ export const UI = {
                 s.is_active !== false
             );
 
+            // 1a. Include promoted/graduated students who had scores in this class for the selected term/session
+            try {
+                const histScores = await db.scores.where('class_name').equals(cls).toArray();
+                const normT = (t) => String(t || '').toLowerCase().replace(/\s+/g, '').replace('1st','first').replace('2nd','second').replace('3rd','third');
+                const normS = (s) => String(s || '').toLowerCase().trim();
+                const histFiltered = histScores.filter(sc => normT(sc.term) === normT(term) && normS(sc.session) === normS(session));
+                const histStudentIds = new Set(histFiltered.map(sc => sc.student_id));
+                const currentIds = new Set(targetStudents.map(s => s.student_id));
+                const additionalStudents = students.filter(s => histStudentIds.has(s.student_id) && !currentIds.has(s.student_id));
+                if (additionalStudents.length > 0) {
+                    targetStudents = [...targetStudents, ...additionalStudents];
+                    targetStudents.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                }
+            } catch (histErr) {
+                console.warn('[Gradebook] Historical student lookup failed:', histErr);
+            }
+
             // Filter students based on track specialization (Science / Arts / Commercial)
             if (subSpecialization && subSpecialization !== 'common subject' && subSpecialization !== 'general') {
                 targetStudents = targetStudents.filter(s => {
@@ -9830,6 +9847,23 @@ export const UI = {
             try {
                 // Fetch Data Optimized
                 loadedStudents = await db.students.where('class_name').equals(className).filter(s => s.is_active !== false).toArray();
+
+                // Also include promoted/graduated students who had scores in this class for the selected session
+                try {
+                    const histScores = await db.scores.where('class_name').equals(className).toArray();
+                    const sessLower = String(session || '').toLowerCase().trim();
+                    const histFiltered = histScores.filter(sc => String(sc.session || '').toLowerCase().trim() === sessLower);
+                    const histStudentIds = new Set(histFiltered.map(sc => sc.student_id));
+                    const currentIds = new Set(loadedStudents.map(s => s.student_id));
+                    const missingIds = [...histStudentIds].filter(id => !currentIds.has(id));
+                    if (missingIds.length > 0) {
+                        const additionalStudents = await db.students.where('student_id').anyOf(missingIds).toArray();
+                        loadedStudents = [...loadedStudents, ...additionalStudents];
+                    }
+                } catch (histErr) {
+                    console.warn('[Reports] Historical student lookup failed:', histErr);
+                }
+
                 loadedStudents.sort((a,b) => a.name.localeCompare(b.name));
                 const studentIds = loadedStudents.map(s => s.student_id);
 
