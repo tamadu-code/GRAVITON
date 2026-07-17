@@ -6975,6 +6975,11 @@ export const UI = {
                 const sMatch = dbSubId === filterSubId || dbSubId === subName;
                 if (!sMatch) return false;
 
+                // Class Match — scores must belong to the selected class
+                const dbClass = String(sc.class_name || '').toLowerCase().trim();
+                const filterClass = String(cls).toLowerCase().trim();
+                if (dbClass && filterClass && dbClass !== filterClass) return false;
+
                 // Session Match (Resilient partial)
                 const dbSession = String(sc.session || '').toLowerCase().trim();
                 const filterSession = String(session).toLowerCase().trim();
@@ -9943,7 +9948,11 @@ export const UI = {
 
                 const allSessScores = rawScores.filter(sc => {
                     const dbSessionNorm = normalizeSession(sc.session);
-                    return dbSessionNorm === targetSessionNorm;
+                    // Also filter by class_name so promoted students' old-class scores don't leak into new class reports
+                    const dbClassNorm = String(sc.class_name || '').toLowerCase().trim();
+                    const filterClassNorm = String(className).toLowerCase().trim();
+                    const classMatch = !dbClassNorm || !filterClassNorm || dbClassNorm === filterClassNorm;
+                    return dbSessionNorm === targetSessionNorm && classMatch;
                 });
 
                 // Auto-finalize only current term scores
