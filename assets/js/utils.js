@@ -11,6 +11,37 @@ const getBaseClassName = (name) => {
     return base.replace(/([0-9])\s*[A-Z]$/i, '$1').trim();
 };
 
+export function getClassLevel(name) {
+    const rank = getClassNameRank(name);
+    if (rank < 100) return 'nursery';
+    if (rank < 1000) return 'primary';
+    return 'secondary';
+}
+
+export function getActiveGradebookFields(level, settings) {
+    const defaults = {
+        nursery: ['assignment', 'test1', 'exam'],
+        primary: ['assignment', 'test1', 'exam'],
+        secondary: ['assignment', 'test1', 'test2', 'project', 'exam']
+    };
+    const allFields = ['assignment', 'test1', 'test2', 'project', 'exam'];
+    const fields = [];
+    allFields.forEach(f => {
+        const settingKey = `gb_${level}_${f}`;
+        const val = settings[settingKey];
+        if (val !== undefined && val !== null) {
+            if (val === 'true' || val === true || String(val) === 'true') {
+                fields.push(f);
+            }
+        } else {
+            if (defaults[level].includes(f)) {
+                fields.push(f);
+            }
+        }
+    });
+    return fields;
+}
+
 /**
  * Scoring Engine
  */
@@ -27,12 +58,46 @@ export const ScoringEngine = {
         return 'F9';
     },
 
+    getGradeNP(total) {
+        const s = parseFloat(total);
+        if (isNaN(s)) return '-';
+        if (s >= 95) return 'A+';
+        if (s >= 90) return 'A';
+        if (s >= 80) return 'B+';
+        if (s >= 75) return 'B';
+        if (s >= 70) return 'B-';
+        if (s >= 65) return 'C+';
+        if (s >= 60) return 'C';
+        if (s >= 55) return 'C-';
+        if (s >= 50) return 'D+';
+        if (s >= 45) return 'D';
+        if (s >= 40) return 'D-';
+        return 'FAIL';
+    },
+
     getRemark(total) {
         if (total >= 75) return 'Excellent';
         if (total >= 70) return 'Very Good';
         if (total >= 65) return 'Good';
         if (total >= 50) return 'Credit';
         if (total >= 40) return 'Pass';
+        return 'Fail';
+    },
+
+    getRemarkNP(total) {
+        const s = parseFloat(total);
+        if (isNaN(s)) return '-';
+        if (s >= 95) return 'Outstanding';
+        if (s >= 90) return 'Excellent';
+        if (s >= 80) return 'Very Good';
+        if (s >= 75) return 'Good';
+        if (s >= 70) return 'Satisfactory';
+        if (s >= 65) return 'Above Average';
+        if (s >= 60) return 'Average';
+        if (s >= 55) return 'Fair';
+        if (s >= 50) return 'Passable';
+        if (s >= 45) return 'Pass';
+        if (s >= 40) return 'Weak Pass';
         return 'Fail';
     },
 
@@ -46,6 +111,16 @@ export const ScoringEngine = {
         return "A very poor result. You are advised to be more studious and seek help in subjects where you are struggling.";
     },
 
+    getTeacherRemarkNP(avg) {
+        const score = parseFloat(avg);
+        if (score >= 80) return "Wonderful performance! Outstanding effort and active participation in class.";
+        if (score >= 70) return "Very good result. Showed high enthusiasm and progress. Well done!";
+        if (score >= 60) return "Good performance. Can do even better with more concentration in class.";
+        if (score >= 50) return "Fair performance. Needs to show more interest and attention during lessons.";
+        if (score >= 40) return "Below average. Requires more guidance and practice in key concepts.";
+        return "Poor performance. Needs close monitoring, support, and remedial lessons.";
+    },
+
     getPrincipalRemark(avg) {
         const score = parseFloat(avg);
         if (score >= 80) return "Excellent result! You are a credit to this institution. Continue to strive for excellence.";
@@ -54,6 +129,16 @@ export const ScoringEngine = {
         if (score >= 50) return "Average performance. You can do much better if you devote more time to your studies.";
         if (score >= 40) return "A weak performance. You need to double your efforts to avoid falling behind.";
         return "Very poor performance. You must improve your attitude towards your studies to avoid failure.";
+    },
+
+    getPrincipalRemarkNP(avg) {
+        const score = parseFloat(avg);
+        if (score >= 80) return "An excellent start to academic life. Keep up the high standard!";
+        if (score >= 70) return "A very encouraging result. Shows great potential for growth.";
+        if (score >= 60) return "Good progress. With a bit more effort, heights can be reached.";
+        if (score >= 50) return "Average outcome. More concentration on homework and studies will help.";
+        if (score >= 40) return "Weak performance. Needs extra guidance and practice at home.";
+        return "Very weak performance. Special attention and help are highly recommended.";
     },
 
     getOrdinal(n) {
@@ -66,6 +151,12 @@ export const ScoringEngine = {
         const val = parseFloat(value) || 0;
         if (field === 'exam') return val <= 60;
         return val <= 10; // CA components are 10 each
+    },
+
+    validateScoreNP(field, value) {
+        const val = parseFloat(value) || 0;
+        if (field === 'exam') return val <= 60;
+        return val <= 20; // H/W and Test are 20 each
     },
 
     calculatePsychomotorScores(attendance, student) {
@@ -864,6 +955,769 @@ export async function generateReportCard(student, scores, schoolInfo, attendance
     doc.setTextColor(theme.r, theme.g, theme.b);
     doc.text("VALID ONLY WITH ORIGINAL SCHOOL EMBOSSED STAMP", pageWidth - 15, footerY + 6, { align: 'right' });
     
+    if (!existingDoc) {
+        return doc;
+    }
+}
+
+const getNextClassGlobal = (currentClass) => {
+    const upper = String(currentClass || '').toUpperCase().trim();
+    
+    // Nursery
+    if (upper.includes('PRE-NURSERY') || upper.includes('PRENURSERY')) return 'Nursery 1';
+    if (upper.includes('NURSERY 1') || upper.includes('NUR 1')) return 'Nursery 2';
+    if (upper.includes('NURSERY 2') || upper.includes('NUR 2')) return 'Nursery 3';
+    if (upper.includes('NURSERY 3') || upper.includes('NUR 3')) return 'Primary 1';
+    
+    // Primary
+    if (upper.includes('PRIMARY 1') || upper.includes('PRI 1') || upper.includes('BASIC 1') || upper.includes('GRADE 1')) return 'Primary 2';
+    if (upper.includes('PRIMARY 2') || upper.includes('PRI 2') || upper.includes('BASIC 2') || upper.includes('GRADE 2')) return 'Primary 3';
+    if (upper.includes('PRIMARY 3') || upper.includes('PRI 3') || upper.includes('BASIC 3') || upper.includes('GRADE 3')) return 'Primary 4';
+    if (upper.includes('PRIMARY 4') || upper.includes('PRI 4') || upper.includes('BASIC 4') || upper.includes('GRADE 4')) return 'Primary 5';
+    if (upper.includes('PRIMARY 5') || upper.includes('PRI 5') || upper.includes('BASIC 5') || upper.includes('GRADE 5')) return 'Primary 6';
+    if (upper.includes('PRIMARY 6') || upper.includes('PRI 6') || upper.includes('BASIC 6') || upper.includes('GRADE 6')) return 'JSS 1';
+    
+    // Secondary
+    if (upper.includes('JSS 1') || upper.includes('JS 1') || upper === 'JSS1' || upper === 'JS1') return 'JSS 2';
+    if (upper.includes('JSS 2') || upper.includes('JS 2') || upper === 'JSS2' || upper === 'JS2') return 'JSS 3';
+    if (upper.includes('JSS 3') || upper.includes('JS 3') || upper === 'JSS3' || upper === 'JS3') return 'SSS 1';
+    if (upper.includes('SSS 1') || upper.includes('SS 1') || upper === 'SSS1' || upper === 'SS1') return 'SSS 2';
+    if (upper.includes('SSS 2') || upper.includes('SS 2') || upper === 'SSS2' || upper === 'SS2') return 'SSS 3';
+    if (upper.includes('SSS 3') || upper.includes('SS 3') || upper === 'SSS3' || upper === 'SS3') return 'GRADUATED';
+    
+    return '';
+};
+
+export async function generateNurseryReportCard(student, scores, schoolInfo, attendance = [], existingDoc = null) {
+    const { jsPDF } = window.jspdf;
+    const doc = existingDoc || new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+
+    const formatTermDate = (dateStr) => {
+        if (!dateStr) return '';
+        if (!dateStr.includes('-')) return dateStr;
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return dateStr;
+        const year = parseInt(parts[0], 10);
+        const monthIdx = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        if (isNaN(year) || isNaN(monthIdx) || isNaN(day)) return dateStr;
+        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        let suffix = 'th';
+        const lastDigit = day % 10;
+        const lastTwoDigits = day % 100;
+        if (lastTwoDigits >= 11 && lastTwoDigits <= 13) suffix = 'th';
+        else if (lastDigit === 1) suffix = 'st';
+        else if (lastDigit === 2) suffix = 'nd';
+        else if (lastDigit === 3) suffix = 'rd';
+        return `${day}${suffix} ${months[monthIdx]}, ${year}`;
+    };
+
+    if (schoolInfo) {
+        if (schoolInfo.termEnd) schoolInfo.termEnd = formatTermDate(schoolInfo.termEnd);
+        if (schoolInfo.termStart) schoolInfo.termStart = formatTermDate(schoolInfo.termStart);
+    }
+
+    const [allScores, loadedSubjects, settingsArray] = await Promise.all([
+        db.scores.where('student_id').equals(student.student_id).toArray(),
+        db.subjects.toArray(),
+        db.settings.toArray().catch(() => [])
+    ]);
+
+    const settings = {};
+    settingsArray.forEach(s => settings[s.key] = s.value);
+    const cumulativeGradingSetting = settings.cumulativeGrading === 'Enabled';
+
+    const getTermVal = (t) => {
+        if (!t) return 0;
+        const norm = String(t).toLowerCase();
+        if (norm.includes('first') || norm.includes('1st') || norm.includes('1')) return 1;
+        if (norm.includes('second') || norm.includes('2nd') || norm.includes('2')) return 2;
+        if (norm.includes('third') || norm.includes('3rd') || norm.includes('3')) return 3;
+        return 0;
+    };
+    const currentTermVal = getTermVal(schoolInfo.term || scores[0]?.term);
+
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 79, g: 70, b: 229 };
+    };
+    const baseTheme = hexToRgb(schoolInfo.themeColor || '#6366f1');
+    const theme = baseTheme;
+    
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.setLineWidth(1.5);
+    doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.setLineWidth(0.5);
+
+    let passportImg = null;
+    const passportSrc = student?.passport_url || student?.passport;
+    if (passportSrc && typeof passportSrc === 'string' && (passportSrc.startsWith('http') || passportSrc.startsWith('data:'))) {
+        passportImg = await new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img.naturalWidth > 0 && img.naturalHeight > 0 ? img : null);
+            img.onerror = () => resolve(null);
+            img.src = passportSrc;
+        });
+    }
+
+    if (schoolInfo.logo) {
+        try {
+            doc.addImage(schoolInfo.logo, 'PNG', 7, 7, 28, 28);
+        } catch (e) {
+            console.warn('Failed to add logo:', e);
+            doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+            doc.rect(7, 7, 28, 28);
+        }
+    } else {
+        doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+        doc.rect(7, 7, 28, 28);
+        doc.setFontSize(8);
+        doc.text("LOGO", 21, 21, { align: 'center' });
+    }
+
+    const passportW = 24;
+    const passportH = 28;
+    const passportX = pageWidth - 7 - passportW;
+    const passportY = 7;
+
+    const renderPlaceholderSilhouette = () => {
+        doc.setFillColor(241, 245, 249);
+        doc.rect(passportX, passportY, passportW, passportH, 'F');
+        doc.setFillColor(148, 163, 184);
+        doc.ellipse(passportX + passportW / 2, passportY + passportH / 3 + 0.5, 3.5, 4.0, 'F');
+        doc.ellipse(passportX + passportW / 2, passportY + passportH - 2, 7.5, 5.0, 'F');
+    };
+
+    if (passportImg) {
+        try {
+            doc.addImage(passportImg, 'PNG', passportX, passportY, passportW, passportH);
+        } catch (e) {
+            console.warn('Failed to render loaded passport image in PDF:', e);
+            renderPlaceholderSilhouette();
+        }
+    } else {
+        renderPlaceholderSilhouette();
+    }
+
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.setLineWidth(0.5);
+    doc.rect(passportX, passportY, passportW, passportH);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14.5);
+    doc.setTextColor(baseTheme.r * 0.5, baseTheme.g * 0.5, baseTheme.b * 0.5);
+    doc.text((schoolInfo.name || schoolInfo.schoolName || 'GRAVITON ACADEMY').toUpperCase(), pageWidth / 2, 15, { align: 'center' });
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(0, 0, 0);
+    doc.text((schoolInfo.address || schoolInfo.schoolAddress || '').toUpperCase(), pageWidth / 2, 20, { align: 'center' });
+    doc.text(`Tel: ${schoolInfo.phone} | Email: ${schoolInfo.email}`, pageWidth / 2, 23.5, { align: 'center' });
+    
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setFontSize(8.5);
+    doc.setTextColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.text(`Motto: ${schoolInfo.motto}`, pageWidth / 2, 27, { align: 'center' });
+
+    doc.setFillColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.rect(45, 33, pageWidth - 90, 6, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text("NURSERY ACADEMIC PROGRESS REPORT", pageWidth / 2, 37.2, { align: 'center' });
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    let y = 46;
+    const leftX = 12;
+    const midX = 85;
+    const rightX = 145;
+
+    const scoredEntries = scores.filter(s => s.total !== null && s.total !== undefined && s.total !== '');
+    
+    let avg;
+    if (cumulativeGradingSetting && currentTermVal > 1) {
+        avg = scoredEntries.length > 0 ? truncateToTwoDecimals(scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0) / scoredEntries.length).toFixed(2) : '0.00';
+    } else if (student.average !== undefined && student.average !== null) {
+        avg = truncateToTwoDecimals(student.average).toFixed(2);
+    } else {
+        avg = scoredEntries.length > 0 ? truncateToTwoDecimals(scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0) / scoredEntries.length).toFixed(2) : '0.00';
+    }
+
+    const currentTermTotalSum = scoredEntries.reduce((a, b) => {
+        const val = (cumulativeGradingSetting && currentTermVal > 1) ? b.total : (b.originalTotal !== undefined ? b.originalTotal : b.total);
+        return a + (parseFloat(val) || 0);
+    }, 0);
+
+    // Row 1
+    doc.setTextColor(0, 0, 0);
+    const nameStr = `NAME: ${student.name.toUpperCase()}`;
+    doc.text(nameStr, leftX, y);
+    const nameWidth = doc.getTextWidth(nameStr);
+    doc.line(23, y + 1, leftX + nameWidth, y + 1);
+    
+    const sexX = Math.max(midX, leftX + nameWidth + 5);
+    doc.text(`SEX: ${student.gender || 'N/A'}`, sexX, y);
+    doc.text(`TOTAL MARKS: ${currentTermTotalSum}`, rightX, y);
+    
+    y += 7;
+    // Row 2
+    let displayClass = scores[0]?.class_name || student.class_name;
+    doc.text(`CLASS: ${displayClass}`, leftX, y);
+    doc.text(`SESSION: ${scores[0]?.session || '2025/2026'}`, midX, y);
+    
+    const gSystem = schoolInfo.gradingSystem || 'Positional Ranking';
+    if (gSystem === 'Positional Ranking') {
+        doc.text(`POSITION: ${schoolInfo.position || 'N/A'}`, rightX, y);
+    } else {
+        doc.text(`OVERALL GRADE: ${ScoringEngine.getGradeNP(parseFloat(avg))}`, rightX, y);
+    }
+    
+    y += 7;
+    // Row 3
+    doc.text(`TERM: ${scores[0]?.term || 'N/A'}`, leftX, y);
+    const isCumulative = scores.some(s => s.originalTotal !== undefined);
+    doc.text(isCumulative ? `CUM. AVERAGE: ${avg}%` : `AVERAGE: ${avg}%`, midX, y);
+    
+    y += 7;
+    // Row 4
+    doc.text(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'}`, leftX, y);
+    
+    const isThirdTerm = (schoolInfo.term || '').toLowerCase().includes('third') || (schoolInfo.term || '').toLowerCase().includes('3rd');
+    if (isThirdTerm) {
+        const scoreClass = String(scores[0]?.class_name || student.class_name || '').toUpperCase().trim();
+        const currentDbClass = String(student.class_name || '').toUpperCase().trim();
+        const nextClass = getNextClassGlobal(scoreClass);
+        
+        let isPromoted = parseFloat(avg) >= 40;
+        if (currentDbClass !== scoreClass && currentDbClass === nextClass) {
+            isPromoted = true;
+        }
+
+        const decision = isPromoted ? (nextClass === 'GRADUATED' ? 'GRADUATED' : `PROMOTED TO ${nextClass}`) : 'REPEAT';
+        const decisionColor = isPromoted ? [0, 128, 0] : [200, 0, 0];
+        doc.setTextColor(...decisionColor);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`DECISION: ${decision}`, midX, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+    } else {
+        doc.text(`PASS/FAIL: ${parseFloat(avg) >= 40 ? 'PASS' : 'FAIL'}`, midX, y);
+    }
+    doc.text(`NEXT BEGINS: ${schoolInfo.termStart || '13th April, 2026'}`, rightX, y);
+
+    const tableHead = [['SUBJECT', 'H/W (20)', 'TEST (20)', 'EXAM (60)', 'TOTAL (100)', 'GRADE', 'REMARK']];
+    const sortedScores = [...scores].sort((a, b) => (a.subject_name || '').localeCompare(b.subject_name || ''));
+    
+    const tableBody = sortedScores.map(s => {
+        const hw = s.assignment !== null && s.assignment !== undefined && s.assignment !== '' ? s.assignment : '-';
+        const test = s.test1 !== null && s.test1 !== undefined && s.test1 !== '' ? s.test1 : '-';
+        const exam = s.exam !== null && s.exam !== undefined && s.exam !== '' ? s.exam : '-';
+        const total = s.total !== null && s.total !== undefined && s.total !== '' ? parseFloat(s.total).toFixed(0) : '-';
+        const grade = s.total !== null && s.total !== undefined && s.total !== '' ? ScoringEngine.getGradeNP(s.total) : '-';
+        const remark = s.total !== null && s.total !== undefined && s.total !== '' ? ScoringEngine.getRemarkNP(s.total) : '-';
+        return [s.subject_name, hw, test, exam, total, grade, remark];
+    });
+
+    doc.autoTable({
+        startY: y + 4,
+        head: tableHead,
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillStyle: [baseTheme.r, baseTheme.g, baseTheme.b], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+        styles: { fontSize: 8, textColor: 0, cellPadding: 2.5 },
+        columnStyles: {
+            0: { fontStyle: 'bold', halign: 'left' },
+            1: { halign: 'center' },
+            2: { halign: 'center' },
+            3: { halign: 'center' },
+            4: { halign: 'center', fontStyle: 'bold' },
+            5: { halign: 'center', fontStyle: 'bold' },
+            6: { halign: 'left' }
+        },
+        margin: { left: 10, right: 10 }
+    });
+
+    let currentY = doc.lastAutoTable.finalY + 6;
+
+    doc.setFillColor(243, 244, 246);
+    doc.roundedRect(10, currentY, pageWidth - 20, 26, 2, 2, 'F');
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.text("PUPIL BEHAVIOR & SKILL RATINGS", 13, currentY + 5);
+
+    const autoScores = ScoringEngine.calculatePsychomotorScores(attendance, student);
+    const domains = [
+        { name: 'Punctuality', score: autoScores.punctuality },
+        { name: 'Neatness', score: autoScores.neatness },
+        { name: 'Honesty', score: autoScores.honesty },
+        { name: 'Self Control', score: autoScores.self_control },
+        { name: 'Courage', score: autoScores.courage },
+        { name: 'Creativity', score: autoScores.creativity },
+        { name: 'Participation', score: autoScores.participation },
+        { name: 'Compliance', score: autoScores.compliance }
+    ];
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(0, 0, 0);
+
+    const drawStars = (doc, x, y, rating) => {
+        const r = parseInt(rating) || 3;
+        for (let i = 0; i < 5; i++) {
+            if (i < r) {
+                doc.setFillColor(250, 204, 21);
+                doc.circle(x + i * 3.5, y - 1, 1.2, 'F');
+            } else {
+                doc.setDrawColor(203, 213, 225);
+                doc.circle(x + i * 3.5, y - 1, 1.2, 'S');
+            }
+        }
+    };
+
+    let itemY = currentY + 11;
+    let colX = 13;
+    domains.forEach((d, idx) => {
+        if (idx === 4) {
+            colX = 110;
+            itemY = currentY + 11;
+        }
+        doc.text(d.name, colX, itemY);
+        drawStars(doc, colX + 38, itemY, d.score);
+        itemY += 4.5;
+    });
+
+    currentY += 32;
+
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(10, currentY, pageWidth - 20, 16, 2, 2, 'D');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.text("TEACHER'S COMMENT & OBSERVATIONS", 13, currentY + 5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(0, 0, 0);
+    doc.text(schoolInfo.teacherComment || ScoringEngine.getTeacherRemarkNP(avg), 13, currentY + 10, { maxWidth: pageWidth - 26 });
+
+    currentY += 21;
+
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.roundedRect(10, currentY, pageWidth - 20, 16, 2, 2, 'D');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.text("PRINCIPAL'S REMARK", 13, currentY + 5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(0, 0, 0);
+    doc.text(schoolInfo.principalComment || ScoringEngine.getPrincipalRemarkNP(avg), 13, currentY + 10, { maxWidth: pageWidth - 26 });
+
+    currentY += 22;
+
+    const footerY = currentY + 6;
+    let qrDataURL = null;
+    const qrLines = [
+        `PUPIL NAME: ${student.name.toUpperCase()}`,
+        `CLASS: ${student.class_name || ''} SESSION: ${scores[0]?.session || '2025/2026'}`,
+        `TERM: ${scores[0]?.term || 'N/A'} AVERAGE: ${avg}%`,
+        `NEXT BEGINS: ${schoolInfo.termStart || ''}`
+    ];
+    try {
+        if (typeof QRCode !== 'undefined') {
+            qrDataURL = await QRCode.toDataURL(qrLines.join('\n'), { margin: 1, width: 150 });
+        }
+    } catch (e) {
+        console.warn('Dynamic QR Generation failed:', e);
+    }
+
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.rect(12, footerY - 5, 16, 16);
+    if (qrDataURL) {
+        try {
+            doc.addImage(qrDataURL, 'PNG', 13, footerY - 4, 14, 14);
+        } catch (e) {}
+    }
+
+    doc.setFontSize(5);
+    doc.setTextColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.text("OFFICIAL VERIFICATION", 30, footerY - 1);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Scan this code to verify progress", 30, footerY + 2);
+    doc.text("authenticity.", 30, footerY + 5);
+
+    doc.setFontSize(7.5);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Teacher Sign: ____________________", 80, footerY + 4);
+    doc.text("Principal Sign: ____________________", 140, footerY + 4);
+
+    if (!existingDoc) {
+        return doc;
+    }
+}
+
+export async function generatePrimaryReportCard(student, scores, schoolInfo, attendance = [], existingDoc = null) {
+    const { jsPDF } = window.jspdf;
+    const doc = existingDoc || new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+
+    const formatTermDate = (dateStr) => {
+        if (!dateStr) return '';
+        if (!dateStr.includes('-')) return dateStr;
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return dateStr;
+        const year = parseInt(parts[0], 10);
+        const monthIdx = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        if (isNaN(year) || isNaN(monthIdx) || isNaN(day)) return dateStr;
+        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        let suffix = 'th';
+        const lastDigit = day % 10;
+        const lastTwoDigits = day % 100;
+        if (lastTwoDigits >= 11 && lastTwoDigits <= 13) suffix = 'th';
+        else if (lastDigit === 1) suffix = 'st';
+        else if (lastDigit === 2) suffix = 'nd';
+        else if (lastDigit === 3) suffix = 'rd';
+        return `${day}${suffix} ${months[monthIdx]}, ${year}`;
+    };
+
+    if (schoolInfo) {
+        if (schoolInfo.termEnd) schoolInfo.termEnd = formatTermDate(schoolInfo.termEnd);
+        if (schoolInfo.termStart) schoolInfo.termStart = formatTermDate(schoolInfo.termStart);
+    }
+
+    const [allScores, loadedSubjects, settingsArray] = await Promise.all([
+        db.scores.where('student_id').equals(student.student_id).toArray(),
+        db.subjects.toArray(),
+        db.settings.toArray().catch(() => [])
+    ]);
+
+    const settings = {};
+    settingsArray.forEach(s => settings[s.key] = s.value);
+    const cumulativeGradingSetting = settings.cumulativeGrading === 'Enabled';
+
+    const getTermVal = (t) => {
+        if (!t) return 0;
+        const norm = String(t).toLowerCase();
+        if (norm.includes('first') || norm.includes('1st') || norm.includes('1')) return 1;
+        if (norm.includes('second') || norm.includes('2nd') || norm.includes('2')) return 2;
+        if (norm.includes('third') || norm.includes('3rd') || norm.includes('3')) return 3;
+        return 0;
+    };
+    const currentTermVal = getTermVal(schoolInfo.term || scores[0]?.term);
+
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 30, g: 58, b: 138 };
+    };
+    const baseTheme = hexToRgb(schoolInfo.themeColor || '#1e3a8a');
+    const theme = baseTheme;
+
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.setLineWidth(1.5);
+    doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.setLineWidth(0.5);
+    doc.rect(7, 7, pageWidth - 14, pageHeight - 14);
+
+    let passportImg = null;
+    const passportSrc = student?.passport_url || student?.passport;
+    if (passportSrc && typeof passportSrc === 'string' && (passportSrc.startsWith('http') || passportSrc.startsWith('data:'))) {
+        passportImg = await new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img.naturalWidth > 0 && img.naturalHeight > 0 ? img : null);
+            img.onerror = () => resolve(null);
+            img.src = passportSrc;
+        });
+    }
+
+    if (schoolInfo.logo) {
+        try {
+            doc.addImage(schoolInfo.logo, 'PNG', 7, 7, 28, 28);
+        } catch (e) {
+            console.warn('Failed to add logo:', e);
+            doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+            doc.rect(7, 7, 28, 28);
+        }
+    } else {
+        doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+        doc.rect(7, 7, 28, 28);
+        doc.setFontSize(8);
+        doc.text("LOGO", 21, 21, { align: 'center' });
+    }
+
+    const passportW = 24;
+    const passportH = 28;
+    const passportX = pageWidth - 7 - passportW;
+    const passportY = 7;
+
+    const renderPlaceholderSilhouette = () => {
+        doc.setFillColor(241, 245, 249);
+        doc.rect(passportX, passportY, passportW, passportH, 'F');
+        doc.setFillColor(148, 163, 184);
+        doc.ellipse(passportX + passportW / 2, passportY + passportH / 3 + 0.5, 3.5, 4.0, 'F');
+        doc.ellipse(passportX + passportW / 2, passportY + passportH - 2, 7.5, 5.0, 'F');
+    };
+
+    if (passportImg) {
+        try {
+            doc.addImage(passportImg, 'PNG', passportX, passportY, passportW, passportH);
+        } catch (e) {
+            console.warn('Failed to render loaded passport image in PDF:', e);
+            renderPlaceholderSilhouette();
+        }
+    } else {
+        renderPlaceholderSilhouette();
+    }
+
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.setLineWidth(0.5);
+    doc.rect(passportX, passportY, passportW, passportH);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14.5);
+    doc.setTextColor(baseTheme.r * 0.5, baseTheme.g * 0.5, baseTheme.b * 0.5);
+    doc.text((schoolInfo.name || schoolInfo.schoolName || 'GRAVITON ACADEMY').toUpperCase(), pageWidth / 2, 15, { align: 'center' });
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(0, 0, 0);
+    doc.text((schoolInfo.address || schoolInfo.schoolAddress || '').toUpperCase(), pageWidth / 2, 20, { align: 'center' });
+    doc.text(`Tel: ${schoolInfo.phone} | Email: ${schoolInfo.email}`, pageWidth / 2, 23.5, { align: 'center' });
+    
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setFontSize(8.5);
+    doc.setTextColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.text(`Motto: ${schoolInfo.motto}`, pageWidth / 2, 27, { align: 'center' });
+
+    doc.setFillColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.rect(45, 33, pageWidth - 90, 6, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text("PRIMARY SCHOOL REPORT CARD", pageWidth / 2, 37.2, { align: 'center' });
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    let y = 46;
+    const leftX = 12;
+    const midX = 85;
+    const rightX = 145;
+
+    const scoredEntries = scores.filter(s => s.total !== null && s.total !== undefined && s.total !== '');
+    
+    let avg;
+    if (cumulativeGradingSetting && currentTermVal > 1) {
+        avg = scoredEntries.length > 0 ? truncateToTwoDecimals(scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0) / scoredEntries.length).toFixed(2) : '0.00';
+    } else if (student.average !== undefined && student.average !== null) {
+        avg = truncateToTwoDecimals(student.average).toFixed(2);
+    } else {
+        avg = scoredEntries.length > 0 ? truncateToTwoDecimals(scoredEntries.reduce((a, b) => a + (parseFloat(b.total) || 0), 0) / scoredEntries.length).toFixed(2) : '0.00';
+    }
+
+    const currentTermTotalSum = scoredEntries.reduce((a, b) => {
+        const val = (cumulativeGradingSetting && currentTermVal > 1) ? b.total : (b.originalTotal !== undefined ? b.originalTotal : b.total);
+        return a + (parseFloat(val) || 0);
+    }, 0);
+
+    // Row 1
+    doc.setTextColor(0, 0, 0);
+    const nameStr = `NAME: ${student.name.toUpperCase()}`;
+    doc.text(nameStr, leftX, y);
+    const nameWidth = doc.getTextWidth(nameStr);
+    doc.line(23, y + 1, leftX + nameWidth, y + 1);
+    
+    const sexX = Math.max(midX, leftX + nameWidth + 5);
+    doc.text(`SEX: ${student.gender || 'N/A'}`, sexX, y);
+    doc.text(`TOTAL MARKS: ${currentTermTotalSum}`, rightX, y);
+    
+    y += 7;
+    // Row 2
+    let displayClass = scores[0]?.class_name || student.class_name;
+    doc.text(`CLASS: ${displayClass}`, leftX, y);
+    doc.text(`SESSION: ${scores[0]?.session || '2025/2026'}`, midX, y);
+    
+    const gSystem = schoolInfo.gradingSystem || 'Positional Ranking';
+    if (gSystem === 'Positional Ranking') {
+        doc.text(`POSITION: ${schoolInfo.position || 'N/A'}`, rightX, y);
+    } else {
+        doc.text(`OVERALL GRADE: ${ScoringEngine.getGradeNP(parseFloat(avg))}`, rightX, y);
+    }
+    
+    y += 7;
+    // Row 3
+    doc.text(`TERM: ${scores[0]?.term || 'N/A'}`, leftX, y);
+    const isCumulative = scores.some(s => s.originalTotal !== undefined);
+    doc.text(isCumulative ? `CUM. AVERAGE: ${avg}%` : `AVERAGE: ${avg}%`, midX, y);
+    
+    y += 7;
+    // Row 4
+    doc.text(`TERM ENDS: ${schoolInfo.termEnd || '31st March, 2026'}`, leftX, y);
+    
+    const isThirdTerm = (schoolInfo.term || '').toLowerCase().includes('third') || (schoolInfo.term || '').toLowerCase().includes('3rd');
+    if (isThirdTerm) {
+        const scoreClass = String(scores[0]?.class_name || student.class_name || '').toUpperCase().trim();
+        const currentDbClass = String(student.class_name || '').toUpperCase().trim();
+        const nextClass = getNextClassGlobal(scoreClass);
+        
+        let isPromoted = parseFloat(avg) >= 40;
+        if (currentDbClass !== scoreClass && currentDbClass === nextClass) {
+            isPromoted = true;
+        }
+
+        const decision = isPromoted ? (nextClass === 'GRADUATED' ? 'GRADUATED' : `PROMOTED TO ${nextClass}`) : 'REPEAT';
+        const decisionColor = isPromoted ? [0, 128, 0] : [200, 0, 0];
+        doc.setTextColor(...decisionColor);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`DECISION: ${decision}`, midX, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+    } else {
+        doc.text(`PASS/FAIL: ${parseFloat(avg) >= 40 ? 'PASS' : 'FAIL'}`, midX, y);
+    }
+    doc.text(`NEXT BEGINS: ${schoolInfo.termStart || '13th April, 2026'}`, rightX, y);
+
+    const tableHead = [['SUBJECT', 'H/W (20)', 'TEST (20)', 'EXAM (60)', 'TOTAL (100)', 'GRADE', 'REMARK']];
+    const sortedScores = [...scores].sort((a, b) => (a.subject_name || '').localeCompare(b.subject_name || ''));
+    
+    const tableBody = sortedScores.map(s => {
+        const hw = s.assignment !== null && s.assignment !== undefined && s.assignment !== '' ? s.assignment : '-';
+        const test = s.test1 !== null && s.test1 !== undefined && s.test1 !== '' ? s.test1 : '-';
+        const exam = s.exam !== null && s.exam !== undefined && s.exam !== '' ? s.exam : '-';
+        const total = s.total !== null && s.total !== undefined && s.total !== '' ? parseFloat(s.total).toFixed(0) : '-';
+        const grade = s.total !== null && s.total !== undefined && s.total !== '' ? ScoringEngine.getGradeNP(s.total) : '-';
+        const remark = s.total !== null && s.total !== undefined && s.total !== '' ? ScoringEngine.getRemarkNP(s.total) : '-';
+        return [s.subject_name, hw, test, exam, total, grade, remark];
+    });
+
+    doc.autoTable({
+        startY: y + 4,
+        head: tableHead,
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillStyle: [baseTheme.r, baseTheme.g, baseTheme.b], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+        styles: { fontSize: 8, textColor: 0, cellPadding: 2.2 },
+        columnStyles: {
+            0: { fontStyle: 'bold', halign: 'left' },
+            1: { halign: 'center' },
+            2: { halign: 'center' },
+            3: { halign: 'center' },
+            4: { halign: 'center', fontStyle: 'bold' },
+            5: { halign: 'center', fontStyle: 'bold' },
+            6: { halign: 'left' }
+        },
+        margin: { left: 10, right: 10 }
+    });
+
+    let currentY = doc.lastAutoTable.finalY + 5;
+
+    doc.setFillColor(243, 244, 246);
+    doc.rect(10, currentY, pageWidth - 20, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.text("AFFECTIVE & PSYCHOMOTOR DOMAIN (RATING: 1-5)", pageWidth / 2, currentY + 3.7, { align: 'center' });
+
+    currentY += 8;
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+
+    const autoScores = ScoringEngine.calculatePsychomotorScores(attendance, student);
+    const domainData = [
+        ['Punctuality', autoScores.punctuality, 'Neatness', autoScores.neatness, 'Honesty', autoScores.honesty, 'Self Control', autoScores.self_control],
+        ['Courage', autoScores.courage, 'Creativity', autoScores.creativity, 'Participation', autoScores.participation, 'Compliance', autoScores.compliance]
+    ];
+    
+    domainData.forEach(row => {
+        let x = 12;
+        row.forEach((item, idx) => {
+            if (idx % 2 === 0) {
+                doc.text(String(item), x, currentY);
+                x += 25;
+            } else {
+                doc.text(String(item), x, currentY);
+                doc.line(x - 2, currentY + 1, x + 5, currentY + 1);
+                x += 20;
+            }
+        });
+        currentY += 5;
+    });
+
+    currentY += 3;
+
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.rect(10, currentY, pageWidth - 20, 14);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.text("TEACHER'S COMMENT:", 12, currentY + 4);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    doc.text(schoolInfo.teacherComment || ScoringEngine.getTeacherRemarkNP(avg), 12, currentY + 8, { maxWidth: pageWidth - 25 });
+    
+    currentY += 17;
+
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.rect(10, currentY, pageWidth - 20, 14);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.text("PRINCIPAL'S COMMENT:", 12, currentY + 4);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    doc.text(schoolInfo.principalComment || ScoringEngine.getPrincipalRemarkNP(avg), 12, currentY + 8, { maxWidth: pageWidth - 25 });
+
+    currentY += 19;
+
+    const footerY = currentY + 6;
+    let qrDataURL = null;
+    const qrLines = [
+        `NAME: ${student.name.toUpperCase()}`,
+        `CLASS: ${student.class_name || ''} SESSION: ${scores[0]?.session || '2025/2026'}`,
+        `TERM: ${scores[0]?.term || 'N/A'} AVERAGE: ${avg}%`,
+        `NEXT BEGINS: ${schoolInfo.termStart || ''}`
+    ];
+    try {
+        if (typeof QRCode !== 'undefined') {
+            qrDataURL = await QRCode.toDataURL(qrLines.join('\n'), { margin: 1, width: 150 });
+        }
+    } catch (e) {
+        console.warn('Dynamic QR Generation failed:', e);
+    }
+
+    doc.setDrawColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.rect(12, footerY - 5, 16, 16);
+    if (qrDataURL) {
+        try {
+            doc.addImage(qrDataURL, 'PNG', 13, footerY - 4, 14, 14);
+        } catch (e) {}
+    }
+
+    doc.setFontSize(5);
+    doc.setTextColor(baseTheme.r, baseTheme.g, baseTheme.b);
+    doc.text("OFFICIAL VERIFICATION", 30, footerY - 1);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Scan this code to verify progress", 30, footerY + 2);
+    doc.text("authenticity.", 30, footerY + 5);
+
+    doc.setFontSize(7.5);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Teacher Sign: ____________________", 80, footerY + 4);
+    doc.text("Principal Sign: ____________________", 140, footerY + 4);
+
     if (!existingDoc) {
         return doc;
     }
@@ -2583,28 +3437,28 @@ export function getClassNameRank(name) {
     const n = (name || '').trim().toLowerCase();
     
     const romanOrWordToDigit = (str) => {
-        if (str.includes('one') || str.includes(' 1') || str.includes(' i')) return 1;
-        if (str.includes('two') || str.includes(' 2') || str.includes(' ii')) return 2;
-        if (str.includes('three') || str.includes(' 3') || str.includes(' iii')) return 3;
-        if (str.includes('four') || str.includes(' 4') || str.includes(' iv')) return 4;
-        if (str.includes('five') || str.includes(' 5') || str.includes(' v')) return 5;
-        if (str.includes('six') || str.includes(' 6') || str.includes(' vi')) return 6;
+        if (str.includes('one') || str.includes('1') || str.includes(' i')) return 1;
+        if (str.includes('two') || str.includes('2') || str.includes(' ii')) return 2;
+        if (str.includes('three') || str.includes('3') || str.includes(' iii')) return 3;
+        if (str.includes('four') || str.includes('4') || str.includes(' iv')) return 4;
+        if (str.includes('five') || str.includes('5') || str.includes(' v')) return 5;
+        if (str.includes('six') || str.includes('6') || str.includes(' vi')) return 6;
         return null;
     };
 
     // Nursery / Playgroup / Creche / Kindergarten / Preschool
-    if (n.includes('pre-nursery') || n.includes('prenursery') || n.includes('playgroup') || n.includes('creche') || n.includes('pre-school') || n.includes('preschool')) return 10;
+    if (n.includes('pre-nursery') || n.includes('prenursery') || n.includes('playgroup') || n.includes('creche') || n.includes('pre-school') || n.includes('preschool') || n.includes('toddler')) return 10;
     if (n.includes('kindergarten') || n.includes('kg')) {
         const d = romanOrWordToDigit(n);
         return d ? 15 + d : 15;
     }
-    if (n.includes('nursery')) {
+    if (n.includes('nursery') || n.includes('nursry') || n.includes('nur')) {
         const d = romanOrWordToDigit(n);
         return d ? 20 + d * 10 : 25;
     }
     
     // Primary / Basic / Grade
-    if (n.includes('primary') || n.includes('pri') || n.includes('basic') || n.includes('grade')) {
+    if (n.includes('primary') || n.includes('pri') || n.includes('prm') || n.includes('basic') || n.includes('grade')) {
         const d = romanOrWordToDigit(n);
         return d ? 100 + d * 10 : 105;
     }
@@ -3111,5 +3965,477 @@ export async function generateBulkStudentIDCardsPDF(students, schoolInfo = {}) {
 export function truncateToTwoDecimals(val) {
     if (val === null || val === undefined || isNaN(val)) return 0;
     return Math.floor(parseFloat(Number(val).toFixed(4)) * 100) / 100;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXAM SEATING ARRANGEMENT PDF GENERATORS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Generate a visual 2D seating chart PDF showing the hall grid layout.
+ */
+export async function generateSeatingChartPDF(arrangement, allStudents, schoolInfo = {}) {
+    const { jsPDF } = window.jspdf;
+    const { rows, cols, assignments, hall_name, students_per_seat, numbering_order, class_names: includedClasses, term, session } = arrangement;
+
+    const studentMap = {};
+    allStudents.forEach(s => { studentMap[String(s.student_id).trim()] = s; });
+
+    // Determine orientation based on cols
+    const isLandscape = cols > 6;
+    const doc = new jsPDF(isLandscape ? 'l' : 'p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 12;
+
+    // ─── Header ─────────────────────────────────────────────────────────────
+    let y = margin;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(schoolInfo.schoolName || 'School', pageWidth / 2, y, { align: 'center' });
+    y += 5;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    if (schoolInfo.address) {
+        doc.text(schoolInfo.address, pageWidth / 2, y, { align: 'center' });
+        y += 4;
+    }
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`EXAM SEATING CHART — ${hall_name}`, pageWidth / 2, y, { align: 'center' });
+    y += 5;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${term || ''} · ${session || ''} · ${rows}×${cols} Grid · ${students_per_seat} per seat · Numbered by ${numbering_order}`, pageWidth / 2, y, { align: 'center' });
+    y += 4;
+
+    // ─── Class Legend ────────────────────────────────────────────────────────
+    const palette = [
+        [99,102,241], [236,72,153], [245,158,11], [16,185,129], [59,130,246], [239,68,68],
+        [139,92,246], [20,184,166], [249,115,22], [6,182,212], [132,204,22], [225,29,72]
+    ];
+    const classColorMap = {};
+    (includedClasses || []).forEach((cls, i) => {
+        classColorMap[cls] = palette[i % palette.length];
+    });
+
+    doc.setFontSize(6.5);
+    let legendX = margin;
+    for (const cls of (includedClasses || [])) {
+        const rgb = classColorMap[cls] || [100,100,100];
+        doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+        doc.circle(legendX + 1.5, y - 0.5, 1.2, 'F');
+        doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+        doc.text(cls, legendX + 4, y);
+        legendX += doc.getTextWidth(cls) + 7;
+        if (legendX > pageWidth - margin - 20) {
+            legendX = margin;
+            y += 3.5;
+        }
+    }
+    doc.setTextColor(0, 0, 0);
+    y += 5;
+
+    // ─── Blackboard bar ─────────────────────────────────────────────────────
+    doc.setFillColor(30, 41, 59);
+    doc.roundedRect(pageWidth / 2 - 25, y, 50, 5, 1.5, 1.5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'bold');
+    doc.text('FRONT / BLACKBOARD', pageWidth / 2, y + 3.5, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+    y += 8;
+
+    // ─── Grid ───────────────────────────────────────────────────────────────
+    const gridMap = {};
+    assignments.forEach(a => { gridMap[`${a.row}-${a.col}`] = a; });
+
+    const availableWidth = pageWidth - margin * 2 - 8; // 8mm for row labels
+    const availableHeight = pageHeight - y - margin - 5;
+    const cellW = Math.min(availableWidth / cols, 28);
+    const cellH = Math.min(availableHeight / rows, 14 + (students_per_seat - 1) * 4);
+    const gridStartX = margin + 8;
+
+    // Col headers
+    doc.setFontSize(5.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(148, 163, 184);
+    for (let c = 0; c < cols; c++) {
+        doc.text(`Col ${c + 1}`, gridStartX + c * cellW + cellW / 2, y - 1, { align: 'center' });
+    }
+    doc.setTextColor(0, 0, 0);
+
+    for (let r = 0; r < rows; r++) {
+        const cellY = y + r * cellH;
+
+        // Check page overflow
+        if (cellY + cellH > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+            // Re-draw header on new page
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${hall_name} — Continued (Row ${r + 1}+)`, pageWidth / 2, y, { align: 'center' });
+            y += 6;
+            // Recalculate
+            const remainingRows = rows - r;
+            // Continue drawing from this point
+            for (let rr = r; rr < rows; rr++) {
+                const innerCellY = y + (rr - r) * cellH;
+                if (innerCellY + cellH > pageHeight - margin) break;
+
+                // Row label
+                doc.setFontSize(5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(148, 163, 184);
+                doc.text(`R${rr + 1}`, margin, innerCellY + cellH / 2 + 1);
+                doc.setTextColor(0, 0, 0);
+
+                for (let cc = 0; cc < cols; cc++) {
+                    const cell = gridMap[`${rr}-${cc}`];
+                    const cx = gridStartX + cc * cellW;
+
+                    if (!cell || cell.student_ids.length === 0) {
+                        doc.setDrawColor(226, 232, 240);
+                        doc.setLineDashPattern([1, 1], 0);
+                        doc.roundedRect(cx, innerCellY, cellW - 1, cellH - 1, 1.5, 1.5, 'S');
+                        doc.setLineDashPattern([], 0);
+                        doc.setFontSize(5);
+                        doc.setTextColor(203, 213, 225);
+                        doc.text(`#${cell?.seat_number || '?'}`, cx + 2, innerCellY + 3.5);
+                        doc.text('Empty', cx + cellW / 2 - 1, innerCellY + cellH / 2 + 1);
+                        doc.setTextColor(0, 0, 0);
+                    } else {
+                        if (cell.collision) {
+                            doc.setFillColor(255, 251, 235);
+                            doc.setDrawColor(245, 158, 11);
+                        } else {
+                            doc.setFillColor(255, 255, 255);
+                            doc.setDrawColor(226, 232, 240);
+                        }
+                        doc.roundedRect(cx, innerCellY, cellW - 1, cellH - 1, 1.5, 1.5, 'FD');
+
+                        // Seat number
+                        doc.setFontSize(5);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(99, 102, 241);
+                        doc.text(`#${cell.seat_number}`, cx + 2, innerCellY + 3.5);
+
+                        // Students
+                        cell.student_ids.forEach((sid, idx) => {
+                            const st = studentMap[String(sid).trim()];
+                            const rgb = classColorMap[cell.class_names[idx]] || [100,100,100];
+                            const name = st ? st.name : sid;
+                            doc.setFontSize(4.5);
+                            doc.setFont('helvetica', 'normal');
+                            doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+                            doc.text(name.substring(0, 18), cx + 2, innerCellY + 6.5 + idx * 3.5);
+                        });
+                        doc.setTextColor(0, 0, 0);
+                    }
+                }
+            }
+            break; // Don't double-draw
+        }
+
+        // Row label
+        doc.setFontSize(5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(148, 163, 184);
+        doc.text(`R${r + 1}`, margin, cellY + cellH / 2 + 1);
+        doc.setTextColor(0, 0, 0);
+
+        for (let c = 0; c < cols; c++) {
+            const cell = gridMap[`${r}-${c}`];
+            const cx = gridStartX + c * cellW;
+
+            if (!cell || cell.student_ids.length === 0) {
+                doc.setDrawColor(226, 232, 240);
+                doc.setLineDashPattern([1, 1], 0);
+                doc.roundedRect(cx, cellY, cellW - 1, cellH - 1, 1.5, 1.5, 'S');
+                doc.setLineDashPattern([], 0);
+                doc.setFontSize(5);
+                doc.setTextColor(203, 213, 225);
+                doc.text(`#${cell?.seat_number || '?'}`, cx + 2, cellY + 3.5);
+                doc.text('Empty', cx + cellW / 2 - 1, cellY + cellH / 2 + 1);
+                doc.setTextColor(0, 0, 0);
+            } else {
+                if (cell.collision) {
+                    doc.setFillColor(255, 251, 235);
+                    doc.setDrawColor(245, 158, 11);
+                } else {
+                    doc.setFillColor(255, 255, 255);
+                    doc.setDrawColor(226, 232, 240);
+                }
+                doc.roundedRect(cx, cellY, cellW - 1, cellH - 1, 1.5, 1.5, 'FD');
+
+                doc.setFontSize(5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(99, 102, 241);
+                doc.text(`#${cell.seat_number}`, cx + 2, cellY + 3.5);
+
+                cell.student_ids.forEach((sid, idx) => {
+                    const st = studentMap[String(sid).trim()];
+                    const rgb = classColorMap[cell.class_names[idx]] || [100,100,100];
+                    const name = st ? st.name : sid;
+                    doc.setFontSize(4.5);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+                    doc.text(name.substring(0, 18), cx + 2, cellY + 6.5 + idx * 3.5);
+                });
+                doc.setTextColor(0, 0, 0);
+            }
+        }
+    }
+
+    doc.save(`Seating_Chart_${hall_name.replace(/\s+/g, '_')}.pdf`);
+}
+
+/**
+ * Generate printable desk label cards (cut-out labels to place on each desk).
+ */
+export async function generateDeskLabelsPDF(arrangement, allStudents, schoolInfo = {}) {
+    const { jsPDF } = window.jspdf;
+    const { assignments, hall_name, term, session } = arrangement;
+
+    const studentMap = {};
+    allStudents.forEach(s => { studentMap[String(s.student_id).trim()] = s; });
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 10;
+
+    // Label dimensions (3 columns × N rows per page)
+    const labelW = (pageWidth - margin * 2 - 10) / 3;
+    const labelH = 32;
+    const gapX = 5;
+    const gapY = 4;
+    const colsPerRow = 3;
+    const labelsPerPage = colsPerRow * Math.floor((pageHeight - margin * 2) / (labelH + gapY));
+
+    // Filter to seats that have students
+    const occupiedSeats = assignments.filter(a => a.student_ids && a.student_ids.length > 0);
+
+    let labelIdx = 0;
+    for (const seat of occupiedSeats) {
+        const pageIdx = Math.floor(labelIdx / labelsPerPage);
+        const posOnPage = labelIdx % labelsPerPage;
+        const colIdx = posOnPage % colsPerRow;
+        const rowIdx = Math.floor(posOnPage / colsPerRow);
+
+        if (posOnPage === 0 && labelIdx > 0) {
+            doc.addPage();
+        }
+
+        const x = margin + colIdx * (labelW + gapX);
+        const y = margin + rowIdx * (labelH + gapY);
+
+        // Label border
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineDashPattern([1, 1], 0);
+        doc.roundedRect(x, y, labelW, labelH, 2, 2, 'S');
+        doc.setLineDashPattern([], 0);
+
+        // Seat number badge
+        doc.setFillColor(99, 102, 241);
+        doc.roundedRect(x + 2, y + 2, 14, 6, 1.5, 1.5, 'F');
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text(`SEAT ${seat.seat_number}`, x + 9, y + 6, { align: 'center' });
+
+        // Hall name
+        doc.setFontSize(5.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text(hall_name || '', x + labelW - 3, y + 6, { align: 'right' });
+
+        // Student names
+        doc.setTextColor(30, 41, 59);
+        seat.student_ids.forEach((sid, idx) => {
+            const st = studentMap[String(sid).trim()];
+            const fullName = st ? st.name : sid;
+            const className = seat.class_names[idx] || '';
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'bold');
+            doc.text(fullName.substring(0, 28), x + 3, y + 13 + idx * 8);
+            doc.setFontSize(6);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text(className, x + 3, y + 16.5 + idx * 8);
+            doc.setTextColor(30, 41, 59);
+        });
+
+        // Footer
+        doc.setFontSize(4.5);
+        doc.setTextColor(148, 163, 184);
+        const footerText = `${schoolInfo.schoolName || ''} · ${term || ''} · ${session || ''}`;
+        doc.text(footerText.substring(0, 50), x + labelW / 2, y + labelH - 2, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+
+        labelIdx++;
+    }
+
+    doc.save(`Desk_Labels_${hall_name.replace(/\s+/g, '_')}.pdf`);
+}
+
+/**
+ * Generate an attendance sheet sorted alphabetically by student name
+ * with seat numbers and signature columns for invigilators.
+ */
+export async function generateSeatingAttendancePDF(arrangement, allStudents, schoolInfo = {}) {
+    const { jsPDF } = window.jspdf;
+    const { assignments, hall_name, term, session, class_names: includedClasses } = arrangement;
+
+    const studentMap = {};
+    allStudents.forEach(s => { studentMap[String(s.student_id).trim()] = s; });
+
+    // Build flat list of all seated students
+    const seatedStudents = [];
+    for (const seat of assignments) {
+        if (!seat.student_ids) continue;
+        seat.student_ids.forEach((sid, idx) => {
+            const st = studentMap[String(sid).trim()];
+            seatedStudents.push({
+                seatNumber: seat.seat_number,
+                row: seat.row + 1,
+                col: seat.col + 1,
+                studentId: sid,
+                name: st ? st.name : sid,
+                className: seat.class_names[idx] || ''
+            });
+        });
+    }
+
+    // Sort alphabetically by name
+    seatedStudents.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 12;
+
+    // ─── Header ─────────────────────────────────────────────────────────────
+    let y = margin;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(schoolInfo.schoolName || 'School', pageWidth / 2, y, { align: 'center' });
+    y += 5;
+    if (schoolInfo.address) {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(schoolInfo.address, pageWidth / 2, y, { align: 'center' });
+        y += 4;
+    }
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`EXAM ATTENDANCE SHEET — ${hall_name}`, pageWidth / 2, y, { align: 'center' });
+    y += 5;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${term || ''} · ${session || ''} · Total: ${seatedStudents.length} students · Classes: ${(includedClasses || []).join(', ')}`, pageWidth / 2, y, { align: 'center' });
+    y += 6;
+
+    // ─── Table ──────────────────────────────────────────────────────────────
+    const colWidths = {
+        sn: 8,
+        seatNo: 12,
+        name: 55,
+        className: 30,
+        studentId: 30,
+        signature: pageWidth - margin * 2 - 8 - 12 - 55 - 30 - 30
+    };
+    const rowH = 6;
+
+    // Table header
+    const drawTableHeader = () => {
+        doc.setFillColor(30, 41, 59);
+        doc.rect(margin, y, pageWidth - margin * 2, 7, 'F');
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        let hx = margin + 2;
+        doc.text('S/N', hx, y + 5); hx += colWidths.sn;
+        doc.text('SEAT', hx, y + 5); hx += colWidths.seatNo;
+        doc.text('STUDENT NAME', hx, y + 5); hx += colWidths.name;
+        doc.text('CLASS', hx, y + 5); hx += colWidths.className;
+        doc.text('STUDENT ID', hx, y + 5); hx += colWidths.studentId;
+        doc.text('SIGNATURE', hx, y + 5);
+        doc.setTextColor(0, 0, 0);
+        y += 7;
+    };
+
+    drawTableHeader();
+
+    seatedStudents.forEach((st, idx) => {
+        // Check page overflow
+        if (y + rowH > pageHeight - margin - 10) {
+            // Footer
+            doc.setFontSize(5.5);
+            doc.setTextColor(148, 163, 184);
+            doc.text(`Page ${doc.internal.getNumberOfPages()} · ${hall_name} · ${schoolInfo.schoolName || ''}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+            doc.setTextColor(0, 0, 0);
+
+            doc.addPage();
+            y = margin;
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${hall_name} — Attendance (Continued)`, pageWidth / 2, y, { align: 'center' });
+            y += 6;
+            drawTableHeader();
+        }
+
+        // Alternating row background
+        if (idx % 2 === 0) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(margin, y, pageWidth - margin * 2, rowH, 'F');
+        }
+
+        // Row border bottom
+        doc.setDrawColor(241, 245, 249);
+        doc.line(margin, y + rowH, pageWidth - margin, y + rowH);
+
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(30, 41, 59);
+        let rx = margin + 2;
+        doc.text(`${idx + 1}`, rx, y + 4.5); rx += colWidths.sn;
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(99, 102, 241);
+        doc.text(`${st.seatNumber}`, rx, y + 4.5); rx += colWidths.seatNo;
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(30, 41, 59);
+        doc.text(st.name.substring(0, 35), rx, y + 4.5); rx += colWidths.name;
+        doc.setTextColor(100, 116, 139);
+        doc.text(st.className, rx, y + 4.5); rx += colWidths.className;
+        doc.setFontSize(5.5);
+        doc.text(st.studentId || '', rx, y + 4.5); rx += colWidths.studentId;
+        // Signature line
+        doc.setDrawColor(200, 200, 200);
+        doc.line(rx, y + 4.5, rx + colWidths.signature - 4, y + 4.5);
+
+        doc.setTextColor(0, 0, 0);
+        y += rowH;
+    });
+
+    // ─── Footer ─────────────────────────────────────────────────────────────
+    y += 8;
+    if (y < pageHeight - 25) {
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text('Invigilator Name: ____________________________________________     Signature: ____________________________', margin, y);
+        y += 6;
+        doc.text('Date: ___________________________     Time: ___________________________', margin, y);
+    }
+
+    doc.setFontSize(5.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Page ${doc.internal.getNumberOfPages()} · ${hall_name} · ${schoolInfo.schoolName || ''}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+
+    doc.save(`Attendance_Sheet_${hall_name.replace(/\s+/g, '_')}.pdf`);
 }
 

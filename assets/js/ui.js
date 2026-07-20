@@ -5,7 +5,7 @@
 console.log('UI Module Loading...');
 
 import db, { prepareForSync, generateStudentId } from './db.js';
-import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses, generateRegistrationFormPDF, generateStudentIDCardPDF, generateBulkStudentIDCardsPDF, truncateToTwoDecimals } from './utils.js';
+import { ScoringEngine, Notifications, parseExcel, generateReportCard, generateCredentialsPDF, generateMastersheet, generateBlankScoreSheet, generatePinSlipPDF, generateGeneralSchoolTimetablePDF, compareClasses, generateRegistrationFormPDF, generateStudentIDCardPDF, generateBulkStudentIDCardsPDF, truncateToTwoDecimals, getClassLevel, generateNurseryReportCard, generatePrimaryReportCard, getActiveGradebookFields } from './utils.js';
 import { syncToCloud, syncFromCloud, registerUser, updateUserPassword, uploadPassport, getSupabase, uploadElearningFile } from './supabase-client.js';
 import { initPushNotifications, unsubscribeUser } from './push.js';
 import { analyzeText } from './aiDetector.js';
@@ -430,6 +430,13 @@ export const UI = {
     // ─── Sync-Aware Deletion Engine ───
     async safeDelete(table, id, successMessage = 'Record deleted') {
         try {
+            // Bypass cloud sync for local-only tables
+            if (table === 'exam_seating' || table === 'exam_halls') {
+                await db[table].delete(id);
+                if (successMessage) Notifications.show(successMessage, 'success');
+                return true;
+            }
+
             // 1. Log the deletion in audit_logs for sync engine
             await db.audit_logs.add({
                 id: (typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : `del_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
@@ -534,6 +541,113 @@ export const UI = {
         role: localStorage.getItem('user_role') || 'Admin',
         name: 'Admin User'
     },
+
+    /**
+     * Returns true if the current user is a Section Admin with restricted level access.
+     */
+    isSectionAdmin() {
+        return (this.currentUser?.role || '').toLowerCase() === 'section admin';
+    },
+
+    /**
+     * Returns the array of academic levels the current admin is allowed to access.
+     * SuperAdmin, Admin, and non-section-admin roles get all levels.
+     * Section Admins get only the levels stored in their profile.department field.
+     */
+    getAdminAllowedLevels() {
+        if (!this.isSectionAdmin()) return ['nursery', 'primary', 'secondary'];
+
+        const dept = (this.currentUser?.department || '').toLowerCase().trim();
+        if (!dept || dept === 'all') return ['nursery', 'primary', 'secondary'];
+
+        const levels = [];
+        if (dept.includes('nursery'))   levels.push('nursery');
+        if (dept.includes('primary'))   levels.push('primary');
+        if (dept.includes('secondary')) levels.push('secondary');
+
+        return levels.length > 0 ? levels : ['nursery', 'primary', 'secondary'];
+    },
+
+    async mergeDuplicateSubjects(subjectName) {
+        const subjects = await db.subjects.where('name').equals(subjectName).toArray();
+        if (subjects.length <= 1) return;
+
+        // Sort by id, keep the first one as target
+        subjects.sort((a, b) => a.id.localeCompare(b.id));
+        const targetId = subjects[0].id;
+        const duplicateIds = subjects.slice(1).map(s => s.id);
+
+        console.log(`[Academic Setup] Merging duplicate subjects under target ID ${targetId}:`, duplicateIds);
+
+        // Update scores
+        const oldScores = await db.scores.where('subject_id').anyOf(duplicateIds).toArray();
+        for (const sc of oldScores) {
+            await db.scores.update(sc.id, { subject_id: targetId, updated_at: new Date().toISOString(), is_synced: 0 });
+        }
+        
+        // Update cbt_exams
+        const oldExams = await db.cbt_exams.where('subject_id').anyOf(duplicateIds).toArray();
+        for (const ex of oldExams) {
+            await db.cbt_exams.update(ex.id, { subject_id: targetId, updated_at: new Date().toISOString(), is_synced: 0 });
+        }
+
+        // Update cbt_exam_sections
+        const oldSections = await db.cbt_exam_sections.where('subject_id').anyOf(duplicateIds).toArray();
+        for (const sec of oldSections) {
+            await db.cbt_exam_sections.update(sec.id, { subject_id: targetId, updated_at: new Date().toISOString(), is_synced: 0 });
+        }
+
+        // Update cbt_question_bank
+        const oldQB = await db.cbt_question_bank.where('subject_id').anyOf(duplicateIds).toArray();
+        for (const qb of oldQB) {
+            await db.cbt_question_bank.update(qb.id, { subject_id: targetId, updated_at: new Date().toISOString(), is_synced: 0 });
+        }
+
+        // Update timetable
+        const oldTT = await db.timetable.where('subject_id').anyOf(duplicateIds).toArray();
+        for (const tt of oldTT) {
+            await db.timetable.update(tt.id, { subject_id: targetId, updated_at: new Date().toISOString(), is_synced: 0 });
+        }
+
+        // Update grade_finalizations
+        const oldGF = await db.grade_finalizations.where('subject_id').anyOf(duplicateIds).toArray();
+        for (const gf of oldGF) {
+            await db.grade_finalizations.update(gf.id, { subject_id: targetId, updated_at: new Date().toISOString(), is_synced: 0 });
+        }
+
+        // Update student_subject_registrations
+        const oldSSR = await db.student_subject_registrations.where('subject_id').anyOf(duplicateIds).toArray();
+        for (const ssr of oldSSR) {
+            await db.student_subject_registrations.update(ssr.id, { subject_id: targetId, updated_at: new Date().toISOString(), is_synced: 0 });
+        }
+
+        // Update elearning_modules
+        const oldEL = await db.elearning_modules.where('subject_id').anyOf(duplicateIds).toArray();
+        for (const el of oldEL) {
+            await db.elearning_modules.update(el.id, { subject_id: targetId, updated_at: new Date().toISOString(), is_synced: 0 });
+        }
+
+        // Merge assignments to target ID
+        const oldAssignments = await db.subject_assignments.where('subject_id').anyOf(duplicateIds).toArray();
+        for (const asgn of oldAssignments) {
+            const exists = await db.subject_assignments.where({
+                subject_id: targetId,
+                class_name: asgn.class_name,
+                specialization: asgn.specialization || null
+            }).first();
+            if (!exists) {
+                await db.subject_assignments.update(asgn.id, { subject_id: targetId, updated_at: new Date().toISOString(), is_synced: 0 });
+            } else {
+                await this.safeDelete('subject_assignments', asgn.id, null);
+            }
+        }
+
+        // Finally, delete duplicate subject records
+        for (const oldId of duplicateIds) {
+            await this.safeDelete('subjects', oldId, null);
+        }
+    },
+
     syncTimeout: null,
     searchTimeout: null,
 
@@ -826,7 +940,7 @@ export const UI = {
                 viewName = 'dashboard';
             }
 
-            const restrictedForTeachers = ['academic', 'bulkimport', 'staff', 'promotion', 'config', 'reports'];
+            const restrictedForTeachers = ['academic', 'bulkimport', 'staff', 'promotion', 'config', 'reports', 'seating'];
             const allowedForStudents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins', 'elearning'];
             const allowedForParents = ['dashboard', 'attendance', 'gradebook', 'cbt', 'noticeboard', 'finances', 'pins', 'timetables', 'profile', 'elearning'];
             const isFinance = role === 'finance' || role === 'finance officer' || role === 'finance manager';
@@ -936,6 +1050,7 @@ export const UI = {
                 case 'noticeboard': await this.renderNoticeBoard(); break;
                 case 'profile': await this.renderProfile(); break;
                 case 'cbt_participants': await this.renderCBTParticipants(this.currentViewData); break;
+                case 'seating': await this.renderSeating(); break;
                 case 'superadmin': await this.renderSuperAdmin(); break;
                 default: this.contentArea.innerHTML = `<h2>View ${viewName} coming soon...</h2>`;
             }
@@ -1103,10 +1218,30 @@ export const UI = {
 
 
     async renderAdminDashboard() {
+        // ── Section Admin level filtering ─────────────────────────────────
+        const allowedLevels = this.getAdminAllowedLevels();
+        const isLevelRestricted = this.isSectionAdmin();
+
         // ── Core counts ──────────────────────────────────────────────────
-        // Filter to only active students - Use count() instead of filter().length
-        const studentCount = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive').count();
-        const classCount   = await db.classes.count();
+        let studentCount, classCount;
+        // Build a student-id → level map for attendance filtering
+        const studentLevelMap = {};
+
+        if (isLevelRestricted) {
+            const allStudents = await db.students.toArray();
+            allStudents.forEach(s => { studentLevelMap[s.student_id] = getClassLevel(s.class_name); });
+            studentCount = allStudents.filter(s =>
+                s.is_active !== false && s.is_active !== 0 &&
+                s.status !== 'Graduated' && s.class_name !== 'Graduated' &&
+                s.status !== 'Inactive' &&
+                allowedLevels.includes(getClassLevel(s.class_name))
+            ).length;
+            const allClasses = await db.classes.toArray();
+            classCount = allClasses.filter(c => allowedLevels.includes(getClassLevel(c.name))).length;
+        } else {
+            studentCount = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive').count();
+            classCount   = await db.classes.count();
+        }
         
         // Optimize subject count
         const subjectCount = await db.subjects.count();
@@ -1119,8 +1254,10 @@ export const UI = {
         } catch(e) { console.error('Error fetching teacher count', e); }
 
         const today          = new Date().toISOString().split('T')[0];
-        // Use primaryKeys() for faster turnout calculation if only needing counts
-        const todayAtt       = await db.attendance.where('date').equals(today).toArray();
+        let todayAtt       = await db.attendance.where('date').equals(today).toArray();
+        if (isLevelRestricted) {
+            todayAtt = todayAtt.filter(r => allowedLevels.includes(studentLevelMap[r.student_id]));
+        }
         const presentCount   = todayAtt.filter(r => r.status === 'Present').length;
         const totalMarked    = todayAtt.length;
         const turnoutPct = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : 0;
@@ -1135,7 +1272,10 @@ export const UI = {
         
         const velocityData = [];
         for (const date of last7Days) {
-            const att = await db.attendance.where('date').equals(date).toArray();
+            let att = await db.attendance.where('date').equals(date).toArray();
+            if (isLevelRestricted) {
+                att = att.filter(r => allowedLevels.includes(studentLevelMap[r.student_id]));
+            }
             const total = att.length;
             const present = att.filter(r => r.status === 'Present' || r.status === 'Late').length;
             const pct = total > 0 ? Math.round((present / total) * 100) : 0;
@@ -2479,8 +2619,10 @@ export const UI = {
                         currentScore.originalTotal = currentScore.total;
                         currentScore.total = cumulativeTotal;
                     }
-                    currentScore.grade = ScoringEngine.getGrade(currentScore.total);
-                    currentScore.remark = ScoringEngine.getRemark(currentScore.total);
+                    const rcLevel = getClassLevel(student.class_name);
+                    const rcIsNP = rcLevel === 'nursery' || rcLevel === 'primary';
+                    currentScore.grade = rcIsNP ? ScoringEngine.getGradeNP(currentScore.total) : ScoringEngine.getGrade(currentScore.total);
+                    currentScore.remark = rcIsNP ? ScoringEngine.getRemarkNP(currentScore.total) : ScoringEngine.getRemark(currentScore.total);
                 }
 
                 // Recalculate subject ranks in memory
@@ -2636,7 +2778,9 @@ export const UI = {
             this.debouncedSync();
 
             Notifications.show(`Generating report card for ${rankedStudent.name}...`, 'info');
-            const doc = await generateReportCard(rankedStudent, sScores, schoolInfo, sAtt);
+            const rcLevel = getClassLevel(student.class_name);
+            const rcGenerator = rcLevel === 'nursery' ? generateNurseryReportCard : (rcLevel === 'primary' ? generatePrimaryReportCard : generateReportCard);
+            const doc = await rcGenerator(rankedStudent, sScores, schoolInfo, sAtt);
             if (doc) {
                 this.showPDFPreview(doc, `Report_${rankedStudent.name.replace(/\s+/g, '_')}.pdf`);
                 document.getElementById('ui-modal')?.remove();
@@ -3902,6 +4046,13 @@ export const UI = {
         streams.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
         
         let activeStudents = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive').toArray();
+
+        // Section Admin level filtering
+        if (this.isSectionAdmin()) {
+            const allowed = this.getAdminAllowedLevels();
+            streams = streams.filter(c => allowed.includes(getClassLevel(c.name)));
+            activeStudents = activeStudents.filter(s => allowed.includes(getClassLevel(s.class_name)));
+        }
         const formTeachers = await db.form_teachers.toArray().catch(() => []);
         const profiles = await getTenantProfiles().catch(() => []);
 
@@ -4265,13 +4416,11 @@ export const UI = {
                         throw new Error('Duplicate');
                     }
                     
-                    await db.classes.add({
+                    await db.classes.add(prepareForSync({
                         id: `C${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
                         name: nameInput,
-                        level: levelInput,
-                        is_synced: 0,
-                        updated_at: new Date().toISOString()
-                    });
+                        level: levelInput
+                    }));
                     
                     Notifications.show(`Stream "${nameInput}" registered successfully.`, 'success');
                     this.renderClasses();
@@ -4714,6 +4863,8 @@ export const UI = {
                     specialization: specialization
                 }));
             }
+            
+            await this.mergeDuplicateSubjects(newName);
 
             Notifications.show('Subject updated', 'success');
             this.renderSubjects();
@@ -4758,6 +4909,13 @@ export const UI = {
         
         let students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         let classes = (await db.classes.toArray()).sort(compareClasses);
+        
+        // Section Admin level filtering
+        if (this.isSectionAdmin()) {
+            const allowed = this.getAdminAllowedLevels();
+            students = students.filter(s => allowed.includes(getClassLevel(s.class_name)));
+            classes = classes.filter(c => allowed.includes(getClassLevel(c.name)));
+        }
         
         // --- Teacher Specific Filtering for Dropdowns ---
         if (isTeacher) {
@@ -5382,15 +5540,13 @@ export const UI = {
                         await db.students.add(newStudent);
                         
                         // Also add to profiles table for role-based login detection
-                        await db.profiles.put({
+                        await db.profiles.put(prepareForSync({
                             id: newStudent.id || serial,
                             full_name: name,
                             email: studentEmail,
                             role: 'Student',
-                            assigned_id: serial,
-                            updated_at: new Date().toISOString(),
-                            is_synced: 0
-                        });
+                            assigned_id: serial
+                        }));
 
                         // Check and link parent account
                         const parentEmail = document.getElementById('std-parent-email').value.trim();
@@ -6631,6 +6787,13 @@ export const UI = {
         let students = (await db.students.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
         let classes = (await db.classes.toArray()).sort(compareClasses);
         let subjects = (await db.subjects.toArray()).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+
+        // Section Admin level filtering
+        if (this.isSectionAdmin()) {
+            const allowed = this.getAdminAllowedLevels();
+            classes = classes.filter(c => allowed.includes(getClassLevel(c.name)));
+            students = students.filter(s => allowed.includes(getClassLevel(s.class_name)));
+        }
         
         // --- Teacher Specific Filtering ---
         const settingsArray = await db.settings.toArray();
@@ -6854,6 +7017,41 @@ export const UI = {
             const activeSub = subjects.find(s => String(s.id) === String(subId));
             if (activeSub) {
                 document.getElementById('active-subject-name').textContent = activeSub.name + ' in ' + cls;
+            }
+
+            const level = getClassLevel(cls);
+            const isNP = level === 'nursery' || level === 'primary';
+            const thead = document.querySelector('.data-table thead');
+            if (thead) {
+                if (isNP) {
+                    thead.innerHTML = `
+                        <tr style="background: #f1f5f9;">
+                            <th style="padding: 1rem;">Scholar Name</th>
+                            <th style="text-align:center;">H/W</th>
+                            <th style="text-align:center;">TEST</th>
+                            <th style="text-align:center; background:#eff6ff; color:#2563eb;">CA</th>
+                            <th style="text-align:center; background:#eff6ff; color:#2563eb;">EXAM</th>
+                            <th style="text-align:center; background:#f0fdf4; color:#15803d; font-weight:800;">TOTAL</th>
+                            <th style="text-align:center;">GRADE</th>
+                            <th style="text-align:center;">RANK</th>
+                        </tr>
+                    `;
+                } else {
+                    thead.innerHTML = `
+                        <tr style="background: #f1f5f9;">
+                            <th style="padding: 1rem;">Scholar Name</th>
+                            <th style="text-align:center;">ASSIGN</th>
+                            <th style="text-align:center;">TEST 1</th>
+                            <th style="text-align:center;">TEST 2</th>
+                            <th style="text-align:center;">PROJECT</th>
+                            <th style="text-align:center; background:#eff6ff; color:#2563eb;">CA</th>
+                            <th style="text-align:center; background:#eff6ff; color:#2563eb;">EXAM</th>
+                            <th style="text-align:center; background:#f0fdf4; color:#15803d; font-weight:800;">TOTAL</th>
+                            <th style="text-align:center;">GRD</th>
+                            <th style="text-align:center;">RNK</th>
+                        </tr>
+                    `;
+                }
             }
 
             // Find base class for arm-aware matching and fetch specialization
@@ -7118,26 +7316,45 @@ export const UI = {
                 const project = isN(score?.project) ? null : parseFloat(score.project);
                 const exam = isN(score?.exam) ? null : parseFloat(score.exam);
 
-                const hasAny = ![assignment, test1, test2, project, exam].every(v => v === null);
-                const ca = hasAny ? ((assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0)) : null;
-                const total = hasAny ? ((ca || 0) + (exam || 0)) : null;
+                const hasAny = isNP 
+                    ? ![assignment, test1, exam].every(v => v === null)
+                    : ![assignment, test1, test2, project, exam].every(v => v === null);
                 
-                return `
-                    <tr data-student-id="${s.student_id}" data-student-row-id="${s.student_id}">
-                        <td style="font-weight:600; padding:1rem;">${s.name}</td>
-                        <td style="text-align:center;"><input type="number" class="score-input" data-field="assignment" value="${isN(score?.assignment) ? '' : score.assignment}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
-                        <td style="text-align:center;"><input type="number" class="score-input" data-field="test1" value="${isN(score?.test1) ? '' : score.test1}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
-                        <td style="text-align:center;"><input type="number" class="score-input" data-field="test2" value="${isN(score?.test2) ? '' : score.test2}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
-                        <td style="text-align:center;"><input type="number" class="score-input" data-field="project" value="${isN(score?.project) ? '' : score.project}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
-                        <td class="ca-cell" style="text-align:center; font-weight:700; color:#2563eb;">${isN(ca) ? '-' : ca}</td>
-                        <td style="text-align:center;"><input type="number" class="score-input" data-field="exam" value="${isN(score?.exam) ? '' : score.exam}" style="width:50px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px; font-weight:700;"></td>
-                        <td class="total-cell" style="text-align:center; font-weight:800; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')};">${isN(total) ? '-' : total}</td>
-                        <td class="grade-cell" style="text-align:center; font-weight:700; color:${isN(total) ? 'inherit' : (total < 40 ? '#dc2626' : 'inherit')};">${isN(total) ? '-' : ScoringEngine.getGrade(total)}</td>
-                        <td class="rnk-cell" style="text-align:center; font-weight:700; color:var(--text-muted);">${score?.rank || '-'}</td>
-                    </tr>
-                `;
+                const ca = hasAny ? (isNP ? ((assignment || 0) + (test1 || 0)) : ((assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0))) : null;
+                const total = hasAny ? ((ca || 0) + (exam || 0)) : null;
+                const grade = isN(total) ? '-' : (isNP ? ScoringEngine.getGradeNP(total) : ScoringEngine.getGrade(total));
+                
+                if (isNP) {
+                    return `
+                        <tr data-student-id="${s.student_id}" data-student-row-id="${s.student_id}">
+                            <td style="font-weight:600; padding:1rem;">${s.name}</td>
+                            <td style="text-align:center;"><input type="number" class="score-input" data-field="assignment" value="${isN(score?.assignment) ? '' : score.assignment}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                            <td style="text-align:center;"><input type="number" class="score-input" data-field="test1" value="${isN(score?.test1) ? '' : score.test1}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                            <td class="ca-cell" style="text-align:center; font-weight:700; color:#2563eb;">${isN(ca) ? '-' : ca}</td>
+                            <td style="text-align:center;"><input type="number" class="score-input" data-field="exam" value="${isN(score?.exam) ? '' : score.exam}" style="width:50px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px; font-weight:700;"></td>
+                            <td class="total-cell" style="text-align:center; font-weight:800; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')};">${isN(total) ? '-' : total}</td>
+                            <td class="grade-cell" style="text-align:center; font-weight:700; color:${isN(total) ? 'inherit' : (total < 40 ? '#dc2626' : 'inherit')};">${grade}</td>
+                            <td class="rnk-cell" style="text-align:center; font-weight:700; color:var(--text-muted);">${score?.rank || '-'}</td>
+                        </tr>
+                    `;
+                } else {
+                    return `
+                        <tr data-student-id="${s.student_id}" data-student-row-id="${s.student_id}">
+                            <td style="font-weight:600; padding:1rem;">${s.name}</td>
+                            <td style="text-align:center;"><input type="number" class="score-input" data-field="assignment" value="${isN(score?.assignment) ? '' : score.assignment}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                            <td style="text-align:center;"><input type="number" class="score-input" data-field="test1" value="${isN(score?.test1) ? '' : score.test1}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                            <td style="text-align:center;"><input type="number" class="score-input" data-field="test2" value="${isN(score?.test2) ? '' : score.test2}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                            <td style="text-align:center;"><input type="number" class="score-input" data-field="project" value="${isN(score?.project) ? '' : score.project}" style="width:40px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px;"></td>
+                            <td class="ca-cell" style="text-align:center; font-weight:700; color:#2563eb;">${isN(ca) ? '-' : ca}</td>
+                            <td style="text-align:center;"><input type="number" class="score-input" data-field="exam" value="${isN(score?.exam) ? '' : score.exam}" style="width:50px; text-align:center; border:1px solid #e2e8f0; border-radius:4px; padding:2px; font-weight:700;"></td>
+                            <td class="total-cell" style="text-align:center; font-weight:800; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')};">${isN(total) ? '-' : total}</td>
+                            <td class="grade-cell" style="text-align:center; font-weight:700; color:${isN(total) ? 'inherit' : (total < 40 ? '#dc2626' : 'inherit')};">${grade}</td>
+                            <td class="rnk-cell" style="text-align:center; font-weight:700; color:var(--text-muted);">${score?.rank || '-'}</td>
+                        </tr>
+                    `;
+                }
             }).join('');
-
+ 
             // Update Mobile Cards
             const mobileContainer = document.getElementById('mobile-score-entry');
             if (mobileContainer) {
@@ -7150,7 +7367,7 @@ export const UI = {
                         const scName = String(sc.name || '').trim().toLowerCase();
                         const sName = String(s.name || '').trim().toLowerCase();
                         const nameMatch = scName && sName && (scName === sName || scName.includes(sName) || sName.includes(scName));
-
+ 
                         return idMatch || nameMatch;
                     });
                     
@@ -7160,33 +7377,60 @@ export const UI = {
                     const test2 = isN(score?.test2) ? null : parseFloat(score.test2);
                     const project = isN(score?.project) ? null : parseFloat(score.project);
                     const exam = isN(score?.exam) ? null : parseFloat(score.exam);
-
-                    const hasAny = ![assignment, test1, test2, project, exam].every(v => v === null);
-                    const ca = hasAny ? ((assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0)) : null;
-                    const total = hasAny ? ((ca || 0) + (exam || 0)) : null;
+ 
+                    const hasAny = isNP 
+                        ? ![assignment, test1, exam].every(v => v === null)
+                        : ![assignment, test1, test2, project, exam].every(v => v === null);
                     
-                    return `
-                        <div class="score-card collapsed" data-student-row-id="${s.student_id}">
-                            <div class="score-card-header" onclick="this.parentElement.classList.toggle('collapsed')">
-                                <div class="score-card-title">${s.name}</div>
-                                <div style="display:flex; align-items:center; gap:0.5rem;">
-                                    <span class="badge" style="background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')}; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; font-weight:800; border-radius:6px; padding:2px 8px;">${isN(total) ? '-' : total}</span>
-                                    <i data-lucide="chevron-down" style="width:16px;"></i>
+                    const ca = hasAny ? (isNP ? ((assignment || 0) + (test1 || 0)) : ((assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0))) : null;
+                    const total = hasAny ? ((ca || 0) + (exam || 0)) : null;
+                    const grade = isN(total) ? '-' : (isNP ? ScoringEngine.getGradeNP(total) : ScoringEngine.getGrade(total));
+                    
+                    if (isNP) {
+                        return `
+                            <div class="score-card collapsed" data-student-row-id="${s.student_id}">
+                                <div class="score-card-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                                    <div class="score-card-title">${s.name}</div>
+                                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                                        <span class="badge" style="background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')}; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; font-weight:800; border-radius:6px; padding:2px 8px;">${isN(total) ? '-' : total}</span>
+                                        <i data-lucide="chevron-down" style="width:16px;"></i>
+                                    </div>
+                                </div>
+                                <div class="score-card-content">
+                                    <div class="score-field"><label>H/W</label><input type="number" class="score-input" data-field="assignment" value="${isN(score?.assignment) ? '' : score.assignment}"></div>
+                                    <div class="score-field"><label>Test</label><input type="number" class="score-input" data-field="test1" value="${isN(score?.test1) ? '' : score.test1}"></div>
+                                    <div class="score-field"><label>Exam (60)</label><input type="number" class="score-input" data-field="exam" value="${isN(score?.exam) ? '' : score.exam}" style="border-color:#2563eb; background:#eff6ff;"></div>
+                                    <div class="score-field"><label>CA Score</label><div class="ca-cell" style="font-weight:700; color:#2563eb; padding:0.6rem;">${isN(ca) ? '-' : ca}</div></div>
+                                    <div class="score-field"><label>Grand Total</label><div class="total-cell" style="font-weight:800; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')}; padding:0.6rem; border-radius:8px;">${isN(total) ? '-' : total}</div></div>
+                                    <div class="score-field"><label>Letter Grade</label><div class="grade-cell" style="font-weight:700; padding:0.6rem; color:${isN(total) ? 'inherit' : (total < 40 ? '#dc2626' : 'inherit')};">${grade}</div></div>
+                                    <div class="score-field"><label>Class Rank</label><div class="rnk-cell" style="font-weight:700; color:#64748b; padding:0.6rem;">${score?.rank || '-'}</div></div>
                                 </div>
                             </div>
-                            <div class="score-card-content">
-                                <div class="score-field"><label>Assignment</label><input type="number" class="score-input" data-field="assignment" value="${isN(score?.assignment) ? '' : score.assignment}"></div>
-                                <div class="score-field"><label>Test 1</label><input type="number" class="score-input" data-field="test1" value="${isN(score?.test1) ? '' : score.test1}"></div>
-                                <div class="score-field"><label>Test 2</label><input type="number" class="score-input" data-field="test2" value="${isN(score?.test2) ? '' : score.test2}"></div>
-                                <div class="score-field"><label>Project</label><input type="number" class="score-input" data-field="project" value="${isN(score?.project) ? '' : score.project}"></div>
-                                <div class="score-field"><label>Exam (60)</label><input type="number" class="score-input" data-field="exam" value="${isN(score?.exam) ? '' : score.exam}" style="border-color:#2563eb; background:#eff6ff;"></div>
-                                <div class="score-field"><label>CA Score</label><div class="ca-cell" style="font-weight:700; color:#2563eb; padding:0.6rem;">${isN(ca) ? '-' : ca}</div></div>
-                                <div class="score-field"><label>Grand Total</label><div class="total-cell" style="font-weight:800; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')}; padding:0.6rem; border-radius:8px;">${isN(total) ? '-' : total}</div></div>
-                                <div class="score-field"><label>Letter Grade</label><div class="grade-cell" style="font-weight:700; padding:0.6rem; color:${isN(total) ? 'inherit' : (total < 40 ? '#dc2626' : 'inherit')};">${isN(total) ? '-' : ScoringEngine.getGrade(total)}</div></div>
-                                <div class="score-field"><label>Class Rank</label><div class="rnk-cell" style="font-weight:700; color:#64748b; padding:0.6rem;">${score?.rank || '-'}</div></div>
+                        `;
+                    } else {
+                        return `
+                            <div class="score-card collapsed" data-student-row-id="${s.student_id}">
+                                <div class="score-card-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                                    <div class="score-card-title">${s.name}</div>
+                                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                                        <span class="badge" style="background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')}; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; font-weight:800; border-radius:6px; padding:2px 8px;">${isN(total) ? '-' : total}</span>
+                                        <i data-lucide="chevron-down" style="width:16px;"></i>
+                                    </div>
+                                </div>
+                                <div class="score-card-content">
+                                    <div class="score-field"><label>Assignment</label><input type="number" class="score-input" data-field="assignment" value="${isN(score?.assignment) ? '' : score.assignment}"></div>
+                                    <div class="score-field"><label>Test 1</label><input type="number" class="score-input" data-field="test1" value="${isN(score?.test1) ? '' : score.test1}"></div>
+                                    <div class="score-field"><label>Test 2</label><input type="number" class="score-input" data-field="test2" value="${isN(score?.test2) ? '' : score.test2}"></div>
+                                    <div class="score-field"><label>Project</label><input type="number" class="score-input" data-field="project" value="${isN(score?.project) ? '' : score.project}"></div>
+                                    <div class="score-field"><label>Exam (60)</label><input type="number" class="score-input" data-field="exam" value="${isN(score?.exam) ? '' : score.exam}" style="border-color:#2563eb; background:#eff6ff;"></div>
+                                    <div class="score-field"><label>CA Score</label><div class="ca-cell" style="font-weight:700; color:#2563eb; padding:0.6rem;">${isN(ca) ? '-' : ca}</div></div>
+                                    <div class="score-field"><label>Grand Total</label><div class="total-cell" style="font-weight:800; color:${isN(total) ? '#15803d' : (total < 40 ? '#dc2626' : '#15803d')}; background:${isN(total) ? '#f0fdf4' : (total < 40 ? '#fef2f2' : '#f0fdf4')}; padding:0.6rem; border-radius:8px;">${isN(total) ? '-' : total}</div></div>
+                                    <div class="score-field"><label>Letter Grade</label><div class="grade-cell" style="font-weight:700; padding:0.6rem; color:${isN(total) ? 'inherit' : (total < 40 ? '#dc2626' : 'inherit')};">${grade}</div></div>
+                                    <div class="score-field"><label>Class Rank</label><div class="rnk-cell" style="font-weight:700; color:#64748b; padding:0.6rem;">${score?.rank || '-'}</div></div>
+                                </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    }
                 }).join('');
             }
 
@@ -7209,11 +7453,16 @@ export const UI = {
                 const studentId = container.dataset.studentRowId;
                 if (!studentId) return;
 
+                // Detect level dynamically from active stream filter
+                const activeCls = classFilter.value;
+                const level = getClassLevel(activeCls);
+                const isNP = level === 'nursery' || level === 'primary';
+
                 // 1. Force Limit Correction
                 let rawVal = e.target.value.trim();
                 let numVal = parseFloat(rawVal) || 0;
                 const field = e.target.dataset.field;
-                const limit = (field === 'exam') ? 60 : 10;
+                const limit = (field === 'exam') ? 60 : (isNP ? 20 : 10);
 
                 if (numVal > limit) {
                     e.target.value = limit;
@@ -7232,14 +7481,16 @@ export const UI = {
 
                 const ass = getVal(container, 'assignment');
                 const t1 = getVal(container, 'test1');
-                const t2 = getVal(container, 'test2');
-                const prj = getVal(container, 'project');
+                const t2 = isNP ? null : getVal(container, 'test2');
+                const prj = isNP ? null : getVal(container, 'project');
                 const ex = getVal(container, 'exam');
 
-                const hasAny = ![ass, t1, t2, prj, ex].every(v => v === null);
-                const ca = hasAny ? ((ass || 0) + (t1 || 0) + (t2 || 0) + (prj || 0)) : null;
+                const hasAny = isNP 
+                    ? ![ass, t1, ex].every(v => v === null)
+                    : ![ass, t1, t2, prj, ex].every(v => v === null);
+                const ca = hasAny ? (isNP ? ((ass || 0) + (t1 || 0)) : ((ass || 0) + (t1 || 0) + (t2 || 0) + (prj || 0))) : null;
                 const total = hasAny ? ((ca || 0) + (ex || 0)) : null;
-                const grade = hasAny ? ScoringEngine.getGrade(total) : '-';
+                const grade = hasAny ? (isNP ? ScoringEngine.getGradeNP(total) : ScoringEngine.getGrade(total)) : '-';
 
                 // 3. Sync All Views
                 const nodes = document.querySelectorAll(`[data-student-row-id="${studentId}"]`);
@@ -7415,6 +7666,9 @@ export const UI = {
 
             Notifications.show('Committing grades to ledger...', 'info');
 
+            const commitLevel = getClassLevel(className);
+            const commitIsNP = commitLevel === 'nursery' || commitLevel === 'primary';
+
             // Process all rows
             const entries = [];
             for (const row of rows) {
@@ -7422,22 +7676,27 @@ export const UI = {
                 const standardId = `${studentId}_${subId}_${term}_${session}`;
                 
                 const getVal = (f) => {
-                    const v = row.querySelector(`[data-field="${f}"]`).value.trim();
+                    const el = row.querySelector(`[data-field="${f}"]`);
+                    if (!el) return null;
+                    const v = el.value.trim();
                     return v === '' ? null : parseFloat(v);
                 };
 
                 const assignment = getVal('assignment');
                 const test1 = getVal('test1');
-                const test2 = getVal('test2');
-                const project = getVal('project');
+                const test2 = commitIsNP ? null : getVal('test2');
+                const project = commitIsNP ? null : getVal('project');
                 const exam = getVal('exam');
 
-                const hasScore = [assignment, test1, test2, project, exam].some(v => v !== null);
+                const hasScore = commitIsNP
+                    ? [assignment, test1, exam].some(v => v !== null)
+                    : [assignment, test1, test2, project, exam].some(v => v !== null);
                 
                 if (hasScore) {
-                    const ca = (assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0);
+                    const ca = commitIsNP
+                        ? ((assignment || 0) + (test1 || 0))
+                        : ((assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0));
                     const total = ca + (exam || 0);
-                    const rankValue = ''; // Will be filled after sorting
                     
                     const entry = {
                         id: standardId,
@@ -7464,13 +7723,14 @@ export const UI = {
             for (let i = 0; i < entries.length; i++) {
                 if (i > 0 && entries[i].total < entries[i - 1].total) currentRank = i + 1;
                 entries[i].rank = ScoringEngine.getOrdinal(currentRank);
-                entries[i].grade = ScoringEngine.getGrade(entries[i].total);
-                entries[i].remark = ScoringEngine.getRemark(entries[i].total);
+                entries[i].grade = commitIsNP ? ScoringEngine.getGradeNP(entries[i].total) : ScoringEngine.getGrade(entries[i].total);
+                entries[i].remark = commitIsNP ? ScoringEngine.getRemarkNP(entries[i].total) : ScoringEngine.getRemark(entries[i].total);
                 
                 // Audit Trail logic
                 const oldRec = oldScores.find(sc => sc.id === entries[i].id);
                 const changedFields = [];
-                ['assignment', 'test1', 'test2', 'project', 'exam'].forEach(f => {
+                const auditFields = commitIsNP ? ['assignment', 'test1', 'exam'] : ['assignment', 'test1', 'test2', 'project', 'exam'];
+                auditFields.forEach(f => {
                     const oldVal = oldRec ? oldRec[f] : null;
                     const newVal = entries[i][f];
                     if (oldVal !== newVal) {
@@ -8236,6 +8496,7 @@ export const UI = {
 
                 const allClasses = await db.classes.toArray();
                 const sortedClasses = allClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                const teachers = (await getTenantProfiles()).filter(p => p.role === 'Teacher' || p.role === 'Admin');
                 const currentAssignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
 
                 const modalHtml = `
@@ -8265,6 +8526,10 @@ export const UI = {
                             <div id="edit-asgn-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 200px; overflow-y: auto;">
                                 ${currentAssignments.length === 0 ? '<p style="font-size:0.75rem; color:#94a3b8; text-align:center; padding:1rem;">No streams assigned. Click Add Assignment.</p>' : currentAssignments.map(a => `
                                     <div class="edit-asgn-row" style="display: flex; gap: 0.4rem; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem;">
+                                        <select class="input asgn-teacher" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
+                                            <option value="">No Teacher</option>
+                                            ${teachers.map(t => `<option value="${t.id}" ${a.teacher_id === t.id ? 'selected' : ''}>${t.full_name || t.username}</option>`).join('')}
+                                        </select>
                                         <select class="input asgn-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
                                             ${sortedClasses.map(c => `<option value="${c.name}" ${a.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
                                         </select>
@@ -8308,29 +8573,25 @@ export const UI = {
                     await db.subjects.update(id, prepareForSync({ name, type, credits, updated_at: new Date().toISOString() }));
                     
                     // Replace assignments: Use safeDelete to ensure cloud removal
-                    // First, build a map of old teacher_ids so we can preserve them
                     const oldAssignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
-                    const teacherMap = {};
-                    for (const asgn of oldAssignments) {
-                        teacherMap[asgn.class_name] = asgn.teacher_id;
-                    }
                     for (const asgn of oldAssignments) {
                         await this.safeDelete('subject_assignments', asgn.id, null);
                     }
 
                     for (const row of rows) {
+                        const teacherId = row.querySelector('.asgn-teacher').value || null;
                         const className = row.querySelector('.asgn-cls').value;
                         const specialization = row.querySelector('.asgn-spec').value || null;
-                        // Preserve the teacher_id from the previous assignment for this class
-                        const preservedTeacherId = teacherMap[className] || null;
                         await db.subject_assignments.add(prepareForSync({
                             id: `ASN${Math.random().toString(36).substr(2, 7).toUpperCase()}`,
                             subject_id: id,
                             class_name: className,
                             specialization: specialization,
-                            teacher_id: preservedTeacherId
+                            teacher_id: teacherId
                         }));
                     }
+
+                    await this.mergeDuplicateSubjects(name);
 
                     Notifications.show('Course and stream specializations updated', 'success');
                     this.debouncedSync();
@@ -8349,6 +8610,10 @@ export const UI = {
                             div.className = 'edit-asgn-row';
                             div.style = "display: flex; gap: 0.4rem; align-items: center;";
                             div.innerHTML = `
+                                <select class="input asgn-teacher" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
+                                    <option value="">No Teacher</option>
+                                    ${teachers.map(t => `<option value="${t.id}">${t.full_name || t.username}</option>`).join('')}
+                                </select>
                                 <select class="input asgn-cls" style="flex: 1.5; height: 38px; font-size: 0.8rem;">
                                     ${sortedClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                                 </select>
@@ -8584,6 +8849,13 @@ export const UI = {
             const assignedSubjectIds = new Set(assignments.map(a => a.subject_id));
             filteredSubjects = subjects.filter(s => assignedSubjectIds.has(s.id) || assignedSubjectIds.has(s.name));
             filteredStudents = students.filter(s => assignedClassNames.has(s.class_name));
+        }
+
+        // Section Admin level filtering
+        if (this.isSectionAdmin()) {
+            const allowed = this.getAdminAllowedLevels();
+            filteredClasses = filteredClasses.filter(c => allowed.includes(getClassLevel(c.name)));
+            filteredStudents = filteredStudents.filter(s => allowed.includes(getClassLevel(s.class_name)));
         }
         
         // Initial State
@@ -9727,6 +9999,12 @@ export const UI = {
             ]);
             accessibleClasses = allClasses.filter(c => allowedClassNames.has(c.name));
         }
+
+        // Section Admin level filtering
+        if (this.isSectionAdmin()) {
+            const allowed = this.getAdminAllowedLevels();
+            accessibleClasses = accessibleClasses.filter(c => allowed.includes(getClassLevel(c.name)));
+        }
         accessibleClasses.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
 
         // Pre-fill settings
@@ -9981,15 +10259,22 @@ export const UI = {
                     subjectGroups[s.subject_id].push(s);
                 });
 
+                const finalLevel = getClassLevel(className);
+                const finalIsNP = finalLevel === 'nursery' || finalLevel === 'primary';
+
                 for (const subId in subjectGroups) {
                     const subScores = subjectGroups[subId];
                     
                     // 1. Calculate Totals & Cleanup Empties
                     const activeScores = [];
                     for (const s of subScores) {
-                        const hasScore = [s.assignment, s.test1, s.test2, s.project, s.exam].some(v => v !== null && v !== '');
+                        const hasScore = finalIsNP
+                            ? [s.assignment, s.test1, s.exam].some(v => v !== null && v !== '')
+                            : [s.assignment, s.test1, s.test2, s.project, s.exam].some(v => v !== null && v !== '');
                         if (hasScore) {
-                            s.ca = (Number(s.assignment) || 0) + (Number(s.test1) || 0) + (Number(s.test2) || 0) + (Number(s.project) || 0);
+                            s.ca = finalIsNP
+                                ? (Number(s.assignment) || 0) + (Number(s.test1) || 0)
+                                : (Number(s.assignment) || 0) + (Number(s.test1) || 0) + (Number(s.test2) || 0) + (Number(s.project) || 0);
                             s.total = s.ca + (Number(s.exam) || 0);
                             activeScores.push(s);
                         } else {
@@ -10005,8 +10290,8 @@ export const UI = {
                         if (i > 0 && s.total < activeScores[i-1].total) currentRank = i + 1;
                         
                         const rankStr = ScoringEngine.getOrdinal(currentRank);
-                        const gradeStr = ScoringEngine.getGrade(s.total);
-                        const remarkStr = ScoringEngine.getRemark(s.total);
+                        const gradeStr = finalIsNP ? ScoringEngine.getGradeNP(s.total) : ScoringEngine.getGrade(s.total);
+                        const remarkStr = finalIsNP ? ScoringEngine.getRemarkNP(s.total) : ScoringEngine.getRemark(s.total);
                         
                         if (s.rank !== rankStr || s.grade !== gradeStr || s.remark !== remarkStr) {
                             s.rank = rankStr;
@@ -10051,8 +10336,8 @@ export const UI = {
                             currentScore.originalTotal = currentScore.total;
                             currentScore.total = cumulativeTotal;
                         }
-                        currentScore.grade = ScoringEngine.getGrade(currentScore.total);
-                        currentScore.remark = ScoringEngine.getRemark(currentScore.total);
+                        currentScore.grade = finalIsNP ? ScoringEngine.getGradeNP(currentScore.total) : ScoringEngine.getGrade(currentScore.total);
+                        currentScore.remark = finalIsNP ? ScoringEngine.getRemarkNP(currentScore.total) : ScoringEngine.getRemark(currentScore.total);
                     }
 
                     // Recalculate subject ranks in memory
@@ -10333,7 +10618,9 @@ export const UI = {
                         };
 
                         Notifications.show(`Generating report for ${student.name}...`, 'info');
-                        const doc = await generateReportCard(student, sScores, schoolInfo, sAtt);
+                        const rcLevel2 = getClassLevel(className);
+                        const rcGen2 = rcLevel2 === 'nursery' ? generateNurseryReportCard : (rcLevel2 === 'primary' ? generatePrimaryReportCard : generateReportCard);
+                        const doc = await rcGen2(student, sScores, schoolInfo, sAtt);
                         if (doc) this.showPDFPreview(doc, `Report_${student.name.replace(/\s+/g, '_')}.pdf`);
                     });
                 });
@@ -10404,7 +10691,9 @@ export const UI = {
                         };
 
                         // Pass existing doc to avoid multiple downloads
-                        await generateReportCard(student, sScores, studentSchoolInfo, sAtt, batchDoc);
+                        const rcLevel3 = getClassLevel(className);
+                        const rcGen3 = rcLevel3 === 'nursery' ? generateNurseryReportCard : (rcLevel3 === 'primary' ? generatePrimaryReportCard : generateReportCard);
+                        await rcGen3(student, sScores, studentSchoolInfo, sAtt, batchDoc);
                     }
 
                     this.showPDFPreview(batchDoc, `Batch_Reports_${className}.pdf`);
@@ -10977,14 +11266,12 @@ export const UI = {
                         const existingProfile = await db.profiles.get(oldId);
                         if (existingProfile) {
                             await db.profiles.delete(oldId);
-                            await db.profiles.put({
+                            await db.profiles.put(prepareForSync({
                                 ...existingProfile,
                                 id: newId,
                                 email: staffEmail,
-                                assigned_id: existingProfile.assigned_id || staff.assigned_id || `SCH/STF/${Math.floor(Math.random()*9000)+1000}`,
-                                is_synced: 0,
-                                updated_at: new Date().toISOString()
-                            });
+                                assigned_id: existingProfile.assigned_id || staff.assigned_id || `SCH/STF/${Math.floor(Math.random()*9000)+1000}`
+                            }));
                         }
                         
                         // 2. Migrate subject_assignments
@@ -11704,13 +11991,18 @@ export const UI = {
         let subjects = (await db.subjects.toArray());
         let exams = await db.cbt_exams.toArray();
 
-        const isAdmin = role === 'admin' || role === 'principal';
+        const isAdmin = role === 'admin' || role === 'principal' || role === 'section admin';
         let activeExams = [];
         let archivedExams = [];
 
         if (isAdmin) {
             activeExams = exams.filter(e => e.status === 'Active');
             archivedExams = exams.filter(e => e.status === 'Archived');
+            if (this.isSectionAdmin()) {
+                const allowed = this.getAdminAllowedLevels();
+                activeExams = activeExams.filter(e => allowed.includes(getClassLevel(e.class_name)));
+                archivedExams = archivedExams.filter(e => allowed.includes(getClassLevel(e.class_name)));
+            }
         } else if (isTeacher) {
             // Teachers see exams they created OR exams for their assigned subjects in those classes
             const myAssignments = await db.subject_assignments.where('teacher_id').equals(teacherId).toArray();
@@ -12181,6 +12473,10 @@ export const UI = {
 
 
         let classes = (await db.classes.toArray());
+        if (this.isSectionAdmin()) {
+            const allowed = this.getAdminAllowedLevels();
+            classes = classes.filter(c => allowed.includes(getClassLevel(c.name)));
+        }
 
 
         // Custom serial sort for classes (JSS -> SSS)
@@ -15369,18 +15665,24 @@ export const UI = {
                     scoreRecord[scoreField] = parseFloat(scaledScore.toFixed(1));
                     
                     // Recalculate CA and Total so it updates the gradebook in real time
+                    const postClassName = exam.class_name || scoreRecord.class_name || '';
+                    const postLevel = getClassLevel(postClassName);
+                    const postIsNP = postLevel === 'nursery' || postLevel === 'primary';
+
                     const assignment = scoreRecord.assignment === undefined || scoreRecord.assignment === null ? null : parseFloat(scoreRecord.assignment);
                     const test1 = scoreRecord.test1 === undefined || scoreRecord.test1 === null ? null : parseFloat(scoreRecord.test1);
-                    const test2 = scoreRecord.test2 === undefined || scoreRecord.test2 === null ? null : parseFloat(scoreRecord.test2);
-                    const project = scoreRecord.project === undefined || scoreRecord.project === null ? null : parseFloat(scoreRecord.project);
+                    const test2 = postIsNP ? null : (scoreRecord.test2 === undefined || scoreRecord.test2 === null ? null : parseFloat(scoreRecord.test2));
+                    const project = postIsNP ? null : (scoreRecord.project === undefined || scoreRecord.project === null ? null : parseFloat(scoreRecord.project));
                     const examVal = scoreRecord.exam === undefined || scoreRecord.exam === null ? null : parseFloat(scoreRecord.exam);
                     
-                    const hasAny = ![assignment, test1, test2, project, examVal].every(v => v === null);
+                    const hasAny = postIsNP
+                        ? ![assignment, test1, examVal].every(v => v === null)
+                        : ![assignment, test1, test2, project, examVal].every(v => v === null);
                     if (hasAny) {
-                        scoreRecord.ca = (assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0);
+                        scoreRecord.ca = postIsNP ? ((assignment || 0) + (test1 || 0)) : ((assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0));
                         scoreRecord.total = (scoreRecord.ca || 0) + (examVal || 0);
-                        scoreRecord.grade = ScoringEngine.getGrade(scoreRecord.total);
-                        scoreRecord.remark = ScoringEngine.getRemark(scoreRecord.total);
+                        scoreRecord.grade = postIsNP ? ScoringEngine.getGradeNP(scoreRecord.total) : ScoringEngine.getGrade(scoreRecord.total);
+                        scoreRecord.remark = postIsNP ? ScoringEngine.getRemarkNP(scoreRecord.total) : ScoringEngine.getRemark(scoreRecord.total);
                     }
 
                     scoreRecord.updated_at = new Date().toISOString();
@@ -15421,7 +15723,12 @@ export const UI = {
                 }
 
                 if (field === 'exam') multiplier = 60;
-                else if (field.includes('test') || field.includes('project') || field.includes('assignment')) multiplier = 10;
+                else if (field.includes('test') || field.includes('project') || field.includes('assignment')) {
+                    const postClassName = exam.class_name || scoreData.class_name || '';
+                    const postLevel = getClassLevel(postClassName);
+                    const postIsNP = postLevel === 'nursery' || postLevel === 'primary';
+                    multiplier = postIsNP ? 20 : 10;
+                }
             }
 
             const divisor = result.total_marks || result.total_questions;
@@ -15451,18 +15758,24 @@ export const UI = {
             };
 
             // Recalculate CA and Total so it updates the gradebook in real time
+            const postClassName = exam.class_name || updatedScoreRecord.class_name || '';
+            const postLevel = getClassLevel(postClassName);
+            const postIsNP = postLevel === 'nursery' || postLevel === 'primary';
+
             const assignment = updatedScoreRecord.assignment === undefined || updatedScoreRecord.assignment === null ? null : parseFloat(updatedScoreRecord.assignment);
             const test1 = updatedScoreRecord.test1 === undefined || updatedScoreRecord.test1 === null ? null : parseFloat(updatedScoreRecord.test1);
-            const test2 = updatedScoreRecord.test2 === undefined || updatedScoreRecord.test2 === null ? null : parseFloat(updatedScoreRecord.test2);
-            const project = updatedScoreRecord.project === undefined || updatedScoreRecord.project === null ? null : parseFloat(updatedScoreRecord.project);
+            const test2 = postIsNP ? null : (updatedScoreRecord.test2 === undefined || updatedScoreRecord.test2 === null ? null : parseFloat(updatedScoreRecord.test2));
+            const project = postIsNP ? null : (updatedScoreRecord.project === undefined || updatedScoreRecord.project === null ? null : parseFloat(updatedScoreRecord.project));
             const examVal = updatedScoreRecord.exam === undefined || updatedScoreRecord.exam === null ? null : parseFloat(updatedScoreRecord.exam);
             
-            const hasAny = ![assignment, test1, test2, project, examVal].every(v => v === null);
+            const hasAny = postIsNP
+                ? ![assignment, test1, examVal].every(v => v === null)
+                : ![assignment, test1, test2, project, examVal].every(v => v === null);
             if (hasAny) {
-                updatedScoreRecord.ca = (assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0);
+                updatedScoreRecord.ca = postIsNP ? ((assignment || 0) + (test1 || 0)) : ((assignment || 0) + (test1 || 0) + (test2 || 0) + (project || 0));
                 updatedScoreRecord.total = (updatedScoreRecord.ca || 0) + (examVal || 0);
-                updatedScoreRecord.grade = ScoringEngine.getGrade(updatedScoreRecord.total);
-                updatedScoreRecord.remark = ScoringEngine.getRemark(updatedScoreRecord.total);
+                updatedScoreRecord.grade = postIsNP ? ScoringEngine.getGradeNP(updatedScoreRecord.total) : ScoringEngine.getGrade(updatedScoreRecord.total);
+                updatedScoreRecord.remark = postIsNP ? ScoringEngine.getRemarkNP(updatedScoreRecord.total) : ScoringEngine.getRemark(updatedScoreRecord.total);
             }
 
             const finalScore = prepareForSync(updatedScoreRecord);
@@ -17673,7 +17986,11 @@ export const UI = {
     },
 
     async renderTimetable() {
-        const classes = (await db.classes.toArray()).sort(compareClasses);
+        let classes = (await db.classes.toArray()).sort(compareClasses);
+        if (this.isSectionAdmin()) {
+            const allowed = this.getAdminAllowedLevels();
+            classes = classes.filter(c => allowed.includes(getClassLevel(c.name)));
+        }
         const subjects = (await db.subjects.toArray()).sort((a,b) => a.name.localeCompare(b.name));
         
         this.contentArea.innerHTML = `
@@ -17785,7 +18102,11 @@ export const UI = {
         
         // Timetable Solver function (Greedy Constraint Satisfaction with multi-pass fill)
         const solveSchoolTimetable = async (constraints) => {
-            const classes = await db.classes.toArray();
+            let classes = await db.classes.toArray();
+            if (this.isSectionAdmin()) {
+                const allowed = this.getAdminAllowedLevels();
+                classes = classes.filter(c => allowed.includes(getClassLevel(c.name)));
+            }
             const assignments = await db.subject_assignments.toArray();
             
             // Target classes configuration matching school structure
@@ -19472,7 +19793,22 @@ export const UI = {
             ttMaxDay: parseInt(settings.timetable_maxPerDay || '1'),
             ttMaxConsec: parseInt(settings.timetable_maxConsecutive || '3'),
             ttFreq: parseInt(settings.timetable_defaultFrequency || '3'),
-            ttPartTimeConstraints: settings.timetable_partTimeConstraints || '[]'
+            ttPartTimeConstraints: settings.timetable_partTimeConstraints || '[]',
+            gb_nursery_assignment: settings.gb_nursery_assignment !== undefined ? (settings.gb_nursery_assignment === 'true' || settings.gb_nursery_assignment === true) : true,
+            gb_nursery_test1: settings.gb_nursery_test1 !== undefined ? (settings.gb_nursery_test1 === 'true' || settings.gb_nursery_test1 === true) : true,
+            gb_nursery_test2: settings.gb_nursery_test2 !== undefined ? (settings.gb_nursery_test2 === 'true' || settings.gb_nursery_test2 === true) : false,
+            gb_nursery_project: settings.gb_nursery_project !== undefined ? (settings.gb_nursery_project === 'true' || settings.gb_nursery_project === true) : false,
+            gb_nursery_exam: settings.gb_nursery_exam !== undefined ? (settings.gb_nursery_exam === 'true' || settings.gb_nursery_exam === true) : true,
+            gb_primary_assignment: settings.gb_primary_assignment !== undefined ? (settings.gb_primary_assignment === 'true' || settings.gb_primary_assignment === true) : true,
+            gb_primary_test1: settings.gb_primary_test1 !== undefined ? (settings.gb_primary_test1 === 'true' || settings.gb_primary_test1 === true) : true,
+            gb_primary_test2: settings.gb_primary_test2 !== undefined ? (settings.gb_primary_test2 === 'true' || settings.gb_primary_test2 === true) : false,
+            gb_primary_project: settings.gb_primary_project !== undefined ? (settings.gb_primary_project === 'true' || settings.gb_primary_project === true) : false,
+            gb_primary_exam: settings.gb_primary_exam !== undefined ? (settings.gb_primary_exam === 'true' || settings.gb_primary_exam === true) : true,
+            gb_secondary_assignment: settings.gb_secondary_assignment !== undefined ? (settings.gb_secondary_assignment === 'true' || settings.gb_secondary_assignment === true) : true,
+            gb_secondary_test1: settings.gb_secondary_test1 !== undefined ? (settings.gb_secondary_test1 === 'true' || settings.gb_secondary_test1 === true) : true,
+            gb_secondary_test2: settings.gb_secondary_test2 !== undefined ? (settings.gb_secondary_test2 === 'true' || settings.gb_secondary_test2 === true) : true,
+            gb_secondary_project: settings.gb_secondary_project !== undefined ? (settings.gb_secondary_project === 'true' || settings.gb_secondary_project === true) : true,
+            gb_secondary_exam: settings.gb_secondary_exam !== undefined ? (settings.gb_secondary_exam === 'true' || settings.gb_secondary_exam === true) : true
         };
 
         this.timetablePartTimeConstraints = JSON.parse(config.ttPartTimeConstraints);
@@ -19682,6 +20018,86 @@ export const UI = {
                         </div>
                         <input type="hidden" id="set-school-holidays" value="${config.holidays}">
                     </div>
+                    </div>
+                </div>
+
+                <!-- Section: Gradebook & Report Card Customization -->
+                <div class="glass-collapse-card">
+                    <input type="checkbox" id="toggle-settings-gradebook" class="glass-collapse-checkbox" checked>
+                    <label for="toggle-settings-gradebook" class="glass-collapse-header">
+                        <span class="glass-collapse-title"><i data-lucide="sliders" style="width: 18px; color: #7c3aed;"></i> Gradebook & Report Card Columns</span>
+                        <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
+                    </label>
+                    <div class="glass-collapse-content">
+                        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.5rem;">Select which score columns are enabled and visible for each academic level.</p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem;">
+                            <!-- Nursery Config -->
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.25rem; border-radius: 16px;">
+                                <h4 style="font-weight: 800; color: #1e293b; margin-bottom: 0.75rem; font-size: 0.9rem;">Nursery Level Columns</h4>
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="assignment" ${config.gb_nursery_assignment ? 'checked' : ''}> Assignment (H/W)
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="test1" ${config.gb_nursery_test1 ? 'checked' : ''}> Test 1
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="test2" ${config.gb_nursery_test2 ? 'checked' : ''}> Test 2
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="project" ${config.gb_nursery_project ? 'checked' : ''}> Project
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="exam" ${config.gb_nursery_exam ? 'checked' : ''}> Exam
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Primary Config -->
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.25rem; border-radius: 16px;">
+                                <h4 style="font-weight: 800; color: #1e293b; margin-bottom: 0.75rem; font-size: 0.9rem;">Primary Level Columns</h4>
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="assignment" ${config.gb_primary_assignment ? 'checked' : ''}> Assignment (H/W)
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="test1" ${config.gb_primary_test1 ? 'checked' : ''}> Test 1
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="test2" ${config.gb_primary_test2 ? 'checked' : ''}> Test 2
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="project" ${config.gb_primary_project ? 'checked' : ''}> Project
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="exam" ${config.gb_primary_exam ? 'checked' : ''}> Exam
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Secondary Config -->
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.25rem; border-radius: 16px;">
+                                <h4 style="font-weight: 800; color: #1e293b; margin-bottom: 0.75rem; font-size: 0.9rem;">Secondary Level Columns</h4>
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="assignment" ${config.gb_secondary_assignment ? 'checked' : ''}> Assignment
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="test1" ${config.gb_secondary_test1 ? 'checked' : ''}> Test 1
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="test2" ${config.gb_secondary_test2 ? 'checked' : ''}> Test 2
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="project" ${config.gb_secondary_project ? 'checked' : ''}> Project
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                        <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="exam" ${config.gb_secondary_exam ? 'checked' : ''}> Exam
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -19999,6 +20415,16 @@ export const UI = {
                     await this.saveSingleSetting(cfg.key, val);
                 });
             }
+        });
+
+        // Register Gradebook column toggle change listeners
+        document.querySelectorAll('.gb-col-toggle').forEach(el => {
+            el.addEventListener('change', async () => {
+                const level = el.dataset.level;
+                const field = el.dataset.field;
+                const key = `gb_${level}_${field}`;
+                await this.saveSingleSetting(key, el.checked ? 'true' : 'false');
+            });
         });
         
         // --- NEW: Global Class-Arm Repair Logic ---
@@ -20840,6 +21266,12 @@ export const UI = {
         if (vapidInput) {
             settingsToSave.push({ key: 'vapid_public_key', value: vapidInput.value.trim() });
         }
+
+        document.querySelectorAll('.gb-col-toggle').forEach(el => {
+            const level = el.dataset.level;
+            const field = el.dataset.field;
+            settingsToSave.push({ key: `gb_${level}_${field}`, value: el.checked ? 'true' : 'false' });
+        });
 
         try {
             for (const s of settingsToSave) {
@@ -22675,6 +23107,2109 @@ export const UI = {
 
         // Initial render
         renderTab(activeTab);
+    },
+
+    // ─── EXAM SEATING ARRANGEMENT ENGINE ─────────────────────────────────────────
+    async renderSeating() {
+        const settings = await db.settings.toArray();
+        const getSetting = (key) => settings.find(s => s.key === key)?.value;
+        const currentTerm = getSetting('currentTerm') || '1st Term';
+        const currentSession = getSetting('currentSession') || '2025/2026';
+
+        const allClasses = await db.classes.toArray();
+        const sortedClasses = allClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+        const allStudents = (await db.students.toArray()).filter(s => s.status !== 'Graduated' && s.status !== 'Withdrawn');
+
+        const tenantId = localStorage.getItem('tenant_id');
+
+        // Fetch saved halls and arrangements
+        let examHalls = await db.exam_halls.toArray();
+        if (tenantId) examHalls = examHalls.filter(h => h.tenant_id === tenantId);
+        examHalls.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+        let savedArrangements = await db.exam_seating.toArray();
+        if (tenantId) savedArrangements = savedArrangements.filter(a => a.tenant_id === tenantId);
+        savedArrangements.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+
+        this.contentArea.innerHTML = `
+            <div class="view-container animate-fade-in" style="max-width: 1400px; margin: 0 auto; padding: 1.5rem;">
+                <!-- Header -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h1 style="font-size: 1.8rem; font-weight: 900; color: var(--text-primary); margin: 0;">
+                            <i data-lucide="grid" style="width: 28px; height: 28px; vertical-align: -4px; margin-right: 0.5rem; color: #6366f1;"></i>
+                            Exam Seating Engine
+                        </h1>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">Define multiple exam halls and automatically distribute students with class separation</p>
+                    </div>
+                </div>
+
+                <!-- Tabs Navigation -->
+                <div style="display: flex; gap: 1rem; border-bottom: 2px solid #e2e8f0; margin-bottom: 1.5rem; overflow-x: auto;">
+                    <button id="tab-seating-halls" class="tab-btn active" style="padding: 0.75rem 1.5rem; font-weight: 800; background: none; border: none; border-bottom: 3px solid #6366f1; color: #6366f1; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; transition: all 0.2s;">
+                        <i data-lucide="building" style="width: 16px; height: 16px;"></i> Manage Halls
+                    </button>
+                    <button id="tab-seating-generate" class="tab-btn" style="padding: 0.75rem 1.5rem; font-weight: 800; background: none; border: none; border-bottom: 3px solid transparent; color: #64748b; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; transition: all 0.2s;">
+                        <i data-lucide="cpu" style="width: 16px; height: 16px;"></i> Generate Arrangements
+                    </button>
+                    <button id="tab-seating-designer" class="tab-btn" style="padding: 0.75rem 1.5rem; font-weight: 800; background: none; border: none; border-bottom: 3px solid transparent; color: #64748b; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; transition: all 0.2s;">
+                        <i data-lucide="pen-tool" style="width: 16px; height: 16px;"></i> Manual Designer
+                    </button>
+                </div>
+
+                <!-- 1. Manage Halls View -->
+                <div id="seating-halls-view" style="display: block;">
+                    <!-- Hall Form Card -->
+                    <div id="hall-form-card" style="display: none; background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 4px 24px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; margin-bottom: 2rem;">
+                        <h2 id="hall-form-title" style="font-size: 1.15rem; font-weight: 800; color: #1e293b; margin: 0 0 1.5rem 0;">Add New Exam Hall</h2>
+                        <input type="hidden" id="seat-hall-id">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                            <div>
+                                <label style="font-weight: 700; font-size: 0.78rem; color: #475569; display: block; margin-bottom: 0.35rem;">Hall Name</label>
+                                <input type="text" id="seat-hall-name" class="input" placeholder="e.g. Main Hall" style="width: 100%; height: 44px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0; color: #1e293b; font-weight: 600;">
+                            </div>
+                            <div>
+                                <label style="font-weight: 700; font-size: 0.78rem; color: #475569; display: block; margin-bottom: 0.35rem;">Number of Rows</label>
+                                <input type="number" id="seat-rows" class="input" min="1" max="50" value="5" style="width: 100%; height: 44px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0; color: #1e293b; font-weight: 600;">
+                            </div>
+                            <div>
+                                <label style="font-weight: 700; font-size: 0.78rem; color: #475569; display: block; margin-bottom: 0.35rem;">Number of Columns</label>
+                                <input type="number" id="seat-cols" class="input" min="1" max="50" value="5" style="width: 100%; height: 44px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0; color: #1e293b; font-weight: 600;">
+                            </div>
+                            <div>
+                                <label style="font-weight: 700; font-size: 0.78rem; color: #475569; display: block; margin-bottom: 0.35rem;">Students per Seat</label>
+                                <select id="seat-per-seat" class="input" style="width: 100%; height: 44px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0; color: #1e293b; font-weight: 600;">
+                                    <option value="1">1 Student</option>
+                                    <option value="2">2 Students</option>
+                                    <option value="3">3 Students</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-weight: 700; font-size: 0.78rem; color: #475569; display: block; margin-bottom: 0.35rem;">Seat Numbering Order</label>
+                                <select id="seat-numbering" class="input" style="width: 100%; height: 44px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0; color: #1e293b; font-weight: 600;">
+                                    <option value="rows">By Rows (Left → Right, Top → Bottom)</option>
+                                    <option value="columns">By Columns (Top → Bottom, Left → Right)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                            <button type="button" id="btn-cancel-hall" style="background: #f1f5f9; color: #475569; border: none; padding: 0.7rem 1.5rem; border-radius: 12px; font-weight: 700; font-size: 0.82rem; cursor: pointer;">Cancel</button>
+                            <button type="button" id="btn-save-hall" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; padding: 0.7rem 2rem; border-radius: 12px; font-weight: 800; font-size: 0.82rem; cursor: pointer;">Save Hall</button>
+                        </div>
+                    </div>
+
+                    <!-- Hall List Directory -->
+                    <div style="background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 4px 24px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; margin-bottom: 2rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h2 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin: 0;">Defined Exam Halls</h2>
+                            <button id="btn-add-hall" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; padding: 0.5rem 1rem; border-radius: 10px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                                <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i> Add Hall
+                            </button>
+                        </div>
+                        
+                        ${examHalls.length === 0 ? `
+                            <div style="text-align: center; padding: 3rem 1rem;">
+                                <div style="background: #f1f5f9; width: 64px; height: 64px; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
+                                    <i data-lucide="building" style="width: 28px; height: 28px; color: #94a3b8;"></i>
+                                </div>
+                                <p style="font-weight: 700; color: #475569; font-size: 0.95rem;">No exam halls defined yet</p>
+                                <p style="color: #94a3b8; font-size: 0.8rem;">Define your exam halls here before running student distribution.</p>
+                            </div>
+                        ` : `
+                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
+                                ${examHalls.map(h => {
+                                    const capacity = h.rows * h.cols * h.students_per_seat;
+                                    return `
+                                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between; gap: 1rem;">
+                                            <div>
+                                                <div style="font-weight: 800; color: #1e293b; font-size: 1rem;">${h.name}</div>
+                                                <div style="font-size: 0.8rem; color: #64748b; margin-top: 0.4rem; line-height: 1.5;">
+                                                    Grid: <strong>${h.rows} Rows × ${h.cols} Cols</strong><br>
+                                                    Seat Density: <strong>${h.students_per_seat} Student(s)/Seat</strong><br>
+                                                    Order: <strong>By ${h.numbering_order === 'rows' ? 'Rows' : 'Columns'}</strong>
+                                                </div>
+                                            </div>
+                                            <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e2e8f0; padding-top: 0.75rem;">
+                                                <span style="font-size: 0.75rem; color: #6366f1; font-weight: 800; background: #eef2ff; padding: 0.25rem 0.6rem; border-radius: 6px;">Capacity: ${capacity} seats</span>
+                                                <div style="display: flex; gap: 0.3rem;">
+                                                    <button class="btn-edit-hall" data-id="${h.id}" style="background: none; border: none; color: #4b5563; cursor: pointer; padding: 0.25rem;"><i data-lucide="edit-3" style="width: 16px; height: 16px;"></i></button>
+                                                    <button class="btn-delete-hall" data-id="${h.id}" style="background: none; border: none; color: #dc2626; cursor: pointer; padding: 0.25rem;"><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i></button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        `}
+                    </div>
+                </div>
+
+                <!-- 2. Generate Seating View -->
+                <div id="seating-generate-view" style="display: none;">
+                    <div style="background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 4px 24px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; margin-bottom: 2rem;">
+                        <h2 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin: 0 0 1.5rem 0;">Generate Seating Plan</h2>
+                        
+                        <!-- Step 1: Select Halls -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+                                <label style="font-weight: 800; font-size: 0.85rem; color: #1e293b;">1. Select Halls to Use</label>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button type="button" id="btn-select-all-halls" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.3rem 0.75rem; font-size: 0.7rem; font-weight: 700; cursor: pointer;">Select All</button>
+                                    <button type="button" id="btn-deselect-all-halls" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 8px; padding: 0.3rem 0.75rem; font-size: 0.7rem; font-weight: 700; cursor: pointer;">Deselect All</button>
+                                </div>
+                            </div>
+                            ${examHalls.length === 0 ? `
+                                <p style="color: #ef4444; font-size: 0.8rem; font-weight: 600;">Please define at least one exam hall in the "Manage Halls" tab first.</p>
+                            ` : `
+                                <div id="generate-hall-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; background: #f8fafc; border-radius: 14px; padding: 1rem; border: 1px solid #e2e8f0;">
+                                    ${examHalls.map(h => {
+                                        const capacity = h.rows * h.cols * h.students_per_seat;
+                                        return `
+                                            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: white; border-radius: 10px; border: 1px solid #f1f5f9; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                                <input type="checkbox" class="seat-hall-chk" value="${h.id}" data-capacity="${capacity}" style="accent-color: #6366f1; width: 16px; height: 16px;">
+                                                ${h.name} <span style="color: #6366f1; font-size: 0.72rem; font-weight: 700;">(Cap: ${capacity})</span>
+                                            </label>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            `}
+                        </div>
+
+                        <!-- Step 2: Select Classes -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+                                <label style="font-weight: 800; font-size: 0.85rem; color: #1e293b;">2. Select Classes to Include</label>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button type="button" id="btn-select-all-classes" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.3rem 0.75rem; font-size: 0.7rem; font-weight: 700; cursor: pointer;">Select All</button>
+                                    <button type="button" id="btn-deselect-all-classes" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 8px; padding: 0.3rem 0.75rem; font-size: 0.7rem; font-weight: 700; cursor: pointer;">Deselect All</button>
+                                </div>
+                            </div>
+                            <div id="seat-class-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.5rem; max-height: 240px; overflow-y: auto; background: #f8fafc; border-radius: 14px; padding: 1rem; border: 1px solid #e2e8f0;">
+                                ${sortedClasses.map(c => {
+                                    const count = allStudents.filter(s => s.class_name === c.name).length;
+                                    return `
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: white; border-radius: 10px; border: 1px solid #f1f5f9; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: #334155;">
+                                            <input type="checkbox" class="seat-class-chk" value="${c.name}" data-count="${count}" style="accent-color: #6366f1; width: 16px; height: 16px;">
+                                            ${c.name} <span style="color: #94a3b8; font-size: 0.7rem; font-weight: 500;">(${count})</span>
+                                        </label>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Capacity Metrics -->
+                        <div style="background: #f8fafc; border-radius: 12px; padding: 1rem; border: 1px solid #e2e8f0; margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 2rem;">
+                            <div style="font-size: 0.82rem; color: #475569;">
+                                Total Students Selected: <strong id="lbl-total-students" style="color: #6366f1; font-size: 0.95rem;">0</strong>
+                            </div>
+                            <div style="font-size: 0.82rem; color: #475569;">
+                                Total Available Seating Capacity: <strong id="lbl-total-capacity" style="color: #6366f1; font-size: 0.95rem;">0</strong>
+                            </div>
+                            <div id="lbl-capacity-warning" style="font-size: 0.82rem; font-weight: 700; color: #ef4444; display: none;">
+                                ⚠️ Student count exceeds available capacity!
+                            </div>
+                        </div>
+
+                        <!-- Generate Button -->
+                        <div style="display: flex; justify-content: flex-end;">
+                            <button type="button" id="btn-run-distribution" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; padding: 0.75rem 2.5rem; border-radius: 12px; font-weight: 800; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 15px rgba(99,102,241,0.25);">
+                                <i data-lucide="cpu" style="width: 18px; height: 18px;"></i>
+                                Run Multi-Hall Seating
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Manual Designer View -->
+                <div id="seating-designer-view" style="display: none;">
+                    <div style="background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 4px 24px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; margin-bottom: 2rem;">
+                        <h2 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin: 0 0 0.25rem 0;">
+                            <i data-lucide="pen-tool" style="width: 18px; height: 18px; vertical-align: -3px; margin-right: 0.4rem; color: #6366f1;"></i>
+                            Visual Hall Designer
+                        </h2>
+                        <p style="color: #64748b; font-size: 0.78rem; margin: 0 0 1.5rem 0;">Set hall dimensions, place seats visually, configure each seat's capacity and class arrangement, then auto-sort students.</p>
+
+                        <!-- Step 1: Manage Designer Halls -->
+                        <div style="background: linear-gradient(135deg, #f8fafc, #eef2ff); border-radius: 16px; padding: 1.25rem; border: 1px solid #e2e8f0; margin-bottom: 1.25rem;">
+                            <h3 style="font-size: 0.85rem; font-weight: 800; color: #334155; margin: 0 0 0.5rem 0;">1. Manage Designer Halls</h3>
+                            <p style="color: #64748b; font-size: 0.72rem; margin: 0 0 0.75rem 0;">Add one or more exam halls (from template or custom dimensions) to design and include in this seating run.</p>
+                            
+                            <!-- Add Hall Controls -->
+                            <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin-bottom: 1.25rem; background: white; padding: 1rem; border-radius: 12px; border: 1px solid #cbd5e1;">
+                                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                    <label style="font-weight: 700; font-size: 0.72rem; color: #475569;">Select Template / Custom</label>
+                                    <select id="md-add-hall-select" style="height: 38px; border-radius: 10px; border: 1px solid #cbd5e1; background: white; font-weight: 600; font-size: 0.78rem; color: #1e293b; padding: 0 0.5rem; min-width: 180px;">
+                                        <option value="custom">➕ Custom Grid...</option>
+                                        ${examHalls.map(h => `<option value="${h.id}" data-name="${h.name}" data-rows="${h.rows}" data-cols="${h.cols}">${h.name} (${h.rows}×${h.cols})</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div id="md-add-custom-fields" style="display: flex; gap: 0.5rem;">
+                                    <div>
+                                        <label style="font-weight: 700; font-size: 0.72rem; color: #475569; display: block; margin-bottom: 0.25rem;">Name</label>
+                                        <input type="text" id="md-add-hall-name" placeholder="Custom Hall" value="Custom Hall" style="width: 120px; height: 38px; border-radius: 10px; border: 1px solid #cbd5e1; font-weight: 600; font-size: 0.78rem; padding: 0 0.5rem;">
+                                    </div>
+                                    <div>
+                                        <label style="font-weight: 700; font-size: 0.72rem; color: #475569; display: block; margin-bottom: 0.25rem;">Rows</label>
+                                        <input type="number" id="md-add-rows" min="1" max="30" value="5" style="width: 60px; height: 38px; border-radius: 10px; border: 1px solid #cbd5e1; font-weight: 600; font-size: 0.78rem; padding: 0 0.5rem; text-align: center;">
+                                    </div>
+                                    <div>
+                                        <label style="font-weight: 700; font-size: 0.72rem; color: #475569; display: block; margin-bottom: 0.25rem;">Cols</label>
+                                        <input type="number" id="md-add-cols" min="1" max="30" value="6" style="width: 60px; height: 38px; border-radius: 10px; border: 1px solid #cbd5e1; font-weight: 600; font-size: 0.78rem; padding: 0 0.5rem; text-align: center;">
+                                    </div>
+                                </div>
+                                <button type="button" id="btn-md-add-hall" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; padding: 0 1.25rem; border-radius: 10px; font-weight: 800; font-size: 0.78rem; cursor: pointer; height: 38px; display: flex; align-items: center; gap: 0.3rem; box-shadow: 0 2px 8px rgba(99,102,241,0.25);">
+                                    <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i> Add Hall
+                                </button>
+                            </div>
+
+                            <div style="font-weight: 700; font-size: 0.75rem; color: #475569; margin-bottom: 0.4rem;">Halls in Designer Session:</div>
+                            <div id="md-active-halls-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 48px; background: white; padding: 0.5rem 0.75rem; border-radius: 10px; border: 1px solid #cbd5e1; align-items: center;">
+                                <!-- Will be populated dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Step 2: Seat Palette + Class Pool (hidden until canvas created) -->
+                        <div id="md-tools-panel" style="display: none;">
+                            <!-- Active Hall Selector -->
+                            <div style="background: #eef2ff; border-radius: 14px; padding: 0.75rem 1.25rem; border: 1.5px solid #c7d2fe; margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem; justify-content: space-between; flex-wrap: wrap;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                    <span style="font-weight: 800; font-size: 0.82rem; color: #312e81;">Designing layout for:</span>
+                                    <select id="md-active-hall-selector" style="height: 36px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; font-weight: 700; font-size: 0.8rem; color: #1e293b; padding: 0 0.5rem; min-width: 160px;"></select>
+                                </div>
+                                <span style="font-size: 0.7rem; font-weight: 700; color: #6366f1; background: #ffffff; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid #e0e7ff;">Change selector to design other halls</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
+                                <!-- Seat Palette -->
+                                <div style="background: #f8fafc; border-radius: 14px; padding: 1rem; border: 1px solid #e2e8f0;">
+                                    <h3 style="font-size: 0.82rem; font-weight: 800; color: #334155; margin: 0 0 0.6rem 0;">2. Seat Palette <span style="color:#94a3b8; font-weight:500;">(click a tool, then click on the canvas)</span></h3>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                                        <button class="md-tool-btn" data-tool="seat-1" style="background: #dbeafe; color: #1e40af; border: 2px solid #93c5fd; padding: 0.45rem 0.85rem; border-radius: 10px; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.15s;">🪑 1-Person</button>
+                                        <button class="md-tool-btn" data-tool="seat-2" style="background: #fce7f3; color: #9d174d; border: 2px solid #f9a8d4; padding: 0.45rem 0.85rem; border-radius: 10px; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.15s;">🪑🪑 2-Person</button>
+                                        <button class="md-tool-btn" data-tool="seat-3" style="background: #fef3c7; color: #92400e; border: 2px solid #fcd34d; padding: 0.45rem 0.85rem; border-radius: 10px; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.15s;">🪑🪑🪑 3-Person</button>
+                                        <button class="md-tool-btn" data-tool="seat-4" style="background: #d1fae5; color: #065f46; border: 2px solid #6ee7b7; padding: 0.45rem 0.85rem; border-radius: 10px; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.15s;">🪑×4 4-Person</button>
+                                        <button class="md-tool-btn" data-tool="select" style="background: #eef2ff; color: #4338ca; border: 2px solid #a5b4fc; padding: 0.45rem 0.85rem; border-radius: 10px; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.15s;">🔍 Select</button>
+                                        <button class="md-tool-btn" data-tool="erase" style="background: #fef2f2; color: #b91c1c; border: 2px solid #fca5a5; padding: 0.45rem 0.85rem; border-radius: 10px; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.15s;">🗑️ Erase</button>
+                                        <button id="btn-md-fill-all" style="background: #f0fdf4; color: #15803d; border: 2px solid #86efac; padding: 0.45rem 0.85rem; border-radius: 10px; font-weight: 800; font-size: 0.75rem; cursor: pointer; transition: all 0.15s;">⬜ Fill All 1-Person</button>
+                                    </div>
+                                    <div id="md-active-tool-label" style="margin-top: 0.5rem; font-size: 0.72rem; font-weight: 700; color: #6366f1;">Active: Select</div>
+                                </div>
+
+                                <!-- Class Pool -->
+                                <div style="background: #f8fafc; border-radius: 14px; padding: 1rem; border: 1px solid #e2e8f0;">
+                                    <h3 style="font-size: 0.82rem; font-weight: 800; color: #334155; margin: 0 0 0.6rem 0;">3. Available Classes</h3>
+                                    <div id="md-class-pool" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.3rem; max-height: 140px; overflow-y: auto;">
+                                        ${sortedClasses.map(c => {
+                                            const count = allStudents.filter(s => s.class_name === c.name).length;
+                                            return `
+                                                <label style="display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.5rem; border-radius: 7px; font-size: 0.75rem; font-weight: 600; color: #334155; cursor: pointer; background: white; border: 1px solid #e2e8f0;">
+                                                    <input type="checkbox" class="md-class-chk" value="${c.name}" data-count="${count}" style="accent-color: #6366f1; width: 14px; height: 14px;" checked>
+                                                    ${c.name} <span style="color: #94a3b8; font-size: 0.65rem;">(${count})</span>
+                                                </label>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Visual Hall Canvas -->
+                            <div style="background: #0f172a; border-radius: 18px; padding: 1.5rem; margin-bottom: 1.25rem; position: relative; overflow: auto;">
+                                <!-- Blackboard -->
+                                <div style="text-align: center; margin-bottom: 1rem;">
+                                    <div style="background: linear-gradient(135deg, #1e3a2f, #2d4a3e); color: #86efac; padding: 0.6rem 3rem; border-radius: 10px; display: inline-block; font-weight: 900; font-size: 0.82rem; letter-spacing: 2px; border: 2px solid #4ade8044; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">BLACKBOARD / FRONT</div>
+                                </div>
+                                <!-- Grid -->
+                                <div id="md-hall-canvas" style="display: grid; gap: 6px; justify-content: center;"></div>
+                                <div style="text-align: center; margin-top: 0.75rem;">
+                                    <span style="color: #64748b; font-size: 0.7rem; font-weight: 600;">Click cells to place seats · Drag seats to reposition · Click 🔍 Select then click a seat to configure</span>
+                                </div>
+                            </div>
+
+                            <!-- Seat Configuration Panel (shown when a seat is selected) -->
+                            <div id="md-seat-config" style="display: none; background: linear-gradient(135deg, #eef2ff, #faf5ff); border-radius: 16px; padding: 1.25rem; border: 2px solid #c7d2fe; margin-bottom: 1.25rem; animation: fadeIn 0.2s ease;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+                                    <h3 id="md-config-title" style="font-size: 0.9rem; font-weight: 800; color: #312e81; margin: 0;">Seat Configuration</h3>
+                                    <button id="btn-md-close-config" style="background: none; border: none; color: #6366f1; cursor: pointer; font-size: 1.1rem; padding: 0.2rem;">✕</button>
+                                </div>
+                                <div id="md-config-slots" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+                                <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem; justify-content: flex-end;">
+                                    <button id="btn-md-apply-config" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; padding: 0.5rem 1.25rem; border-radius: 10px; font-weight: 800; font-size: 0.78rem; cursor: pointer;">Apply</button>
+                                </div>
+                            </div>
+
+                            <!-- Metrics Bar -->
+                            <div style="background: #f8fafc; border-radius: 12px; padding: 0.85rem 1rem; border: 1px solid #e2e8f0; margin-bottom: 1.25rem; display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;">
+                                <div style="font-size: 0.8rem; color: #475569;">Seats Placed: <strong id="md-lbl-seats" style="color: #6366f1;">0</strong></div>
+                                <div style="font-size: 0.8rem; color: #475569;">Total Capacity: <strong id="md-lbl-capacity" style="color: #6366f1;">0</strong></div>
+                                <div style="font-size: 0.8rem; color: #475569;">Students: <strong id="md-lbl-students" style="color: #6366f1;">0</strong></div>
+                                <div id="md-lbl-overflow" style="font-size: 0.8rem; font-weight: 700; color: #ef4444; display: none;">⚠️ Overflow!</div>
+                            </div>
+
+                            <!-- Generate Button -->
+                            <div style="display: flex; justify-content: flex-end;">
+                                <button type="button" id="btn-md-generate" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; padding: 0.75rem 2.5rem; border-radius: 12px; font-weight: 800; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 15px rgba(99,102,241,0.25);">
+                                    <i data-lucide="zap" style="width: 18px; height: 18px;"></i>
+                                    Auto-Sort & Generate
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visual Seating Grid results layout container -->
+                <div id="seating-results-panel" style="display: none; margin-bottom: 2rem;"></div>
+
+                <!-- Saved Seating Plans List -->
+                <div id="seating-saved-list" style="background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 4px 24px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;">
+                    <h2 style="font-size: 1.1rem; font-weight: 800; color: #1e293b; margin: 0 0 1.25rem 0;">
+                        <i data-lucide="archive" style="width: 18px; height: 18px; vertical-align: -3px; margin-right: 0.4rem; color: #6366f1;"></i>
+                        Generated Seating Plans
+                    </h2>
+                    ${savedArrangements.length === 0 ? `
+                        <div style="text-align: center; padding: 3rem 1rem;">
+                            <div style="background: #f1f5f9; width: 72px; height: 72px; border-radius: 18px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
+                                <i data-lucide="layout-grid" style="width: 32px; height: 32px; color: #94a3b8;"></i>
+                            </div>
+                            <p style="font-weight: 700; color: #475569; font-size: 0.95rem;">No seating plans generated yet</p>
+                            <p style="color: #94a3b8; font-size: 0.8rem;">Define halls and click "Generate Arrangements" to create your seating plans.</p>
+                        </div>
+                    ` : `
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            ${savedArrangements.map(arr => {
+                                const totalStudents = arr.assignments ? arr.assignments.reduce((s, a) => s + (a.student_ids?.length || 0), 0) : 0;
+                                const collisions = arr.assignments ? arr.assignments.filter(a => a.collision).length : 0;
+                                const dateStr = arr.updated_at ? new Date(arr.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
+                                return `
+                                    <div class="saved-arrangement-card" data-id="${arr.id}" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; background: #f8fafc; border-radius: 14px; border: 1px solid #e2e8f0; transition: all 0.15s; flex-wrap: wrap; gap: 0.75rem; cursor: pointer;" onmouseover="this.style.borderColor='#c7d2fe'" onmouseout="this.style.borderColor='#e2e8f0'">
+                                        <div style="flex: 1; min-width: 200px;">
+                                            <div style="font-weight: 800; color: #1e293b; font-size: 0.95rem;">${arr.hall_name || 'Unnamed Hall'}</div>
+                                            <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.2rem;">
+                                                ${arr.rows}×${arr.cols} grid · ${arr.students_per_seat} per seat · ${totalStudents} students · ${arr.class_names?.length || 0} classes
+                                                ${collisions > 0 ? `<span style="color: #f59e0b; font-weight: 700;"> · ⚠ ${collisions} collisions</span>` : '<span style="color: #10b981; font-weight: 700;"> · ✓ Clean</span>'}
+                                            </div>
+                                            <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 0.15rem;">${arr.term || ''} · ${arr.session || ''} · ${dateStr}</div>
+                                        </div>
+                                        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                                            <button class="btn-view-arrangement" data-id="${arr.id}" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                                                <i data-lucide="eye" style="width: 13px; height: 13px;"></i> View
+                                            </button>
+                                            <button class="btn-print-chart" data-id="${arr.id}" style="background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                                                <i data-lucide="printer" style="width: 13px; height: 13px;"></i> Chart
+                                            </button>
+                                            <button class="btn-print-labels" data-id="${arr.id}" style="background: #faf5ff; color: #7c3aed; border: 1px solid #e9d5ff; border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                                                <i data-lucide="tag" style="width: 13px; height: 13px;"></i> Labels
+                                            </button>
+                                            <button class="btn-print-attendance" data-id="${arr.id}" style="background: #fffbeb; color: #d97706; border: 1px solid #fde68a; border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                                                <i data-lucide="clipboard-list" style="width: 13px; height: 13px;"></i> Attendance
+                                            </button>
+                                            <button class="btn-delete-arrangement" data-id="${arr.id}" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 10px; padding: 0.4rem 0.85rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                                                <i data-lucide="trash-2" style="width: 13px; height: 13px;"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // ─── TABS INTERACTION ──────────────────────────────────────────────────
+        const tabHalls = document.getElementById('tab-seating-halls');
+        const tabGen = document.getElementById('tab-seating-generate');
+        const tabDesigner = document.getElementById('tab-seating-designer');
+        const viewHalls = document.getElementById('seating-halls-view');
+        const viewGen = document.getElementById('seating-generate-view');
+        const viewDesigner = document.getElementById('seating-designer-view');
+
+        const allTabs = [tabHalls, tabGen, tabDesigner];
+        const allViews = [viewHalls, viewGen, viewDesigner];
+
+        const switchSeatingTab = (activeTab, activeView) => {
+            allTabs.forEach(t => {
+                t.classList.remove('active');
+                t.style.borderBottom = '3px solid transparent';
+                t.style.color = '#64748b';
+            });
+            allViews.forEach(v => { v.style.display = 'none'; });
+            activeTab.classList.add('active');
+            activeTab.style.borderBottom = '3px solid #6366f1';
+            activeTab.style.color = '#6366f1';
+            activeView.style.display = 'block';
+        };
+
+        tabHalls.onclick = () => switchSeatingTab(tabHalls, viewHalls);
+        tabGen.onclick = () => switchSeatingTab(tabGen, viewGen);
+        tabDesigner.onclick = () => switchSeatingTab(tabDesigner, viewDesigner);
+
+        // ─── HALL DIRECTORY CRUD ───────────────────────────────────────────────
+        const hallFormCard = document.getElementById('hall-form-card');
+        const btnAddHall = document.getElementById('btn-add-hall');
+        const btnCancelHall = document.getElementById('btn-cancel-hall');
+        const btnSaveHall = document.getElementById('btn-save-hall');
+
+        btnAddHall.onclick = () => {
+            document.getElementById('hall-form-title').textContent = 'Add New Exam Hall';
+            document.getElementById('seat-hall-id').value = '';
+            document.getElementById('seat-hall-name').value = '';
+            document.getElementById('seat-rows').value = '5';
+            document.getElementById('seat-cols').value = '5';
+            document.getElementById('seat-per-seat').value = '1';
+            document.getElementById('seat-numbering').value = 'rows';
+            hallFormCard.style.display = 'block';
+            hallFormCard.scrollIntoView({ behavior: 'smooth' });
+        };
+
+        btnCancelHall.onclick = () => {
+            hallFormCard.style.display = 'none';
+        };
+
+        btnSaveHall.onclick = async () => {
+            const hallId = document.getElementById('seat-hall-id').value.trim();
+            const name = document.getElementById('seat-hall-name').value.trim();
+            const rows = parseInt(document.getElementById('seat-rows').value) || 0;
+            const cols = parseInt(document.getElementById('seat-cols').value) || 0;
+            const perSeat = parseInt(document.getElementById('seat-per-seat').value) || 1;
+            const numbering = document.getElementById('seat-numbering').value;
+
+            if (!name) { Notifications.show('Please enter a hall name', 'error'); return; }
+            if (rows < 1 || cols < 1) { Notifications.show('Rows and columns must be at least 1', 'error'); return; }
+
+            const hallRecord = {
+                id: hallId || `HALL_${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
+                name,
+                rows,
+                cols,
+                students_per_seat: perSeat,
+                numbering_order: numbering,
+                tenant_id: tenantId,
+                updated_at: new Date().toISOString(),
+                is_synced: 0
+            };
+
+            await db.exam_halls.put(prepareForSync(hallRecord));
+            this.debouncedSync();
+            Notifications.show(hallId ? 'Exam hall updated!' : 'Exam hall added!', 'success');
+            hallFormCard.style.display = 'none';
+            this.renderSeating();
+        };
+
+        // Edit Hall
+        document.querySelectorAll('.btn-edit-hall').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                const h = await db.exam_halls.get(id);
+                if (!h) return;
+
+                document.getElementById('hall-form-title').textContent = 'Modify Exam Hall';
+                document.getElementById('seat-hall-id').value = h.id;
+                document.getElementById('seat-hall-name').value = h.name || '';
+                document.getElementById('seat-rows').value = h.rows || '5';
+                document.getElementById('seat-cols').value = h.cols || '5';
+                document.getElementById('seat-per-seat').value = h.students_per_seat || '1';
+                document.getElementById('seat-numbering').value = h.numbering_order || 'rows';
+
+                hallFormCard.style.display = 'block';
+                hallFormCard.scrollIntoView({ behavior: 'smooth' });
+            };
+        });
+
+        // Delete Hall
+        document.querySelectorAll('.btn-delete-hall').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                if (!confirm('Delete this exam hall?')) return;
+                await this.safeDelete('exam_halls', id, null);
+                this.debouncedSync();
+                Notifications.show('Exam hall deleted', 'success');
+                this.renderSeating();
+            };
+        });
+
+        // ─── GENERATOR LOGIC AND METRICS ──────────────────────────────────────
+        const lblTotalStudents = document.getElementById('lbl-total-students');
+        const lblTotalCapacity = document.getElementById('lbl-total-capacity');
+        const lblCapacityWarning = document.getElementById('lbl-capacity-warning');
+
+        const updateGeneratorMetrics = () => {
+            // Students count
+            const checkedClasses = document.querySelectorAll('.seat-class-chk:checked');
+            const classNames = Array.from(checkedClasses).map(c => c.value);
+            const studentCount = allStudents.filter(s => classNames.includes(s.class_name)).length;
+            if (lblTotalStudents) lblTotalStudents.textContent = studentCount;
+
+            // Capacity count
+            const checkedHalls = document.querySelectorAll('.seat-hall-chk:checked');
+            const totalCap = Array.from(checkedHalls).reduce((sum, h) => sum + parseInt(h.dataset.capacity || 0), 0);
+            if (lblTotalCapacity) lblTotalCapacity.textContent = totalCap;
+
+            // Warning
+            if (lblCapacityWarning) {
+                if (studentCount > totalCap && totalCap > 0) {
+                    lblCapacityWarning.style.display = 'block';
+                } else {
+                    lblCapacityWarning.style.display = 'none';
+                }
+            }
+        };
+
+        document.querySelectorAll('.seat-class-chk').forEach(c => c.onchange = updateGeneratorMetrics);
+        document.querySelectorAll('.seat-hall-chk').forEach(h => h.onchange = updateGeneratorMetrics);
+
+        // Select/Deselect Halls
+        const btnSelectHalls = document.getElementById('btn-select-all-halls');
+        const btnDeselectHalls = document.getElementById('btn-deselect-all-halls');
+        if (btnSelectHalls) {
+            btnSelectHalls.onclick = () => {
+                document.querySelectorAll('.seat-hall-chk').forEach(h => h.checked = true);
+                updateGeneratorMetrics();
+            };
+        }
+        if (btnDeselectHalls) {
+            btnDeselectHalls.onclick = () => {
+                document.querySelectorAll('.seat-hall-chk').forEach(h => h.checked = false);
+                updateGeneratorMetrics();
+            };
+        }
+
+        // Select/Deselect Classes (Generate Seating view specific)
+        const btnSelectClasses = document.getElementById('btn-select-all-classes');
+        const btnDeselectClasses = document.getElementById('btn-deselect-all-classes');
+        if (btnSelectClasses) {
+            btnSelectClasses.onclick = () => {
+                document.querySelectorAll('.seat-class-chk').forEach(c => c.checked = true);
+                updateGeneratorMetrics();
+            };
+        }
+        if (btnDeselectClasses) {
+            btnDeselectClasses.onclick = () => {
+                document.querySelectorAll('.seat-class-chk').forEach(c => c.checked = false);
+                updateGeneratorMetrics();
+            };
+        }
+
+        // Helper to select a class-balanced subset of students for a hall, and return the remaining
+        const getInterleavedSubset = (remainingStudents, capacity) => {
+            const buckets = {};
+            remainingStudents.forEach(s => {
+                if (!buckets[s.class_name]) buckets[s.class_name] = [];
+                buckets[s.class_name].push(s);
+            });
+            // Shuffle each bucket for randomness
+            Object.keys(buckets).forEach(cls => {
+                for (let i = buckets[cls].length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [buckets[cls][i], buckets[cls][j]] = [buckets[cls][j], buckets[cls][i]];
+                }
+            });
+
+            const interleaved = [];
+            const activeClasses = Object.keys(buckets);
+            while (activeClasses.length > 0) {
+                for (let i = activeClasses.length - 1; i >= 0; i--) {
+                    const cls = activeClasses[i];
+                    if (buckets[cls].length > 0) {
+                        interleaved.push(buckets[cls].pop());
+                    } else {
+                        activeClasses.splice(i, 1);
+                    }
+                }
+            }
+
+            const subset = interleaved.slice(0, capacity);
+            const seatedIds = new Set(subset.map(s => s.student_id));
+            const rest = remainingStudents.filter(s => !seatedIds.has(s.student_id));
+            return { subset, rest };
+        };
+
+        // ─── GRAPH-COLORING / CSP SEATING SOLVER ─────────────────────────────────
+        const solveSeatingPlacement = (students, activeSeats, rows, cols, selectedClasses) => {
+            // Group students by class
+            const classBuckets = {};
+            selectedClasses.forEach(cls => {
+                classBuckets[cls] = students.filter(s => s.class_name === cls);
+            });
+
+            // Initialize seat configurations
+            const grid = {};
+            activeSeats.forEach(seat => {
+                grid[seat.key] = {
+                    key: seat.key,
+                    row: seat.row,
+                    col: seat.col,
+                    capacity: seat.capacity,
+                    classSlots: seat.classSlots || Array(seat.capacity).fill('auto'),
+                    student_ids: [],
+                    class_names: [],
+                    collision: false
+                };
+            });
+
+            // Conflict score calculator for placing a class at a seat key
+            const getConflictScore = (key, clsName, tempGrid) => {
+                let score = 0;
+                const cell = tempGrid[key];
+                if (!cell) return 0;
+                
+                // Same seat/desk conflict (severe penalty)
+                cell.class_names.forEach(cn => {
+                    if (cn === clsName) score += 100;
+                });
+
+                // Neighbors conflict (8-way)
+                const [r, c] = key.split('-').map(Number);
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        const nk = `${r + dr}-${c + dc}`;
+                        if (tempGrid[nk]) {
+                            const neighborCell = tempGrid[nk];
+                            if (neighborCell.class_names.includes(clsName)) {
+                                if (dc === 0) score += 100; // Same column adjacent (front/back)
+                                else if (dr === 0) score += 100; // Same row adjacent (left/right)
+                                else score += 10;                // Diagonal adjacent
+                            }
+                        }
+                    }
+                }
+                return score;
+            };
+
+            // To avoid packing students in the front row and leaving the back empty,
+            // we should balance the seat density across the room.
+            // If total students S < total seat capacity C:
+            // We want to limit each seat to a target capacity so they are spread out.
+            const S = students.length;
+            const totalCapacity = activeSeats.reduce((sum, seat) => sum + seat.capacity, 0);
+
+            // Calculate actual capacity to use for each seat in this run
+            const seatTargetCapacities = {};
+            activeSeats.forEach(seat => { seatTargetCapacities[seat.key] = 0; });
+
+            if (S > 0) {
+                // Iteratively distribute slot allocations to seats to keep it balanced
+                const seatList = [...activeSeats];
+                // Sort seats to distribute in a checkerboard / balanced layout first
+                seatList.sort((a, b) => {
+                    const sumA = a.row + a.col;
+                    const sumB = b.row + b.col;
+                    if (sumA % 2 !== sumB % 2) return (sumA % 2) - (sumB % 2); // checkerboard spacing
+                    return a.row !== b.row ? a.row - b.row : a.col - b.col;
+                });
+
+                let assignedSlots = 0;
+                let capLevel = 1;
+                while (assignedSlots < S) {
+                    let madeProgress = false;
+                    for (const seat of seatList) {
+                        if (assignedSlots >= S) break;
+                        if (seatTargetCapacities[seat.key] < seat.capacity && seatTargetCapacities[seat.key] < capLevel) {
+                            seatTargetCapacities[seat.key]++;
+                            assignedSlots++;
+                            madeProgress = true;
+                        }
+                    }
+                    if (!madeProgress) {
+                        capLevel++;
+                        if (capLevel > 4) break; // sanity safeguard
+                    }
+                }
+            }
+
+            // Create flat list of slots to assign
+            const slots = [];
+            activeSeats.forEach(seat => {
+                const targetCap = seatTargetCapacities[seat.key];
+                for (let slotIdx = 0; slotIdx < targetCap; slotIdx++) {
+                    const presetClass = seat.classSlots ? seat.classSlots[slotIdx] : 'auto';
+                    slots.push({
+                        key: seat.key,
+                        row: seat.row,
+                        col: seat.col,
+                        presetClass
+                    });
+                }
+            });
+
+            // Run multiple randomized trials to find the layout with minimum collisions
+            let bestTrialResult = null;
+            let bestTrialConflicts = Infinity;
+            let bestTrialScore = Infinity;
+
+            const numTrials = 100;
+
+            for (let trial = 0; trial < numTrials; trial++) {
+                // Clone class buckets
+                const trialBuckets = {};
+                selectedClasses.forEach(cls => {
+                    trialBuckets[cls] = [...classBuckets[cls]];
+                    // Shuffle each class list for randomness in each trial
+                    for (let i = trialBuckets[cls].length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [trialBuckets[cls][i], trialBuckets[cls][j]] = [trialBuckets[cls][j], trialBuckets[cls][i]];
+                    }
+                });
+
+                // Clear grid student allocations
+                const trialGrid = {};
+                activeSeats.forEach(seat => {
+                    trialGrid[seat.key] = {
+                        key: seat.key,
+                        row: seat.row,
+                        col: seat.col,
+                        student_ids: [],
+                        class_names: [],
+                        collision: false
+                    };
+                });
+
+                // Sort slots: presets first, then randomized
+                const trialSlots = [...slots];
+                trialSlots.sort((a, b) => {
+                    const aPreset = a.presetClass !== 'auto' ? 1 : 0;
+                    const bPreset = b.presetClass !== 'auto' ? 1 : 0;
+                    if (aPreset !== bPreset) return bPreset - aPreset; // presets first
+                    return Math.random() - 0.5;
+                });
+
+                let trialScore = 0;
+                let trialCollisions = 0;
+                let success = true;
+
+                for (const slot of trialSlots) {
+                    let chosenClass = null;
+
+                    if (slot.presetClass !== 'auto') {
+                        if (trialBuckets[slot.presetClass] && trialBuckets[slot.presetClass].length > 0) {
+                            chosenClass = slot.presetClass;
+                        } else {
+                            const remainingClasses = Object.keys(trialBuckets).filter(cls => trialBuckets[cls].length > 0);
+                            if (remainingClasses.length > 0) {
+                                remainingClasses.sort((a, b) => trialBuckets[b].length - trialBuckets[a].length);
+                                chosenClass = remainingClasses[0];
+                            }
+                        }
+                    } else {
+                        const remainingClasses = Object.keys(trialBuckets).filter(cls => trialBuckets[cls].length > 0);
+                        if (remainingClasses.length === 0) {
+                            success = false;
+                            break;
+                        }
+
+                        // Score classes by conflict level (lower is better) and size (larger is prioritized)
+                        const classScores = remainingClasses.map(cls => ({
+                            name: cls,
+                            conflict: getConflictScore(slot.key, cls, trialGrid),
+                            count: trialBuckets[cls].length
+                        }));
+
+                        classScores.sort((a, b) => {
+                            if (a.conflict !== b.conflict) return a.conflict - b.conflict;
+                            return b.count - a.count;
+                        });
+
+                        chosenClass = classScores[0].name;
+                    }
+
+                    if (!chosenClass) {
+                        success = false;
+                        break;
+                    }
+
+                    const student = trialBuckets[chosenClass].pop();
+                    const cell = trialGrid[slot.key];
+                    cell.student_ids.push(student.student_id);
+                    cell.class_names.push(student.class_name);
+
+                    // Compute conflict score for this step (excluding own contribution)
+                    const conflict = getConflictScore(slot.key, chosenClass, trialGrid) - 100;
+                    trialScore += conflict;
+                    if (conflict >= 100) {
+                        cell.collision = true;
+                        trialCollisions++;
+                    }
+                }
+
+                if (success) {
+                    if (trialCollisions < bestTrialConflicts || 
+                        (trialCollisions === bestTrialConflicts && trialScore < bestTrialScore)) {
+                        bestTrialConflicts = trialCollisions;
+                        bestTrialScore = trialScore;
+                        bestTrialResult = JSON.parse(JSON.stringify(trialGrid));
+                    }
+                }
+            }
+
+            const finalGrid = bestTrialResult || grid;
+
+            // Sort seats by standard row-column order for visual indexing
+            const sortedSeats = [...activeSeats].sort((a, b) => {
+                const [ar, ac] = a.key.split('-').map(Number);
+                const [br, bc] = b.key.split('-').map(Number);
+                return ar !== br ? ar - br : ac - bc;
+            });
+
+            let seatNo = 0;
+            return sortedSeats.map(seat => {
+                seatNo++;
+                const cell = finalGrid[seat.key] || { student_ids: [], class_names: [], collision: false };
+                const [r, c] = seat.key.split('-').map(Number);
+                return {
+                    seat_number: seatNo,
+                    row: r,
+                    col: c,
+                    student_ids: cell.student_ids,
+                    class_names: cell.class_names,
+                    collision: cell.collision
+                };
+            });
+        };
+
+        // ─── RUN MULTI-HALL DISTRIBUTION ──────────────────────────────────────
+        const btnRunDistribution = document.getElementById('btn-run-distribution');
+        if (btnRunDistribution) {
+            btnRunDistribution.onclick = async () => {
+                const selectedClasses = Array.from(document.querySelectorAll('.seat-class-chk:checked')).map(c => c.value);
+                const selectedHallIds = Array.from(document.querySelectorAll('.seat-hall-chk:checked')).map(h => h.value);
+
+                if (selectedHallIds.length === 0) { Notifications.show('Please select at least one exam hall to use.', 'error'); return; }
+                if (selectedClasses.length === 0) { Notifications.show('Please select at least one class to distribute.', 'error'); return; }
+
+                const targetHalls = examHalls.filter(h => selectedHallIds.includes(h.id));
+                const studentsPool = allStudents.filter(s => selectedClasses.includes(s.class_name));
+
+                if (studentsPool.length === 0) {
+                    Notifications.show('No students found in selected classes', 'error');
+                    return;
+                }
+
+                const totalCapacity = targetHalls.reduce((sum, h) => sum + (h.rows * h.cols * h.students_per_seat), 0);
+                if (studentsPool.length > totalCapacity) {
+                    Notifications.show(`Not enough capacity! ${studentsPool.length} students but only ${totalCapacity} seats across selected halls.`, 'error');
+                    return;
+                }
+
+                // ─── SEATING DISTRIBUTION VIA CSP SOLVER ─────────────────────────
+                // 1. Sort halls by capacity descending (highest capacity first)
+                const sortedHalls = [...targetHalls].sort((a, b) => {
+                    const capA = a.rows * a.cols * a.students_per_seat;
+                    const capB = b.rows * b.cols * b.students_per_seat;
+                    return capB - capA;
+                });
+
+                let remainingPool = [...studentsPool];
+                let generatedCount = 0;
+
+                for (const hall of sortedHalls) {
+                    if (remainingPool.length === 0) break;
+
+                    const capacity = hall.rows * hall.cols * hall.students_per_seat;
+                    const { subset: hallSlice, rest } = getInterleavedSubset(remainingPool, capacity);
+                    remainingPool = rest;
+
+                    if (hallSlice.length === 0) continue;
+
+                    // Build active seats list (every cell in the grid is a seat)
+                    const activeSeats = [];
+                    for (let r = 0; r < hall.rows; r++) {
+                        for (let c = 0; c < hall.cols; c++) {
+                            activeSeats.push({
+                                key: `${r}-${c}`,
+                                row: r,
+                                col: c,
+                                capacity: hall.students_per_seat,
+                                classSlots: Array(hall.students_per_seat).fill('auto')
+                            });
+                        }
+                    }
+
+                    const hallClasses = [...new Set(hallSlice.map(s => s.class_name))];
+                    const assignments = solveSeatingPlacement(hallSlice, activeSeats, hall.rows, hall.cols, hallClasses);
+
+                    const arrangement = {
+                        id: `SEAT_${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
+                        hall_name: hall.name,
+                        rows: hall.rows,
+                        cols: hall.cols,
+                        students_per_seat: hall.students_per_seat,
+                        numbering_order: hall.numbering_order,
+                        class_names: hallClasses,
+                        assignments,
+                        term: currentTerm,
+                        session: currentSession,
+                        tenant_id: tenantId,
+                        updated_at: new Date().toISOString(),
+                        is_synced: 0
+                    };
+
+                    await db.exam_seating.put(prepareForSync(arrangement));
+                    generatedCount++;
+                }
+
+                this.debouncedSync();
+                Notifications.show(`Successfully generated seating for ${generatedCount} hall(s)!`, 'success');
+                this.renderSeating();
+            };
+        }
+
+        // ─── MANUAL DESIGNER LOGIC ─────────────────────────────────────────────
+        const mdHallsSeats = {}; // key: hallId, value: { "r-c": { capacity, classSlots } }
+        const mdHallsCanvasConfig = {}; // key: hallId, value: { name, rows, cols }
+        let mdActiveHallId = null;
+        let mdSeats = {}; // reference to mdHallsSeats[mdActiveHallId]
+        let mdActiveTool = 'select';
+        let mdSelectedSeatKey = null;
+        let mdCanvasRows = 0;
+        let mdCanvasCols = 0;
+
+        const seatCapColors = {
+            1: { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af', icon: '🪑' },
+            2: { bg: '#fce7f3', border: '#ec4899', text: '#9d174d', icon: '🪑🪑' },
+            3: { bg: '#fef3c7', border: '#f59e0b', text: '#92400e', icon: '🪑🪑🪑' },
+            4: { bg: '#d1fae5', border: '#10b981', text: '#065f46', icon: '🪑×4' }
+        };
+
+        // Dropdown toggle for custom dimensions
+        const addHallSelect = document.getElementById('md-add-hall-select');
+        const addCustomFields = document.getElementById('md-add-custom-fields');
+        if (addHallSelect && addCustomFields) {
+            addHallSelect.onchange = () => {
+                addCustomFields.style.display = addHallSelect.value === 'custom' ? 'flex' : 'none';
+            };
+        }
+
+        const updateMdMetrics = () => {
+            const lblSeats = document.getElementById('md-lbl-seats');
+            const lblCap = document.getElementById('md-lbl-capacity');
+            const lblStu = document.getElementById('md-lbl-students');
+            const lblOverflow = document.getElementById('md-lbl-overflow');
+            if (!lblSeats) return;
+
+            const totalHallsSeats = Object.values(mdHallsSeats);
+            const totalSeatsCount = totalHallsSeats.reduce((s, seats) => s + Object.keys(seats).length, 0);
+            const totalCap = totalHallsSeats.reduce((s, seats) => {
+                return s + Object.values(seats).reduce((sum, seat) => sum + seat.capacity, 0);
+            }, 0);
+
+            const selectedClasses = Array.from(document.querySelectorAll('.md-class-chk:checked')).map(c => c.value);
+            const totalStudents = allStudents.filter(s => selectedClasses.includes(s.class_name)).length;
+
+            lblSeats.textContent = totalSeatsCount;
+            lblCap.textContent = totalCap;
+            lblStu.textContent = totalStudents;
+            if (lblOverflow) lblOverflow.style.display = totalStudents > totalCap && totalCap > 0 ? 'block' : 'none';
+        };
+
+        const renderMdCanvas = () => {
+            const canvas = document.getElementById('md-hall-canvas');
+            if (!canvas || mdCanvasRows === 0) return;
+
+            canvas.style.gridTemplateColumns = `40px repeat(${mdCanvasCols}, minmax(70px, 90px))`;
+            canvas.style.gridTemplateRows = `repeat(${mdCanvasRows}, auto)`;
+
+            let html = '<div></div>';
+            for (let c = 0; c < mdCanvasCols; c++) {
+                html += `<div style="text-align: center; font-size: 0.65rem; font-weight: 700; color: #64748b; padding-bottom: 4px;">C${c + 1}</div>`;
+            }
+
+            for (let r = 0; r < mdCanvasRows; r++) {
+                html += `<div style="display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; font-size: 0.65rem; font-weight: 700; color: #64748b;">R${r + 1}</div>`;
+                for (let c = 0; c < mdCanvasCols; c++) {
+                    const key = `${r}-${c}`;
+                    const seat = mdSeats[key];
+                    const isSelected = mdSelectedSeatKey === key;
+
+                    if (seat) {
+                        const sc = seatCapColors[seat.capacity] || seatCapColors[1];
+                        const configuredSlots = seat.classSlots.filter(s => s !== 'auto').length;
+                        const configLabel = configuredSlots > 0 ? `<div style="font-size:0.55rem;color:${sc.text};margin-top:2px;">${configuredSlots}/${seat.capacity} set</div>` : '';
+                        html += `
+                            <div class="md-canvas-cell" data-key="${key}" draggable="true"
+                                style="background: ${sc.bg}; border: 2px solid ${isSelected ? '#6366f1' : sc.border}; border-radius: 10px; padding: 0.35rem; text-align: center; cursor: ${mdActiveTool === 'select' ? 'pointer' : (mdActiveTool === 'erase' ? 'not-allowed' : 'grab')}; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: all 0.15s; ${isSelected ? 'box-shadow: 0 0 0 3px rgba(99,102,241,0.3);' : ''}">
+                                <div style="font-size: 0.9rem; line-height: 1;">${sc.icon}</div>
+                                <div style="font-size: 0.62rem; font-weight: 800; color: ${sc.text}; margin-top: 2px;">${seat.capacity}P</div>
+                                ${configLabel}
+                            </div>
+                        `;
+                    } else {
+                        html += `
+                            <div class="md-canvas-cell" data-key="${key}"
+                                style="background: #1e293b; border: 2px dashed #334155; border-radius: 10px; min-height: 52px; cursor: crosshair; display: flex; align-items: center; justify-content: center; transition: all 0.15s;"
+                                onmouseover="this.style.borderColor='#6366f1';this.style.background='#1e293b99'"
+                                onmouseout="this.style.borderColor='#334155';this.style.background='#1e293b'">
+                                <span style="color: #475569; font-size: 0.6rem; font-weight: 600;">+</span>
+                            </div>
+                        `;
+                    }
+                }
+            }
+            canvas.innerHTML = html;
+
+            // Attach cell click handlers
+            canvas.querySelectorAll('.md-canvas-cell').forEach(cell => {
+                const key = cell.dataset.key;
+                cell.onclick = () => {
+                    if (mdActiveTool.startsWith('seat-')) {
+                        const cap = parseInt(mdActiveTool.split('-')[1]);
+                        mdSeats[key] = { capacity: cap, classSlots: Array(cap).fill('auto') };
+                        renderMdCanvas();
+                        updateMdMetrics();
+                    } else if (mdActiveTool === 'erase') {
+                        delete mdSeats[key];
+                        if (mdSelectedSeatKey === key) {
+                            mdSelectedSeatKey = null;
+                            const configPanel = document.getElementById('md-seat-config');
+                            if (configPanel) configPanel.style.display = 'none';
+                        }
+                        renderMdCanvas();
+                        updateMdMetrics();
+                    } else if (mdActiveTool === 'select' && mdSeats[key]) {
+                        mdSelectedSeatKey = key;
+                        openSeatConfig(key);
+                        renderMdCanvas();
+                    }
+                };
+
+                // Drag and drop
+                if (mdSeats[key]) {
+                    cell.ondragstart = (e) => {
+                        e.dataTransfer.setData('text/plain', key);
+                        e.dataTransfer.effectAllowed = 'move';
+                    };
+                }
+                cell.ondragover = (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                };
+                cell.ondrop = (e) => {
+                    e.preventDefault();
+                    const fromKey = e.dataTransfer.getData('text/plain');
+                    if (fromKey && fromKey !== key && mdSeats[fromKey]) {
+                        const existingAtTarget = mdSeats[key];
+                        mdSeats[key] = mdSeats[fromKey];
+                        if (existingAtTarget) {
+                            mdSeats[fromKey] = existingAtTarget;
+                        } else {
+                            delete mdSeats[fromKey];
+                        }
+                        if (mdSelectedSeatKey === fromKey) mdSelectedSeatKey = key;
+                        renderMdCanvas();
+                        updateMdMetrics();
+                    }
+                };
+            });
+
+            updateMdMetrics();
+        };
+
+        const openSeatConfig = (key) => {
+            const seat = mdSeats[key];
+            if (!seat) return;
+            const configPanel = document.getElementById('md-seat-config');
+            const configTitle = document.getElementById('md-config-title');
+            const configSlots = document.getElementById('md-config-slots');
+            if (!configPanel) return;
+
+            const [r, c] = key.split('-').map(Number);
+            configTitle.textContent = `Seat at R${r + 1}-C${c + 1} (${seat.capacity}-Person)`;
+
+            const selectedClasses = Array.from(document.querySelectorAll('.md-class-chk:checked')).map(ch => ch.value);
+            const classOptions = selectedClasses.map(cls => `<option value="${cls}">${cls}</option>`).join('');
+
+            let presetHtml = '';
+            if (seat.capacity > 1) {
+                let options = '<option value="custom">🛠️ Custom (Set below)</option>';
+                options += '<option value="same">Same Class (A-A-A...)</option>';
+                options += '<option value="alt">Alternate Classes (A-B-A...)</option>';
+                if (seat.capacity === 4) {
+                    options += '<option value="pairs">Pairs (A-A-B-B)</option>';
+                }
+                presetHtml = `
+                    <div style="margin-bottom: 1rem; background: rgba(255,255,255,0.7); padding: 0.75rem 1rem; border-radius: 12px; border: 1.5px solid #cbd5e1; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <label style="font-weight: 800; font-size: 0.78rem; color: #1e293b; display: block; margin: 0;">Quick Layout Preset</label>
+                        <select id="md-config-preset-select" style="height: 36px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; font-weight: 700; font-size: 0.78rem; color: #1e293b; padding: 0 0.5rem; width: 100%;">
+                            ${options}
+                        </select>
+                        <div id="md-preset-class-selectors" style="display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.2rem;"></div>
+                    </div>
+                `;
+            }
+
+            configSlots.innerHTML = presetHtml + '<div id="md-slots-list-container" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>';
+
+            const slotsListContainer = document.getElementById('md-slots-list-container');
+            const renderSlotsList = () => {
+                slotsListContainer.innerHTML = '';
+                for (let i = 0; i < seat.capacity; i++) {
+                    const currentVal = seat.classSlots[i] || 'auto';
+                    slotsListContainer.innerHTML += `
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-size: 0.78rem; font-weight: 700; color: #475569; min-width: 50px;">Slot ${i + 1}:</span>
+                            <select class="md-slot-select" data-slot="${i}" style="flex: 1; height: 36px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; font-weight: 600; font-size: 0.78rem; color: #1e293b; padding: 0 0.5rem;">
+                                <option value="auto" ${currentVal === 'auto' ? 'selected' : ''}>🔄 Auto (system decides)</option>
+                                ${classOptions.replace(`value="${currentVal}"`, `value="${currentVal}" selected`)}
+                            </select>
+                        </div>
+                    `;
+                }
+            };
+            renderSlotsList();
+
+            const presetSelect = document.getElementById('md-config-preset-select');
+            const presetClassSelectors = document.getElementById('md-preset-class-selectors');
+            if (presetSelect) {
+                const updatePresetSelectors = () => {
+                    const mode = presetSelect.value;
+                    presetClassSelectors.innerHTML = '';
+                    if (mode === 'custom') {
+                        document.querySelectorAll('.md-slot-select').forEach(sel => sel.disabled = false);
+                    } else {
+                        document.querySelectorAll('.md-slot-select').forEach(sel => sel.disabled = true);
+                        if (mode === 'same') {
+                            presetClassSelectors.innerHTML = `
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span style="font-size: 0.72rem; font-weight: 700; color: #475569; min-width: 60px;">Class:</span>
+                                    <select id="preset-class-1" style="flex: 1; height: 32px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.75rem; font-weight: 600; color: #1e293b; padding: 0 0.5rem;">
+                                        <option value="auto">🔄 Auto (system decides)</option>
+                                        ${classOptions}
+                                    </select>
+                                </div>
+                            `;
+                        } else if (mode === 'alt') {
+                            presetClassSelectors.innerHTML = `
+                                <div style="display: flex; flex-direction: column; gap: 0.3rem;">
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span style="font-size: 0.72rem; font-weight: 700; color: #475569; min-width: 60px;">Class A:</span>
+                                        <select id="preset-class-1" style="flex: 1; height: 32px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.75rem; font-weight: 600; color: #1e293b; padding: 0 0.5rem;">
+                                            <option value="auto">🔄 Auto (system decides)</option>
+                                            ${classOptions}
+                                        </select>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span style="font-size: 0.72rem; font-weight: 700; color: #475569; min-width: 60px;">Class B:</span>
+                                        <select id="preset-class-2" style="flex: 1; height: 32px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.75rem; font-weight: 600; color: #1e293b; padding: 0 0.5rem;">
+                                            <option value="auto">🔄 Auto (system decides)</option>
+                                            ${classOptions}
+                                        </select>
+                                    </div>
+                                </div>
+                            `;
+                        } else if (mode === 'pairs') {
+                            presetClassSelectors.innerHTML = `
+                                <div style="display: flex; flex-direction: column; gap: 0.3rem;">
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span style="font-size: 0.72rem; font-weight: 700; color: #475569; min-width: 60px;">Pair A:</span>
+                                        <select id="preset-class-1" style="flex: 1; height: 32px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.75rem; font-weight: 600; color: #1e293b; padding: 0 0.5rem;">
+                                            <option value="auto">🔄 Auto (system decides)</option>
+                                            ${classOptions}
+                                        </select>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span style="font-size: 0.72rem; font-weight: 700; color: #475569; min-width: 60px;">Pair B:</span>
+                                        <select id="preset-class-2" style="flex: 1; height: 32px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.75rem; font-weight: 600; color: #1e293b; padding: 0 0.5rem;">
+                                            <option value="auto">🔄 Auto (system decides)</option>
+                                            ${classOptions}
+                                        </select>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    }
+                };
+
+                presetSelect.onchange = updatePresetSelectors;
+
+                presetClassSelectors.addEventListener('change', () => {
+                    const mode = presetSelect.value;
+                    const p1 = document.getElementById('preset-class-1')?.value || 'auto';
+                    const p2 = document.getElementById('preset-class-2')?.value || 'auto';
+                    const selects = document.querySelectorAll('.md-slot-select');
+
+                    if (mode === 'same') {
+                        selects.forEach(sel => sel.value = p1);
+                    } else if (mode === 'alt') {
+                        selects.forEach((sel, idx) => {
+                            sel.value = idx % 2 === 0 ? p1 : p2;
+                        });
+                    } else if (mode === 'pairs') {
+                        selects.forEach((sel, idx) => {
+                            sel.value = idx < 2 ? p1 : p2;
+                        });
+                    }
+                });
+            }
+
+            configPanel.style.display = 'block';
+            configPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        };
+
+        // Close config
+        const btnCloseConfig = document.getElementById('btn-md-close-config');
+        if (btnCloseConfig) {
+            btnCloseConfig.onclick = () => {
+                document.getElementById('md-seat-config').style.display = 'none';
+                mdSelectedSeatKey = null;
+                renderMdCanvas();
+            };
+        }
+
+        // Apply config
+        const btnApplyConfig = document.getElementById('btn-md-apply-config');
+        if (btnApplyConfig) {
+            btnApplyConfig.onclick = () => {
+                if (!mdSelectedSeatKey || !mdSeats[mdSelectedSeatKey]) return;
+                const selects = document.querySelectorAll('.md-slot-select');
+                selects.forEach(sel => {
+                    const slotIdx = parseInt(sel.dataset.slot);
+                    mdSeats[mdSelectedSeatKey].classSlots[slotIdx] = sel.value;
+                });
+                Notifications.show('Seat configuration applied!', 'success');
+                renderMdCanvas();
+            };
+        }
+
+        // Active Hall Selector change
+        const activeHallSelector = document.getElementById('md-active-hall-selector');
+        if (activeHallSelector) {
+            activeHallSelector.onchange = () => {
+                const selectedId = activeHallSelector.value;
+                if (!selectedId || !mdHallsCanvasConfig[selectedId]) return;
+
+                mdActiveHallId = selectedId;
+                mdSeats = mdHallsSeats[mdActiveHallId];
+                mdCanvasRows = mdHallsCanvasConfig[mdActiveHallId].rows;
+                mdCanvasCols = mdHallsCanvasConfig[mdActiveHallId].cols;
+                mdSelectedSeatKey = null;
+
+                document.getElementById('md-seat-config').style.display = 'none';
+                renderMdCanvas();
+                updateMdMetrics();
+            };
+        }
+
+        // Render Active Halls List helper
+        const renderMdActiveHallsList = () => {
+            const listContainer = document.getElementById('md-active-halls-list');
+            if (!listContainer) return;
+
+            const ids = Object.keys(mdHallsCanvasConfig);
+            if (ids.length === 0) {
+                listContainer.innerHTML = `<span style="color: #94a3b8; font-size: 0.75rem; font-weight: 500; font-style: italic;">No halls added to designer yet. Select one above and click "Add Hall"!</span>`;
+                return;
+            }
+
+            listContainer.innerHTML = ids.map(id => {
+                const conf = mdHallsCanvasConfig[id];
+                return `
+                    <div style="display: flex; align-items: center; gap: 0.5rem; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 0.35rem 0.65rem; font-size: 0.75rem; font-weight: 700; color: #4338ca;">
+                        <span>${conf.name} (${conf.rows}×${conf.cols})</span>
+                        <button class="btn-md-remove-hall" data-id="${id}" style="background: none; border: none; color: #ef4444; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; transition: color 0.1s;" onmouseover="this.style.color='#b91c1c'" onmouseout="this.style.color='#ef4444'">
+                            ✕
+                        </button>
+                    </div>
+                `;
+            }).join('');
+
+            // Attach remove handlers
+            listContainer.querySelectorAll('.btn-md-remove-hall').forEach(btn => {
+                btn.onclick = () => {
+                    const id = btn.dataset.id;
+                    delete mdHallsCanvasConfig[id];
+                    delete mdHallsSeats[id];
+
+                    if (mdActiveHallId === id) {
+                        const remaining = Object.keys(mdHallsCanvasConfig);
+                        if (remaining.length > 0) {
+                            mdActiveHallId = remaining[0];
+                            mdSeats = mdHallsSeats[mdActiveHallId];
+                            mdCanvasRows = mdHallsCanvasConfig[mdActiveHallId].rows;
+                            mdCanvasCols = mdHallsCanvasConfig[mdActiveHallId].cols;
+                        } else {
+                            mdActiveHallId = null;
+                            mdSeats = {};
+                            mdCanvasRows = 0;
+                            mdCanvasCols = 0;
+                        }
+                        mdSelectedSeatKey = null;
+                        const configPanel = document.getElementById('md-seat-config');
+                        if (configPanel) configPanel.style.display = 'none';
+                    }
+
+                    // Update active selector options
+                    if (activeHallSelector) {
+                        activeHallSelector.innerHTML = Object.keys(mdHallsCanvasConfig).map(hId => `
+                            <option value="${hId}" ${mdActiveHallId === hId ? 'selected' : ''}>${mdHallsCanvasConfig[hId].name} (${mdHallsCanvasConfig[hId].rows}×${mdHallsCanvasConfig[hId].cols})</option>
+                        `).join('');
+                    }
+
+                    const toolsPanel = document.getElementById('md-tools-panel');
+                    if (toolsPanel) {
+                        toolsPanel.style.display = Object.keys(mdHallsCanvasConfig).length > 0 ? 'block' : 'none';
+                    }
+
+                    renderMdActiveHallsList();
+                    renderMdCanvas();
+                    updateMdMetrics();
+                    Notifications.show('Hall removed from designer session', 'info');
+                };
+            });
+        };
+
+        // Add Hall to Designer Session
+        const btnMdAddHall = document.getElementById('btn-md-add-hall');
+        if (btnMdAddHall) {
+            btnMdAddHall.onclick = () => {
+                const selectEl = document.getElementById('md-add-hall-select');
+                if (!selectEl) return;
+
+                const val = selectEl.value;
+                let name = '';
+                let rows = 5;
+                let cols = 6;
+                let id = '';
+
+                if (val === 'custom') {
+                    name = (document.getElementById('md-add-hall-name')?.value || 'Custom Hall').trim();
+                    rows = parseInt(document.getElementById('md-add-rows')?.value) || 5;
+                    cols = parseInt(document.getElementById('md-add-cols')?.value) || 6;
+                    
+                    if (!name) { Notifications.show('Please enter a name for the custom grid', 'error'); return; }
+                    if (rows < 1 || cols < 1) { Notifications.show('Dimensions must be at least 1', 'error'); return; }
+                    if (rows > 30 || cols > 30) { Notifications.show('Dimensions must not exceed 30', 'error'); return; }
+                    
+                    id = `custom_${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+                } else {
+                    const opt = selectEl.options[selectEl.selectedIndex];
+                    if (!opt) return;
+                    name = opt.dataset.name;
+                    rows = parseInt(opt.dataset.rows) || 5;
+                    cols = parseInt(opt.dataset.cols) || 5;
+                    id = val;
+                }
+
+                if (mdHallsCanvasConfig[id]) {
+                    Notifications.show('This hall is already added to the designer session!', 'error');
+                    return;
+                }
+
+                // Add to session config (retaining existing designed halls!)
+                mdHallsCanvasConfig[id] = { name, rows, cols };
+                mdHallsSeats[id] = {}; // initialize empty layout
+
+                // Select the new hall as active
+                mdActiveHallId = id;
+                mdSeats = mdHallsSeats[mdActiveHallId];
+                mdCanvasRows = mdHallsCanvasConfig[mdActiveHallId].rows;
+                mdCanvasCols = mdHallsCanvasConfig[mdActiveHallId].cols;
+                mdSelectedSeatKey = null;
+
+                // Update active selector dropdown options
+                if (activeHallSelector) {
+                    activeHallSelector.innerHTML = Object.keys(mdHallsCanvasConfig).map(hId => `
+                        <option value="${hId}" ${mdActiveHallId === hId ? 'selected' : ''}>${mdHallsCanvasConfig[hId].name} (${mdHallsCanvasConfig[hId].rows}×${mdHallsCanvasConfig[hId].cols})</option>
+                    `).join('');
+                }
+
+                // Show tools panel and config
+                const toolsPanel = document.getElementById('md-tools-panel');
+                if (toolsPanel) toolsPanel.style.display = 'block';
+                const configPanel = document.getElementById('md-seat-config');
+                if (configPanel) configPanel.style.display = 'none';
+
+                renderMdActiveHallsList();
+                renderMdCanvas();
+                updateMdMetrics();
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                Notifications.show(`"${name}" added to designer session!`, 'success');
+            };
+        }
+
+        // Initialize session list display on render
+        renderMdActiveHallsList();
+
+        // Tool palette selection
+        document.querySelectorAll('.md-tool-btn').forEach(btn => {
+            btn.onclick = () => {
+                mdActiveTool = btn.dataset.tool;
+                const toolNames = { 'seat-1': '1-Person Seat', 'seat-2': '2-Person Seat', 'seat-3': '3-Person Seat', 'seat-4': '4-Person Seat', 'select': 'Select & Configure', 'erase': 'Erase Seat' };
+                const label = document.getElementById('md-active-tool-label');
+                if (label) label.textContent = `Active: ${toolNames[mdActiveTool] || mdActiveTool}`;
+
+                document.querySelectorAll('.md-tool-btn').forEach(b => {
+                    b.style.outline = 'none';
+                    b.style.boxShadow = 'none';
+                });
+                btn.style.outline = '3px solid #6366f1';
+                btn.style.boxShadow = '0 0 0 5px rgba(99,102,241,0.15)';
+            };
+        });
+
+        // Fill all empty cells
+        const btnFillAll = document.getElementById('btn-md-fill-all');
+        if (btnFillAll) {
+            btnFillAll.onclick = () => {
+                if (mdCanvasRows === 0) return;
+                for (let r = 0; r < mdCanvasRows; r++) {
+                    for (let c = 0; c < mdCanvasCols; c++) {
+                        const key = `${r}-${c}`;
+                        if (!mdSeats[key]) {
+                            mdSeats[key] = { capacity: 1, classSlots: ['auto'] };
+                        }
+                    }
+                }
+                renderMdCanvas();
+                Notifications.show(`Filled all empty cells of "${mdHallsCanvasConfig[mdActiveHallId].name}" with 1-Person seats`, 'success');
+            };
+        }
+
+        // Classes pool change
+        document.querySelectorAll('.md-class-chk').forEach(ch => {
+            ch.onchange = updateMdMetrics;
+        });
+
+        // Generate & Auto-Sort Seating Batch
+        const btnMdGenerate = document.getElementById('btn-md-generate');
+        if (btnMdGenerate) {
+            btnMdGenerate.onclick = async () => {
+                const selectedHallsIds = Object.keys(mdHallsCanvasConfig);
+                if (selectedHallsIds.length === 0) {
+                    Notifications.show('Please initialize at least one hall canvas first!', 'error');
+                    return;
+                }
+
+                // Verify that at least one hall has seats
+                let hasAnySeats = false;
+                selectedHallsIds.forEach(id => {
+                    if (Object.keys(mdHallsSeats[id]).length > 0) hasAnySeats = true;
+                });
+                if (!hasAnySeats) {
+                    Notifications.show('No seats have been placed on any hall canvas!', 'error');
+                    return;
+                }
+
+                const selectedClasses = Array.from(document.querySelectorAll('.md-class-chk:checked')).map(ch => ch.value);
+                if (selectedClasses.length === 0) { Notifications.show('Please select at least one class', 'error'); return; }
+
+                const hallStudents = allStudents.filter(s => selectedClasses.includes(s.class_name));
+                if (hallStudents.length === 0) { Notifications.show('No students in selected classes', 'error'); return; }
+
+                // 1. Sort halls by capacity descending (highest capacity first)
+                const sortedHallsIds = [...selectedHallsIds].sort((a, b) => {
+                    const capA = Object.values(mdHallsSeats[a] || {}).reduce((sum, s) => sum + s.capacity, 0);
+                    const capB = Object.values(mdHallsSeats[b] || {}).reduce((sum, s) => sum + s.capacity, 0);
+                    return capB - capA;
+                });
+
+                let remainingPool = [...hallStudents];
+                let generatedCount = 0;
+
+                for (const hallId of sortedHallsIds) {
+                    if (remainingPool.length === 0) break;
+
+                    const hallSeats = mdHallsSeats[hallId] || {};
+                    const seatKeys = Object.keys(hallSeats);
+                    if (seatKeys.length === 0) continue;
+
+                    const capacity = seatKeys.reduce((sum, k) => sum + hallSeats[k].capacity, 0);
+                    const { subset: hallSlice, rest } = getInterleavedSubset(remainingPool, capacity);
+                    remainingPool = rest;
+
+                    if (hallSlice.length === 0) continue;
+
+                    const config = mdHallsCanvasConfig[hallId];
+
+                    // Build active seats array from manual layout
+                    const activeSeats = seatKeys.map(k => {
+                        const [r, c] = k.split('-').map(Number);
+                        return {
+                            key: k,
+                            row: r,
+                            col: c,
+                            capacity: hallSeats[k].capacity,
+                            classSlots: hallSeats[k].classSlots || Array(hallSeats[k].capacity).fill('auto')
+                        };
+                    });
+
+                    const hallClasses = [...new Set(hallSlice.map(s => s.class_name))];
+                    const assignments = solveSeatingPlacement(hallSlice, activeSeats, config.rows, config.cols, hallClasses);
+
+                    const maxPerSeat = Math.max(...seatKeys.map(k => hallSeats[k].capacity));
+
+                    const arrangement = {
+                        id: `SEAT_${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
+                        hall_name: config.name,
+                        rows: config.rows,
+                        cols: config.cols,
+                        students_per_seat: maxPerSeat,
+                        numbering_order: 'rows',
+                        class_names: selectedClasses,
+                        assignments,
+                        term: currentTerm,
+                        session: currentSession,
+                        tenant_id: tenantId,
+                        updated_at: new Date().toISOString(),
+                        is_synced: 0
+                    };
+
+                    await db.exam_seating.put(prepareForSync(arrangement));
+                    generatedCount++;
+                }
+
+                this.debouncedSync();
+                Notifications.show(`Successfully generated seating plans for ${generatedCount} hall(s)!`, 'success');
+                this.renderSeating();
+            };
+        }
+
+
+        // ─── SAVED ARRANGEMENT CARD ACTIONS ─────────────────────────────────────
+        // View visual grid
+        document.querySelectorAll('.btn-view-arrangement').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                const arr = await db.exam_seating.get(id);
+                if (!arr) { Notifications.show('Arrangement not found', 'error'); return; }
+                const resultsPanel = document.getElementById('seating-results-panel');
+                this._renderSeatingGrid(arr, allStudents, resultsPanel);
+            };
+        });
+
+        // Click saved card row to view
+        document.querySelectorAll('.saved-arrangement-card').forEach(card => {
+            card.onclick = async () => {
+                const id = card.dataset.id;
+                const arr = await db.exam_seating.get(id);
+                if (!arr) return;
+                const resultsPanel = document.getElementById('seating-results-panel');
+                this._renderSeatingGrid(arr, allStudents, resultsPanel);
+            };
+        });
+
+        // Delete seating arrangement
+        document.querySelectorAll('.btn-delete-arrangement').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                if (!confirm('Delete this seating plan?')) return;
+                await this.safeDelete('exam_seating', id, null);
+                this.debouncedSync();
+                Notifications.show('Seating arrangement deleted', 'success');
+                this.renderSeating();
+            };
+        });
+
+        // Print visual chart PDF
+        document.querySelectorAll('.btn-print-chart').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const arr = await db.exam_seating.get(btn.dataset.id);
+                if (!arr) return;
+                const schoolInfo = { schoolName: getSetting('schoolName') || '', address: getSetting('schoolAddress') || '', logo: getSetting('schoolLogo') || '' };
+                const { generateSeatingChartPDF } = await import('./utils.js');
+                generateSeatingChartPDF(arr, allStudents, schoolInfo);
+            };
+        });
+
+        // Print desk labels PDF
+        document.querySelectorAll('.btn-print-labels').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const arr = await db.exam_seating.get(btn.dataset.id);
+                if (!arr) return;
+                const schoolInfo = { schoolName: getSetting('schoolName') || '', address: getSetting('schoolAddress') || '', logo: getSetting('schoolLogo') || '' };
+                const { generateDeskLabelsPDF } = await import('./utils.js');
+                generateDeskLabelsPDF(arr, allStudents, schoolInfo);
+            };
+        });
+
+        // Print attendance list PDF
+        document.querySelectorAll('.btn-print-attendance').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const arr = await db.exam_seating.get(btn.dataset.id);
+                if (!arr) return;
+                const schoolInfo = { schoolName: getSetting('schoolName') || '', address: getSetting('schoolAddress') || '', logo: getSetting('schoolLogo') || '' };
+                const { generateSeatingAttendancePDF } = await import('./utils.js');
+                generateSeatingAttendancePDF(arr, allStudents, schoolInfo);
+            };
+        });
+    },
+
+    // ─── RENDER SEATING GRID HELPER ─────────────────────────────────────────────
+    _renderSeatingGrid(arrangement, allStudents, container) {
+        const { rows, cols, assignments, hall_name, class_names: includedClasses } = arrangement;
+        const studentMap = {};
+        allStudents.forEach(s => { studentMap[String(s.student_id).trim()] = s; });
+
+        // Deterministic colors for classes
+        const classColors = {};
+        const palette = [
+            '#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444',
+            '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4', '#84cc16', '#e11d48',
+            '#0ea5e9', '#a855f7', '#22c55e', '#eab308', '#d946ef', '#64748b'
+        ];
+        (includedClasses || []).forEach((cls, i) => {
+            classColors[cls] = palette[i % palette.length];
+        });
+
+        const totalStudents = assignments.reduce((s, a) => s + (a.student_ids?.length || 0), 0);
+        const collisionCount = assignments.filter(a => a.collision).length;
+
+        const gridMap = {};
+        assignments.forEach(a => { gridMap[`${a.row}-${a.col}`] = a; });
+
+        // Dynamic room sizing based on grid
+        const cellW = 110; // px per column
+        const cellH = 90;  // px per row
+        const roomPadX = 80;
+        const roomPadTop = 100; // space for blackboard
+        const roomPadBottom = 60;
+        const roomW = cols * cellW + roomPadX * 2;
+        const roomH = rows * cellH + roomPadTop + roomPadBottom;
+        const wallHeight = 180;
+
+        // State for 3D view
+        let rotationX = 55;
+        let rotationZ = -20;
+        let zoom = Math.min(1.0, 700 / roomW, 550 / roomH);
+        let showNames = true;
+        let showHeatmap = false;
+
+        container.style.display = 'block';
+        container.innerHTML = `
+            <div style="background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 4px 24px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; margin-bottom: 2rem;">
+                <!-- Header -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h2 style="font-size: 1.2rem; font-weight: 900; color: #1e293b; margin: 0;">
+                            <i data-lucide="map" style="width: 20px; height: 20px; vertical-align: -3px; margin-right: 0.4rem; color: #6366f1;"></i>
+                            3D Classroom View: ${hall_name}
+                        </h2>
+                        <p style="color: #64748b; font-size: 0.78rem; margin-top: 0.2rem;">
+                            ${rows}×${cols} grid · ${totalStudents} students
+                            ${collisionCount > 0 ? `<span style="color: #ef4444; font-weight: 800;"> · ⚠️ ${collisionCount} class collisions</span>` : '<span style="color: #10b981; font-weight: 800;"> · ✓ No class collisions</span>'}
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-left: auto;">
+                        <button id="btn-3d-toggle-names" style="height: 38px; border-radius: 10px; font-weight: 800; font-size: 0.75rem; background: #eef2ff; border: 1px solid #c7d2fe; color: #4338ca; display: flex; align-items: center; gap: 0.3rem; padding: 0 0.85rem; cursor: pointer;">
+                            <i data-lucide="user-check" style="width: 14px; height: 14px;"></i> Show ID
+                        </button>
+                        <button id="btn-3d-toggle-heatmap" style="height: 38px; border-radius: 10px; font-weight: 800; font-size: 0.75rem; background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; display: flex; align-items: center; gap: 0.3rem; padding: 0 0.85rem; cursor: pointer;">
+                            <i data-lucide="palette" style="width: 14px; height: 14px;"></i> Class Heatmap
+                        </button>
+                        <button id="btn-close-grid-view" style="background: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; padding: 0.5rem 1rem; border-radius: 10px; font-weight: 800; font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                            <i data-lucide="x" style="width: 14px; height: 14px;"></i> Close
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Orbit Toolbar -->
+                <div style="display: flex; gap: 0.4rem; background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.5rem 1rem; border-radius: 12px; margin-bottom: 1rem; align-items: center; flex-wrap: wrap;">
+                    <span style="font-size: 0.72rem; font-weight: 800; color: #64748b; margin-right: 0.5rem;">3D Navigation:</span>
+                    <button class="btn-3d-control" data-action="rotate-left" style="background: white; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;"><i data-lucide="rotate-ccw" style="width: 12px; height: 12px;"></i> Left</button>
+                    <button class="btn-3d-control" data-action="rotate-right" style="background: white; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;"><i data-lucide="rotate-cw" style="width: 12px; height: 12px;"></i> Right</button>
+                    <button class="btn-3d-control" data-action="tilt-up" style="background: white; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;"><i data-lucide="arrow-up" style="width: 12px; height: 12px;"></i> Tilt Up</button>
+                    <button class="btn-3d-control" data-action="tilt-down" style="background: white; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;"><i data-lucide="arrow-down" style="width: 12px; height: 12px;"></i> Tilt Down</button>
+                    <button class="btn-3d-control" data-action="zoom-in" style="background: white; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;"><i data-lucide="zoom-in" style="width: 12px; height: 12px;"></i> In</button>
+                    <button class="btn-3d-control" data-action="zoom-out" style="background: white; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.25rem;"><i data-lucide="zoom-out" style="width: 12px; height: 12px;"></i> Out</button>
+                    <button class="btn-3d-control" data-action="reset" style="background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.72rem; font-weight: 700; color: #4338ca; cursor: pointer; display: flex; align-items: center; gap: 0.25rem; margin-left: auto;"><i data-lucide="refresh-cw" style="width: 12px; height: 12px;"></i> Reset View</button>
+                </div>
+
+                <!-- Class Legend -->
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; padding: 0.75rem 1rem; background: #f8fafc; border-radius: 12px; border: 1px solid #f1f5f9;">
+                    ${(includedClasses || []).map(cls => `
+                        <span style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.7rem; font-weight: 700; background: ${classColors[cls] || '#64748b'}15; color: ${classColors[cls] || '#64748b'}; border: 1px solid ${classColors[cls] || '#64748b'}30;">
+                            <span style="width: 8px; height: 8px; border-radius: 50%; background: ${classColors[cls] || '#64748b'};"></span>
+                            ${cls}
+                        </span>
+                    `).join('')}
+                </div>
+
+                <!-- 3D Canvas Container -->
+                <style>
+                    .classroom-3d-container {
+                        position: relative;
+                        width: 100%;
+                        height: 650px;
+                        background: radial-gradient(ellipse at 50% 40%, #1e293b 0%, #020617 100%);
+                        border-radius: 20px;
+                        overflow: hidden;
+                        perspective: 1800px;
+                        perspective-origin: 50% 35%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        cursor: grab;
+                        user-select: none;
+                        box-shadow: inset 0 0 80px rgba(0,0,0,0.9);
+                        border: 1px solid #1e293b;
+                    }
+                    .classroom-3d-container:active { cursor: grabbing; }
+                    .classroom-3d-scene {
+                        position: relative;
+                        width: ${roomW}px;
+                        height: ${roomH}px;
+                        transform-style: preserve-3d;
+                        will-change: transform;
+                        transition: transform 0.15s ease-out;
+                    }
+                    /* ─── Floor ─── */
+                    .room-floor-3d {
+                        position: absolute;
+                        width: 100%;
+                        height: 100%;
+                        background-color: #1a1f2e;
+                        background-image:
+                            linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+                        background-size: ${cellW}px ${cellH}px;
+                        border: 2px solid #334155;
+                        border-radius: 8px;
+                        transform-style: preserve-3d;
+                        box-shadow: 0 40px 80px rgba(0,0,0,0.7);
+                    }
+                    /* ─── Walls ─── */
+                    .room-wall-3d {
+                        position: absolute;
+                        background: linear-gradient(180deg, rgba(51, 65, 85, 0.5) 0%, rgba(30, 41, 59, 0.3) 100%);
+                        border: 1px solid rgba(71, 85, 105, 0.4);
+                        transform-style: preserve-3d;
+                    }
+                    .wall-front-3d {
+                        left: 0; bottom: 100%;
+                        width: 100%;
+                        height: ${wallHeight}px;
+                        transform-origin: bottom;
+                        transform: rotateX(90deg);
+                        display: flex;
+                        align-items: flex-end;
+                        justify-content: center;
+                        padding-bottom: 20px;
+                    }
+                    .wall-left-3d {
+                        right: 100%; top: 0;
+                        width: ${wallHeight}px;
+                        height: 100%;
+                        transform-origin: right;
+                        transform: rotateY(-90deg);
+                    }
+                    .wall-right-3d {
+                        left: 100%; top: 0;
+                        width: ${wallHeight}px;
+                        height: 100%;
+                        transform-origin: left;
+                        transform: rotateY(90deg);
+                    }
+                    .wall-back-3d {
+                        left: 0; top: 100%;
+                        width: 100%;
+                        height: ${wallHeight}px;
+                        transform-origin: top;
+                        transform: rotateX(-90deg);
+                    }
+                    /* ─── Blackboard ─── */
+                    .blackboard-3d {
+                        background: linear-gradient(180deg, #1e3a2f 0%, #0f1f18 100%);
+                        color: #a7f3d0;
+                        border: 4px solid #065f46;
+                        border-radius: 8px;
+                        font-weight: 900;
+                        font-size: 0.9rem;
+                        letter-spacing: 3px;
+                        padding: 0.7rem 3rem;
+                        box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+                    }
+                    /* ─── Furniture ─── */
+                    .desk-group-3d {
+                        position: absolute;
+                        transform-style: preserve-3d;
+                    }
+                    .desk-surface-3d {
+                        border-radius: 4px;
+                        transform: translateZ(28px);
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                        transform-style: preserve-3d;
+                        position: relative;
+                    }
+                    .desk-leg-3d {
+                        position: absolute;
+                        width: 4px;
+                        height: 4px;
+                        background: #475569;
+                        transform-style: preserve-3d;
+                    }
+                    .desk-leg-3d::after {
+                        content: '';
+                        position: absolute;
+                        width: 4px;
+                        height: 28px;
+                        background: linear-gradient(180deg, #475569, #334155);
+                        transform: rotateX(90deg);
+                        transform-origin: top;
+                    }
+                    .chair-seat-3d {
+                        border-radius: 4px;
+                        transform: translateZ(18px);
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+                        position: relative;
+                        transform-style: preserve-3d;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        padding: 2px;
+                        overflow: hidden;
+                    }
+                    .chair-back-3d {
+                        position: absolute;
+                        top: 100%;
+                        left: 2px;
+                        right: 2px;
+                        height: 22px;
+                        border-radius: 0 0 3px 3px;
+                        transform-origin: top;
+                        transform: rotateX(-70deg);
+                    }
+                    .chair-leg-3d {
+                        position: absolute;
+                        width: 3px;
+                        height: 3px;
+                        background: #475569;
+                    }
+                    .chair-leg-3d::after {
+                        content: '';
+                        position: absolute;
+                        width: 3px;
+                        height: 18px;
+                        background: linear-gradient(180deg, #64748b, #334155);
+                        transform: rotateX(90deg);
+                        transform-origin: top;
+                    }
+                    @keyframes pulse3d { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+                </style>
+
+                <div id="canvas-3d-container" class="classroom-3d-container">
+                    <div id="scene-3d" class="classroom-3d-scene" style="transform: rotateX(${rotationX}deg) rotateZ(${rotationZ}deg) scale(${zoom});">
+                        <div class="room-floor-3d">
+                            <!-- Walls -->
+                            <div class="room-wall-3d wall-front-3d">
+                                <div class="blackboard-3d">BLACKBOARD / FRONT</div>
+                            </div>
+                            <div class="room-wall-3d wall-left-3d"></div>
+                            <div class="room-wall-3d wall-right-3d"></div>
+                            <div class="room-wall-3d wall-back-3d"></div>
+                            <!-- Desks Layer -->
+                            <div id="room-desks-layer" style="position: absolute; inset: 0; transform-style: preserve-3d;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Close button handler
+        document.getElementById('btn-close-grid-view').onclick = () => {
+            container.style.display = 'none';
+        };
+
+        const scene = document.getElementById('scene-3d');
+        const container3d = document.getElementById('canvas-3d-container');
+
+        const updateTransform = () => {
+            if (scene) {
+                scene.style.transform = `rotateX(${rotationX}deg) rotateZ(${rotationZ}deg) scale(${zoom})`;
+            }
+        };
+
+        // Navigation controls
+        document.querySelectorAll('.btn-3d-control').forEach(btn => {
+            btn.onclick = () => {
+                const action = btn.dataset.action;
+                if (action === 'rotate-left') rotationZ -= 15;
+                if (action === 'rotate-right') rotationZ += 15;
+                if (action === 'tilt-up') rotationX = Math.min(rotationX + 10, 85);
+                if (action === 'tilt-down') rotationX = Math.max(rotationX - 10, 15);
+                if (action === 'zoom-in') zoom = Math.min(zoom + 0.1, 2.0);
+                if (action === 'zoom-out') zoom = Math.max(zoom - 0.1, 0.3);
+                if (action === 'reset') {
+                    rotationX = 55;
+                    rotationZ = -20;
+                    zoom = Math.min(1.0, 700 / roomW, 550 / roomH);
+                }
+                updateTransform();
+            };
+        });
+
+        // Mouse Drag
+        let isDragging = false;
+        let prevMouse = { x: 0, y: 0 };
+
+        if (container3d) {
+            container3d.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                prevMouse = { x: e.clientX, y: e.clientY };
+            });
+            container3d.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                rotationZ += (e.clientX - prevMouse.x) * 0.4;
+                rotationX = Math.max(15, Math.min(85, rotationX - (e.clientY - prevMouse.y) * 0.4));
+                prevMouse = { x: e.clientX, y: e.clientY };
+                updateTransform();
+            });
+            window.addEventListener('mouseup', () => { isDragging = false; });
+
+            // Touch
+            container3d.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isDragging = true;
+                    prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+            }, { passive: true });
+            container3d.addEventListener('touchmove', (e) => {
+                if (!isDragging || e.touches.length !== 1) return;
+                rotationZ += (e.touches[0].clientX - prevMouse.x) * 0.4;
+                rotationX = Math.max(15, Math.min(85, rotationX - (e.touches[0].clientY - prevMouse.y) * 0.4));
+                prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                updateTransform();
+            }, { passive: true });
+            container3d.addEventListener('touchend', () => { isDragging = false; });
+
+            // Scroll wheel zoom
+            container3d.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                zoom = Math.max(0.3, Math.min(2.0, zoom - e.deltaY * 0.001));
+                updateTransform();
+            }, { passive: false });
+        }
+
+        // Toggle buttons
+        const btnToggleNames = document.getElementById('btn-3d-toggle-names');
+        const btnToggleHeatmap = document.getElementById('btn-3d-toggle-heatmap');
+
+        const renderGridContent = () => {
+            const desksLayer = document.getElementById('room-desks-layer');
+            if (!desksLayer) return;
+
+            let html = '';
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const cell = gridMap[`${r}-${c}`];
+                    const posX = roomPadX + c * cellW + cellW / 2;
+                    const posY = roomPadTop + r * cellH + cellH / 2;
+
+                    if (!cell || cell.student_ids.length === 0) {
+                        // Empty desk placeholder
+                        html += `
+                            <div class="desk-group-3d" style="left: ${posX}px; top: ${posY}px; transform: translate(-50%, -50%); transform-style: preserve-3d;">
+                                <div class="desk-surface-3d" style="width: 80px; height: 30px; background: rgba(30,41,59,0.3); border: 2px dashed #475569;">
+                                    <span style="color: #475569; font-size: 0.55rem; font-weight: 700; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">#${cell?.seat_number || '?'}</span>
+                                </div>
+                            </div>
+                        `;
+                        continue;
+                    }
+
+                    const cap = cell.student_ids.length;
+                    const deskW = Math.max(80, cap * 48 + 20);
+                    const isCollision = cell.collision;
+                    const deskBg = isCollision ? 'linear-gradient(135deg, #991b1b, #7f1d1d)' : 'linear-gradient(135deg, #78350f, #451a03)';
+                    const deskBorder = isCollision ? '2px solid #ef4444' : '2px solid #92400e';
+
+                    // Build chairs
+                    const chairsHtml = cell.student_ids.map((sid, idx) => {
+                        const st = studentMap[String(sid).trim()];
+                        const cls = cell.class_names[idx] || '';
+                        const clsColor = classColors[cls] || '#64748b';
+                        const displayLabel = showNames ? (st ? st.name : sid) : sid;
+                        const bg = showHeatmap ? clsColor : '#0f172a';
+                        const border = showHeatmap ? `2px solid ${clsColor}` : `2px solid ${clsColor}`;
+                        const textCol = '#f8fafc';
+
+                        return `
+                            <div style="transform-style: preserve-3d; position: relative;">
+                                <div class="chair-seat-3d" style="width: 42px; height: 26px; background: ${bg}; border: ${border};" title="${st ? st.name : sid} (${cls})">
+                                    <div style="color: ${textCol}; font-size: 0.45rem; font-weight: 800; line-height: 1.1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; padding: 0 2px;">${displayLabel}</div>
+                                    <div style="color: ${clsColor}; font-size: 0.4rem; font-weight: 900; opacity: 0.8;">${cls}</div>
+                                    <!-- Backrest -->
+                                    <div class="chair-back-3d" style="background: ${bg}; border: 1px solid ${clsColor}; opacity: 0.7;"></div>
+                                    <!-- Chair legs -->
+                                    <div class="chair-leg-3d" style="left: 3px; top: 3px;"></div>
+                                    <div class="chair-leg-3d" style="right: 3px; top: 3px;"></div>
+                                    <div class="chair-leg-3d" style="left: 3px; bottom: 3px;"></div>
+                                    <div class="chair-leg-3d" style="right: 3px; bottom: 3px;"></div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    html += `
+                        <div class="desk-group-3d" style="left: ${posX}px; top: ${posY}px; transform: translate(-50%, -50%); transform-style: preserve-3d;">
+                            <!-- Desk Surface -->
+                            <div class="desk-surface-3d" style="width: ${deskW}px; height: 28px; background: ${deskBg}; border: ${deskBorder};">
+                                <span style="position: absolute; left: 5px; top: 3px; font-size: 0.5rem; font-weight: 900; color: #fef08a; opacity: 0.7;">#${cell.seat_number}</span>
+                                ${isCollision ? '<span style="position: absolute; right: 5px; top: 3px; font-size: 0.55rem; color: #ef4444; animation: pulse3d 1s infinite;">⚠</span>' : ''}
+                            </div>
+                            <!-- Desk legs -->
+                            <div class="desk-leg-3d" style="left: 4px; top: 2px;"></div>
+                            <div class="desk-leg-3d" style="right: 4px; top: 2px;"></div>
+                            <div class="desk-leg-3d" style="left: 4px; bottom: 2px;"></div>
+                            <div class="desk-leg-3d" style="right: 4px; bottom: 2px;"></div>
+                            <!-- Chairs side-by-side behind desk -->
+                            <div style="display: flex; gap: 4px; justify-content: center; position: absolute; top: 32px; left: 50%; transform: translate3d(-50%, 0, 0); transform-style: preserve-3d;">
+                                ${chairsHtml}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            desksLayer.innerHTML = html;
+        };
+
+        if (btnToggleNames) {
+            btnToggleNames.onclick = () => {
+                showNames = !showNames;
+                if (showNames) {
+                    btnToggleNames.style.background = '#eef2ff';
+                    btnToggleNames.style.color = '#4338ca';
+                    btnToggleNames.style.borderColor = '#c7d2fe';
+                    btnToggleNames.innerHTML = '<i data-lucide="user-check" style="width: 14px; height: 14px;"></i> Show ID';
+                } else {
+                    btnToggleNames.style.background = '#f1f5f9';
+                    btnToggleNames.style.color = '#475569';
+                    btnToggleNames.style.borderColor = '#cbd5e1';
+                    btnToggleNames.innerHTML = '<i data-lucide="user-minus" style="width: 14px; height: 14px;"></i> Show Name';
+                }
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                renderGridContent();
+            };
+        }
+
+        if (btnToggleHeatmap) {
+            btnToggleHeatmap.onclick = () => {
+                showHeatmap = !showHeatmap;
+                if (showHeatmap) {
+                    btnToggleHeatmap.style.background = '#e0f2fe';
+                    btnToggleHeatmap.style.color = '#0369a1';
+                    btnToggleHeatmap.style.borderColor = '#bae6fd';
+                } else {
+                    btnToggleHeatmap.style.background = '#f1f5f9';
+                    btnToggleHeatmap.style.color = '#475569';
+                    btnToggleHeatmap.style.borderColor = '#cbd5e1';
+                }
+                renderGridContent();
+            };
+        }
+
+        // Trigger initial render of classroom content
+        renderGridContent();
+
+        container.scrollIntoView({ behavior: 'smooth' });
     },
 
 
@@ -27513,6 +30048,15 @@ export const UI = {
         const exam = await db.cbt_exams.get(examId);
         if (!exam) return this.renderCBT();
 
+        // Section Admin level filtering
+        if (this.isSectionAdmin()) {
+            const allowed = this.getAdminAllowedLevels();
+            if (!allowed.includes(getClassLevel(exam.class_name))) {
+                Notifications.show('Unauthorized access to this exam.', 'danger');
+                return this.renderCBT();
+            }
+        }
+
         // Auto-refresh logic (Optimized to prevent flickering and snap-back)
         if (this.participantsInterval) clearInterval(this.participantsInterval);
         this.participantsInterval = setInterval(async () => {
@@ -27537,7 +30081,7 @@ export const UI = {
         this.currentViewData = examId;
 
         // 1. Initial shell render (Instant feedback)
-        const _isAdmin = this.currentUser.role === 'Admin' || this.currentUser.role === 'Principal';
+        const _isAdmin = this.currentUser.role === 'Admin' || this.currentUser.role === 'Principal' || this.isSectionAdmin();
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="padding: 1rem 0.5rem;">
                 <div class="view-header" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem;">

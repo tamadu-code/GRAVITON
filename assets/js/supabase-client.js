@@ -160,6 +160,19 @@ export async function syncToCloud() {
                             if (item[col] !== undefined) sanitized[col] = item[col];
                         });
                         
+                        // Stamp with active tenant_id if in whitelist and missing/null
+                        if (columns.includes('tenant_id')) {
+                            const activeTenantId = localStorage.getItem('tenant_id') || '00000000-0000-0000-0000-000000000001';
+                            if (sanitized.tenant_id === undefined || sanitized.tenant_id === null || sanitized.tenant_id === '') {
+                                sanitized.tenant_id = activeTenantId;
+                                // Also update it in Dexie to avoid constantly rewriting/resyncing with null locally
+                                const pkVal = item[pk];
+                                if (pkVal) {
+                                    db[table].update(pkVal, { tenant_id: activeTenantId }).catch(() => {});
+                                }
+                            }
+                        }
+                        
                         // Defensive check for profiles role constraint
                         if (table === 'profiles') {
                             const allowedRoles = ['Admin', 'Teacher', 'Student', 'Parent', 'Staff', 'Principal'];
@@ -345,6 +358,9 @@ export async function syncToCloud() {
                         const deletions = chunk.filter(log => log.operation === 'DELETE');
                         for (const del of deletions) {
                             try {
+                                if (del.table === 'exam_seating' || del.table === 'exam_halls') {
+                                    continue;
+                                }
                                 const pk = (del.table === 'students' || del.table === 'student_analytics') ? 'student_id' : 'id';
                                 
                                 // Cascade cloud deletions to satisfy foreign key constraints before deleting parent

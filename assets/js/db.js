@@ -168,6 +168,16 @@ db.version(45).stores({
     student_subject_registrations: 'id, student_id, subject_id, term, session, [student_id+subject_id+term+session], tenant_id, updated_at, is_synced'
 });
 
+// Version 46: Exam Seating Arrangements
+db.version(46).stores({
+    exam_seating: 'id, hall_name, term, session, tenant_id, updated_at, is_synced'
+});
+
+// Version 47: Exam Halls Directory
+db.version(47).stores({
+    exam_halls: 'id, name, tenant_id, updated_at, is_synced'
+});
+
 
 db.audit_logs.hook('creating', (primKey, obj, transaction) => {
     const tenantId = localStorage.getItem('tenant_id');

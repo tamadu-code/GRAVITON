@@ -495,7 +495,8 @@ async function loadAuthenticatedApp(authUser) {
         role: currentRole,
         name: currentName,
         assigned_id: profile.assigned_id || null,
-        passport: profile.passport || null
+        passport: profile.passport || null,
+        department: profile.department || null
     };
 
     // Initialize Push Notifications asynchronously
