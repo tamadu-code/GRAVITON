@@ -23994,11 +23994,11 @@ export const UI = {
                 }
 
                 // ─── SEATING DISTRIBUTION VIA CSP SOLVER ─────────────────────────
-                // 1. Sort halls by capacity descending (highest capacity first)
+                // 1. Sort halls by capacity ascending (lowest capacity first)
                 const sortedHalls = [...targetHalls].sort((a, b) => {
                     const capA = a.rows * a.cols * a.students_per_seat;
                     const capB = b.rows * b.cols * b.students_per_seat;
-                    return capB - capA;
+                    return capA - capB; // lowest capacity first
                 });
 
                 // Calculate target student count for each hall based on capacity proportion
@@ -24023,14 +24023,56 @@ export const UI = {
                     hIdx++;
                 }
 
-                let remainingPool = [...studentsPool];
+                // Group students by class and shuffle each class list
+                const classBuckets = {};
+                selectedClasses.forEach(cls => {
+                    classBuckets[cls] = studentsPool.filter(s => s.class_name === cls);
+                    for (let i = classBuckets[cls].length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [classBuckets[cls][i], classBuckets[cls][j]] = [classBuckets[cls][j], classBuckets[cls][i]];
+                    }
+                });
+
+                // Initialize allocation arrays for each hall
+                const hallAllocations = sortedHalls.map(() => []);
+
+                // Cyclic Round-Robin Allocation:
+                // Hall 1 with Class 1, Hall 2 with Class 2...
+                // Next round: Hall 1 with Class 2, Hall 2 with Class 3...
+                let studentAssignedCount = 0;
+                let round = 0;
+                while (studentAssignedCount < totalStudents) {
+                    let madeProgress = false;
+                    for (let h = 0; h < sortedHalls.length; h++) {
+                        if (hallAllocations[h].length >= hallTargetCounts[h]) continue;
+
+                        let preferredClassIdx = (h + round) % selectedClasses.length;
+                        let chosenClass = null;
+
+                        for (let offset = 0; offset < selectedClasses.length; offset++) {
+                            const clsName = selectedClasses[(preferredClassIdx + offset) % selectedClasses.length];
+                            if (classBuckets[clsName] && classBuckets[clsName].length > 0) {
+                                chosenClass = clsName;
+                                break;
+                            }
+                        }
+
+                        if (chosenClass) {
+                            const student = classBuckets[chosenClass].pop();
+                            hallAllocations[h].push(student);
+                            studentAssignedCount++;
+                            madeProgress = true;
+                        }
+                    }
+                    if (!madeProgress) break;
+                    round++;
+                }
+
                 let generatedCount = 0;
 
                 for (let i = 0; i < sortedHalls.length; i++) {
                     const hall = sortedHalls[i];
-                    const targetCount = hallTargetCounts[i];
-                    const { subset: hallSlice, rest } = getInterleavedSubset(remainingPool, targetCount);
-                    remainingPool = rest;
+                    const hallSlice = hallAllocations[i];
 
                     // Build active seats list (every cell in the grid is a seat)
                     const activeSeats = [];
@@ -24616,11 +24658,11 @@ export const UI = {
                 const hallStudents = allStudents.filter(s => selectedClasses.includes(s.class_name));
                 if (hallStudents.length === 0) { Notifications.show('No students in selected classes', 'error'); return; }
 
-                // 1. Sort halls by capacity descending (highest capacity first)
+                // 1. Sort halls by capacity ascending (lowest capacity first)
                 const sortedHallsIds = [...selectedHallsIds].sort((a, b) => {
                     const capA = Object.values(mdHallsSeats[a] || {}).reduce((sum, s) => sum + s.capacity, 0);
                     const capB = Object.values(mdHallsSeats[b] || {}).reduce((sum, s) => sum + s.capacity, 0);
-                    return capB - capA;
+                    return capA - capB; // lowest capacity first
                 });
 
                 const totalCapacity = sortedHallsIds.reduce((sum, id) => {
@@ -24654,18 +24696,59 @@ export const UI = {
                     hIdx++;
                 }
 
-                let remainingPool = [...hallStudents];
+                // Group students by class and shuffle each class list
+                const classBuckets = {};
+                selectedClasses.forEach(cls => {
+                    classBuckets[cls] = hallStudents.filter(s => s.class_name === cls);
+                    for (let i = classBuckets[cls].length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [classBuckets[cls][i], classBuckets[cls][j]] = [classBuckets[cls][j], classBuckets[cls][i]];
+                    }
+                });
+
+                // Initialize allocation arrays for each hall
+                const hallAllocations = sortedHallsIds.map(() => []);
+
+                // Cyclic Round-Robin Allocation:
+                // Hall 1 with Class 1, Hall 2 with Class 2...
+                // Next round: Hall 1 with Class 2, Hall 2 with Class 3...
+                let studentAssignedCount = 0;
+                let round = 0;
+                while (studentAssignedCount < totalStudents) {
+                    let madeProgress = false;
+                    for (let h = 0; h < sortedHallsIds.length; h++) {
+                        if (hallAllocations[h].length >= hallTargetCounts[h]) continue;
+
+                        let preferredClassIdx = (h + round) % selectedClasses.length;
+                        let chosenClass = null;
+
+                        for (let offset = 0; offset < selectedClasses.length; offset++) {
+                            const clsName = selectedClasses[(preferredClassIdx + offset) % selectedClasses.length];
+                            if (classBuckets[clsName] && classBuckets[clsName].length > 0) {
+                                chosenClass = clsName;
+                                break;
+                            }
+                        }
+
+                        if (chosenClass) {
+                            const student = classBuckets[chosenClass].pop();
+                            hallAllocations[h].push(student);
+                            studentAssignedCount++;
+                            madeProgress = true;
+                        }
+                    }
+                    if (!madeProgress) break;
+                    round++;
+                }
+
                 let generatedCount = 0;
 
                 for (let i = 0; i < sortedHallsIds.length; i++) {
                     const hallId = sortedHallsIds[i];
-                    const targetCount = hallTargetCounts[i];
+                    const hallSlice = hallAllocations[i];
                     const hallSeats = mdHallsSeats[hallId] || {};
                     const seatKeys = Object.keys(hallSeats);
                     if (seatKeys.length === 0) continue;
-
-                    const { subset: hallSlice, rest } = getInterleavedSubset(remainingPool, targetCount);
-                    remainingPool = rest;
 
                     const config = mdHallsCanvasConfig[hallId];
 
