@@ -24001,17 +24001,36 @@ export const UI = {
                     return capB - capA;
                 });
 
+                // Calculate target student count for each hall based on capacity proportion
+                // to spread students evenly across all available halls
+                const totalStudents = studentsPool.length;
+                const hallTargetCounts = sortedHalls.map(h => {
+                    const cap = h.rows * h.cols * h.students_per_seat;
+                    return Math.floor((cap / totalCapacity) * totalStudents);
+                });
+
+                // Adjust for rounding errors to make sure sum(hallTargetCounts) === totalStudents
+                let allocatedSum = hallTargetCounts.reduce((a, b) => a + b, 0);
+                let diff = totalStudents - allocatedSum;
+                let hIdx = 0;
+                while (diff > 0) {
+                    const h = sortedHalls[hIdx % sortedHalls.length];
+                    const cap = h.rows * h.cols * h.students_per_seat;
+                    if (hallTargetCounts[hIdx % sortedHalls.length] < cap) {
+                        hallTargetCounts[hIdx % sortedHalls.length]++;
+                        diff--;
+                    }
+                    hIdx++;
+                }
+
                 let remainingPool = [...studentsPool];
                 let generatedCount = 0;
 
-                for (const hall of sortedHalls) {
-                    if (remainingPool.length === 0) break;
-
-                    const capacity = hall.rows * hall.cols * hall.students_per_seat;
-                    const { subset: hallSlice, rest } = getInterleavedSubset(remainingPool, capacity);
+                for (let i = 0; i < sortedHalls.length; i++) {
+                    const hall = sortedHalls[i];
+                    const targetCount = hallTargetCounts[i];
+                    const { subset: hallSlice, rest } = getInterleavedSubset(remainingPool, targetCount);
                     remainingPool = rest;
-
-                    if (hallSlice.length === 0) continue;
 
                     // Build active seats list (every cell in the grid is a seat)
                     const activeSeats = [];
@@ -24604,21 +24623,49 @@ export const UI = {
                     return capB - capA;
                 });
 
+                const totalCapacity = sortedHallsIds.reduce((sum, id) => {
+                    return sum + Object.values(mdHallsSeats[id] || {}).reduce((sSum, s) => sSum + s.capacity, 0);
+                }, 0);
+
+                if (hallStudents.length > totalCapacity) {
+                    Notifications.show(`Not enough capacity! ${hallStudents.length} students but only ${totalCapacity} seat slots designed.`, 'error');
+                    return;
+                }
+
+                // Calculate target student count for each hall based on capacity proportion
+                // to spread students evenly across all available halls
+                const totalStudents = hallStudents.length;
+                const hallTargetCounts = sortedHallsIds.map(id => {
+                    const cap = Object.values(mdHallsSeats[id] || {}).reduce((sum, s) => sum + s.capacity, 0);
+                    return Math.floor((cap / totalCapacity) * totalStudents);
+                });
+
+                // Adjust for rounding errors to make sure sum(hallTargetCounts) === totalStudents
+                let allocatedSum = hallTargetCounts.reduce((a, b) => a + b, 0);
+                let diff = totalStudents - allocatedSum;
+                let hIdx = 0;
+                while (diff > 0) {
+                    const id = sortedHallsIds[hIdx % sortedHallsIds.length];
+                    const cap = Object.values(mdHallsSeats[id] || {}).reduce((sum, s) => sum + s.capacity, 0);
+                    if (hallTargetCounts[hIdx % sortedHallsIds.length] < cap) {
+                        hallTargetCounts[hIdx % sortedHallsIds.length]++;
+                        diff--;
+                    }
+                    hIdx++;
+                }
+
                 let remainingPool = [...hallStudents];
                 let generatedCount = 0;
 
-                for (const hallId of sortedHallsIds) {
-                    if (remainingPool.length === 0) break;
-
+                for (let i = 0; i < sortedHallsIds.length; i++) {
+                    const hallId = sortedHallsIds[i];
+                    const targetCount = hallTargetCounts[i];
                     const hallSeats = mdHallsSeats[hallId] || {};
                     const seatKeys = Object.keys(hallSeats);
                     if (seatKeys.length === 0) continue;
 
-                    const capacity = seatKeys.reduce((sum, k) => sum + hallSeats[k].capacity, 0);
-                    const { subset: hallSlice, rest } = getInterleavedSubset(remainingPool, capacity);
+                    const { subset: hallSlice, rest } = getInterleavedSubset(remainingPool, targetCount);
                     remainingPool = rest;
-
-                    if (hallSlice.length === 0) continue;
 
                     const config = mdHallsCanvasConfig[hallId];
 
