@@ -1216,6 +1216,11 @@ window.addEventListener('error', (e) => {
 });
 
 window.addEventListener('unhandledrejection', (e) => {
+    const reasonStr = String(e.reason || '');
+    if (reasonStr.includes('ServiceWorker') || reasonStr.includes('sw.js')) {
+        console.warn('[SW] Suppressed background ServiceWorker update check rejection:', e.reason);
+        return;
+    }
     console.error('Unhandled Promise Rejection:', e.reason);
 });
 
@@ -1229,7 +1234,9 @@ if ('serviceWorker' in navigator) {
                 console.log('ServiceWorker registration successful with scope: ', registration.scope);
                 // Check for updates periodically
                 setInterval(() => {
-                    registration.update();
+                    registration.update().catch(err => {
+                        console.warn('[SW] Periodic update check skipped/failed (network/offline):', err.message);
+                    });
                 }, 60000 * 5); // Check every 5 minutes
             }, (err) => {
                 console.log('ServiceWorker registration failed: ', err);

@@ -377,6 +377,15 @@ export async function syncToCloud() {
                                     await client.from('attendance_records').delete().eq('student_id', del.record_id);
                                     await client.from('scores').delete().eq('student_id', del.record_id);
                                     await client.from('payments').delete().eq('student_id', del.record_id);
+                                    await client.from('cbt_results').delete().eq('student_id', del.record_id);
+                                    await client.from('parent_links').delete().eq('student_id', del.record_id);
+                                    await client.from('student_analytics').delete().eq('student_id', del.record_id);
+                                    await client.from('profiles').delete().eq('assigned_id', del.record_id);
+                                    await client.from('student_subject_registrations').delete().eq('student_id', del.record_id);
+                                    await client.from('elearning_progress').delete().eq('student_id', del.record_id);
+                                    await client.from('elearning_submissions').delete().eq('student_id', del.record_id);
+                                    await client.from('elearning_comments').delete().eq('user_id', del.record_id);
+                                    await client.from('exam_progress').delete().eq('student_id', del.record_id);
                                 }
 
                                 const { error: delErr } = await client.from(del.table).delete().eq(pk, del.record_id);

@@ -469,7 +469,12 @@ export const UI = {
                     db.cbt_results.where('student_id').equals(sid).delete(),
                     db.profiles.where('assigned_id').equals(sid).delete(),
                     db.parent_links.where('student_id').equals(sid).delete(),
-                    db.student_analytics.where('student_id').equals(sid).delete()
+                    db.student_analytics.where('student_id').equals(sid).delete(),
+                    db.student_subject_registrations?.where('student_id').equals(sid).delete().catch(() => {}),
+                    db.elearning_progress?.where('student_id').equals(sid).delete().catch(() => {}),
+                    db.elearning_submissions?.where('student_id').equals(sid).delete().catch(() => {}),
+                    db.elearning_comments?.where('user_id').equals(sid).delete().catch(() => {}),
+                    db.exam_progress?.where('student_id').equals(sid).delete().catch(() => {})
                 ]);
             } else if (table === 'classes') {
                 if (classDetails && classDetails.name) {
@@ -506,6 +511,11 @@ export const UI = {
                         await client.from('parent_links').delete().eq('student_id', id);
                         await client.from('student_analytics').delete().eq('student_id', id);
                         await client.from('profiles').delete().eq('assigned_id', id);
+                        await client.from('student_subject_registrations').delete().eq('student_id', id);
+                        await client.from('elearning_progress').delete().eq('student_id', id);
+                        await client.from('elearning_submissions').delete().eq('student_id', id);
+                        await client.from('elearning_comments').delete().eq('user_id', id);
+                        await client.from('exam_progress').delete().eq('student_id', id);
 
                         // Notify external Attendance System (biometric) about the deletion
                         try {
@@ -6964,6 +6974,7 @@ export const UI = {
         const currentSettings = await db.settings.toArray();
         const settingsMap = {};
         currentSettings.forEach(s => settingsMap[s.key] = s.value);
+        this.currentGradebookSettingsMap = settingsMap;
 
         const loadAcademicLedger = async () => {
             let cls = classFilter.value;
@@ -7462,7 +7473,11 @@ export const UI = {
                 let rawVal = e.target.value.trim();
                 let numVal = parseFloat(rawVal) || 0;
                 const field = e.target.dataset.field;
-                const limit = (field === 'exam') ? 60 : (isNP ? 20 : 10);
+                const levelStr = (level || '').toLowerCase();
+                const maxKey = `gb_max_${levelStr}_${field}`;
+                const fallbackLimit = (field === 'exam') ? (isNP ? 70 : 60) : (isNP ? 20 : 10);
+                const sMap = this.currentGradebookSettingsMap || {};
+                const limit = sMap[maxKey] ? parseInt(sMap[maxKey]) : fallbackLimit;
 
                 if (numVal > limit) {
                     e.target.value = limit;
@@ -19774,18 +19789,18 @@ export const UI = {
         // Default values if not set — leave blank if school hasn't configured yet
         const config = {
             schoolName: settings.schoolName || localStorage.getItem('tenant_school_name') || '',
-            schoolManager: settings.schoolManager || '',
-            schoolMotto: settings.schoolMotto || '',
-            schoolAddress: settings.schoolAddress || '',
-            schoolPhone: settings.schoolPhone || '',
-            schoolEmail: settings.schoolEmail || '',
+            schoolManager: settings.schoolManager || localStorage.getItem('tenant_school_manager') || '',
+            schoolMotto: settings.schoolMotto || localStorage.getItem('tenant_school_motto') || '',
+            schoolAddress: settings.schoolAddress || localStorage.getItem('tenant_school_address') || '',
+            schoolPhone: settings.schoolPhone || localStorage.getItem('tenant_school_phone') || '',
+            schoolEmail: settings.schoolEmail || localStorage.getItem('tenant_school_email') || '',
             currentSession: settings.currentSession || settings.current_session || '2025/2026',
             currentTerm: settings.currentTerm || settings.current_term || '1st Term',
             gradingSystem: settings.gradingSystem || 'Grade-Based (A1, B2, etc.)',
             cumulativeGrading: settings.cumulativeGrading || 'Disabled',
-            principalName: settings.principalName || '',
-            principalSignature: settings.principalSignature || null,
-            schoolLogo: settings.schoolLogo || null,
+            principalName: settings.principalName || localStorage.getItem('tenant_principal_name') || '',
+            principalSignature: settings.principalSignature || localStorage.getItem('tenant_principal_signature') || null,
+            schoolLogo: settings.schoolLogo || localStorage.getItem('tenant_school_logo') || null,
             themeColor: settings.themeColor || '#060495',
             holidays: settings.holidays || '',
             termStatus: settings.termStatus || 'Active',
@@ -19808,7 +19823,22 @@ export const UI = {
             gb_secondary_test1: settings.gb_secondary_test1 !== undefined ? (settings.gb_secondary_test1 === 'true' || settings.gb_secondary_test1 === true) : true,
             gb_secondary_test2: settings.gb_secondary_test2 !== undefined ? (settings.gb_secondary_test2 === 'true' || settings.gb_secondary_test2 === true) : true,
             gb_secondary_project: settings.gb_secondary_project !== undefined ? (settings.gb_secondary_project === 'true' || settings.gb_secondary_project === true) : true,
-            gb_secondary_exam: settings.gb_secondary_exam !== undefined ? (settings.gb_secondary_exam === 'true' || settings.gb_secondary_exam === true) : true
+            gb_secondary_exam: settings.gb_secondary_exam !== undefined ? (settings.gb_secondary_exam === 'true' || settings.gb_secondary_exam === true) : true,
+            gb_max_nursery_assignment: parseInt(settings.gb_max_nursery_assignment || '10'),
+            gb_max_nursery_test1: parseInt(settings.gb_max_nursery_test1 || '20'),
+            gb_max_nursery_test2: parseInt(settings.gb_max_nursery_test2 || '10'),
+            gb_max_nursery_project: parseInt(settings.gb_max_nursery_project || '10'),
+            gb_max_nursery_exam: parseInt(settings.gb_max_nursery_exam || '70'),
+            gb_max_primary_assignment: parseInt(settings.gb_max_primary_assignment || '10'),
+            gb_max_primary_test1: parseInt(settings.gb_max_primary_test1 || '20'),
+            gb_max_primary_test2: parseInt(settings.gb_max_primary_test2 || '10'),
+            gb_max_primary_project: parseInt(settings.gb_max_primary_project || '10'),
+            gb_max_primary_exam: parseInt(settings.gb_max_primary_exam || '70'),
+            gb_max_secondary_assignment: parseInt(settings.gb_max_secondary_assignment || '10'),
+            gb_max_secondary_test1: parseInt(settings.gb_max_secondary_test1 || '10'),
+            gb_max_secondary_test2: parseInt(settings.gb_max_secondary_test2 || '10'),
+            gb_max_secondary_project: parseInt(settings.gb_max_secondary_project || '10'),
+            gb_max_secondary_exam: parseInt(settings.gb_max_secondary_exam || '60')
         };
 
         this.timetablePartTimeConstraints = JSON.parse(config.ttPartTimeConstraints);
@@ -20025,76 +20055,166 @@ export const UI = {
                 <div class="glass-collapse-card">
                     <input type="checkbox" id="toggle-settings-gradebook" class="glass-collapse-checkbox" checked>
                     <label for="toggle-settings-gradebook" class="glass-collapse-header">
-                        <span class="glass-collapse-title"><i data-lucide="sliders" style="width: 18px; color: #7c3aed;"></i> Gradebook & Report Card Columns</span>
+                        <span class="glass-collapse-title"><i data-lucide="sliders" style="width: 18px; color: #7c3aed;"></i> Gradebook & Report Card Columns & Max Scores</span>
                         <span class="glass-collapse-chevron"><i data-lucide="chevron-down"></i></span>
                     </label>
                     <div class="glass-collapse-content">
-                        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.5rem;">Select which score columns are enabled and visible for each academic level.</p>
+                        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.5rem;">Configure enabled score columns and manually customize Maximum Scores for each academic level.</p>
                         
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem;">
                             <!-- Nursery Config -->
                             <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.25rem; border-radius: 16px;">
                                 <h4 style="font-weight: 800; color: #1e293b; margin-bottom: 0.75rem; font-size: 0.9rem;">Nursery Level Columns</h4>
-                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="assignment" ${config.gb_nursery_assignment ? 'checked' : ''}> Assignment (H/W)
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="test1" ${config.gb_nursery_test1 ? 'checked' : ''}> Test 1
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="test2" ${config.gb_nursery_test2 ? 'checked' : ''}> Test 2
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="project" ${config.gb_nursery_project ? 'checked' : ''}> Project
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="exam" ${config.gb_nursery_exam ? 'checked' : ''}> Exam
-                                    </label>
+                                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="assignment" ${config.gb_nursery_assignment ? 'checked' : ''}> Assignment (H/W)
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="nursery" data-field="assignment" value="${config.gb_max_nursery_assignment}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="test1" ${config.gb_nursery_test1 ? 'checked' : ''}> Test 1
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="nursery" data-field="test1" value="${config.gb_max_nursery_test1}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="test2" ${config.gb_nursery_test2 ? 'checked' : ''}> Test 2
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="nursery" data-field="test2" value="${config.gb_max_nursery_test2}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="project" ${config.gb_nursery_project ? 'checked' : ''}> Project
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="nursery" data-field="project" value="${config.gb_max_nursery_project}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="nursery" data-field="exam" ${config.gb_nursery_exam ? 'checked' : ''}> Exam
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="nursery" data-field="exam" value="${config.gb_max_nursery_exam}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
                             <!-- Primary Config -->
                             <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.25rem; border-radius: 16px;">
                                 <h4 style="font-weight: 800; color: #1e293b; margin-bottom: 0.75rem; font-size: 0.9rem;">Primary Level Columns</h4>
-                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="assignment" ${config.gb_primary_assignment ? 'checked' : ''}> Assignment (H/W)
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="test1" ${config.gb_primary_test1 ? 'checked' : ''}> Test 1
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="test2" ${config.gb_primary_test2 ? 'checked' : ''}> Test 2
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="project" ${config.gb_primary_project ? 'checked' : ''}> Project
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="exam" ${config.gb_primary_exam ? 'checked' : ''}> Exam
-                                    </label>
+                                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="assignment" ${config.gb_primary_assignment ? 'checked' : ''}> Assignment (H/W)
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="primary" data-field="assignment" value="${config.gb_max_primary_assignment}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="test1" ${config.gb_primary_test1 ? 'checked' : ''}> Test 1
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="primary" data-field="test1" value="${config.gb_max_primary_test1}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="test2" ${config.gb_primary_test2 ? 'checked' : ''}> Test 2
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="primary" data-field="test2" value="${config.gb_max_primary_test2}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="project" ${config.gb_primary_project ? 'checked' : ''}> Project
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="primary" data-field="project" value="${config.gb_max_primary_project}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="primary" data-field="exam" ${config.gb_primary_exam ? 'checked' : ''}> Exam
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="primary" data-field="exam" value="${config.gb_max_primary_exam}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
                             <!-- Secondary Config -->
                             <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 1.25rem; border-radius: 16px;">
                                 <h4 style="font-weight: 800; color: #1e293b; margin-bottom: 0.75rem; font-size: 0.9rem;">Secondary Level Columns</h4>
-                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="assignment" ${config.gb_secondary_assignment ? 'checked' : ''}> Assignment
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="test1" ${config.gb_secondary_test1 ? 'checked' : ''}> Test 1
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="test2" ${config.gb_secondary_test2 ? 'checked' : ''}> Test 2
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="project" ${config.gb_secondary_project ? 'checked' : ''}> Project
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
-                                        <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="exam" ${config.gb_secondary_exam ? 'checked' : ''}> Exam
-                                    </label>
+                                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="assignment" ${config.gb_secondary_assignment ? 'checked' : ''}> Assignment
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="secondary" data-field="assignment" value="${config.gb_max_secondary_assignment}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="test1" ${config.gb_secondary_test1 ? 'checked' : ''}> Test 1
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="secondary" data-field="test1" value="${config.gb_max_secondary_test1}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="test2" ${config.gb_secondary_test2 ? 'checked' : ''}> Test 2
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="secondary" data-field="test2" value="${config.gb_max_secondary_test2}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="project" ${config.gb_secondary_project ? 'checked' : ''}> Project
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="secondary" data-field="project" value="${config.gb_max_secondary_project}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+                                            <input type="checkbox" class="gb-col-toggle" data-level="secondary" data-field="exam" ${config.gb_secondary_exam ? 'checked' : ''}> Exam
+                                        </label>
+                                        <div style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #64748b;">
+                                            <span>Max:</span>
+                                            <input type="number" class="gb-max-input" data-level="secondary" data-field="exam" value="${config.gb_max_secondary_exam}" min="1" max="100" style="width: 55px; height: 26px; border-radius: 6px; font-weight: 700; text-align: center; border: 1px solid #cbd5e1; font-size: 0.8rem;">
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -20424,6 +20544,19 @@ export const UI = {
                 const field = el.dataset.field;
                 const key = `gb_${level}_${field}`;
                 await this.saveSingleSetting(key, el.checked ? 'true' : 'false');
+            });
+        });
+
+        // Register Gradebook column Max Score change listeners
+        document.querySelectorAll('.gb-max-input').forEach(el => {
+            el.addEventListener('change', async () => {
+                const level = el.dataset.level;
+                const field = el.dataset.field;
+                const key = `gb_max_${level}_${field}`;
+                const val = parseInt(el.value || '0');
+                if (val > 0) {
+                    await this.saveSingleSetting(key, String(val));
+                }
             });
         });
         
@@ -21213,6 +21346,20 @@ export const UI = {
             } else {
                 await db.settings.add(prepareForSync({ id: `SET_${s.key.toUpperCase()}`, ...s }));
             }
+            const lsMap = {
+                schoolName: 'tenant_school_name',
+                schoolManager: 'tenant_school_manager',
+                schoolAddress: 'tenant_school_address',
+                schoolPhone: 'tenant_school_phone',
+                schoolEmail: 'tenant_school_email',
+                schoolMotto: 'tenant_school_motto',
+                schoolLogo: 'tenant_school_logo',
+                principalName: 'tenant_principal_name',
+                principalSignature: 'tenant_principal_signature'
+            };
+            if (lsMap[key] && value) {
+                localStorage.setItem(lsMap[key], value);
+            }
             if (['schoolName', 'schoolLogo', 'themeColor'].includes(key)) {
                 await this.updateInstitutionalBranding();
             }
@@ -21232,14 +21379,30 @@ export const UI = {
     async saveSettings() {
         Notifications.show('Saving system configuration...', 'info');
         
+        const sName = document.getElementById('set-school-name')?.value || '';
+        const sMgr = document.getElementById('set-school-manager')?.value || '';
+        const sAddr = document.getElementById('set-school-address')?.value || '';
+        const sPhone = document.getElementById('set-school-phone')?.value || '';
+        const sEmail = document.getElementById('set-school-email')?.value || '';
+        const sMotto = document.getElementById('set-school-motto')?.value || '';
+        const pName = document.getElementById('set-principal-name')?.value || '';
+
+        if (sName) localStorage.setItem('tenant_school_name', sName);
+        if (sMgr) localStorage.setItem('tenant_school_manager', sMgr);
+        if (sAddr) localStorage.setItem('tenant_school_address', sAddr);
+        if (sPhone) localStorage.setItem('tenant_school_phone', sPhone);
+        if (sEmail) localStorage.setItem('tenant_school_email', sEmail);
+        if (sMotto) localStorage.setItem('tenant_school_motto', sMotto);
+        if (pName) localStorage.setItem('tenant_principal_name', pName);
+
         const settingsToSave = [
-            { key: 'schoolName', value: document.getElementById('set-school-name').value },
-            { key: 'schoolManager', value: document.getElementById('set-school-manager').value },
-            { key: 'schoolAddress', value: document.getElementById('set-school-address').value },
-            { key: 'schoolPhone', value: document.getElementById('set-school-phone').value },
-            { key: 'schoolEmail', value: document.getElementById('set-school-email').value },
-            { key: 'principalName', value: document.getElementById('set-principal-name').value },
-            { key: 'schoolMotto', value: document.getElementById('set-school-motto').value },
+            { key: 'schoolName', value: sName },
+            { key: 'schoolManager', value: sMgr },
+            { key: 'schoolAddress', value: sAddr },
+            { key: 'schoolPhone', value: sPhone },
+            { key: 'schoolEmail', value: sEmail },
+            { key: 'principalName', value: pName },
+            { key: 'schoolMotto', value: sMotto },
             { key: 'currentSession', value: document.getElementById('set-current-session').value },
             { key: 'currentTerm', value: document.getElementById('set-current-term').value },
             { key: 'gradingSystem', value: document.getElementById('set-grading-system').value },
@@ -21255,11 +21418,15 @@ export const UI = {
             { key: 'timetable_partTimeConstraints', value: JSON.stringify(this.timetablePartTimeConstraints || []) }
         ];
 
-        if (this.pendingSignature) {
-            settingsToSave.push({ key: 'principalSignature', value: this.pendingSignature });
+        const logoVal = this.pendingLogo || localStorage.getItem('tenant_school_logo');
+        if (logoVal) {
+            settingsToSave.push({ key: 'schoolLogo', value: logoVal });
+            localStorage.setItem('tenant_school_logo', logoVal);
         }
-        if (this.pendingLogo) {
-            settingsToSave.push({ key: 'schoolLogo', value: this.pendingLogo });
+        const sigVal = this.pendingSignature || localStorage.getItem('tenant_principal_signature');
+        if (sigVal) {
+            settingsToSave.push({ key: 'principalSignature', value: sigVal });
+            localStorage.setItem('tenant_principal_signature', sigVal);
         }
 
         const vapidInput = document.getElementById('set-vapid-public-key');
@@ -21271,6 +21438,15 @@ export const UI = {
             const level = el.dataset.level;
             const field = el.dataset.field;
             settingsToSave.push({ key: `gb_${level}_${field}`, value: el.checked ? 'true' : 'false' });
+        });
+
+        document.querySelectorAll('.gb-max-input').forEach(el => {
+            const level = el.dataset.level;
+            const field = el.dataset.field;
+            const val = parseInt(el.value || '0');
+            if (val > 0) {
+                settingsToSave.push({ key: `gb_max_${level}_${field}`, value: String(val) });
+            }
         });
 
         try {
