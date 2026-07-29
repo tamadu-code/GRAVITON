@@ -11452,7 +11452,7 @@ export const UI = {
                                 employment_type: empType,
                                 phone: phone,
                                 department: dept,
-                                qualifications: quals,
+                                qualification: quals,
                                 signature: editSignatureBase64,
                                 assigned_id: updatedProfile.assigned_id,
                                 status: updatedProfile.status || 'Active',
