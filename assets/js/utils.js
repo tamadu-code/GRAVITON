@@ -3479,8 +3479,8 @@ export function getClassNameRank(name) {
 }
 
 export function compareClasses(a, b) {
-    const nameA = a?.name || '';
-    const nameB = b?.name || '';
+    const nameA = typeof a === 'string' ? a : (a?.name || '');
+    const nameB = typeof b === 'string' ? b : (b?.name || '');
     const rankA = getClassNameRank(nameA);
     const rankB = getClassNameRank(nameB);
     

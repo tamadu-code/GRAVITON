@@ -4053,7 +4053,7 @@ export const UI = {
         
         let streams = await db.classes.toArray();
         // Alphabetical sort (Natural sort)
-        streams.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+        streams.sort(compareClasses);
         
         let activeStudents = await db.students.filter(s => s.is_active !== false && s.is_active !== 0 && s.status !== 'Graduated' && s.class_name !== 'Graduated' && s.status !== 'Inactive').toArray();
 
@@ -4623,7 +4623,7 @@ export const UI = {
         if (btnRegCourse) {
             btnRegCourse.addEventListener('click', async () => {
                 const allClasses = await db.classes.toArray();
-                const sortedClasses = allClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                const sortedClasses = allClasses.sort(compareClasses);
 
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1.25rem;">
@@ -4782,7 +4782,7 @@ export const UI = {
         const subject = subjects.find(s => s.name === subjectName);
         const assignments = await db.subject_assignments.toArray();
         const teachers = (await getTenantProfiles()).filter(p => p.role === 'Teacher' || p.role === 'Admin');
-        const classes = await db.classes.toArray();
+        const classes = (await db.classes.toArray()).sort(compareClasses);
 
         const currentAssignments = assignments.filter(a => currentIds.split(',').includes(a.subject_id));
 
@@ -5366,7 +5366,7 @@ export const UI = {
         const btnAddStudent = document.getElementById('btn-add-student');
         if (btnAddStudent) {
             btnAddStudent.addEventListener('click', () => {
-                const sortedClasses = [...classes].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                const sortedClasses = [...classes].sort(compareClasses);
                 const classOptions = sortedClasses.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1rem;">
@@ -6155,7 +6155,7 @@ export const UI = {
         if (promoteBtn) {
             promoteBtn.onclick = async () => {
                 const classes = await db.classes.toArray();
-                classes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                classes.sort(compareClasses);
                 
                 const currentClass = student.class_name || 'None';
                 
@@ -6238,7 +6238,7 @@ export const UI = {
         if (modifyBtn) {
             modifyBtn.onclick = async () => {
                 const classes = await db.classes.toArray();
-                const sortedClasses = classes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                const sortedClasses = classes.sort(compareClasses);
                 const classOptions = sortedClasses.map(c => `<option value="${c.name}" ${c.name === student.class_name ? 'selected' : ''}>${c.name}</option>`).join('');
                 
                 const modalHtml = `
@@ -8264,7 +8264,7 @@ export const UI = {
                                                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem;">
                                                     <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">${s.type} • ${s.credits} Credits</div>
                                                     <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
-                                                        ${[...subAssignments].sort((a, b) => (a.class_name || '').localeCompare(b.class_name || '', undefined, { numeric: true })).map(a => `<span style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; font-size: 0.6rem; padding: 0.1rem 0.3rem; font-weight: 700;">${a.class_name}</span>`).join('')}
+                                                        ${[...subAssignments].sort((a, b) => compareClasses(a.class_name, b.class_name)).map(a => `<span style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; font-size: 0.6rem; padding: 0.1rem 0.3rem; font-weight: 700;">${a.class_name}</span>`).join('')}
                                                     </div>
                                                 </div>
                                             </div>
@@ -8287,7 +8287,7 @@ export const UI = {
                     </div>
                 `;
             } else if (tab === 'assignments') {
-                const sortedAssignments = [...assignments].sort((a,b) => (a.class_name || '').localeCompare(b.class_name || ''));
+                const sortedAssignments = [...assignments].sort((a,b) => compareClasses(a.class_name, b.class_name));
                 container.innerHTML = `
                     <div style="display: flex; flex-direction: column; gap: 1rem;">
                         ${sortedAssignments.map(a => {
@@ -8365,7 +8365,7 @@ export const UI = {
         if (addSubBtn) {
             addSubBtn.onclick = async () => {
                 const allClasses = await db.classes.toArray();
-                const sortedClasses = allClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                const sortedClasses = allClasses.sort(compareClasses);
 
                 const modalHtml = `
                     <div style="display: flex; flex-direction: column; gap: 1.25rem;">
@@ -8510,7 +8510,7 @@ export const UI = {
                 if (!sub) return;
 
                 const allClasses = await db.classes.toArray();
-                const sortedClasses = allClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+                const sortedClasses = allClasses.sort(compareClasses);
                 const teachers = (await getTenantProfiles()).filter(p => p.role === 'Teacher' || p.role === 'Admin');
                 const currentAssignments = await db.subject_assignments.where('subject_id').equals(id).toArray();
 
@@ -8943,7 +8943,7 @@ export const UI = {
                                 <label style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select Stream</label>
                                 <select id="att-class-filter" class="input" style="width: 100%; height: 48px; border-radius: 12px; background: #f8fafc;">
                                     <option value="">All Classes</option>
-                                    ${filteredClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
+                                    ${filteredClasses.sort(compareClasses)
                                         .map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
                                 </select>
                             </div>
@@ -10020,7 +10020,7 @@ export const UI = {
             const allowed = this.getAdminAllowedLevels();
             accessibleClasses = accessibleClasses.filter(c => allowed.includes(getClassLevel(c.name)));
         }
-        accessibleClasses.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+        accessibleClasses.sort((a,b) => compareClasses(a.name, b.name));
 
         // Pre-fill settings
         const settingsArray = await db.settings.toArray();
@@ -11660,7 +11660,7 @@ export const UI = {
         });
 
         // Sort classes
-        classes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+        classes.sort(compareClasses);
 
         this.contentArea.innerHTML = `
             <div class="view-container animate-fade-in" style="padding: 1.5rem;">
@@ -16441,7 +16441,7 @@ export const UI = {
                                             <div style="padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
                                                 ${subjectNames.map(subName => {
                                                     const subAssignments = teacherSubjects[subName];
-                                                    subAssignments.sort((a, b) => a.class_name.localeCompare(b.class_name, undefined, {numeric: true, sensitivity: 'base'}));
+                                                    subAssignments.sort((a, b) => compareClasses(a.class_name, b.class_name));
                                                     
                                                     return `
                                                         <div style="background: white; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1rem; box-shadow: var(--shadow-sm);">
@@ -22295,9 +22295,9 @@ export const UI = {
                 });
             }
         });
-        courses.sort((a, b) => a.subject_name.localeCompare(b.subject_name) || a.class_name.localeCompare(b.class_name));
+        courses.sort((a, b) => a.subject_name.localeCompare(b.subject_name) || compareClasses(a.class_name, b.class_name));
 
-        const uniqueClasses = [...new Set(courses.map(c => c.class_name))].sort();
+        const uniqueClasses = [...new Set(courses.map(c => c.class_name))].sort(compareClasses);
         const gradeFields = ['assignment','test1','test2','project','exam'];
         const fieldLabels = { assignment:'Assignment', test1:'Test 1', test2:'Test 2', project:'Project', exam:'Exam' };
 
@@ -23409,7 +23409,7 @@ export const UI = {
         const currentSession = getSetting('currentSession') || '2025/2026';
 
         const allClasses = await db.classes.toArray();
-        const sortedClasses = allClasses.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+        const sortedClasses = allClasses.sort(compareClasses);
         const allStudents = (await db.students.toArray()).filter(s => s.status !== 'Graduated' && s.status !== 'Withdrawn');
 
         const tenantId = localStorage.getItem('tenant_id');
@@ -27343,9 +27343,9 @@ export const UI = {
                     } else if (sortBy === 'name-desc') {
                         return b.name.localeCompare(a.name);
                     } else if (sortBy === 'class-asc') {
-                        return a.class_name.localeCompare(b.class_name);
+                        return compareClasses(a.class_name, b.class_name);
                     } else if (sortBy === 'class-desc') {
-                        return b.class_name.localeCompare(a.class_name);
+                        return compareClasses(b.class_name, a.class_name);
                     } else if (sortBy === 'balance-desc') {
                         return b.balance - a.balance;
                     }
@@ -28183,7 +28183,7 @@ export const UI = {
             db.classes.toArray(),
             db.settings.toArray()
         ]);
-        classes.sort((a, b) => a.name.localeCompare(b.name));
+        classes.sort((a, b) => compareClasses(a.name, b.name));
         const defaultTerm = settings.find(s => s.key === 'currentTerm')?.value || '1st Term';
         const defaultSession = settings.find(s => s.key === 'currentSession')?.value || '2025/2026';
 
@@ -28490,7 +28490,7 @@ export const UI = {
             db.fee_structures.toArray()
         ]);
 
-        classes.sort((a,b) => a.name.localeCompare(b.name));
+        classes.sort((a,b) => compareClasses(a.name, b.name));
         students.sort((a,b) => a.name.localeCompare(b.name));
 
         const contentHtml = `
