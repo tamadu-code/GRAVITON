@@ -16799,9 +16799,9 @@ export const UI = {
                 }
             }
 
-            return `
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem;">
-                    ${groupedSubjects.map(subGroup => {
+            const html = `
+                <div id="elearning-subject-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem;">
+                    ${groupedSubjects.map((subGroup, idx) => {
                         const prog = progressMap[subGroup.subjectName] || 0;
                         const progressHtml = targetStudentId ? `
                             <div class="mt-4">
@@ -16815,10 +16815,8 @@ export const UI = {
                             </div>
                         ` : '';
 
-                        const encodedWorkspaces = encodeURIComponent(JSON.stringify(subGroup.workspaces));
-
                         return `
-                            <div class="card hover-lift" style="border-radius: 20px; padding: 1.5rem; cursor: pointer; border: 1px solid #f1f5f9; background: white; display: flex; flex-direction: column; justify-content: space-between;" onclick="UI.handleElearningSubjectCardClick('${subGroup.subjectName.replace(/'/g, "\\'")}', '${encodedWorkspaces}')">
+                            <div class="card hover-lift elearning-subject-card" data-group-idx="${idx}" style="border-radius: 20px; padding: 1.5rem; cursor: pointer; border: 1px solid #f1f5f9; background: white; display: flex; flex-direction: column; justify-content: space-between;">
                                 <div>
                                     <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem;">
                                         <div style="width: 48px; height: 48px; background: #eef2ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #4f46e5;">
@@ -16833,7 +16831,7 @@ export const UI = {
                                     
                                     <div class="mt-3" style="display: flex; flex-wrap: wrap; gap: 0.35rem;">
                                         ${subGroup.workspaces.map(w => `
-                                            <button class="btn btn-xs" style="background: #f1f5f9; color: #334155; border-radius: 8px; font-weight: 700; border: 1px solid #e2e8f0; cursor: pointer; padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="event.stopPropagation(); UI.enterELearningWorkspace('${w.subjectId}', '${w.className}')">
+                                            <button class="btn btn-xs elearning-class-btn" data-subject-id="${w.subjectId}" data-class-name="${w.className}" style="background: #f1f5f9; color: #334155; border-radius: 8px; font-weight: 700; border: 1px solid #e2e8f0; cursor: pointer; padding: 0.25rem 0.6rem; font-size: 0.75rem;">
                                                 ${w.className}
                                             </button>
                                         `).join('')}
@@ -16845,6 +16843,9 @@ export const UI = {
                     }).join('')}
                 </div>
             `;
+            // Stash grouped data for the delegated click handler
+            this._elearningGroupedSubjects = groupedSubjects;
+            return html;
         };
 
         const renderWorkspace = async () => {
@@ -17592,6 +17593,36 @@ export const UI = {
                 state.selectedStudentId = e.target.value;
                 this.renderELearning();
             };
+        }
+
+        // Delegated click handlers for E-Learning subject grid
+        const subjectGrid = document.getElementById('elearning-subject-grid');
+        if (subjectGrid && this._elearningGroupedSubjects) {
+            const groupedData = this._elearningGroupedSubjects;
+
+            // Class buttons (direct workspace entry)
+            subjectGrid.querySelectorAll('.elearning-class-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const subId = btn.dataset.subjectId;
+                    const clsName = btn.dataset.className;
+                    if (subId && clsName) this.enterELearningWorkspace(subId, clsName);
+                });
+            });
+
+            // Subject card clicks (single class = direct, multiple = picker modal)
+            subjectGrid.querySelectorAll('.elearning-subject-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    const idx = parseInt(card.dataset.groupIdx, 10);
+                    const grp = groupedData[idx];
+                    if (!grp) return;
+                    if (grp.workspaces.length === 1) {
+                        this.enterELearningWorkspace(grp.workspaces[0].subjectId, grp.workspaces[0].className);
+                    } else {
+                        this.showElearningClassPickerModal(grp.subjectName, grp.workspaces);
+                    }
+                });
+            });
         }
 
         const commentInput = document.getElementById('elearning-comment-input');

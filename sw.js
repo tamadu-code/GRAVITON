@@ -1,4 +1,4 @@
-const CACHE_NAME = 'graviton-cache-v396';
+const CACHE_NAME = 'graviton-cache-v397';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -163,4 +163,5 @@ self.addEventListener('notificationclick', (event) => {
       })
   );
 });
+
 
