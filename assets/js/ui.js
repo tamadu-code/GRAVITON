@@ -16740,16 +16740,30 @@ export const UI = {
                 }
             }
 
-            // Deduplicate lists
-            const uniqueKeys = new Set();
-            activeWorkspaces = activeWorkspaces.filter(w => {
-                const key = `${w.subjectId}_${w.className}`;
-                if (uniqueKeys.has(key)) return false;
-                uniqueKeys.add(key);
-                return true;
-            }).sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+            // Group active workspaces by Subject Name
+            const groupedMap = new Map();
+            activeWorkspaces.forEach(w => {
+                const sName = (w.subjectName || '').trim();
+                if (!sName) return;
+                const normKey = sName.toLowerCase();
 
-            if (activeWorkspaces.length === 0) {
+                if (!groupedMap.has(normKey)) {
+                    groupedMap.set(normKey, {
+                        subjectName: sName,
+                        specialization: w.specialization || 'Common',
+                        workspaces: []
+                    });
+                }
+                const grp = groupedMap.get(normKey);
+                if (!grp.workspaces.some(ws => ws.subjectId === w.subjectId && ws.className === w.className)) {
+                    grp.workspaces.push(w);
+                }
+            });
+
+            const groupedSubjects = Array.from(groupedMap.values())
+                .sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+
+            if (groupedSubjects.length === 0) {
                 return `
                     <div class="card text-center" style="padding: 3rem; border-radius: 20px;">
                         <i data-lucide="book-open" style="width: 48px; height: 48px; color: #94a3b8; margin-bottom: 1rem;"></i>
@@ -16764,25 +16778,31 @@ export const UI = {
             // Fetch progress rates for students/parents
             const progressMap = {};
             if (targetStudentId) {
-                for (const w of activeWorkspaces) {
-                    const modules = await db.elearning_modules.where({ subject_id: w.subjectId, class_name: w.className }).toArray();
-                    const moduleIds = modules.map(m => m.id);
-                    const contents = await db.elearning_contents.filter(c => moduleIds.includes(c.module_id)).toArray();
-                    const contentIds = contents.map(c => c.id);
-                    
-                    if (contentIds.length > 0) {
-                        const completed = await db.elearning_progress.filter(p => p.student_id === targetStudentId && contentIds.includes(p.content_id)).toArray();
-                        progressMap[`${w.subjectId}_${w.className}`] = Math.round((completed.length / contentIds.length) * 100);
-                    } else {
-                        progressMap[`${w.subjectId}_${w.className}`] = 0;
+                for (const grp of groupedSubjects) {
+                    let totalContentsCount = 0;
+                    let completedContentsCount = 0;
+
+                    for (const w of grp.workspaces) {
+                        const modules = await db.elearning_modules.where({ subject_id: w.subjectId, class_name: w.className }).toArray();
+                        const moduleIds = modules.map(m => m.id);
+                        const contents = await db.elearning_contents.filter(c => moduleIds.includes(c.module_id)).toArray();
+                        const contentIds = contents.map(c => c.id);
+                        
+                        if (contentIds.length > 0) {
+                            totalContentsCount += contentIds.length;
+                            const completed = await db.elearning_progress.filter(p => p.student_id === targetStudentId && contentIds.includes(p.content_id)).toArray();
+                            completedContentsCount += completed.length;
+                        }
                     }
+
+                    progressMap[grp.subjectName] = totalContentsCount > 0 ? Math.round((completedContentsCount / totalContentsCount) * 100) : 0;
                 }
             }
 
             return `
                 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem;">
-                    ${activeWorkspaces.map(w => {
-                        const prog = progressMap[`${w.subjectId}_${w.className}`];
+                    ${groupedSubjects.map(subGroup => {
+                        const prog = progressMap[subGroup.subjectName] || 0;
                         const progressHtml = targetStudentId ? `
                             <div class="mt-4">
                                 <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-bottom: 0.25rem;">
@@ -16795,16 +16815,30 @@ export const UI = {
                             </div>
                         ` : '';
 
+                        const encodedWorkspaces = encodeURIComponent(JSON.stringify(subGroup.workspaces));
+
                         return `
-                            <div class="card hover-lift" style="border-radius: 20px; padding: 1.5rem; cursor: pointer; border: 1px solid #f1f5f9; background: white;" onclick="UI.enterELearningWorkspace('${w.subjectId}', '${w.className}')">
-                                <div style="display: flex; align-items: flex-start; justify-content: space-between;">
-                                    <div style="width: 48px; height: 48px; background: #eef2ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #4f46e5;">
-                                        <i data-lucide="book-open"></i>
+                            <div class="card hover-lift" style="border-radius: 20px; padding: 1.5rem; cursor: pointer; border: 1px solid #f1f5f9; background: white; display: flex; flex-direction: column; justify-content: space-between;" onclick="UI.handleElearningSubjectCardClick('${subGroup.subjectName.replace(/'/g, "\\'")}', '${encodedWorkspaces}')">
+                                <div>
+                                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem;">
+                                        <div style="width: 48px; height: 48px; background: #eef2ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #4f46e5;">
+                                            <i data-lucide="book-open"></i>
+                                        </div>
+                                        <span class="badge" style="background: #e0e7ff; color: #4338ca; font-weight: 700; font-size: 0.75rem;">
+                                            ${subGroup.workspaces.length} ${subGroup.workspaces.length === 1 ? 'Class' : 'Classes'}
+                                        </span>
                                     </div>
-                                    <span class="badge" style="background: #f1f5f9; color: #475569; font-weight: 700; font-size: 0.75rem;">${w.className}</span>
+                                    <h3 style="font-weight: 800; color: #1e293b; font-size: 1.15rem; margin-top: 1rem;">${subGroup.subjectName}</h3>
+                                    <p style="font-size: 0.8rem; color: #64748b; font-weight: 500;" class="mt-0-5">${subGroup.specialization}</p>
+                                    
+                                    <div class="mt-3" style="display: flex; flex-wrap: wrap; gap: 0.35rem;">
+                                        ${subGroup.workspaces.map(w => `
+                                            <button class="btn btn-xs" style="background: #f1f5f9; color: #334155; border-radius: 8px; font-weight: 700; border: 1px solid #e2e8f0; cursor: pointer; padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="event.stopPropagation(); UI.enterELearningWorkspace('${w.subjectId}', '${w.className}')">
+                                                ${w.className}
+                                            </button>
+                                        `).join('')}
+                                    </div>
                                 </div>
-                                <h3 style="font-weight: 800; color: #1e293b; font-size: 1.15rem; margin-top: 1rem;">${w.subjectName}</h3>
-                                <p style="font-size: 0.8rem; color: #64748b; font-weight: 500;" class="mt-0-5">${w.specialization}</p>
                                 ${progressHtml}
                             </div>
                         `;
@@ -17697,6 +17731,57 @@ export const UI = {
                 }
             };
         }
+    },
+
+    handleElearningSubjectCardClick(subjectName, encodedWorkspaces) {
+        let workspaces = [];
+        try {
+            workspaces = JSON.parse(decodeURIComponent(encodedWorkspaces));
+        } catch (e) {
+            console.error('Failed to parse workspaces:', e);
+        }
+        if (workspaces.length === 1) {
+            this.enterELearningWorkspace(workspaces[0].subjectId, workspaces[0].className);
+        } else if (workspaces.length > 1) {
+            this.showElearningClassPickerModal(subjectName, workspaces);
+        }
+    },
+
+    showElearningClassPickerModal(subjectName, workspaces) {
+        const modalId = 'modal-elearning-class-picker';
+        let modal = document.getElementById(modalId);
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = modalId;
+            modal.className = 'modal-backdrop';
+            document.body.appendChild(modal);
+        }
+
+        modal.innerHTML = `
+            <div class="modal-card" style="max-width: 480px; width: 90%; border-radius: 24px; padding: 2rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <div>
+                        <h3 style="font-weight: 800; color: #1e293b; font-size: 1.25rem;">${subjectName}</h3>
+                        <p style="color: #64748b; font-size: 0.85rem;">Select a class classroom to enter</p>
+                    </div>
+                    <button class="btn-close" onclick="document.getElementById('${modalId}').style.display='none'">&times;</button>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    ${workspaces.map(w => `
+                        <button class="btn" style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem 1.25rem; border-radius: 14px; font-weight: 700; color: #1e293b; transition: all 0.2s;" onclick="document.getElementById('${modalId}').style.display='none'; UI.enterELearningWorkspace('${w.subjectId}', '${w.className}')">
+                            <span style="display: flex; align-items: center; gap: 0.75rem;">
+                                <i data-lucide="book-open" style="color: #4f46e5; width: 20px;"></i>
+                                ${w.className}
+                            </span>
+                            <i data-lucide="chevron-right" style="color: #94a3b8; width: 18px;"></i>
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        modal.style.display = 'flex';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     enterELearningWorkspace(subjectId, className) {
